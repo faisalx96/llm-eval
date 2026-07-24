@@ -13,8 +13,17 @@ _mock_openai.AsyncOpenAI = MagicMock  # placeholder — overridden per test
 sys.modules.setdefault("openai", _mock_openai)
 
 from qym.metrics.result import MetricResult
-from qym.metrics.judge_config import JudgeConfig, get_default_judge_config, set_default_judge_config
-from qym.metrics.judges.base import snap_to_rail, create_judge
+from qym.metrics.judge_config import (
+    JudgeConfig,
+    get_default_judge_config,
+    set_default_judge_config,
+)
+from qym.metrics.judges.base import (
+    JudgeInputError,
+    create_judge,
+    create_pairwise_judge,
+    snap_to_rail,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -30,7 +39,12 @@ class TestSnapToRail:
         assert snap_to_rail("FAITHFUL", ["faithful", "unfaithful"]) == "faithful"
 
     def test_substring_match(self):
-        assert snap_to_rail("the answer is faithful to the context", ["faithful", "unfaithful"]) == "faithful"
+        assert (
+            snap_to_rail(
+                "the answer is faithful to the context", ["faithful", "unfaithful"]
+            )
+            == "faithful"
+        )
 
     def test_longest_first(self):
         # "non-toxic" should match before "toxic"
@@ -75,21 +89,29 @@ class TestJudgeConfig:
             assert "QYM_JUDGE_API_KEY (or OPENAI_API_KEY)" in str(exc_info.value)
 
     def test_env_vars(self):
-        with patch.dict(os.environ, {
-            "QYM_JUDGE_MODEL": "my-model",
-            "QYM_JUDGE_BASE_URL": "http://localhost:8080/v1",
-            "QYM_JUDGE_API_KEY": "test-key",
-        }, clear=True):
+        with patch.dict(
+            os.environ,
+            {
+                "QYM_JUDGE_MODEL": "my-model",
+                "QYM_JUDGE_BASE_URL": "http://localhost:8080/v1",
+                "QYM_JUDGE_API_KEY": "test-key",
+            },
+            clear=True,
+        ):
             cfg = JudgeConfig()
             assert cfg.model == "my-model"
             assert cfg.base_url == "http://localhost:8080/v1"
             assert cfg.api_key == "test-key"
 
     def test_openai_fallback(self):
-        with patch.dict(os.environ, {
-            "OPENAI_BASE_URL": "http://openai-host/v1",
-            "OPENAI_API_KEY": "sk-test",
-        }, clear=True):
+        with patch.dict(
+            os.environ,
+            {
+                "OPENAI_BASE_URL": "http://openai-host/v1",
+                "OPENAI_API_KEY": "sk-test",
+            },
+            clear=True,
+        ):
             cfg = JudgeConfig()
             assert cfg.base_url == "http://openai-host/v1"
             assert cfg.api_key == "sk-test"
@@ -103,6 +125,7 @@ class TestJudgeConfig:
 class TestDefaultJudgeConfig:
     def test_get_set(self):
         import qym.metrics.judge_config as mod
+
         original = mod._default_config
         try:
             mod._default_config = None  # Reset
@@ -124,9 +147,7 @@ class TestDefaultJudgeConfig:
 def _make_mock_client(response_content: str):
     """Helper to create a mock AsyncOpenAI client with a given response."""
     mock_response = MagicMock()
-    mock_response.choices = [
-        MagicMock(message=MagicMock(content=response_content))
-    ]
+    mock_response.choices = [MagicMock(message=MagicMock(content=response_content))]
     mock_client = AsyncMock()
     mock_client.chat = MagicMock()
     mock_client.chat.completions = MagicMock()
@@ -152,10 +173,14 @@ class TestCreateJudge:
 
     @pytest.mark.asyncio
     async def test_basic_judge(self):
-        content = json.dumps({"verdict": "faithful", "explanation": "The response is grounded."})
+        content = json.dumps(
+            {"verdict": "faithful", "explanation": "The response is grounded."}
+        )
         mock_client = _make_mock_client(content)
 
-        with patch.dict(sys.modules["openai"].__dict__, {"AsyncOpenAI": lambda **kw: mock_client}):
+        with patch.dict(
+            sys.modules["openai"].__dict__, {"AsyncOpenAI": lambda **kw: mock_client}
+        ):
             judge = create_judge(
                 name="test_judge",
                 prompt="Is this faithful?\n\n{output}",
@@ -173,7 +198,9 @@ class TestCreateJudge:
     async def test_json_parse_failure_snaps_to_rail(self):
         mock_client = _make_mock_client("The answer is unfaithful because...")
 
-        with patch.dict(sys.modules["openai"].__dict__, {"AsyncOpenAI": lambda **kw: mock_client}):
+        with patch.dict(
+            sys.modules["openai"].__dict__, {"AsyncOpenAI": lambda **kw: mock_client}
+        ):
             judge = create_judge(
                 name="test_judge",
                 prompt="{output}",
@@ -188,7 +215,9 @@ class TestCreateJudge:
     async def test_unparsable_response(self):
         mock_client = _make_mock_client("I cannot evaluate this")
 
-        with patch.dict(sys.modules["openai"].__dict__, {"AsyncOpenAI": lambda **kw: mock_client}):
+        with patch.dict(
+            sys.modules["openai"].__dict__, {"AsyncOpenAI": lambda **kw: mock_client}
+        ):
             judge = create_judge(
                 name="test_judge",
                 prompt="{output}",
@@ -204,9 +233,13 @@ class TestCreateJudge:
         mock_client = AsyncMock()
         mock_client.chat = MagicMock()
         mock_client.chat.completions = MagicMock()
-        mock_client.chat.completions.create = AsyncMock(side_effect=Exception("timeout"))
+        mock_client.chat.completions.create = AsyncMock(
+            side_effect=Exception("timeout")
+        )
 
-        with patch.dict(sys.modules["openai"].__dict__, {"AsyncOpenAI": lambda **kw: mock_client}):
+        with patch.dict(
+            sys.modules["openai"].__dict__, {"AsyncOpenAI": lambda **kw: mock_client}
+        ):
             judge = create_judge(
                 name="test_judge",
                 prompt="{output}",
@@ -223,7 +256,9 @@ class TestCreateJudge:
         content = json.dumps({"verdict": "relevant", "explanation": "On topic."})
         mock_client = _make_mock_client(content)
 
-        with patch.dict(sys.modules["openai"].__dict__, {"AsyncOpenAI": lambda **kw: mock_client}):
+        with patch.dict(
+            sys.modules["openai"].__dict__, {"AsyncOpenAI": lambda **kw: mock_client}
+        ):
             judge = create_judge(
                 name="test_judge",
                 prompt="Question: {question}\nContext: {context}\nResponse: {output}",
@@ -232,7 +267,10 @@ class TestCreateJudge:
             result = await judge(
                 "test output",
                 "expected",
-                {"question": "What is AI?", "context": "AI is artificial intelligence."},
+                {
+                    "question": "What is AI?",
+                    "context": "AI is artificial intelligence.",
+                },
             )
 
         assert result.score == 1.0
@@ -244,11 +282,124 @@ class TestCreateJudge:
         assert "test output" in user_msg
 
     @pytest.mark.asyncio
+    async def test_missing_prompt_input_reports_judge_and_received_fields(
+        self, monkeypatch
+    ):
+        monkeypatch.setenv("QYM_BASE_URL", "https://qym.example.com/root/")
+        judge = create_judge(
+            name="relevance",
+            prompt="Question: {question}\nResponse: {output}",
+            choices={"relevant": 1.0, "irrelevant": 0.0},
+        )
+
+        with pytest.raises(JudgeInputError) as exc_info:
+            await judge(
+                "test output",
+                input_data={"prompt": "What is AI?", "context": "AI context"},
+            )
+
+        message = str(exc_info.value)
+        assert "Judge metric 'relevance'" in message
+        assert "required input field(s): question" in message
+        assert "Received input fields/type: context, prompt" in message
+        assert "Evaluator(input_mapping=" in message
+        assert (
+            "https://qym.example.com/root/docs-guide"
+            "#get-started/datasets/multiple-input-columns" in message
+        )
+
+        rich_message = exc_info.value.rich_message()
+        assert "[red]Judge input error: relevance[/red]" in rich_message
+        assert "[yellow]Expected:[/yellow] question" in rich_message
+        assert "[cyan]Received:[/cyan] context, prompt" in rich_message
+        assert (
+            "[link=https://qym.example.com/root/docs-guide"
+            "#get-started/datasets/multiple-input-columns]" in rich_message
+        )
+        assert rich_message.endswith("Task with Multiple CSV Input Columns[/link]")
+
+    @pytest.mark.asyncio
+    async def test_missing_prompt_input_reports_scalar_type(self):
+        judge = create_judge(
+            name="custom_quality",
+            prompt="Query: {query}\nResponse: {output}",
+            choices={"good": 1.0, "bad": 0.0},
+        )
+
+        with pytest.raises(JudgeInputError, match=r"custom_quality.*<str>"):
+            await judge("test output", input_data="What is AI?")
+
+    @pytest.mark.asyncio
+    async def test_named_alias_substitutes_without_changing_scalar_input(self):
+        content = json.dumps({"verdict": "relevant", "explanation": "On topic."})
+        mock_client = _make_mock_client(content)
+
+        with patch.dict(
+            sys.modules["openai"].__dict__,
+            {"AsyncOpenAI": lambda **kw: mock_client},
+        ):
+            judge = create_judge(
+                name="relevance",
+                prompt="Question: {question}\nInput: {input}\nResponse: {output}",
+                choices={"relevant": 1.0, "irrelevant": 0.0},
+            )
+            result = await judge(
+                "test output",
+                input_data="What is AI?",
+                question="What is AI?",
+            )
+
+        assert result.score == 1.0
+        user_msg = mock_client.chat.completions.create.call_args.kwargs["messages"][1][
+            "content"
+        ]
+        assert "Question: What is AI?" in user_msg
+        assert "Input: What is AI?" in user_msg
+
+    @pytest.mark.asyncio
+    async def test_escaped_braces_are_not_required_fields(self):
+        content = json.dumps({"verdict": "good", "explanation": "Valid."})
+        mock_client = _make_mock_client(content)
+
+        with patch.dict(
+            sys.modules["openai"].__dict__, {"AsyncOpenAI": lambda **kw: mock_client}
+        ):
+            judge = create_judge(
+                name="json_example",
+                prompt='Return shape {{"verdict": "good"}} for {output}',
+                choices={"good": 1.0, "bad": 0.0},
+            )
+            result = await judge("test output")
+
+        assert result.score == 1.0
+
+    @pytest.mark.asyncio
+    async def test_pairwise_missing_prompt_input_reports_metric_name(self):
+        judge = create_pairwise_judge(
+            name="pairwise_helpfulness",
+            prompt=(
+                "Question: {question}\n"
+                "Response A: {output_a}\n"
+                "Response B: {output_b}"
+            ),
+        )
+
+        with pytest.raises(JudgeInputError) as exc_info:
+            await judge("answer A", "answer B", {"prompt": "What is AI?"})
+
+        message = str(exc_info.value)
+        assert "Judge metric 'pairwise_helpfulness'" in message
+        assert "required input field(s): question" in message
+        assert "Received input fields/type: prompt" in message
+
+    @pytest.mark.asyncio
     async def test_case_insensitive_verdict(self):
         content = json.dumps({"verdict": "Faithful", "explanation": "Case mismatch."})
         mock_client = _make_mock_client(content)
 
-        with patch.dict(sys.modules["openai"].__dict__, {"AsyncOpenAI": lambda **kw: mock_client}):
+        with patch.dict(
+            sys.modules["openai"].__dict__, {"AsyncOpenAI": lambda **kw: mock_client}
+        ):
             judge = create_judge(
                 name="test_judge",
                 prompt="{output}",
@@ -265,11 +416,14 @@ class TestCreateJudge:
         mock_client = _make_mock_client(content)
 
         captured_kwargs = {}
+
         def mock_constructor(**kw):
             captured_kwargs.update(kw)
             return mock_client
 
-        with patch.dict(sys.modules["openai"].__dict__, {"AsyncOpenAI": mock_constructor}):
+        with patch.dict(
+            sys.modules["openai"].__dict__, {"AsyncOpenAI": mock_constructor}
+        ):
             judge = create_judge(
                 name="test_judge",
                 prompt="{output}",

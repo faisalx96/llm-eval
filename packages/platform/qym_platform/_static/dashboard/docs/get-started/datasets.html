@@ -31,7 +31,7 @@
 <pre data-lang="python">CsvDataset(
     path,                              # str | Path to a .csv file
     *,
-    input_col="input",                 # column holding the task input
+    input_col="input",                 # str or list[str] holding task input(s)
     expected_col="expected_output",    # column holding the reference answer (or None)
     id_col=None,                       # column holding a stable item id (optional)
     metadata_cols=None,                # list of columns to collect into metadata
@@ -66,6 +66,35 @@ qa-002,What is qym?,An evaluation framework,medium,evals,docs</pre>
 <li><strong>On first <code>get_items()</code></strong> it validates the header. <code>input_col</code> is always required; <code>expected_col</code> and <code>id_col</code> are required only when set (non-<code>None</code>); every name in <code>metadata_cols</code> must exist. A missing column raises <code>CsvDatasetSchemaError("Missing required column", ...)</code>; a file with no header row raises <code>"CSV has no header row"</code>.</li>
 </ul>
 <p>Items are loaded once and cached, so column errors surface the first time the run reads the dataset.</p>
+
+<h3>Multiple input columns</h3>
+<p><code>input_col</code> can be a list when one CSV row needs to feed several task arguments. qym builds <code>item.input</code> as a dict keyed by the CSV column names:</p>
+<pre data-lang="csv">id,sql_prompt,sql_context,sql
+case-1,List all users,CREATE TABLE users(id INT);,SELECT * FROM users;</pre>
+<pre data-lang="python">dataset = CsvDataset(
+    "datasets/text2sql.csv",
+    input_col=["sql_prompt", "sql_context"],
+    expected_col="sql",
+    id_col="id",
+)</pre>
+<p>If your task uses the same names, qym unpacks them directly:</p>
+<pre data-lang="python">def task(sql_prompt, sql_context):
+    return generate_sql(sql_prompt, sql_context)</pre>
+<p>If the task uses cleaner parameter names, pass <code>input_mapping</code> to <code>Evaluator</code>. The mapping direction is <strong>CSV column name &rarr; task parameter name</strong>:</p>
+<pre data-lang="python">def task(question, schema):
+    return generate_sql(question=question, schema=schema)
+
+result = Evaluator(
+    task=task,
+    dataset=dataset,
+    metrics=[valid_sql],
+    input_mapping={
+        "sql_prompt": "question",
+        "sql_context": "schema",
+    },
+).run()</pre>
+<p>The original dict remains the dataset input shown in artifacts and the UI. During the task call, the adapter passes the mapped names; during metric calls, both original names (<code>sql_prompt</code>, <code>sql_context</code>) and mapped names (<code>question</code>, <code>schema</code>) are available.</p>
+<p>Single-column CSVs preserve the scalar value for both the task and a metric's <code>input_data</code> parameter. The declared column name is also exposed as an individual metric parameter and judge placeholder. With <code>input_col="question"</code>, <code>input_data</code> stays scalar while <code>question</code> resolves to the same value. When <code>input_mapping</code> renames that column, the mapped name is exposed without changing <code>input_data</code>.</p>
 
 <h3>JSON-in-cell parsing rule</h3>
 <p>CSV cells are parsed with deliberately minimal magic. The rule (verified in <code>_parse_cell</code>):</p>
@@ -200,7 +229,7 @@ Evaluator(task=my_task, dataset="qa-regression", metrics=["exact_match"]).run()<
 <li><strong>Metadata for the slices you actually review.</strong> Good fields: <code>domain</code>, <code>difficulty</code>, <code>source</code>, <code>language</code>, <code>prompt_version</code>, <code>risk_level</code>. Avoid fields that are unique per row (unless they are identifiers) — they make breakdowns noisy.</li>
 <li><strong>Keep a small smoke subset</strong> for fast local checks before running the full regression set.</li>
 </ul>
-<div class="docs-callout tip"><svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg><p><span class="docs-callout-title">RAG and tool fields live inside <code>input</code>.</span> Metrics receive <code>input_data = item.input</code>. If a metric or judge needs a <code>context</code>, <code>schema</code>, or <code>question</code>, those must be keys <em>inside</em> the item's <code>input</code> dict — not separate top-level columns. In CSV, put a JSON object in the input cell (see the JSON-in-cell rule above).</p></div>
+<div class="docs-callout tip"><svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg><p><span class="docs-callout-title">RAG and tool fields live inside <code>input</code>.</span> Metrics receive <code>input_data = item.input</code>. If a metric or judge needs a <code>context</code>, <code>schema</code>, or <code>question</code>, those must be keys <em>inside</em> the item's <code>input</code> dict. In CSV, either put a JSON object in one input cell (see the JSON-in-cell rule above) or pass multiple columns with <code>input_col=[...]</code>.</p></div>
 
 <h2>Missing expected outputs</h2>
 <p><code>expected_output</code> is optional everywhere — but built-in comparison metrics (<code>exact_match</code>, <code>contains</code>, <code>fuzzy_match</code>, <code>correctness</code>) compare against it. If your dataset has no expected column, those metrics receive <code>None</code> and will score everything as failing. Either add an expected column, or choose metrics that don't need a reference (for example an LLM judge that scores relevance from the input alone). See the <a href="#get-started/builtin-metrics">Built-in metrics tour</a> for which metrics need what.</p>

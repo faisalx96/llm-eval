@@ -38,6 +38,7 @@ for _mod_name in ("arabic_reshaper", "bidi", "bidi.algorithm", "openpyxl"):
 # 1. DIRECTORY STRUCTURE
 # ═══════════════════════════════════════════════════════════════════════
 
+
 class TestDirectoryStructure:
     """Verify that files are where they should be after the restructure."""
 
@@ -51,9 +52,18 @@ class TestDirectoryStructure:
 
     def test_sdk_core_modules(self):
         core = SDK_ROOT / "qym" / "core"
-        for mod in ("evaluator.py", "config.py", "dataset.py", "results.py",
-                     "checkpoint.py", "multi_runner.py", "observers.py",
-                     "progress.py", "run_discovery.py", "dashboard.py"):
+        for mod in (
+            "evaluator.py",
+            "config.py",
+            "dataset.py",
+            "results.py",
+            "checkpoint.py",
+            "multi_runner.py",
+            "observers.py",
+            "progress.py",
+            "run_discovery.py",
+            "dashboard.py",
+        ):
             assert (core / mod).exists(), f"Missing SDK core module: {mod}"
 
     def test_sdk_platform_subpackage(self):
@@ -92,7 +102,9 @@ class TestDirectoryStructure:
 
     def test_sdk_no_profile_html(self):
         """profile.html is platform-only and must NOT be in the SDK."""
-        assert not (SDK_ROOT / "qym" / "_static" / "dashboard" / "profile.html").exists()
+        assert not (
+            SDK_ROOT / "qym" / "_static" / "dashboard" / "profile.html"
+        ).exists()
 
     def test_sdk_cli(self):
         """The CLI is a subpackage (qym/cli/), not a single module."""
@@ -111,9 +123,17 @@ class TestDirectoryStructure:
 
     def test_platform_core_modules(self):
         pkg = PLATFORM_ROOT / "qym_platform"
-        for mod in ("app.py", "main.py", "settings.py", "auth.py",
-                     "deps.py", "events.py", "security.py", "cli.py",
-                     "__main__.py"):
+        for mod in (
+            "app.py",
+            "main.py",
+            "settings.py",
+            "auth.py",
+            "deps.py",
+            "events.py",
+            "security.py",
+            "cli.py",
+            "__main__.py",
+        ):
             assert (pkg / mod).exists(), f"Missing platform module: {mod}"
 
     def test_platform_api_subpackage(self):
@@ -137,7 +157,9 @@ class TestDirectoryStructure:
         assert (mig / "alembic.ini").exists()
 
     def test_platform_tools(self):
-        assert (PLATFORM_ROOT / "qym_platform" / "tools" / "import_local_results.py").exists()
+        assert (
+            PLATFORM_ROOT / "qym_platform" / "tools" / "import_local_results.py"
+        ).exists()
 
     def test_platform_static_dashboard(self):
         d = PLATFORM_ROOT / "qym_platform" / "_static" / "dashboard"
@@ -187,27 +209,33 @@ class TestDirectoryStructure:
 # 2. SDK IMPORTS
 # ═══════════════════════════════════════════════════════════════════════
 
+
 class TestSdkImports:
     """Verify the SDK package can be imported correctly."""
 
     def test_import_qym(self):
         import qym
+
         assert hasattr(qym, "__version__")
 
     def test_import_evaluator(self):
         from qym.core.evaluator import Evaluator
+
         assert Evaluator is not None
 
     def test_import_csv_dataset(self):
         from qym.core.dataset import CsvDataset
+
         assert CsvDataset is not None
 
     def test_import_evaluation_result(self):
         from qym.core.results import EvaluationResult
+
         assert EvaluationResult is not None
 
     def test_import_config(self):
         from qym.core.config import EvaluatorConfig, RunSpec
+
         assert EvaluatorConfig is not None
         assert RunSpec is not None
 
@@ -219,48 +247,62 @@ class TestSdkImports:
             parse_checkpoint_row,
             serialize_checkpoint_row,
         )
+
         assert CheckpointWriter is not None
 
     def test_import_platform_subpackage(self):
-        from qym.platform import PlatformClient, PlatformEventStream, DEFAULT_PLATFORM_URL
+        from qym.platform import (
+            PlatformClient,
+            PlatformEventStream,
+            DEFAULT_PLATFORM_URL,
+        )
+
         assert PlatformClient is not None
         assert PlatformEventStream is not None
         assert isinstance(DEFAULT_PLATFORM_URL, str)
 
     def test_import_platform_client_directly(self):
         from qym.platform.client import PlatformClient, PlatformEventStream
+
         assert PlatformClient is not None
 
     def test_import_platform_defaults_directly(self):
         from qym.platform.defaults import DEFAULT_PLATFORM_URL
+
         assert isinstance(DEFAULT_PLATFORM_URL, str)
 
     def test_import_metrics(self):
         from qym.metrics import builtin_metrics, list_available_metrics
+
         assert isinstance(builtin_metrics, dict)
         assert callable(list_available_metrics)
 
     def test_import_builtin_metrics(self):
         from qym.metrics.builtin import exact_match, contains_expected, fuzzy_match
+
         assert callable(exact_match)
         assert callable(contains_expected)
         assert callable(fuzzy_match)
 
     def test_import_errors(self):
         from qym.utils.errors import CsvDatasetSchemaError
+
         assert issubclass(CsvDatasetSchemaError, Exception)
 
     def test_import_multi_runner(self):
         from qym.core.multi_runner import MultiModelRunner
+
         assert MultiModelRunner is not None
 
     def test_import_run_discovery(self):
         from qym.core.run_discovery import RunDiscovery
+
         assert RunDiscovery is not None
 
     def test_top_level_exports(self):
         """qym.__init__ re-exports key classes."""
         import qym
+
         assert hasattr(qym, "Evaluator")
         assert hasattr(qym, "CsvDataset")
         assert hasattr(qym, "EvaluationResult")
@@ -273,6 +315,7 @@ class TestSdkImports:
 # ═══════════════════════════════════════════════════════════════════════
 # 3. PLATFORM IMPORTS
 # ═══════════════════════════════════════════════════════════════════════
+
 
 class TestPlatformImports:
     """Verify the platform package can be imported correctly.
@@ -290,23 +333,36 @@ class TestPlatformImports:
 
     def test_import_qym_platform(self):
         import qym_platform
+
         assert hasattr(qym_platform, "__version__")
 
     def test_import_settings(self):
         from qym_platform.settings import PlatformSettings
+
         assert PlatformSettings is not None
 
     def test_settings_env_prefix(self):
         from qym_platform.settings import PlatformSettings
+
         cfg = PlatformSettings.model_config
         assert cfg.get("env_prefix") == "QYM_"
 
     def test_import_db_models(self):
         from qym_platform.db.models import (
-            User, UserRole, Run, RunItem, RunItemScore,
-            RunWorkflowStatus, Project, ProjectMembership,
-            ProjectRole, Dataset, DatasetVersion, PlatformSetting,
+            User,
+            UserRole,
+            Run,
+            RunItem,
+            RunItemScore,
+            RunWorkflowStatus,
+            Project,
+            ProjectMembership,
+            ProjectRole,
+            Dataset,
+            DatasetVersion,
+            PlatformSetting,
         )
+
         assert User is not None
         assert RunWorkflowStatus.DRAFT is not None
         assert UserRole.ADMIN is not None
@@ -315,6 +371,7 @@ class TestPlatformImports:
 
     def test_import_app_factory(self):
         from qym_platform.app import create_app
+
         assert callable(create_app)
 
     def test_import_api_routers(self):
@@ -323,6 +380,7 @@ class TestPlatformImports:
         from qym_platform.api.ingest import router as ingest_router
         from qym_platform.api.datasets import router as datasets_router
         from qym_platform.api.projects import router as projects_router
+
         assert web_router is not None
         assert runs_router is not None
         assert ingest_router is not None
@@ -331,10 +389,12 @@ class TestPlatformImports:
 
     def test_import_auth(self):
         from qym_platform.auth import Principal
+
         assert Principal is not None
 
     def test_import_events(self):
         import qym_platform.events
+
         assert qym_platform.events is not None
 
 
@@ -342,13 +402,41 @@ class TestPlatformImports:
 # 4. NO STALE REFERENCES
 # ═══════════════════════════════════════════════════════════════════════
 
-def _collect_source_files(root: Path, exts: tuple = (".py", ".toml", ".yml", ".yaml", ".sh", ".md", ".html", ".js", ".css")) -> list:
+
+def _collect_source_files(
+    root: Path,
+    exts: tuple = (
+        ".py",
+        ".toml",
+        ".yml",
+        ".yaml",
+        ".sh",
+        ".md",
+        ".html",
+        ".js",
+        ".css",
+    ),
+) -> list:
     """Collect all text source files under root, skipping hidden/vendored dirs."""
     files = []
     for dirpath, dirnames, filenames in os.walk(root):
         # Skip hidden dirs, __pycache__, node_modules, .git, and scratch/build
         # output (tmp/ is gitignored preview/build artifacts, not source).
-        dirnames[:] = [d for d in dirnames if not d.startswith(".") and d not in ("__pycache__", "node_modules", ".git", "dist", "build", "tmp", "*.egg-info")]
+        dirnames[:] = [
+            d
+            for d in dirnames
+            if not d.startswith(".")
+            and d
+            not in (
+                "__pycache__",
+                "node_modules",
+                ".git",
+                "dist",
+                "build",
+                "tmp",
+                "*.egg-info",
+            )
+        ]
         for fn in filenames:
             if any(fn.endswith(ext) for ext in exts):
                 files.append(Path(dirpath) / fn)
@@ -374,7 +462,9 @@ class TestNoStaleReferences:
                 for i, line in enumerate(text.splitlines(), 1):
                     if pattern.search(line):
                         violations.append(f"{f}:{i}: {line.strip()}")
-        assert violations == [], "Found llm_eval_platform references:\n" + "\n".join(violations)
+        assert violations == [], "Found llm_eval_platform references:\n" + "\n".join(
+            violations
+        )
 
     def test_no_LLM_EVAL_env_prefix(self, source_files):
         """No config/code file should use LLM_EVAL_ env prefix."""
@@ -402,7 +492,11 @@ class TestNoStaleReferences:
         # Match 'llm-eval' but NOT 'LLM evaluation' (word boundary)
         pattern = re.compile(r"\bllm-eval\b", re.IGNORECASE)
         generic_domain = re.compile(r"llm.evaluation", re.IGNORECASE)
-        history_files = {"ANNOUNCEMENTS.md", "RELEASE_NOTES.md", "RELEASE_NOTES_SUMMARY.md"}
+        history_files = {
+            "ANNOUNCEMENTS.md",
+            "RELEASE_NOTES.md",
+            "RELEASE_NOTES_SUMMARY.md",
+        }
         violations = []
         for f in source_files:
             # Skip this test file itself
@@ -417,7 +511,9 @@ class TestNoStaleReferences:
                     if generic_domain.search(line):
                         continue
                     violations.append(f"{f}:{i}: {line.strip()}")
-        assert violations == [], "Found stale 'llm-eval' references:\n" + "\n".join(violations)
+        assert violations == [], "Found stale 'llm-eval' references:\n" + "\n".join(
+            violations
+        )
 
     def test_no_llm_eval_results_dir_references(self, source_files):
         """No reference to the old llm-eval_results directory name."""
@@ -430,12 +526,15 @@ class TestNoStaleReferences:
             for i, line in enumerate(text.splitlines(), 1):
                 if pattern.search(line):
                     violations.append(f"{f}:{i}: {line.strip()}")
-        assert violations == [], "Found old results dir references:\n" + "\n".join(violations)
+        assert violations == [], "Found old results dir references:\n" + "\n".join(
+            violations
+        )
 
 
 # ═══════════════════════════════════════════════════════════════════════
 # 5. PYPROJECT.TOML VALIDATION
 # ═══════════════════════════════════════════════════════════════════════
+
 
 class TestPyprojectToml:
     """Validate both pyproject.toml files."""
@@ -497,6 +596,7 @@ class TestPyprojectToml:
 # 6. DOCKER FILES
 # ═══════════════════════════════════════════════════════════════════════
 
+
 class TestDockerFiles:
     """Verify Docker files reference the new paths."""
 
@@ -539,6 +639,7 @@ class TestDockerFiles:
 # 7. ENV VAR PREFIX CONSISTENCY
 # ═══════════════════════════════════════════════════════════════════════
 
+
 class TestEnvVarPrefix:
     """All QYM_ env vars are used consistently."""
 
@@ -565,6 +666,7 @@ class TestEnvVarPrefix:
 # 8. STATIC ASSETS SEPARATION
 # ═══════════════════════════════════════════════════════════════════════
 
+
 class TestStaticAssets:
     """Verify both packages own appropriate static assets."""
 
@@ -576,15 +678,21 @@ class TestStaticAssets:
         assert (SDK_ROOT / "qym" / "_static" / "ui" / "index.html").exists()
 
     def test_platform_dashboard_has_index(self):
-        assert (PLATFORM_ROOT / "qym_platform" / "_static" / "dashboard" / "index.html").exists()
+        assert (
+            PLATFORM_ROOT / "qym_platform" / "_static" / "dashboard" / "index.html"
+        ).exists()
 
     def test_platform_ui_has_index(self):
-        assert (PLATFORM_ROOT / "qym_platform" / "_static" / "ui" / "index.html").exists()
+        assert (
+            PLATFORM_ROOT / "qym_platform" / "_static" / "ui" / "index.html"
+        ).exists()
 
     def test_profile_html_only_in_platform(self):
         """profile.html should only exist in the platform package."""
         sdk_profile = SDK_ROOT / "qym" / "_static" / "dashboard" / "profile.html"
-        platform_profile = PLATFORM_ROOT / "qym_platform" / "_static" / "dashboard" / "profile.html"
+        platform_profile = (
+            PLATFORM_ROOT / "qym_platform" / "_static" / "dashboard" / "profile.html"
+        )
         assert not sdk_profile.exists(), "profile.html should not be in SDK"
         assert platform_profile.exists(), "profile.html should be in platform"
 
@@ -592,6 +700,7 @@ class TestStaticAssets:
 # ═══════════════════════════════════════════════════════════════════════
 # 9. CONFTEST AND TEST INFRA
 # ═══════════════════════════════════════════════════════════════════════
+
 
 class TestTestInfrastructure:
     """Verify the test infrastructure is correctly configured."""
@@ -606,16 +715,21 @@ class TestTestInfrastructure:
 
     def test_sdk_tests_exist(self):
         sdk_tests = list((REPO / "tests" / "sdk").glob("test_*.py"))
-        assert len(sdk_tests) >= 3, f"Expected at least 3 SDK tests, found {len(sdk_tests)}"
+        assert (
+            len(sdk_tests) >= 3
+        ), f"Expected at least 3 SDK tests, found {len(sdk_tests)}"
 
     def test_platform_tests_exist(self):
         platform_tests = list((REPO / "tests" / "platform").glob("test_*.py"))
-        assert len(platform_tests) >= 1, f"Expected at least 1 platform test, found {len(platform_tests)}"
+        assert (
+            len(platform_tests) >= 1
+        ), f"Expected at least 1 platform test, found {len(platform_tests)}"
 
 
 # ═══════════════════════════════════════════════════════════════════════
 # 10. PLATFORM APP WIRING
 # ═══════════════════════════════════════════════════════════════════════
+
 
 class TestPlatformAppWiring:
     """Verify the platform app factory is properly wired."""
@@ -635,6 +749,7 @@ class TestPlatformAppWiring:
         app = create_app(settings)
 
         from fastapi import FastAPI
+
         assert isinstance(app, FastAPI)
 
     def test_healthz_route_exists(self):
@@ -644,7 +759,11 @@ class TestPlatformAppWiring:
         settings = PlatformSettings(database_url="sqlite:///:memory:")
         app = create_app(settings)
 
-        routes = [r.path for r in app.routes]
+        routes = [
+            route.path
+            for route in app.routes
+            if isinstance(getattr(route, "path", None), str)
+        ]
         assert "/healthz" in routes
 
     def test_app_title(self):
@@ -659,6 +778,7 @@ class TestPlatformAppWiring:
 # ═══════════════════════════════════════════════════════════════════════
 # 11. CROSS-PACKAGE BOUNDARY
 # ═══════════════════════════════════════════════════════════════════════
+
 
 class TestCrossPackageBoundary:
     """The SDK should not import qym_platform and vice-versa (except controlled deps)."""
@@ -682,7 +802,9 @@ class TestCrossPackageBoundary:
             text = f.read_text(errors="replace")
             for i, line in enumerate(text.splitlines(), 1):
                 if pattern.match(line):
-                    imports.append(f"{f.relative_to(PLATFORM_ROOT)}:{i}: {line.strip()}")
+                    imports.append(
+                        f"{f.relative_to(PLATFORM_ROOT)}:{i}: {line.strip()}"
+                    )
         # It's OK to import from qym (the tools/import script does),
         # but there shouldn't be excessive coupling.
         # Just log them; the important thing is they exist and work.
@@ -693,12 +815,18 @@ class TestCrossPackageBoundary:
 # 12. ALEMBIC CONFIG
 # ═══════════════════════════════════════════════════════════════════════
 
+
 class TestAlembicConfig:
     """Verify alembic.ini references are correct."""
 
     def test_alembic_ini_script_location(self):
-        text = (PLATFORM_ROOT / "qym_platform" / "migrations" / "alembic.ini").read_text()
-        assert "qym_platform/migrations" in text or "packages/platform/qym_platform/migrations" in text
+        text = (
+            PLATFORM_ROOT / "qym_platform" / "migrations" / "alembic.ini"
+        ).read_text()
+        assert (
+            "qym_platform/migrations" in text
+            or "packages/platform/qym_platform/migrations" in text
+        )
         assert "llm_eval_platform" not in text
 
     def test_migrations_readme(self):

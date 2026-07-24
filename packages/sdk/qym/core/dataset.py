@@ -5,12 +5,11 @@ from __future__ import annotations
 import csv
 import json
 import os
-from urllib import parse, request
+from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
-
-from collections import defaultdict
+from urllib import parse, request
 
 from .item_identity import build_identity_fingerprint
 from ..utils.errors import CsvDatasetSchemaError, DatasetNotFoundError
@@ -35,20 +34,27 @@ class CsvDataset:
     Parsing rules:
     - If a cell starts with '{' or '[', we attempt JSON parsing (dict/list).
     - Otherwise, values are kept as strings to avoid surprising coercions.
+    - Multiple input columns are returned as a dictionary keyed by column name.
     """
 
     def __init__(
         self,
         path: str | Path,
         *,
-        input_col: str = "input",
+        input_col: str | Sequence[str] = "input",
         expected_col: str | None = "expected_output",
         id_col: str | None = None,
         metadata_cols: Sequence[str] | None = None,
         name: str | None = None,
     ) -> None:
         self.path = Path(path)
-        self.input_col = input_col
+        self.input_cols = self._normalize_input_cols(
+            input_col,
+            file_path=str(self.path),
+        )
+        self.input_col = (
+            self.input_cols[0] if len(self.input_cols) == 1 else list(self.input_cols)
+        )
         self.expected_col = expected_col
         self.id_col = id_col
         self.metadata_cols = list(metadata_cols) if metadata_cols else []
@@ -66,6 +72,46 @@ class CsvDataset:
                 "CSV file not found",
                 file_path=str(self.path),
             )
+
+    @staticmethod
+    def _normalize_input_cols(
+        input_col: str | Sequence[str],
+        *,
+        file_path: str,
+    ) -> List[str]:
+        """Return validated input column names."""
+        if isinstance(input_col, str):
+            input_cols = [input_col]
+        else:
+            try:
+                input_cols = list(input_col)
+            except TypeError as exc:
+                raise CsvDatasetSchemaError(
+                    "input_col must be a string or sequence of strings",
+                    file_path=file_path,
+                ) from exc
+        if not input_cols:
+            raise CsvDatasetSchemaError(
+                "At least one input column is required",
+                file_path=file_path,
+            )
+        invalid = [
+            col
+            for col in input_cols
+            if not isinstance(col, str) or not col.strip()
+        ]
+        if invalid:
+            raise CsvDatasetSchemaError(
+                "Input columns must be non-empty strings",
+                file_path=file_path,
+            )
+        duplicates = sorted({col for col in input_cols if input_cols.count(col) > 1})
+        if duplicates:
+            raise CsvDatasetSchemaError(
+                f"Duplicate input column(s): {', '.join(duplicates)}",
+                file_path=file_path,
+            )
+        return input_cols
 
     @staticmethod
     def _parse_cell(raw: Any, *, file_path: str, row: int, column: str) -> Any:
@@ -106,7 +152,8 @@ class CsvDataset:
                             column=col,
                         )
 
-                _require_col(self.input_col)
+                for c in self.input_cols:
+                    _require_col(c)
                 if self.expected_col:
                     _require_col(self.expected_col)
                 if self.id_col:
@@ -135,21 +182,45 @@ class CsvDataset:
                                 row=csv_row_num,
                                 column=self.id_col,
                             )
-                    raw_input = row.get(self.input_col, "")
-                    parsed_input = self._parse_cell(
-                        raw_input, file_path=file_path, row=csv_row_num, column=self.input_col
-                    )
+
+                    if len(self.input_cols) == 1:
+                        input_col = self.input_cols[0]
+                        raw_input = row.get(input_col, "")
+                        parsed_input = self._parse_cell(
+                            raw_input,
+                            file_path=file_path,
+                            row=csv_row_num,
+                            column=input_col,
+                        )
+                    else:
+                        parsed_input = {
+                            c: self._parse_cell(
+                                row.get(c, ""),
+                                file_path=file_path,
+                                row=csv_row_num,
+                                column=c,
+                            )
+                            for c in self.input_cols
+                        }
 
                     parsed_expected: Any = None
                     if self.expected_col:
                         raw_expected = row.get(self.expected_col, "")
                         parsed_expected = self._parse_cell(
-                            raw_expected, file_path=file_path, row=csv_row_num, column=self.expected_col
+                            raw_expected,
+                            file_path=file_path,
+                            row=csv_row_num,
+                            column=self.expected_col,
                         )
 
                     md: Dict[str, Any] = {}
                     for c in self.metadata_cols:
-                        md[c] = self._parse_cell(row.get(c, ""), file_path=file_path, row=csv_row_num, column=c)
+                        md[c] = self._parse_cell(
+                            row.get(c, ""),
+                            file_path=file_path,
+                            row=csv_row_num,
+                            column=c,
+                        )
 
                     if not self.id_col:
                         fingerprint = build_identity_fingerprint(
@@ -173,7 +244,10 @@ class CsvDataset:
         except CsvDatasetSchemaError:
             raise
         except Exception as exc:
-            raise CsvDatasetSchemaError(f"Failed to read CSV: {exc}", file_path=file_path) from exc
+            raise CsvDatasetSchemaError(
+                f"Failed to read CSV: {exc}",
+                file_path=file_path,
+            ) from exc
 
     def get_items(self) -> List[CsvDatasetItem]:
         if self._items is None:
@@ -206,9 +280,15 @@ class JsonlDataset:
         self.dataset_version_id: Optional[str] = None
         self._items: Optional[List[CsvDatasetItem]] = None
         if self.path.suffix.lower() != ".jsonl":
-            raise CsvDatasetSchemaError("JSONL dataset must be a .jsonl file", file_path=str(self.path))
+            raise CsvDatasetSchemaError(
+                "JSONL dataset must be a .jsonl file",
+                file_path=str(self.path),
+            )
         if not self.path.exists():
-            raise CsvDatasetSchemaError("JSONL file not found", file_path=str(self.path))
+            raise CsvDatasetSchemaError(
+                "JSONL file not found",
+                file_path=str(self.path),
+            )
 
     def get_items(self) -> List[CsvDatasetItem]:
         if self._items is not None:
@@ -216,13 +296,20 @@ class JsonlDataset:
         items: List[CsvDatasetItem] = []
         counts: Dict[str, int] = defaultdict(int)
         try:
-            for idx, line in enumerate(self.path.read_text(encoding="utf-8").splitlines(), start=1):
+            for idx, line in enumerate(
+                self.path.read_text(encoding="utf-8").splitlines(),
+                start=1,
+            ):
                 text = line.strip()
                 if not text:
                     continue
                 obj = json.loads(text)
                 if not isinstance(obj, dict):
-                    raise CsvDatasetSchemaError("JSONL line must be an object", file_path=str(self.path), row=idx)
+                    raise CsvDatasetSchemaError(
+                        "JSONL line must be an object",
+                        file_path=str(self.path),
+                        row=idx,
+                    )
                 input_value = obj.get("input")
                 expected = obj.get("expected_output", obj.get("expected"))
                 metadata = obj.get("metadata") or {}
@@ -246,7 +333,10 @@ class JsonlDataset:
         except CsvDatasetSchemaError:
             raise
         except Exception as exc:
-            raise CsvDatasetSchemaError(f"Failed to read JSONL: {exc}", file_path=str(self.path)) from exc
+            raise CsvDatasetSchemaError(
+                f"Failed to read JSONL: {exc}",
+                file_path=str(self.path),
+            ) from exc
         self._items = items
         return items
 
@@ -261,7 +351,13 @@ class JsonlDataset:
 class InMemoryDataset:
     """Small in-memory dataset for generated tests and programmatic evals."""
 
-    def __init__(self, items: Sequence[Dict[str, Any]], *, name: str = "in-memory", version: str | None = None) -> None:
+    def __init__(
+        self,
+        items: Sequence[Dict[str, Any]],
+        *,
+        name: str = "in-memory",
+        version: str | None = None,
+    ) -> None:
         self.name = name
         self.version = version
         self.id: Optional[str] = None
@@ -303,12 +399,15 @@ class QymDataset:
         self.name = dataset_name
         self.version = version
         self.alias = alias or (None if version else "production")
-        self.platform_url = (platform_url or os.getenv("QYM_BASE_URL") or "").rstrip("/")
+        self.platform_url = (
+            platform_url or os.getenv("QYM_BASE_URL") or ""
+        ).rstrip("/")
         self.api_key = api_key or os.getenv("QYM_API_KEY")
         self.project_slug = project_slug
         self.id: Optional[str] = None
         self.dataset_version_id: Optional[str] = None
         self._version_label: Optional[str] = None
+        self.input_cols: List[str] = []
         self._items: Optional[List[CsvDatasetItem]] = None
         if not self.platform_url or not self.api_key:
             raise DatasetNotFoundError(
@@ -326,13 +425,18 @@ class QymDataset:
                 raw = resp.read().decode("utf-8")
                 return json.loads(raw) if raw else {}
         except Exception as exc:
-            raise DatasetNotFoundError(f"Failed to load qym dataset '{self.name}': {exc}") from exc
+            raise DatasetNotFoundError(
+                f"Failed to load qym dataset '{self.name}': {exc}"
+            ) from exc
 
     def get_items(self) -> List[CsvDatasetItem]:
         if self._items is not None:
             return self._items
         dataset_ref = parse.quote(self.name, safe="")
-        version_ref = parse.quote(self.version or self.alias or "production", safe="")
+        version_ref = parse.quote(
+            self.version or self.alias or "production",
+            safe="",
+        )
         params: Dict[str, str] = {"limit": "1000"}
         if self.project_slug:
             params["project_slug"] = self.project_slug
@@ -341,7 +445,10 @@ class QymDataset:
         version_data: Dict[str, Any] = {}
         while True:
             params["offset"] = str(offset)
-            path = f"/v1/datasets/{dataset_ref}/versions/{version_ref}/items?{parse.urlencode(params)}"
+            path = (
+                f"/v1/datasets/{dataset_ref}/versions/{version_ref}/items?"
+                f"{parse.urlencode(params)}"
+            )
             data = self._fetch_json(path)
             dataset_data = data.get("dataset") or {}
             version_data = data.get("version") or version_data
@@ -349,8 +456,22 @@ class QymDataset:
                 self.id = str(dataset_data.get("id") or "") or self.id
                 self.name = str(dataset_data.get("name") or self.name)
             if version_data:
-                self.dataset_version_id = str(version_data.get("id") or "") or self.dataset_version_id
-                self._version_label = str(version_data.get("version") or "") or self._version_label
+                schema = version_data.get("schema") or {}
+                schema_input_cols = schema.get("input_cols") or []
+                if isinstance(schema_input_cols, str):
+                    schema_input_cols = [schema_input_cols]
+                if isinstance(schema_input_cols, list):
+                    self.input_cols = [
+                        col for col in schema_input_cols if isinstance(col, str) and col
+                    ]
+                self.dataset_version_id = (
+                    str(version_data.get("id") or "")
+                    or self.dataset_version_id
+                )
+                self._version_label = (
+                    str(version_data.get("version") or "")
+                    or self._version_label
+                )
             for item in data.get("items") or []:
                 items.append(
                     CsvDatasetItem(
@@ -378,7 +499,10 @@ class QymDataset:
         return self.size
 
     def __repr__(self) -> str:
-        return f"QymDataset(name='{self.name}', version='{self.version or self.alias}', items={self.size})"
+        return (
+            f"QymDataset(name='{self.name}', "
+            f"version='{self.version or self.alias}', items={self.size})"
+        )
 
 
 def resolve_dataset(
@@ -397,7 +521,10 @@ def resolve_dataset(
             return CsvDataset(path)
         if suffix == ".jsonl":
             return JsonlDataset(path)
-        raise CsvDatasetSchemaError("Unsupported dataset file extension", file_path=str(path))
+        raise CsvDatasetSchemaError(
+            "Unsupported dataset file extension",
+            file_path=str(path),
+        )
     return QymDataset(
         dataset,
         version=version,

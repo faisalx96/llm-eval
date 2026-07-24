@@ -160,6 +160,7 @@ class MultiModelRunner:
                         metrics=model_variant.get("metrics"),
                         config=EvaluatorConfig(**raw_config),
                         metadata=metadata,
+                        input_mapping=dict(model_variant.get("input_mapping") or {}),
                         output_path=model_variant.get("output"),
                         task_file=str(
                             model_variant.get("task_file")
@@ -366,6 +367,7 @@ class MultiModelRunner:
                 metrics=spec.metrics,
                 config=spec.config,
                 observer=observer,
+                input_mapping=spec.input_mapping,
             )
             evaluator._sync_threadpool_advisory_registry = advisory_tasks_emitted
             _active_evaluators.append(evaluator)

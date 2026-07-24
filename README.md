@@ -30,7 +30,7 @@ qym solves this by making evaluation structured, repeatable, observable, and tea
 - A simple evaluation workflow built around tasks, datasets, and metrics
 - High-throughput async execution for large-scale evaluation runs
 - Multi-model benchmarking in the same workflow
-- Support for both Langfuse datasets and local CSV datasets
+- Support for platform datasets and local CSV/JSONL datasets, including multi-column CSV inputs
 - Built-in metrics, custom metrics, and LLM-as-judge evaluation
 - Automatic tracing of LLM calls, tools, reasoning steps, latency, tokens, and errors
 - A live platform for run history, comparison, charts, and version tracking

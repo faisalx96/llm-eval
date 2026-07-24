@@ -44,6 +44,44 @@ def test_csv_dataset_json_parsing_only_for_objects_and_arrays(tmp_path):
     assert item.metadata == {"meta": {"k": 1}}
 
 
+def test_csv_dataset_multiple_input_columns_return_dict(tmp_path):
+    p = tmp_path / "text2sql.csv"
+    p.write_text(
+        "id,sql_prompt,sql_context,sql\n"
+        "case-1,List users,CREATE TABLE users(id INT),SELECT * FROM users\n",
+        encoding="utf-8",
+    )
+
+    ds = CsvDataset(
+        p,
+        input_col=["sql_prompt", "sql_context"],
+        expected_col="sql",
+        id_col="id",
+    )
+    item = ds.get_items()[0]
+
+    assert item.input == {
+        "sql_prompt": "List users",
+        "sql_context": "CREATE TABLE users(id INT)",
+    }
+    assert item.expected_output == "SELECT * FROM users"
+    assert item.id == "case-1"
+
+
+def test_csv_dataset_rejects_invalid_multiple_input_columns(tmp_path):
+    p = tmp_path / "bad.csv"
+    p.write_text("q,a\nhello,world\n", encoding="utf-8")
+
+    with pytest.raises(CsvDatasetSchemaError, match="At least one input column"):
+        CsvDataset(p, input_col=[])
+
+    with pytest.raises(CsvDatasetSchemaError, match="Duplicate input column"):
+        CsvDataset(p, input_col=["q", "q"])
+
+    with pytest.raises(CsvDatasetSchemaError, match="string or sequence"):
+        CsvDataset(p, input_col=123)
+
+
 def test_csv_dataset_missing_required_column_has_clear_error(tmp_path):
     p = tmp_path / "bad.csv"
     p.write_text("a,b\n1,2\n", encoding="utf-8")
@@ -124,4 +162,3 @@ def test_csv_dataset_generated_ids_disambiguate_duplicates(tmp_path):
     assert ids[0] != ids[1]
     assert ids[0].startswith("csv_")
     assert ids[1].startswith("csv_")
-

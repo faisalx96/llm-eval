@@ -39,7 +39,6 @@ def main():
 
     # Initialize Langfuse client
     client = Langfuse()
-
     # Create or get dataset
     try:
         client.create_dataset(name=DATASET_NAME)

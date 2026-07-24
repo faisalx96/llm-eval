@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import random
 import re
 from typing import Any, Callable, Dict, List, Optional
@@ -22,6 +23,52 @@ DEFAULT_SYSTEM_PROMPT = (
 )
 
 
+class JudgeInputError(ValueError):
+    """Raised when a judge prompt references unavailable input fields."""
+
+    DOCS_ROUTE = "/docs-guide#get-started/datasets/multiple-input-columns"
+
+    @classmethod
+    def docs_url(cls) -> str:
+        """Return the platform mapping-docs URL from the process environment."""
+        base_url = (os.getenv("QYM_BASE_URL") or "http://localhost:8000").rstrip("/")
+        return f"{base_url}{cls.DOCS_ROUTE}"
+
+    def __init__(
+        self,
+        *,
+        judge_name: str,
+        missing_fields: List[str],
+        received: str,
+    ) -> None:
+        self.judge_name = judge_name
+        self.missing_fields = list(missing_fields)
+        self.received = received
+        missing = ", ".join(self.missing_fields)
+        super().__init__(
+            f"Judge metric '{judge_name}' is missing required input field(s): "
+            f"{missing}. Received input fields/type: {received}. "
+            "Ensure the dataset input contains the required field names, or map "
+            "dataset columns with Evaluator(input_mapping={"
+            "'<dataset_column>': '<required_field>'}). "
+            f"See {self.docs_url()}."
+        )
+
+    def rich_message(self) -> str:
+        """Return a colored, actionable representation for Rich consoles."""
+        missing = ", ".join(self.missing_fields)
+        return (
+            f"\n\n[red]Judge input error: {self.judge_name}[/red]\n"
+            f"[yellow]Expected:[/yellow] {missing}\n"
+            f"[cyan]Received:[/cyan] {self.received}\n"
+            "Ensure the dataset input contains the required field names, or use "
+            "Evaluator(input_mapping={"
+            "'<dataset_column>': '<required_field>'}).\n"
+            f"Docs: [link={self.docs_url()}]"
+            "Task with Multiple CSV Input Columns[/link]"
+        )
+
+
 def snap_to_rail(text: str, rails: List[str]) -> Optional[str]:
     """Fuzzy label extraction from free text using word boundary matching.
 
@@ -31,7 +78,11 @@ def snap_to_rail(text: str, rails: List[str]) -> Optional[str]:
     sorted_rails = sorted(rails, key=len, reverse=True)
     for rail in sorted_rails:
         # Use word boundary for single words, substring for multi-word/hyphenated
-        pattern = r'\b' + re.escape(rail) + r'\b' if ' ' not in rail and '-' not in rail else re.escape(rail)
+        pattern = (
+            r"\b" + re.escape(rail) + r"\b"
+            if " " not in rail and "-" not in rail
+            else re.escape(rail)
+        )
         if re.search(pattern, text, re.IGNORECASE):
             return rail
     return None
@@ -78,7 +129,7 @@ async def _call_with_retry(
             # wall-clock cap hit; retriable
             last_exc = exc
             if attempt < max_attempts - 1:
-                base_delay = min(2 ** attempt, 30)
+                base_delay = min(2**attempt, 30)
                 jitter = random.uniform(0, base_delay * 0.5)
                 logger.warning(
                     "LLM judge call timed out after %.1fs (attempt %d/%d)",
@@ -90,9 +141,14 @@ async def _call_with_retry(
         except Exception as exc:
             last_exc = exc
             if attempt < max_attempts - 1:
-                base_delay = min(2 ** attempt, 30)
+                base_delay = min(2**attempt, 30)
                 jitter = random.uniform(0, base_delay * 0.5)
-                logger.warning("LLM judge call failed (attempt %d/%d): %s", attempt + 1, max_attempts, exc)
+                logger.warning(
+                    "LLM judge call failed (attempt %d/%d): %s",
+                    attempt + 1,
+                    max_attempts,
+                    exc,
+                )
                 await asyncio.sleep(base_delay + jitter)
     raise last_exc
 
@@ -188,7 +244,10 @@ async def llm_judge(
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt},
                     {"role": "assistant", "content": raw_text},
-                    {"role": "user", "content": f'Your response was not valid JSON. Respond with ONLY a JSON object: {{"verdict": one of [{labels}], "explanation": "your reasoning"}}'},
+                    {
+                        "role": "user",
+                        "content": f'Your response was not valid JSON. Respond with ONLY a JSON object: {{"verdict": one of [{labels}], "explanation": "your reasoning"}}',
+                    },
                 ],
                 temperature=cfg.temperature,
                 max_tokens=cfg.max_tokens,
@@ -236,6 +295,56 @@ def _safe_substitute(template: str, subs: Dict[str, str]) -> str:
     return result
 
 
+def _required_prompt_fields(template: str) -> set[str]:
+    """Return simple ``{field}`` placeholders referenced by a judge prompt.
+
+    This deliberately mirrors the placeholder syntax supported by
+    :func:`_safe_substitute`. Double-braced literals such as ``{{field}}`` are
+    ignored.
+    """
+    return set(re.findall(r"(?<!\{)\{([A-Za-z_][A-Za-z0-9_]*)\}(?!\})", template))
+
+
+def _validate_prompt_inputs(
+    *,
+    judge_name: str,
+    template: str,
+    substitutions: Dict[str, str],
+    input_data: Any,
+) -> None:
+    """Raise an actionable error when a judge prompt cannot be rendered."""
+    available_fields = {key for key in substitutions if isinstance(key, str)}
+    missing_fields = sorted(_required_prompt_fields(template) - available_fields)
+    if not missing_fields:
+        return
+
+    if isinstance(input_data, dict):
+        received_fields = sorted(str(key) for key in input_data)
+        received = ", ".join(received_fields) if received_fields else "<empty dict>"
+    else:
+        received = f"<{type(input_data).__name__}>"
+
+    raise JudgeInputError(
+        judge_name=judge_name,
+        missing_fields=missing_fields,
+        received=received,
+    )
+
+
+def _named_prompt_inputs(
+    input_data: Any,
+    input_fields: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Collect dataset input aliases passed by the evaluator."""
+    named: Dict[str, Any] = {}
+    if isinstance(input_data, dict):
+        named.update(input_data)
+    for key, value in input_fields.items():
+        if key not in {"task_metadata", "metadata", "item_metadata"}:
+            named.setdefault(key, value)
+    return named
+
+
 def create_judge(
     name: str,
     prompt: str,
@@ -261,7 +370,9 @@ def create_judge(
             logger.warning(
                 "Judge '%s': choice '%s' has score %.2f outside [0, 1] range. "
                 "Scores should be between 0.0 and 1.0 for consistent metric behavior.",
-                name, label, score,
+                name,
+                label,
+                score,
             )
 
     sys_prompt = system_prompt or DEFAULT_SYSTEM_PROMPT
@@ -274,7 +385,12 @@ def create_judge(
     if judge_api_key is not None:
         _cfg_overrides["api_key"] = judge_api_key
 
-    async def _metric(output: Any, expected: Any = None, input_data: Any = None) -> MetricResult:
+    async def _metric(
+        output: Any,
+        expected: Any = None,
+        input_data: Any = None,
+        **input_fields: Any,
+    ) -> MetricResult:
         cfg = None
         if _cfg_overrides:
             base = get_default_judge_config()
@@ -301,10 +417,16 @@ def create_judge(
             "expected": str(expected) if expected is not None else "",
             "input": str(input_data) if input_data is not None else "",
         }
-        if isinstance(input_data, dict):
-            for k, v in input_data.items():
-                subs.setdefault(k, str(v) if v is not None else "")
+        named_inputs = _named_prompt_inputs(input_data, input_fields)
+        for k, v in named_inputs.items():
+            subs.setdefault(k, str(v) if v is not None else "")
 
+        _validate_prompt_inputs(
+            judge_name=name,
+            template=tpl,
+            substitutions=subs,
+            input_data=named_inputs or input_data,
+        )
         user_prompt = _safe_substitute(tpl, subs)
 
         return await llm_judge(
@@ -365,7 +487,12 @@ def create_pairwise_judge(
     if judge_api_key is not None:
         _cfg_overrides["api_key"] = judge_api_key
 
-    async def _metric(output: Any, expected: Any = None, input_data: Any = None) -> MetricResult:
+    async def _metric(
+        output: Any,
+        expected: Any = None,
+        input_data: Any = None,
+        **input_fields: Any,
+    ) -> MetricResult:
         cfg = None
         if _cfg_overrides:
             base = get_default_judge_config()
@@ -378,10 +505,10 @@ def create_pairwise_judge(
                 timeout=base.timeout,
             )
 
-        # Resolve output_b: prefer input_data["output_b"], fall back to expected
-        output_b = None
-        if isinstance(input_data, dict):
-            output_b = input_data.get("output_b")
+        named_inputs = _named_prompt_inputs(input_data, input_fields)
+
+        # Resolve output_b from either its original or mapped input name.
+        output_b = named_inputs.get("output_b")
         if output_b is None:
             output_b = expected
 
@@ -392,10 +519,15 @@ def create_pairwise_judge(
             "expected": str(expected) if expected is not None else "",
             "input": str(input_data) if input_data is not None else "",
         }
-        if isinstance(input_data, dict):
-            for k, v in input_data.items():
-                subs.setdefault(k, str(v) if v is not None else "")
+        for k, v in named_inputs.items():
+            subs.setdefault(k, str(v) if v is not None else "")
 
+        _validate_prompt_inputs(
+            judge_name=name,
+            template=prompt,
+            substitutions=subs,
+            input_data=named_inputs or input_data,
+        )
         user_prompt = _safe_substitute(prompt, subs)
 
         return await llm_judge(
