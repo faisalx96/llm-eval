@@ -40,7 +40,7 @@ def _resolve_public_address(hostname: str, port: int, *, allow_private: bool) ->
 
 
 def validate_llm_base_url(value: str, *, allow_private: bool) -> str:
-    """Validate an LLM URL and resolve it once before creating a client."""
+    """Validate URL structure without performing a blocking hostname lookup."""
     normalized = str(value or "").strip().rstrip("/")
     parsed = urlparse(normalized)
     if parsed.scheme not in {"http", "https"} or not parsed.hostname:
@@ -51,10 +51,17 @@ def validate_llm_base_url(value: str, *, allow_private: bool) -> str:
         raise LlmEndpointValidationError(
             "LLM base URL cannot contain credentials or a URL fragment"
         )
-    _resolve_public_address(
-        parsed.hostname, parsed.port or (443 if parsed.scheme == "https" else 80),
-        allow_private=allow_private,
-    )
+    if not allow_private:
+        try:
+            address = ipaddress.ip_address(parsed.hostname)
+        except ValueError:
+            pass
+        else:
+            if not address.is_global:
+                raise LlmEndpointValidationError(
+                    "LLM base URL resolves to a non-public address. Set "
+                    "QYM_ALLOW_PRIVATE_LLM_BASE_URLS=true only for trusted local providers."
+                )
     return normalized
 
 
@@ -78,7 +85,7 @@ async def _resolve_public_address_async(
             ),
             timeout=timeout or DNS_RESOLUTION_TIMEOUT_SECONDS,
         )
-    except TimeoutError as exc:
+    except asyncio.TimeoutError as exc:
         raise LlmEndpointValidationError("LLM base URL hostname resolution timed out") from exc
 
 

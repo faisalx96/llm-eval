@@ -269,18 +269,30 @@ def _pdf_extraction_worker(connection: object, data: bytes) -> None:
         try:
             import resource
 
+            _, address_space_hard_limit = resource.getrlimit(resource.RLIMIT_AS)
+            if (
+                address_space_hard_limit != resource.RLIM_INFINITY
+                and address_space_hard_limit < MAX_PDF_WORKER_MEMORY_BYTES
+            ):
+                raise ValueError("The OS memory limit is below the PDF worker limit")
             resource.setrlimit(
                 resource.RLIMIT_AS,
-                (MAX_PDF_WORKER_MEMORY_BYTES, MAX_PDF_WORKER_MEMORY_BYTES),
+                (MAX_PDF_WORKER_MEMORY_BYTES, address_space_hard_limit),
             )
+            _, cpu_hard_limit = resource.getrlimit(resource.RLIMIT_CPU)
+            if (
+                cpu_hard_limit != resource.RLIM_INFINITY
+                and cpu_hard_limit < MAX_PDF_EXTRACTION_SECONDS
+            ):
+                raise ValueError("The OS CPU limit is below the PDF worker limit")
             resource.setrlimit(
                 resource.RLIMIT_CPU,
-                (MAX_PDF_EXTRACTION_SECONDS, MAX_PDF_EXTRACTION_SECONDS + 1),
+                (MAX_PDF_EXTRACTION_SECONDS, cpu_hard_limit),
             )
-        except (ImportError, OSError, ValueError):
-            # The parent still enforces a wall-clock timeout on platforms
-            # without POSIX resource limits.
-            pass
+        except (AttributeError, ImportError, OSError, ValueError) as exc:
+            raise DocumentExtractionError(
+                "PDF extraction requires OS memory and CPU resource limits."
+            ) from exc
         connection.send(("ok", _extract_pdf_in_worker(data)))
     except Exception as exc:  # noqa: BLE001 - returned as a safe upload error
         connection.send(("error", str(exc)))

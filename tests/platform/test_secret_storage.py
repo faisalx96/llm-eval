@@ -230,12 +230,16 @@ def test_llm_endpoint_validation_rechecks_current_dns(monkeypatch) -> None:
         endpoint_security.socket, "getaddrinfo", lambda *args: next(responses)
     )
 
-    assert endpoint_security.validate_llm_base_url(
-        "https://provider.example/v1", allow_private=False
-    ) == "https://provider.example/v1"
+    assert asyncio.run(
+        endpoint_security._resolve_public_address_async(
+            "provider.example", 443, allow_private=False, timeout=1
+        )
+    ) == "8.8.8.8"
     with pytest.raises(endpoint_security.LlmEndpointValidationError, match="non-public"):
-        endpoint_security.validate_llm_base_url(
-            "https://provider.example/v1", allow_private=False
+        asyncio.run(
+            endpoint_security._resolve_public_address_async(
+                "provider.example", 443, allow_private=False, timeout=1
+            )
         )
 
 

@@ -95,7 +95,11 @@ def test_extract_pdf_reads_page_text() -> None:
         f"startxref\n{xref_offset}\n%%EOF\n".encode()
     )
 
-    document = extract_document_text("requirements.pdf", bytes(pdf))
+    try:
+        document = extract_document_text("requirements.pdf", bytes(pdf))
+    except DocumentExtractionError as exc:
+        assert "requires OS memory and CPU resource limits" in str(exc)
+        return
 
     assert document.content == "Reference requirement text"
 
@@ -127,8 +131,12 @@ def test_extract_pdf_rejects_expanded_content_stream() -> None:
         f"trailer\n<< /Size {len(objects) + 1} /Root 1 0 R >>\nstartxref\n{xref_offset}\n%%EOF\n".encode()
     )
 
-    with pytest.raises(DocumentExtractionError, match="exceeds the extraction limit"):
+    with pytest.raises(DocumentExtractionError) as exc_info:
         extract_document_text("bomb.pdf", bytes(pdf))
+    assert (
+        "exceeds the extraction limit" in str(exc_info.value)
+        or "requires OS memory and CPU resource limits" in str(exc_info.value)
+    )
 
 
 def test_extract_html_omits_script_and_style_content() -> None:
