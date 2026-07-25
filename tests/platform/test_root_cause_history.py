@@ -2605,6 +2605,41 @@ def test_deleting_production_rule_uses_another_non_deleted_published_version(
     )
 
 
+def test_deleted_draft_cannot_be_resolved_or_edited(db_session: Session) -> None:
+    _, manager, run, _ = _seed_run(db_session)
+    principal = Principal(user=manager, auth_type="session")
+    created = update_analysis_context(
+        run.id,
+        AnalysisContextUpdate(
+            project_description="Test project",
+            analysis_rules=[AnalyzerRuleConfig(title="Draft", instruction="Draft rule.")],
+        ),
+        db_session,
+        principal,
+    )
+    version_id = created["rule_version"]["id"]
+    delete_project_analysis_rule_version(run.id, version_id, db_session, principal)
+
+    with pytest.raises(HTTPException) as resolve_error:
+        _resolve_analysis_rule_version(db_session, run.project_id, version_id)
+    assert resolve_error.value.status_code == 404
+
+    with pytest.raises(HTTPException) as update_error:
+        update_analysis_context(
+            run.id,
+            AnalysisContextUpdate(
+                project_description="Test project",
+                rule_version_id=version_id,
+                analysis_rules=[
+                    AnalyzerRuleConfig(title="Changed", instruction="Must not save.")
+                ],
+            ),
+            db_session,
+            principal,
+        )
+    assert update_error.value.status_code == 409
+
+
 def test_permanent_rule_deletion_returns_conflict_when_referenced(
     db_session: Session,
 ) -> None:

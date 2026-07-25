@@ -13,6 +13,10 @@ from zipfile import BadZipFile, ZipFile
 
 MAX_REFERENCE_UPLOAD_BYTES = 10 * 1024 * 1024
 MAX_REFERENCE_DOCUMENT_CHARS = 40_000
+# DOCX files are ZIP archives. Bound the expanded XML separately from the
+# compressed upload limit so a tiny archive cannot consume unbounded memory.
+MAX_DOCX_DOCUMENT_XML_BYTES = 4 * 1024 * 1024
+MAX_DOCX_COMPRESSION_RATIO = 100
 
 SUPPORTED_DOCUMENT_EXTENSIONS = {
     ".csv",
@@ -118,7 +122,28 @@ def _extract_html(data: bytes) -> str:
 def _extract_docx(data: bytes) -> str:
     try:
         with ZipFile(BytesIO(data)) as archive:
-            xml = archive.read("word/document.xml")
+            info = archive.getinfo("word/document.xml")
+            if info.file_size > MAX_DOCX_DOCUMENT_XML_BYTES:
+                raise DocumentExtractionError(
+                    "The DOCX document content exceeds the extraction limit."
+                )
+            if (
+                info.file_size
+                and (
+                    not info.compress_size
+                    or info.file_size / info.compress_size
+                    > MAX_DOCX_COMPRESSION_RATIO
+                )
+            ):
+                raise DocumentExtractionError(
+                    "The DOCX document content has an unsafe compression ratio."
+                )
+            with archive.open(info) as member:
+                xml = member.read(MAX_DOCX_DOCUMENT_XML_BYTES + 1)
+            if len(xml) > MAX_DOCX_DOCUMENT_XML_BYTES:
+                raise DocumentExtractionError(
+                    "The DOCX document content exceeds the extraction limit."
+                )
     except (BadZipFile, KeyError) as exc:
         raise DocumentExtractionError("The DOCX file is invalid or damaged.") from exc
 

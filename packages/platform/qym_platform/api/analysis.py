@@ -193,6 +193,7 @@ def _resolve_analysis_rule_version(
         .filter(
             ProjectAnalysisRuleVersion.project_id == project_id,
             ProjectAnalysisRuleVersion.id == clean,
+            ProjectAnalysisRuleVersion.deleted_at.is_(None),
         )
         .first()
     )
@@ -206,6 +207,7 @@ def _resolve_analysis_rule_version(
             .filter(
                 ProjectAnalysisRuleVersion.project_id == project_id,
                 ProjectAnalysisRuleVersion.version == int(number),
+                ProjectAnalysisRuleVersion.deleted_at.is_(None),
             )
             .first()
         )
@@ -295,29 +297,46 @@ def _create_analysis_rule_version(
         == normalize_analysis_rules(normalized)
     ):
         return active
-    latest_number = (
-        db.query(func.max(ProjectAnalysisRuleVersion.version))
-        .filter(ProjectAnalysisRuleVersion.project_id == project_id)
-        .scalar()
-        or 0
-    )
-    version = ProjectAnalysisRuleVersion(
-        project_id=project_id,
-        version=int(latest_number) + 1,
-        name=name.strip(),
-        description=description,
-        status=AnalysisRuleVersionStatus.DRAFT,
-        rules=normalized,
-        source=source,
-        parent_version_id=active.id if active else None,
-        base_version_id=(active.base_version_id or active.id) if active else None,
-        created_by_user_id=actor_user_id,
-        created_at=utc_now_naive(),
-        updated_at=utc_now_naive(),
-    )
-    db.add(version)
-    db.flush()
-    return version
+    for attempt in range(3):
+        try:
+            with db.begin_nested():
+                latest_number = (
+                    db.query(func.max(ProjectAnalysisRuleVersion.version))
+                    .filter(ProjectAnalysisRuleVersion.project_id == project_id)
+                    .scalar()
+                    or 0
+                )
+                version = ProjectAnalysisRuleVersion(
+                    project_id=project_id,
+                    version=int(latest_number) + 1,
+                    name=name.strip(),
+                    description=description,
+                    status=AnalysisRuleVersionStatus.DRAFT,
+                    rules=normalized,
+                    source=source,
+                    parent_version_id=active.id if active else None,
+                    base_version_id=(active.base_version_id or active.id) if active else None,
+                    created_by_user_id=actor_user_id,
+                    created_at=utc_now_naive(),
+                    updated_at=utc_now_naive(),
+                )
+                db.add(version)
+                db.flush()
+            return version
+        except IntegrityError as exc:
+            error_text = str(exc.orig).lower()
+            if (
+                "uq_project_analysis_rule_version" not in error_text
+                and "project_analysis_rule_versions.project_id, "
+                "project_analysis_rule_versions.version" not in error_text
+            ):
+                raise
+            if attempt == 2:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Could not allocate a rule version; please retry.",
+                ) from exc
+    raise AssertionError("Rule version allocation retry loop exited unexpectedly")
 
 
 def _save_active_analysis_rules(
@@ -332,12 +351,18 @@ def _save_active_analysis_rules(
     target = db.get(ProjectAnalysisRuleVersion, version_id) if version_id else None
     if target is not None and target.project_id != project_id:
         raise HTTPException(status_code=404, detail="Analysis rule version not found")
+    if target is not None and target.deleted_at is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="Deleted analysis rule versions cannot be edited",
+        )
     if target is None:
         drafts = (
             db.query(ProjectAnalysisRuleVersion)
             .filter(
                 ProjectAnalysisRuleVersion.project_id == project_id,
                 ProjectAnalysisRuleVersion.status == AnalysisRuleVersionStatus.DRAFT,
+                ProjectAnalysisRuleVersion.deleted_at.is_(None),
             )
             .order_by(ProjectAnalysisRuleVersion.version.desc())
             .all()

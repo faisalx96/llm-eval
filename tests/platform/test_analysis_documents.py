@@ -6,6 +6,7 @@ from zipfile import ZipFile
 import pytest
 
 from qym_platform.services.document_extractor import (
+    MAX_DOCX_DOCUMENT_XML_BYTES,
     MAX_REFERENCE_DOCUMENT_CHARS,
     MAX_REFERENCE_UPLOAD_BYTES,
     DocumentExtractionError,
@@ -47,6 +48,26 @@ def test_extract_docx_reads_paragraph_text() -> None:
     assert document.content.index("First requirement") < document.content.index(
         "Second requirement"
     )
+
+
+def test_extract_docx_rejects_unsafe_expansion_before_reading_member() -> None:
+    output = BytesIO()
+    with ZipFile(output, "w") as archive:
+        archive.writestr(
+            "word/document.xml", b"x" * (MAX_DOCX_DOCUMENT_XML_BYTES + 1)
+        )
+
+    with pytest.raises(DocumentExtractionError, match="exceeds the extraction limit"):
+        extract_document_text("oversized.docx", output.getvalue())
+
+
+def test_extract_docx_rejects_unsafe_compression_ratio() -> None:
+    output = BytesIO()
+    with ZipFile(output, "w", compression=8) as archive:
+        archive.writestr("word/document.xml", b"x" * 100_000)
+
+    with pytest.raises(DocumentExtractionError, match="unsafe compression ratio"):
+        extract_document_text("compressed.docx", output.getvalue())
 
 
 def test_extract_pdf_reads_page_text() -> None:
