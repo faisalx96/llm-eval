@@ -1345,7 +1345,7 @@
         <div class="empty-title">No corrections found</div>
         <div class="empty-desc">
           Corrections appear here when humans correct AI-suggested root causes on run detail pages.
-          Only approved corrections feed into the auto-analyzer as few-shot examples.
+          Approved corrections can be used as evidence when generating project analysis rules.
         </div>
       </div>
     </div>
@@ -1359,7 +1359,7 @@
         <button class="modal-close" id="modal-close">&times;</button>
       </div>
       <div class="reviews-modal-body">
-        <p id="modal-desc">This correction will be used as a few-shot example for future AI analysis.</p>
+        <p id="modal-desc">This correction will be available as evidence when generating project analysis rules.</p>
         <textarea id="modal-comment" placeholder="Optional review comment..." rows="3"></textarea>
       </div>
       <div class="reviews-modal-footer">
@@ -2281,7 +2281,7 @@
           const id = Number(btn.dataset.reject);
           const comment = await openModal(
             'Reject Correction',
-            'This correction will NOT be used as a few-shot example.',
+            'This correction will NOT be used as evidence when generating project analysis rules.',
             'Reject',
             'btn-danger'
           );
@@ -2511,7 +2511,7 @@
       }
       const comment = await openModal(
         `Approve ${ids.length} Correction${ids.length > 1 ? 's' : ''}`,
-        `${ids.length} correction${ids.length > 1 ? 's' : ''} will be approved as few-shot examples.`,
+        `${ids.length} correction${ids.length > 1 ? 's' : ''} will be approved as rule-generation evidence.`,
         'Approve All',
         'btn-primary'
       );

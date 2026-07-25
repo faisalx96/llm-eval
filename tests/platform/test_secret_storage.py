@@ -9,12 +9,14 @@ import pytest
 from cryptography.fernet import Fernet
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
-from sqlalchemy.pool import StaticPool
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
 os.environ.setdefault("QYM_DATABASE_URL", "sqlite:///:memory:")
 os.environ.setdefault("QYM_AUTH_MODE", "proxy_headers")
-os.environ.setdefault("QYM_LLM_CONFIG_ENCRYPTION_KEY", Fernet.generate_key().decode("utf-8"))
+os.environ.setdefault(
+    "QYM_LLM_CONFIG_ENCRYPTION_KEY", Fernet.generate_key().decode("utf-8")
+)
 ROOT = Path(__file__).resolve().parents[2]
 PLATFORM_SRC = ROOT / "packages" / "platform"
 SDK_SRC = ROOT / "packages" / "sdk"
@@ -35,7 +37,10 @@ CONNECTIONS_URL = f"/v1/projects/{PROJECT_ID}/llm-connections"
 def session_factory(monkeypatch):
     monkeypatch.setenv("QYM_DATABASE_URL", "sqlite:///:memory:")
     monkeypatch.setenv("QYM_AUTH_MODE", "proxy_headers")
-    monkeypatch.setenv("QYM_LLM_CONFIG_ENCRYPTION_KEY", Fernet.generate_key().decode("utf-8"))
+    monkeypatch.setenv(
+        "QYM_LLM_CONFIG_ENCRYPTION_KEY", Fernet.generate_key().decode("utf-8")
+    )
+    monkeypatch.setenv("QYM_ALLOW_PRIVATE_LLM_BASE_URLS", "true")
     engine = create_engine(
         "sqlite://",
         connect_args={"check_same_thread": False},
@@ -76,16 +81,18 @@ def _headers(email: str) -> dict[str, str]:
 def _seed_admin_and_project(session_factory) -> None:
     """Admins have access to every project, so no membership rows are needed."""
     with session_factory() as session:
+        session.add(User(id="user-1", email="user@example.com", role=UserRole.ADMIN))
         session.add(
-            User(id="user-1", email="user@example.com", role=UserRole.ADMIN)
-        )
-        session.add(
-            Project(id=PROJECT_ID, name="Proj", slug="proj", created_by_user_id="user-1")
+            Project(
+                id=PROJECT_ID, name="Proj", slug="proj", created_by_user_id="user-1"
+            )
         )
         session.commit()
 
 
-def test_connection_key_is_encrypted_and_masked(client, session_factory, monkeypatch) -> None:
+def test_connection_key_is_encrypted_and_masked(
+    client, session_factory, monkeypatch
+) -> None:
     _seed_admin_and_project(session_factory)
 
     create = client.post(
@@ -141,10 +148,14 @@ def test_connection_key_is_encrypted_and_masked(client, session_factory, monkeyp
                     "'param': 'max_tokens', 'code': 'unsupported_parameter'}}"
                 )
             return types.SimpleNamespace(
-                choices=[types.SimpleNamespace(message=types.SimpleNamespace(content="ok"))]
+                choices=[
+                    types.SimpleNamespace(message=types.SimpleNamespace(content="ok"))
+                ]
             )
 
-    monkeypatch.setitem(sys.modules, "openai", types.SimpleNamespace(AsyncOpenAI=FakeAsyncOpenAI))
+    monkeypatch.setitem(
+        sys.modules, "openai", types.SimpleNamespace(AsyncOpenAI=FakeAsyncOpenAI)
+    )
     test_response = client.post(
         f"{CONNECTIONS_URL}/{connection_id}/test", headers=_headers("user@example.com")
     )
@@ -162,7 +173,11 @@ def test_update_with_keep_preserves_key(client, session_factory) -> None:
     create = client.post(
         CONNECTIONS_URL,
         headers=_headers("user@example.com"),
-        json={"name": "c1", "llm_api_key": "sk-secret-9999", "llm_model": "gpt-4o-mini"},
+        json={
+            "name": "c1",
+            "llm_api_key": "sk-secret-9999",
+            "llm_model": "gpt-4o-mini",
+        },
     )
     connection_id = create.json()["id"]
 
@@ -180,7 +195,30 @@ def test_update_with_keep_preserves_key(client, session_factory) -> None:
         assert conn.llm_api_key_last4 == "9999"  # key preserved across the rename
 
 
-def test_create_reports_missing_encryption_key(client, session_factory, monkeypatch) -> None:
+def test_private_llm_base_url_is_blocked_by_default(
+    client, session_factory, monkeypatch
+) -> None:
+    _seed_admin_and_project(session_factory)
+    monkeypatch.setenv("QYM_ALLOW_PRIVATE_LLM_BASE_URLS", "false")
+
+    response = client.post(
+        CONNECTIONS_URL,
+        headers=_headers("user@example.com"),
+        json={
+            "name": "metadata service",
+            "llm_base_url": "http://127.0.0.1:8080/v1",
+            "llm_api_key": "sk-secret",
+            "llm_model": "test-model",
+        },
+    )
+
+    assert response.status_code == 400
+    assert "non-public address" in response.json()["detail"]
+
+
+def test_create_reports_missing_encryption_key(
+    client, session_factory, monkeypatch
+) -> None:
     # The repo .env supplies an encryption key, so simulate "not configured" at the guard.
     import qym_platform.api.projects as projects_api
 
@@ -190,7 +228,11 @@ def test_create_reports_missing_encryption_key(client, session_factory, monkeypa
     resp = client.post(
         CONNECTIONS_URL,
         headers=_headers("user@example.com"),
-        json={"name": "c1", "llm_api_key": "sk-secret-1234", "llm_model": "gpt-4o-mini"},
+        json={
+            "name": "c1",
+            "llm_api_key": "sk-secret-1234",
+            "llm_model": "gpt-4o-mini",
+        },
     )
     assert resp.status_code == 400
     assert resp.json()["detail"] == "LLM config encryption is not configured"

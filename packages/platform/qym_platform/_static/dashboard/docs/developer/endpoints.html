@@ -204,21 +204,27 @@ curl -s -X POST "https://qym.example.com/v1/datasets:upload" \
 <p><code>RUNNING</code> and <code>PENDING</code> are the two "live" statuses; <code>GET /api/runs/live</code> filters on exactly these. An invalid value in the <code>status</code> filter on <code>GET /api/runs</code> returns <code>400 Invalid run status: &lt;value&gt;</code>.</p>
 
 <h2>Analysis &amp; corrections</h2>
-<p>The analysis and correction-bank endpoints are under <code>/api</code> and require a UI session. Analysis uses a project LLM connection to cluster and explain failures; corrections feed approved explanations back as few-shot examples.</p>
+<p>The analysis and correction-bank endpoints are under <code>/api</code> and require a UI session. Analysis uses a project LLM connection to cluster and explain failures; approved corrections can provide evidence when generating project analysis rules.</p>
 
 <table>
   <thead><tr><th>Method &amp; path</th><th>Purpose</th></tr></thead>
   <tbody>
-    <tr><td><code>POST /api/runs/{run_id}/analyze</code></td><td>Trigger root-cause analysis for selected items. Requires modify rights (<code>403 Access denied</code> otherwise). Body filters: <code>metric</code>, <code>max_score</code>, <code>item_filter</code> (<code>all</code>/<code>failed</code>/<code>passed</code>/<code>errors</code>), <code>threshold</code> (default 0.8), <code>only_unanalyzed</code> (default true), <code>item_ids[]</code>, <code>concurrency</code> (default 20, 1&ndash;20), <code>connection_id</code>. Returns <code>{total_analyzed, results, errors}</code>.</td></tr>
+    <tr><td><code>POST /api/runs/{run_id}/analyze</code></td><td>Trigger root-cause analysis for selected items. Requires modify rights (<code>403 Access denied</code> otherwise). Body filters: <code>metric</code> (single metric) or <code>metrics[]</code> (explicit metric selection), <code>max_score</code>, <code>item_filter</code> (<code>all</code>/<code>failed</code>/<code>passed</code>/<code>errors</code>), <code>threshold</code> (default 0.8), <code>only_unanalyzed</code> (default true), <code>item_ids[]</code>, <code>concurrency</code> (default 20, 1&ndash;20), <code>connection_id</code>. Returns <code>{total_analyzed, results, errors}</code>.</td></tr>
     <tr><td><code>POST /api/runs/{run_id}/analyze-stream</code></td><td>Same, streamed as progress events.</td></tr>
     <tr><td><code>POST /api/runs/{run_id}/analyze-preview</code></td><td>Preview which items the filter would select, without calling the model.</td></tr>
     <tr><td><code>POST /api/runs/{run_id}/analyze-test</code></td><td>Dry-run the analyzer prompt against a sample.</td></tr>
     <tr><td><code>GET /api/runs/{run_id}/corrections</code></td><td>Approved correction-bank entries for this run's task (up to 20).</td></tr>
     <tr><td><code>GET /api/runs/{run_id}/analysis-config</code></td><td>Analysis configuration for the run.</td></tr>
+    <tr><td><code>GET /api/runs/{run_id}/analysis-rule-versions</code></td><td>List the project rule versions, including draft/published status, parent lineage, aliases, hashes, and the current production version.</td></tr>
+    <tr><td><code>POST /api/runs/{run_id}/analysis-rule-versions</code></td><td>Create a mutable draft, optionally cloned from a version or the <code>production</code> alias.</td></tr>
+    <tr><td><code>POST /api/runs/{run_id}/analysis-rule-versions/{version}:publish</code></td><td>Publish and lock a non-empty draft. Optional body <code>set_alias</code> moves an alias such as <code>production</code>.</td></tr>
+    <tr><td><code>POST /api/runs/{run_id}/analysis-rule-aliases/{alias}</code></td><td>Point an alias at a published rule version.</td></tr>
+    <tr><td><code>GET /api/runs/{run_id}/analysis-rule-versions/{version}:compare</code></td><td>Compare against the required <code>base</code> version, returning added, removed, changed, and unchanged rules.</td></tr>
+    <tr><td><code>GET /api/runs/{run_id}/analysis-rule-lineage</code></td><td>Return the parent-linked rule-version history and production pointer.</td></tr>
     <tr><td><code>GET /api/corrections</code></td><td>List corrections with filters: <code>project_slug</code>, <code>task</code>, <code>dataset</code>, <code>model</code>, <code>run_name</code>, <code>source</code>, <code>conf_min</code>/<code>conf_max</code> (0&ndash;100), <code>status</code>, <code>search</code>, <code>limit</code> (1&ndash;500).</td></tr>
     <tr><td><code>GET /api/corrections/{correction_id}</code></td><td>One correction.</td></tr>
     <tr><td><code>PUT /api/corrections/{correction_id}</code></td><td>Edit a correction.</td></tr>
-    <tr><td><code>POST /api/corrections/{correction_id}/approve</code></td><td>Approve (feeds few-shot examples). Body: optional <code>comment</code>. Reviewer rights enforced.</td></tr>
+    <tr><td><code>POST /api/corrections/{correction_id}/approve</code></td><td>Approve for rule-generation evidence. Body: optional <code>comment</code>. Reviewer rights enforced.</td></tr>
     <tr><td><code>POST /api/corrections/{correction_id}/reject</code></td><td>Reject. Body: optional <code>comment</code>.</td></tr>
     <tr><td><code>POST /api/corrections/{correction_id}/reset</code></td><td>Reset to pending.</td></tr>
     <tr><td><code>POST /api/corrections/bulk</code></td><td>Bulk approve/reject/reset across corrections.</td></tr>

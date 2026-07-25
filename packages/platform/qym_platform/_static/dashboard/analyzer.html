@@ -5,12 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>قيِّم • Auto-analysis</title>
   <link rel="icon" type="image/png" href="/static/qym_icon.png">
-  <link rel="stylesheet" href="/static/dashboard.css?v=per-metric-analysis-20260721">
+  <link rel="stylesheet" href="/static/dashboard.css?v=rule-release-lifecycle-20260725">
   <link rel="stylesheet" href="/static/shell.css">
   <script src="/static/auth.js"></script>
   <script src="/static/shell.js?v=auto-analysis-page-20260721"></script>
   <script src="/static/metrics.js"></script>
-  <script src="/static/playground.js?v=auto-analysis-page-20260721"></script>
+  <script src="/static/playground.js?v=rule-release-lifecycle-20260725"></script>
   <style>
     /* Typography/color rules: docs/DESIGN_LANGUAGE.md — tokens only. */
     .analysis-page {
@@ -51,19 +51,14 @@
       color: var(--text-secondary);
       font-family: var(--font-mono);
     }
-    .analysis-run-panel {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) auto;
-      gap: var(--space-md);
-      align-items: end;
-      margin-bottom: var(--space-lg);
-      padding: var(--space-md);
-      border: 1px solid var(--border-default);
-      border-radius: 8px;
-      background: var(--bg-surface);
-    }
     .analysis-run-field {
       min-width: 0;
+    }
+    .analysis-metric-field {
+      grid-column: 1 / -1;
+      min-width: 0;
+      padding-top: var(--space-md);
+      border-top: 1px solid var(--border-subtle);
     }
     .analysis-run-label {
       display: block;
@@ -93,6 +88,56 @@
       align-items: center;
       flex-wrap: wrap;
       gap: var(--space-sm);
+      margin-top: var(--space-sm);
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+    }
+    .analysis-metric-heading {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-md);
+    }
+    .analysis-metric-actions {
+      display: flex;
+      gap: var(--space-sm);
+    }
+    .analysis-metric-action {
+      padding: 0;
+      border: 0;
+      background: transparent;
+      color: var(--accent-primary);
+      font-family: var(--font-sans);
+      font-size: var(--font-sm);
+      cursor: pointer;
+    }
+    .analysis-metric-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--space-sm);
+      margin-top: var(--space-sm);
+    }
+    .analysis-metric-option {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-sm);
+      padding: var(--space-sm) var(--space-md);
+      border: 1px solid var(--border-default);
+      border-radius: 6px;
+      background: var(--bg-elevated);
+      color: var(--text-secondary);
+      font-size: var(--font-base);
+      cursor: pointer;
+    }
+    .analysis-metric-option:has(input:checked) {
+      border-color: var(--accent-primary);
+      background: var(--bg-active);
+      color: var(--text-primary);
+    }
+    .analysis-metric-option input {
+      accent-color: var(--accent-primary);
+    }
+    .analysis-metric-summary {
       margin-top: var(--space-sm);
       color: var(--text-muted);
       font-size: var(--font-sm);
@@ -167,22 +212,676 @@
     .analysis-page .playground-header {
       display: none;
     }
-    .analysis-page .playground-page-overlay .playground-modal {
-      min-height: 0;
-    }
     @media (max-width: 720px) {
       .analysis-description {
         white-space: normal;
       }
-      .analysis-run-panel {
-        grid-template-columns: 1fr;
-      }
       .analysis-run-link {
         justify-content: center;
+      }
+      .analysis-run-panel-header,
+      .analysis-metric-heading {
+        align-items: stretch;
+        flex-direction: column;
+      }
+      .analysis-run-link {
+        align-self: flex-start;
+      }
+      .analysis-metric-actions {
+        justify-content: flex-start;
       }
       .analysis-page .playground-footer {
         align-items: stretch;
         flex-direction: column;
+      }
+    }
+
+    /* Dedicated analyzer page: present the shared controller as two focused
+       in-page views without changing its behavior or payloads. */
+    .analysis-view-tabs {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      margin-top: var(--space-lg);
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    .analysis-view-tab {
+      display: flex;
+      min-width: 0;
+      align-items: flex-start;
+      gap: var(--space-sm);
+      margin-bottom: -1px;
+      padding: var(--space-md) var(--space-lg);
+      border: 0;
+      border-bottom: 2px solid transparent;
+      background: transparent;
+      color: var(--text-muted);
+      font-family: var(--font-sans);
+      text-align: left;
+      cursor: pointer;
+      transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+    }
+    .analysis-view-tab:hover {
+      background: var(--bg-hover);
+      color: var(--text-secondary);
+    }
+    .analysis-view-tab[aria-selected="true"] {
+      border-bottom-color: var(--accent-primary);
+      background: var(--bg-surface);
+      color: var(--text-primary);
+    }
+    .analysis-view-tab:focus-visible {
+      outline: 1px solid var(--accent-primary);
+      outline-offset: -1px;
+    }
+    .analysis-view-tab-index {
+      display: flex;
+      width: 28px;
+      height: 28px;
+      flex: 0 0 28px;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid var(--border-default);
+      border-radius: 6px;
+      background: var(--bg-elevated);
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+      font-size: var(--font-sm);
+      font-weight: 650;
+    }
+    .analysis-view-tab[aria-selected="true"] .analysis-view-tab-index {
+      border-color: color-mix(in srgb, var(--accent-primary) 45%, var(--border-default));
+      color: var(--accent-primary);
+    }
+    .analysis-view-tab-copy {
+      display: flex;
+      min-width: 0;
+      flex-direction: column;
+      gap: var(--space-xs);
+    }
+    .analysis-view-tab-title {
+      color: inherit;
+      font-size: var(--font-md);
+      font-weight: 600;
+    }
+    .analysis-view-tab-detail {
+      overflow: hidden;
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .analysis-view-panel[hidden] {
+      display: none !important;
+    }
+    .analysis-scope-badge {
+      display: inline-flex;
+      width: fit-content;
+      align-items: center;
+      padding: var(--space-xs) var(--space-sm);
+      border: 1px solid var(--border-default);
+      border-radius: 999px;
+      color: var(--text-muted);
+      font-size: var(--font-xs);
+      font-weight: 650;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+    .analysis-scope-badge-project {
+      border-color: color-mix(in srgb, var(--accent-primary) 45%, var(--border-default));
+      color: var(--accent-primary);
+    }
+    .analysis-scope-badge-run {
+      border-color: color-mix(in srgb, var(--accent-tertiary-soft) 45%, var(--border-default));
+      color: var(--accent-tertiary-soft);
+    }
+
+    .analysis-run-panel {
+      display: block;
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      border: 1px solid var(--border-subtle);
+      border-radius: 8px;
+      background: var(--bg-elevated);
+    }
+    .analysis-run-panel-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: var(--space-lg);
+      padding: var(--space-md) var(--space-lg);
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    .analysis-run-panel-heading {
+      display: flex;
+      min-width: 0;
+      flex-direction: column;
+      gap: var(--space-xs);
+    }
+    .analysis-run-panel-title {
+      margin: 0;
+      color: var(--text-primary);
+      font-size: var(--font-md);
+      font-weight: 600;
+    }
+    .analysis-run-panel-copy {
+      margin: 0;
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+      line-height: 1.5;
+    }
+    .analysis-run-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      gap: var(--space-md);
+      padding: var(--space-lg);
+    }
+    .analysis-run-select {
+      min-height: 42px;
+      appearance: none;
+      background-image: linear-gradient(45deg, transparent 50%, var(--text-muted) 50%),
+        linear-gradient(135deg, var(--text-muted) 50%, transparent 50%);
+      background-position: calc(100% - 14px) 50%, calc(100% - 10px) 50%;
+      background-repeat: no-repeat;
+      background-size: 4px 4px, 4px 4px;
+      padding-right: var(--space-xl);
+    }
+    .analysis-metric-option {
+      transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+    }
+    .analysis-run-link {
+      flex-shrink: 0;
+    }
+
+    .analysis-page .playground-page-overlay .playground-modal {
+      min-height: 0;
+      overflow: visible;
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+    }
+    .analysis-page .playground-page-overlay .playground-scroll {
+      max-width: none;
+      margin: 0;
+      padding: 0;
+      overflow: visible;
+    }
+    .analysis-page .playground-page-overlay .playground-banner {
+      margin-bottom: var(--space-lg);
+      border: 1px solid color-mix(in srgb, var(--warning) 35%, var(--border-default));
+      border-radius: 8px;
+      background: color-mix(in srgb, var(--warning) 10%, var(--bg-surface));
+    }
+    .analysis-page .playground-page-overlay .pg-workspace {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-xl);
+    }
+    .analysis-page .playground-page-overlay .pg-context-panel,
+    .analysis-page .playground-page-overlay .pg-analysis-main {
+      position: static;
+      display: block;
+      width: 100%;
+      min-width: 0;
+      max-height: none;
+      padding: 0;
+      overflow: visible;
+      box-sizing: border-box;
+      border: 1px solid var(--border-default);
+      border-radius: 8px;
+      background: var(--bg-surface);
+    }
+    .analysis-page .analysis-scope-card-header {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: var(--space-md);
+      padding: var(--space-lg);
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    .analysis-page .analysis-scope-card-copy {
+      min-width: 0;
+    }
+    .analysis-page .analysis-scope-card-kicker {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: var(--space-sm);
+      margin-bottom: var(--space-xs);
+    }
+    .analysis-page .analysis-scope-card-title {
+      margin: 0;
+      color: var(--text-primary);
+      font-size: var(--font-lg);
+      font-weight: 600;
+    }
+    .analysis-page .analysis-scope-card-description {
+      margin: var(--space-xs) 0 0;
+      color: var(--text-muted);
+      font-size: var(--font-base);
+      line-height: 1.5;
+    }
+    .analysis-page .analysis-scope-impact {
+      max-width: 180px;
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+      line-height: 1.5;
+      text-align: right;
+    }
+
+    .analysis-page .analysis-project-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.45fr);
+      align-items: start;
+      gap: var(--space-md);
+      padding: var(--space-lg);
+    }
+    .analysis-page .analysis-project-rules {
+      grid-column: 2;
+      grid-row: 1 / span 2;
+    }
+    .analysis-page .analysis-project-documents {
+      grid-column: 1 / -1;
+    }
+    .analysis-page .analysis-project-block {
+      display: flex;
+      min-width: 0;
+      flex-direction: column;
+      gap: var(--space-md);
+      padding: var(--space-md);
+      border: 1px solid var(--border-subtle);
+      border-radius: 8px;
+      background: var(--bg-elevated);
+    }
+    .analysis-page .analysis-project-block .pg-context-title {
+      font-size: var(--font-md);
+    }
+    .analysis-page .analysis-project-block-copy {
+      margin: calc(-1 * var(--space-sm)) 0 0;
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+      line-height: 1.5;
+    }
+    .analysis-page .analysis-project-block .pg-instructions-hint {
+      margin: 0;
+      font-size: var(--font-sm);
+    }
+    .analysis-page .analysis-project-block .pg-project-description {
+      min-height: 220px;
+      border-color: var(--border-default);
+      background: var(--bg-base);
+      font-size: var(--font-base);
+    }
+    .analysis-page .analysis-project-block .pg-rule-inference-options,
+    .analysis-page .analysis-project-block .pg-rule-item,
+    .analysis-page .analysis-project-block .pg-rule-version {
+      border-color: var(--border-subtle);
+      background: var(--bg-surface);
+    }
+    .analysis-page .analysis-project-rules .pg-rule-inference-options {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: var(--space-sm);
+      padding: var(--space-sm);
+    }
+    .analysis-page .analysis-project-rules .pg-rule-inference-heading {
+      grid-column: 1 / -1;
+    }
+    .analysis-page .analysis-project-rules .pg-inference-toggle {
+      grid-template-columns: 36px minmax(0, 1fr);
+      align-items: start;
+      padding: var(--space-sm);
+    }
+    .analysis-page .analysis-project-rules .pg-inference-copy span {
+      display: none;
+    }
+    .analysis-page .analysis-rule-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-md);
+      padding-top: var(--space-sm);
+      border-top: 1px solid var(--border-subtle);
+    }
+    .analysis-page .analysis-rule-toolbar-copy {
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+    }
+    .analysis-page .analysis-rule-toolbar #pg-add-rule {
+      flex-shrink: 0;
+      border-color: var(--accent-primary);
+      background: color-mix(in srgb, var(--accent-primary) 12%, var(--bg-elevated));
+      color: var(--accent-primary);
+    }
+    .analysis-page .analysis-project-rules .pg-rule-list {
+      max-height: 360px;
+      gap: var(--space-sm);
+      padding-right: var(--space-sm);
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      scrollbar-color: var(--border-default) transparent;
+    }
+    .analysis-page .analysis-project-rules .pg-rule-item {
+      display: grid;
+      grid-template-columns: minmax(150px, 0.75fr) minmax(0, 1.25fr) auto;
+      align-items: start;
+      gap: var(--space-sm);
+      padding: var(--space-sm);
+      border-radius: 8px;
+    }
+    .analysis-page .analysis-project-rules .pg-rule-item-head {
+      grid-column: 3;
+      grid-row: 1;
+    }
+    .analysis-page .analysis-project-rules .pg-rule-item-head > span {
+      display: none;
+    }
+    .analysis-page .analysis-project-rules .pg-rule-title {
+      grid-column: 1;
+      grid-row: 1;
+    }
+    .analysis-page .analysis-project-rules .pg-rule-instruction {
+      grid-column: 2;
+      grid-row: 1;
+      min-height: 64px;
+      max-height: 120px;
+      padding: var(--space-sm) var(--space-md);
+      line-height: 1.5;
+    }
+    .analysis-page .analysis-project-block .pg-rule-instruction {
+      min-height: 64px;
+    }
+    .analysis-page .analysis-project-documents .pg-document-dropzone {
+      padding: var(--space-md);
+    }
+    .analysis-page .analysis-project-documents .pg-document-list {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: var(--space-sm);
+    }
+    .analysis-page .analysis-project-documents .pg-document-item {
+      min-width: 0;
+      border: 1px solid var(--border-subtle);
+      border-radius: 8px;
+      background: var(--bg-surface);
+    }
+    .analysis-page .analysis-project-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-md);
+      padding: var(--space-md) var(--space-lg);
+      border-top: 1px solid var(--border-subtle);
+    }
+    .analysis-page .analysis-project-footer .pg-context-actions {
+      flex-wrap: wrap;
+      margin: 0;
+    }
+    .analysis-page .analysis-project-footer .pg-context-status {
+      flex: 1;
+      min-width: 180px;
+      order: -1;
+    }
+    .analysis-page #pg-save-context {
+      border-color: var(--accent-primary);
+      background: var(--accent-primary);
+      color: var(--bg-void);
+    }
+    .analysis-page #pg-infer-rules {
+      border-color: var(--accent-tertiary);
+      background: color-mix(in srgb, var(--accent-tertiary) 18%, var(--bg-elevated));
+      color: var(--accent-tertiary-soft);
+    }
+
+    .analysis-page .analysis-run-scope > .analysis-run-panel,
+    .analysis-page .analysis-run-group {
+      margin: var(--space-lg);
+    }
+    .analysis-page .analysis-run-group + .analysis-run-group {
+      padding-top: var(--space-lg);
+      border-top: 1px solid var(--border-subtle);
+    }
+    .analysis-page .analysis-run-group-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: var(--space-lg);
+      margin-bottom: var(--space-md);
+    }
+    .analysis-page .analysis-run-group-title {
+      margin: 0;
+      color: var(--text-primary);
+      font-size: var(--font-md);
+      font-weight: 600;
+    }
+    .analysis-page .analysis-run-group-copy {
+      max-width: 620px;
+      margin: var(--space-xs) 0 0;
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+      line-height: 1.5;
+    }
+    .analysis-page .analysis-run-group-body {
+      display: flex;
+      min-width: 0;
+      flex-direction: column;
+      gap: var(--space-md);
+    }
+    .analysis-page .playground-page-overlay .pg-section {
+      border-color: var(--border-subtle);
+      border-radius: 8px;
+      background: var(--bg-elevated);
+      box-shadow: none;
+    }
+    .analysis-page .playground-page-overlay .pg-section:hover {
+      border-color: var(--border-default);
+    }
+    .analysis-page .playground-page-overlay .pg-section-summary {
+      gap: var(--space-sm);
+      padding: var(--space-md) var(--space-lg);
+      background: transparent;
+      font-size: var(--font-md);
+    }
+    .analysis-page .playground-page-overlay .pg-section-summary:hover {
+      background: var(--bg-hover);
+    }
+    .analysis-page .playground-page-overlay .pg-section-chevron {
+      border: 1px solid var(--border-subtle);
+      background: var(--bg-surface);
+    }
+    .analysis-page .playground-page-overlay .pg-section-summary:hover .pg-section-chevron {
+      background: var(--bg-active);
+    }
+    .analysis-page .playground-page-overlay .pg-section-badge {
+      border-color: var(--border-default);
+      border-radius: 999px;
+      background: var(--bg-surface);
+      color: var(--text-muted);
+      font-size: var(--font-xs);
+    }
+    .analysis-page .playground-page-overlay .pg-section-body {
+      padding: 0 var(--space-lg) var(--space-lg);
+    }
+    .analysis-page .playground-page-overlay .pg-instructions-hint {
+      font-size: var(--font-sm);
+    }
+    .analysis-page .analysis-run-footer {
+      position: sticky;
+      bottom: var(--space-sm);
+      z-index: 10;
+      margin-top: var(--space-lg);
+      padding: var(--space-md) var(--space-lg);
+      border: 1px solid var(--border-default);
+      border-radius: 8px;
+      background: color-mix(in srgb, var(--bg-surface) 94%, transparent);
+      box-shadow: 0 12px 32px color-mix(in srgb, var(--bg-void) 55%, transparent);
+      backdrop-filter: blur(20px);
+    }
+    .analysis-page .analysis-footer-copy {
+      display: flex;
+      min-width: 170px;
+      flex-direction: column;
+      gap: var(--space-xs);
+      margin-right: auto;
+    }
+    .analysis-page .analysis-footer-title {
+      color: var(--text-primary);
+      font-size: var(--font-base);
+      font-weight: 600;
+    }
+    .analysis-page .analysis-footer-detail {
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+    }
+    .analysis-page .analysis-run-footer .pg-connection {
+      height: 38px;
+      margin-right: 0;
+      border-color: var(--border-default);
+      background: var(--bg-elevated);
+    }
+    .analysis-page .analysis-run-footer .pg-connection-label {
+      font-size: var(--font-sm);
+    }
+    .analysis-page .analysis-run-footer .pg-footer-btn {
+      min-height: 38px;
+      padding: var(--space-sm) var(--space-lg);
+      border-radius: 6px;
+      font-family: var(--font-sans);
+      font-size: var(--font-sm);
+      letter-spacing: normal;
+      box-shadow: none;
+      transform: none;
+    }
+    .analysis-page .analysis-run-footer .pg-footer-test {
+      border-color: var(--border-default);
+      background: var(--bg-elevated);
+      color: var(--text-secondary);
+    }
+    .analysis-page .analysis-run-footer .pg-footer-runall {
+      border-color: var(--accent-primary);
+      background: var(--accent-primary);
+      color: var(--bg-void);
+    }
+    .analysis-page .analysis-run-footer .pg-footer-runall:hover:not(:disabled) {
+      border-color: var(--accent-primary);
+      background: var(--accent-primary);
+      box-shadow: none;
+      transform: none;
+    }
+
+    @media (max-width: 900px) {
+      .analysis-page .analysis-project-grid {
+        grid-template-columns: minmax(0, 1fr);
+      }
+      .analysis-page .analysis-project-rules,
+      .analysis-page .analysis-project-history,
+      .analysis-page .analysis-project-documents {
+        grid-column: auto;
+        grid-row: auto;
+      }
+      .analysis-page .analysis-project-rules .pg-rule-inference-options {
+        grid-template-columns: minmax(0, 1fr);
+      }
+      .analysis-page .analysis-project-rules .pg-rule-inference-heading {
+        grid-column: auto;
+      }
+      .analysis-page .analysis-project-documents .pg-document-list {
+        grid-template-columns: minmax(0, 1fr);
+      }
+      .analysis-page .analysis-scope-impact {
+        display: none;
+      }
+      .analysis-page .analysis-scope-card-header {
+        grid-template-columns: minmax(0, 1fr);
+      }
+      .analysis-page .analysis-run-footer {
+        flex-wrap: wrap;
+      }
+      .analysis-page .analysis-footer-copy {
+        width: 100%;
+      }
+    }
+    @media (max-width: 720px) {
+      .analysis-page {
+        padding: var(--space-lg) var(--space-md);
+      }
+      .analysis-view-tabs {
+        grid-template-columns: minmax(0, 1fr);
+      }
+      .analysis-view-tab {
+        padding: var(--space-md);
+      }
+      .analysis-view-tab-detail {
+        white-space: normal;
+      }
+      .analysis-page .analysis-scope-card-header {
+        align-items: flex-start;
+        padding: var(--space-md);
+      }
+      .analysis-page .analysis-project-grid,
+      .analysis-page .analysis-run-scope > .analysis-run-panel,
+      .analysis-page .analysis-run-group {
+        margin: 0;
+        padding: var(--space-md);
+      }
+      .analysis-page .analysis-project-grid {
+        gap: var(--space-sm);
+      }
+      .analysis-page .analysis-rule-toolbar {
+        align-items: stretch;
+        flex-direction: column;
+      }
+      .analysis-page .analysis-rule-toolbar #pg-add-rule {
+        width: 100%;
+      }
+      .analysis-page .analysis-project-rules .pg-rule-item {
+        grid-template-columns: minmax(0, 1fr) auto;
+      }
+      .analysis-page .analysis-project-rules .pg-rule-title {
+        grid-column: 1;
+      }
+      .analysis-page .analysis-project-rules .pg-rule-item-head {
+        grid-column: 2;
+      }
+      .analysis-page .analysis-project-rules .pg-rule-instruction {
+        grid-column: 1 / -1;
+        grid-row: 2;
+      }
+      .analysis-page .analysis-run-scope > .analysis-run-panel {
+        margin: var(--space-md);
+        padding: 0;
+      }
+      .analysis-page .analysis-run-group {
+        margin: var(--space-md);
+      }
+      .analysis-run-panel-header,
+      .analysis-run-grid {
+        padding: var(--space-md);
+      }
+      .analysis-page .analysis-project-footer {
+        align-items: stretch;
+        flex-direction: column;
+        padding: var(--space-md);
+      }
+      .analysis-page .analysis-project-footer .pg-context-actions {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+      }
+      .analysis-page .analysis-run-footer {
+        position: static;
+        align-items: stretch;
+        flex-direction: column;
+      }
+      .analysis-page .analysis-run-footer .pg-connection,
+      .analysis-page .analysis-run-footer .pg-footer-btn {
+        width: 100%;
+        box-sizing: border-box;
+        justify-content: center;
+      }
+      .analysis-page .analysis-run-footer .pg-connection-select {
+        flex: 1;
+        max-width: none;
       }
     }
   </style>
@@ -191,23 +890,60 @@
   <main class="analysis-page">
     <header class="analysis-hero">
       <h1 class="analysis-title">Auto-analysis</h1>
-      <p class="analysis-description">Investigate failed metrics with shared project context, reference documents, and review-approved examples.</p>
+      <p class="analysis-description">Investigate failed metrics with shared project context, selected reference documents, and versioned diagnostic rules.</p>
       <div class="analysis-meta">
-        <span>Scope <span class="analysis-meta-value">project</span></span>
+        <span>Project <span class="analysis-meta-value" id="analysis-project-meta">loading</span></span>
         <span aria-hidden="true">·</span>
-        <span>Mode <span class="analysis-meta-value">failed metrics</span></span>
+        <span>Workflow <span class="analysis-meta-value">failed metric diagnosis</span></span>
       </div>
+      <nav class="analysis-view-tabs" role="tablist" aria-label="Analyzer workspace views">
+        <button class="analysis-view-tab" id="analysis-project-tab" type="button" role="tab"
+          aria-selected="true" aria-controls="analysis-project-view" data-analysis-view="project">
+          <span class="analysis-view-tab-index" aria-hidden="true">01</span>
+          <span class="analysis-view-tab-copy">
+            <span class="analysis-view-tab-title">Shared configuration</span>
+            <span class="analysis-view-tab-detail">Description, documents, diagnostic rules, and version history</span>
+          </span>
+        </button>
+        <button class="analysis-view-tab" id="analysis-run-tab" type="button" role="tab"
+          aria-selected="false" aria-controls="analysis-run-view" data-analysis-view="run" tabindex="-1">
+          <span class="analysis-view-tab-index" aria-hidden="true">02</span>
+          <span class="analysis-view-tab-copy">
+            <span class="analysis-view-tab-title">Run analyzer</span>
+            <span class="analysis-view-tab-detail">Choose a run, refine its prompt, preview failures, and analyze</span>
+          </span>
+        </button>
+      </nav>
     </header>
 
-    <section class="analysis-run-panel" id="analysis-run-panel">
-      <div class="analysis-run-field">
-        <label class="analysis-run-label" for="analysis-run-select">Run to analyze</label>
-        <select class="analysis-run-select" id="analysis-run-select" disabled>
-          <option value="">Loading runs…</option>
-        </select>
-        <div class="analysis-run-summary" id="analysis-run-summary">Choose a run to load its failed metrics.</div>
+    <section class="analysis-run-panel" id="analysis-run-panel" aria-labelledby="analysis-run-panel-title">
+      <div class="analysis-run-panel-header">
+        <div class="analysis-run-panel-heading">
+          <h3 class="analysis-run-panel-title" id="analysis-run-panel-title">Analysis target</h3>
+          <p class="analysis-run-panel-copy">Choose the evaluation run and metrics to diagnose. These selections do not change project defaults.</p>
+        </div>
+        <a class="analysis-run-link" id="analysis-run-link" href="#" hidden>View run →</a>
       </div>
-      <a class="analysis-run-link" id="analysis-run-link" href="#" hidden>View run →</a>
+      <div class="analysis-run-grid">
+        <div class="analysis-run-field">
+          <label class="analysis-run-label" for="analysis-run-select">Run to analyze</label>
+          <select class="analysis-run-select" id="analysis-run-select" disabled>
+            <option value="">Loading runs…</option>
+          </select>
+          <div class="analysis-run-summary" id="analysis-run-summary">Choose a run to load its failed metrics.</div>
+        </div>
+        <div class="analysis-metric-field" id="analysis-metric-field" hidden>
+          <div class="analysis-metric-heading">
+            <span class="analysis-run-label">Metrics to analyze</span>
+            <span class="analysis-metric-actions">
+              <button class="analysis-metric-action" id="analysis-metrics-all" type="button">Select all</button>
+              <button class="analysis-metric-action" id="analysis-metrics-none" type="button">Clear</button>
+            </span>
+          </div>
+          <div class="analysis-metric-list" id="analysis-metric-list" role="group" aria-label="Metrics to analyze"></div>
+          <div class="analysis-metric-summary" id="analysis-metric-summary"></div>
+        </div>
+      </div>
     </section>
 
     <div class="analysis-status" id="analysis-status" role="status" aria-live="polite"></div>
@@ -232,6 +968,7 @@
       const projectRunMatch = path.match(/\/projects\/([^/]+)\/runs\/(.+)\/analyzer$/);
       const legacyRunMatch = path.match(/\/run\/(.+)\/analyzer$/);
       const projectSlug = decodeURIComponent((projectPageMatch && projectPageMatch[1]) || (projectRunMatch && projectRunMatch[1]) || '');
+      const explicitRunContext = Boolean(params.get('run') || projectRunMatch || legacyRunMatch);
       let runId = decodeURIComponent(
         params.get('run') ||
         (projectRunMatch && projectRunMatch[2]) ||
@@ -239,7 +976,18 @@
         ''
       );
       const requestedMetric = params.get('metric') || '';
-      const state = { data: null, metric: '', runs: [] };
+      const requestedView = params.get('scope');
+      const state = {
+        currentView: requestedView === 'project' || requestedView === 'run'
+          ? requestedView
+          : (explicitRunContext ? 'run' : 'project'),
+        data: null,
+        metric: '',
+        metrics: [],
+        selectedMetrics: [],
+        runs: [],
+      };
+      document.getElementById('analysis-project-meta').textContent = projectSlug || 'current run';
 
       function apiUrl(value) {
         return window.location.origin + rootPath + '/' + String(value || '').replace(/^\/+/, '');
@@ -258,6 +1006,305 @@
 
       function escapeAttr(value) {
         return escapeHtml(value).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+      }
+
+      function setAnalyzerView(view, options = {}) {
+        const nextView = view === 'run' ? 'run' : 'project';
+        state.currentView = nextView;
+        document.querySelectorAll('[data-analysis-view]').forEach(tab => {
+          const active = tab.dataset.analysisView === nextView;
+          tab.setAttribute('aria-selected', active ? 'true' : 'false');
+          tab.tabIndex = active ? 0 : -1;
+          if (active && options.focus) tab.focus();
+        });
+
+        const projectView = document.getElementById('analysis-project-view');
+        const runView = document.getElementById('analysis-run-view');
+        if (projectView) projectView.hidden = nextView !== 'project';
+        if (runView) runView.hidden = nextView !== 'run';
+
+        if (options.updateUrl !== false) {
+          const nextParams = new URLSearchParams(window.location.search);
+          nextParams.set('scope', nextView);
+          history.replaceState(history.state, '', window.location.pathname + '?' + nextParams.toString());
+        }
+      }
+
+      document.querySelectorAll('[data-analysis-view]').forEach(tab => {
+        tab.addEventListener('click', () => setAnalyzerView(tab.dataset.analysisView));
+        tab.addEventListener('keydown', event => {
+          if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+          event.preventDefault();
+          setAnalyzerView(state.currentView === 'project' ? 'run' : 'project', { focus: true });
+        });
+      });
+      setAnalyzerView(state.currentView, { updateUrl: false });
+
+      function createUiNode(tagName, className, html) {
+        const node = document.createElement(tagName);
+        node.className = className;
+        if (html) node.innerHTML = html;
+        return node;
+      }
+
+      function createScopeHeader(number, scope, title, description, impact, badgeClass) {
+        const header = createUiNode('header', 'analysis-scope-card-header');
+        const headingId = 'analysis-scope-heading-' + number;
+        header.innerHTML =
+          '<div class="analysis-scope-card-copy">' +
+            '<div class="analysis-scope-card-kicker">' +
+              '<span class="analysis-scope-badge ' + badgeClass + '">' + scope + '</span>' +
+            '</div>' +
+            '<h2 class="analysis-scope-card-title" id="' + headingId + '">' + title + '</h2>' +
+            '<p class="analysis-scope-card-description">' + description + '</p>' +
+          '</div>' +
+          '<div class="analysis-scope-impact">' + impact + '</div>';
+        header.dataset.headingId = headingId;
+        return header;
+      }
+
+      function createRunGroup(title, description) {
+        const group = createUiNode('section', 'analysis-run-group');
+        const header = createUiNode(
+          'header',
+          'analysis-run-group-header',
+          '<div>' +
+            '<h3 class="analysis-run-group-title">' + title + '</h3>' +
+            '<p class="analysis-run-group-copy">' + description + '</p>' +
+          '</div>'
+        );
+        const body = createUiNode('div', 'analysis-run-group-body');
+        group.append(header, body);
+        return { group, body };
+      }
+
+      function normalizeProjectHeading(node, id) {
+        if (!node) return null;
+        let heading = node;
+        if (node.tagName !== 'H3') {
+          heading = document.createElement('h3');
+          heading.className = node.className;
+          heading.textContent = node.textContent;
+          node.replaceWith(heading);
+        }
+        heading.id = id;
+        return heading;
+      }
+
+      function organizeAnalyzerWorkspace() {
+        const overlay = document.querySelector('#analyzer-host .playground-page-overlay');
+        if (!overlay) return false;
+        if (overlay.dataset.analysisOrganized === 'true') return true;
+
+        const projectPanel = overlay.querySelector('.pg-context-panel');
+        const runPanel = overlay.querySelector('.pg-analysis-main');
+        const footer = overlay.querySelector('.playground-footer');
+        if (!projectPanel || !runPanel || !footer) return false;
+
+        overlay.dataset.analysisOrganized = 'true';
+        projectPanel.id = 'analysis-project-view';
+        projectPanel.setAttribute('role', 'tabpanel');
+        projectPanel.setAttribute('aria-labelledby', 'analysis-project-tab');
+        projectPanel.classList.add('analysis-scope-card', 'analysis-project-scope', 'analysis-view-panel');
+        runPanel.id = 'analysis-run-view';
+        runPanel.setAttribute('role', 'tabpanel');
+        runPanel.setAttribute('aria-labelledby', 'analysis-run-tab');
+        runPanel.classList.add('analysis-scope-card', 'analysis-run-scope', 'analysis-view-panel');
+
+        const projectHeader = createScopeHeader(
+          '01',
+          'Shared defaults',
+          'Shared analyzer configuration',
+          'Manage the description, document library, diagnostic rules, and version used across analyzer runs.',
+          'Saved changes become defaults for future analysis.',
+          'analysis-scope-badge-project'
+        );
+        projectPanel.prepend(projectHeader);
+
+        const directProjectChildren = Array.from(projectPanel.children);
+        const originalEyebrow = directProjectChildren.find(node => node.classList.contains('pg-context-eyebrow'));
+        const projectTitles = directProjectChildren.filter(node => node.classList.contains('pg-context-title'));
+        let descriptionTitle = projectTitles.find(node => node.textContent.trim() === 'Description');
+        let rulesTitle = projectTitles.find(node => node.textContent.trim() === 'Analysis rules');
+        const description = document.getElementById('pg-project-description');
+        const descriptionHint = description ? description.previousElementSibling : null;
+        const descriptionError = document.getElementById('pg-project-description-error');
+        const inferenceOptions = document.querySelector('#analyzer-host .pg-rule-inference-options');
+        const rulesHint = inferenceOptions ? inferenceOptions.previousElementSibling : null;
+        const ruleList = document.getElementById('pg-rule-list');
+        const addRule = document.getElementById('pg-add-rule');
+        const documentInput = document.getElementById('pg-document-input');
+        const documentsSection = documentInput ? documentInput.closest('.pg-section') : null;
+        const documentsBody = documentsSection ? documentsSection.querySelector('.pg-section-body') : null;
+        const versionList = document.getElementById('pg-rule-version-list');
+        const versionCompare = document.getElementById('pg-rule-version-compare');
+        let versionTitle = directProjectChildren.find(
+          node => node.tagName === 'H3' && node.textContent.trim() === 'Version history'
+        );
+        const contextActions = projectPanel.querySelector('.pg-context-actions');
+        const contextStatus = document.getElementById('pg-context-status');
+
+        const projectGrid = createUiNode('div', 'analysis-project-grid');
+        const descriptionBlock = createUiNode('section', 'analysis-project-block analysis-project-description');
+        const rulesBlock = createUiNode('section', 'analysis-project-block analysis-project-rules');
+        const historyBlock = createUiNode('section', 'analysis-project-block analysis-project-history');
+        const documentsBlock = createUiNode('section', 'analysis-project-block analysis-project-documents');
+
+        descriptionTitle = normalizeProjectHeading(descriptionTitle, 'analysis-project-description-heading');
+        rulesTitle = normalizeProjectHeading(rulesTitle, 'analysis-project-rules-heading');
+        versionTitle = normalizeProjectHeading(versionTitle, 'analysis-project-history-heading');
+        if (descriptionTitle) descriptionBlock.setAttribute('aria-labelledby', descriptionTitle.id);
+        if (rulesTitle) rulesBlock.setAttribute('aria-labelledby', rulesTitle.id);
+        if (versionTitle) historyBlock.setAttribute('aria-labelledby', versionTitle.id);
+
+        if (descriptionTitle) descriptionBlock.append(descriptionTitle);
+        descriptionBlock.append(createUiNode(
+          'p',
+          'analysis-project-block-copy',
+          'Stable business and correctness context included in every analyzer prompt.'
+        ));
+        [descriptionHint, description, descriptionError].forEach(node => {
+          if (node) descriptionBlock.append(node);
+        });
+
+        if (rulesTitle) rulesBlock.append(rulesTitle);
+        rulesBlock.append(createUiNode(
+          'p',
+          'analysis-project-block-copy',
+          'Shared decision guidance. Drafts are editable; published versions remain immutable.'
+        ));
+        [rulesHint, inferenceOptions].forEach(node => {
+          if (node) rulesBlock.append(node);
+        });
+        const ruleToolbar = createUiNode(
+          'div',
+          'analysis-rule-toolbar',
+          '<span class="analysis-rule-toolbar-copy">Add up to 20 concise diagnostic rules.</span>'
+        );
+        if (addRule) {
+          addRule.textContent = 'Add new rule';
+          ruleToolbar.append(addRule);
+        }
+        rulesBlock.append(ruleToolbar);
+        if (ruleList) ruleToolbar.after(ruleList);
+
+        if (versionTitle) historyBlock.append(versionTitle);
+        historyBlock.append(createUiNode(
+          'p',
+          'analysis-project-block-copy',
+          'Create drafts, publish reviewed snapshots, and choose the production ruleset used by default.'
+        ));
+        if (versionList) historyBlock.append(versionList);
+        if (versionCompare) historyBlock.append(versionCompare);
+
+        const documentsHeading = createUiNode('h3', 'pg-context-title', 'Reference documents');
+        documentsHeading.id = 'analysis-project-documents-heading';
+        documentsBlock.setAttribute('aria-labelledby', documentsHeading.id);
+        documentsBlock.append(documentsHeading);
+        documentsBlock.append(createUiNode(
+          'p',
+          'analysis-project-block-copy',
+          'Manage the shared evidence library and choose the documents included in analyzer prompts.'
+        ));
+        if (documentsBody) {
+          Array.from(documentsBody.children).forEach(node => documentsBlock.append(node));
+          documentsSection.remove();
+        }
+        projectGrid.append(descriptionBlock, rulesBlock, historyBlock, documentsBlock);
+
+        projectPanel.querySelectorAll(':scope > .pg-context-divider').forEach(node => node.remove());
+        if (originalEyebrow) originalEyebrow.remove();
+        projectPanel.append(projectGrid);
+
+        const projectFooter = createUiNode('footer', 'analysis-project-footer');
+        if (contextStatus) projectFooter.append(contextStatus);
+        if (contextActions) projectFooter.append(contextActions);
+        projectPanel.append(projectFooter);
+
+        const runHeader = createScopeHeader(
+          '02',
+          'Current run',
+          'Analysis workspace',
+          'Choose the target, shape the prompt, and control which failures are analyzed.',
+          'Selections apply to the current analysis.',
+          'analysis-scope-badge-run'
+        );
+        runPanel.prepend(runHeader);
+
+        const targetPanel = document.getElementById('analysis-run-panel');
+        if (targetPanel) {
+          targetPanel.hidden = false;
+          runPanel.append(targetPanel);
+        }
+
+        const sectionFor = id => {
+          const anchor = document.getElementById(id);
+          return anchor ? anchor.closest('.pg-section') : null;
+        };
+        const instructionsSection = sectionFor('pg-additional-instructions');
+        const catalogSection = sectionFor('pg-categories-list');
+        const mappingSection = sectionFor('pg-mapping-0-field');
+        const filterSection = sectionFor('pg-max-score');
+        const previewSection = sectionFor('pg-preview-content');
+
+        [
+          [instructionsSection, 'Run instructions'],
+          [catalogSection, 'Diagnosis catalog'],
+          [mappingSection, 'Input mapping'],
+          [filterSection, 'Items to analyze'],
+          [previewSection, 'Prompt preview'],
+        ].forEach(([section, title]) => {
+          const titleNode = section && section.querySelector('.pg-section-title');
+          if (titleNode) titleNode.textContent = title;
+        });
+
+        const contextGroup = createRunGroup(
+          'Prompt context',
+          'Configure instructions, diagnosis vocabulary, and data mapping for the next test or analysis request.'
+        );
+        [instructionsSection, catalogSection, mappingSection].forEach(section => {
+          if (section) contextGroup.body.append(section);
+        });
+        runPanel.append(contextGroup.group);
+
+        const executionGroup = createRunGroup(
+          'Targets and preview',
+          'Narrow the failed items, inspect the exact prompt, and review test or full-analysis output.'
+        );
+        [filterSection, previewSection].forEach(section => {
+          if (section) executionGroup.body.append(section);
+        });
+        [
+          document.getElementById('pg-results-divider'),
+          document.getElementById('pg-test-results'),
+          document.getElementById('pg-runall-progress'),
+          document.getElementById('pg-runall-results'),
+        ].forEach(node => {
+          if (node) executionGroup.body.append(node);
+        });
+        runPanel.append(executionGroup.group);
+
+        footer.classList.add('analysis-run-footer');
+        footer.prepend(createUiNode(
+          'div',
+          'analysis-footer-copy',
+          '<span class="analysis-scope-badge analysis-scope-badge-run">Analysis action</span>' +
+          '<span class="analysis-footer-title">Test or analyze selected failures</span>' +
+          '<span class="analysis-footer-detail">Testing and analysis use the current selections; they do not save project defaults.</span>'
+        ));
+        runPanel.append(footer);
+      setAnalyzerView(state.currentView);
+        return true;
+      }
+
+      function organizeAnalyzerWorkspaceWhenReady() {
+        if (organizeAnalyzerWorkspace()) return;
+        const host = document.getElementById('analyzer-host');
+        if (!host) return;
+        const observer = new MutationObserver(() => {
+          if (organizeAnalyzerWorkspace()) observer.disconnect();
+        });
+        observer.observe(host, { childList: true, subtree: true });
       }
 
       function showStatus(type, title, message) {
@@ -392,6 +1439,44 @@
         return spec.pass_threshold == null ? 0.8 : Number(spec.pass_threshold);
       }
 
+      function updateMetricSummary() {
+        const count = state.selectedMetrics.length;
+        const total = state.metrics.length;
+        document.getElementById('analysis-metric-summary').textContent = count
+          ? count + ' of ' + total + ' metrics selected. Unselected metrics will be ignored.'
+          : 'No metrics selected. Select at least one metric to run the analyzer.';
+      }
+
+      function setSelectedMetrics(metrics) {
+        state.selectedMetrics = state.metrics.filter(metric => metrics.includes(metric));
+        state.metric = state.selectedMetrics[0] || '';
+        document.querySelectorAll('#analysis-metric-list input[type="checkbox"]').forEach(input => {
+          input.checked = state.selectedMetrics.includes(input.value);
+        });
+        updateMetricSummary();
+        if (window.QymPlayground && window.QymPlayground.refreshFilters) {
+          window.QymPlayground.refreshFilters();
+        }
+      }
+
+      function renderMetricSelector() {
+        const field = document.getElementById('analysis-metric-field');
+        const list = document.getElementById('analysis-metric-list');
+        field.hidden = state.metrics.length === 0;
+        list.innerHTML = state.metrics.map(metric =>
+          '<label class="analysis-metric-option">' +
+            '<input type="checkbox" value="' + escapeAttr(metric) + '" checked />' +
+            '<span>' + escapeHtml(metric) + '</span>' +
+          '</label>'
+        ).join('');
+        list.querySelectorAll('input[type="checkbox"]').forEach(input => {
+          input.addEventListener('change', () => {
+            setSelectedMetrics(Array.from(list.querySelectorAll('input:checked')).map(node => node.value));
+          });
+        });
+        updateMetricSummary();
+      }
+
       function applyAnalysisResults(data) {
         const rows = state.data && state.data.snapshot ? state.data.snapshot.rows || [] : [];
         (data.results || []).forEach(result => {
@@ -431,7 +1516,12 @@
         state.data = data;
 
         const metrics = data.snapshot.metric_names || data.run.metric_names || [];
-        state.metric = metrics.includes(requestedMetric) ? requestedMetric : (metrics[0] || '');
+        state.metrics = metrics;
+        state.selectedMetrics = requestedMetric && metrics.includes(requestedMetric)
+          ? [requestedMetric]
+          : metrics.slice();
+        state.metric = state.selectedMetrics[0] || '';
+        renderMetricSelector();
         document.title = 'قيِّم • Auto-analysis • ' + (data.run.run_name || runId);
         updateRunSummary();
 
@@ -443,17 +1533,25 @@
           apiUrl: apiUrl,
           getRunId: () => data.run.file_path || data.run.run_id || runId,
           getRows: analyzerRows,
-          getMetric: () => null,
+          getMetric: () => state.metric || null,
+          getMetrics: () => state.selectedMetrics.slice(),
           getThreshold: metricThreshold,
           onAnalysisComplete: applyAnalysisResults,
           showToast: showStatus,
           escapeHtml: escapeHtml,
         });
         window.QymPlayground.open();
+        organizeAnalyzerWorkspaceWhenReady();
       }
 
       document.getElementById('analysis-run-select').addEventListener('change', event => {
         navigateToRun(event.target.value);
+      });
+      document.getElementById('analysis-metrics-all').addEventListener('click', () => {
+        setSelectedMetrics(state.metrics);
+      });
+      document.getElementById('analysis-metrics-none').addEventListener('click', () => {
+        setSelectedMetrics([]);
       });
 
       (async () => {

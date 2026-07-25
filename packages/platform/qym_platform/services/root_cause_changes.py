@@ -4,9 +4,6 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Optional
 
-from sqlalchemy import func
-from sqlalchemy.orm import Session
-
 from qym_platform.datetime_utils import to_storage_utc, utc_now_naive
 from qym_platform.db.models import (
     AuditLog,
@@ -17,7 +14,8 @@ from qym_platform.db.models import (
     RunItem,
     RunItemScore,
 )
-
+from sqlalchemy import func
+from sqlalchemy.orm import Session
 
 MANAGED_ANALYSIS_KEYS = {
     "root_cause",
@@ -25,6 +23,7 @@ MANAGED_ANALYSIS_KEYS = {
     "root_cause_note",
     "root_cause_source",
     "root_cause_confidence",
+    "root_cause_metric_name",
     "solution",
     "solution_note",
     "solution_source",
@@ -97,7 +96,9 @@ def normalize_analysis_state(state: dict[str, Any] | None) -> dict[str, Any]:
     return normalized
 
 
-def build_item_metadata(existing_meta: dict[str, Any] | None, state: dict[str, Any]) -> dict[str, Any]:
+def build_item_metadata(
+    existing_meta: dict[str, Any] | None, state: dict[str, Any]
+) -> dict[str, Any]:
     meta = dict(existing_meta) if isinstance(existing_meta, dict) else {}
     for key in MANAGED_ANALYSIS_KEYS:
         meta.pop(key, None)
@@ -122,7 +123,9 @@ def build_item_metadata(existing_meta: dict[str, Any] | None, state: dict[str, A
     return meta
 
 
-def apply_human_patch(before_state: dict[str, Any], patch: dict[str, Any]) -> dict[str, Any]:
+def apply_human_patch(
+    before_state: dict[str, Any], patch: dict[str, Any]
+) -> dict[str, Any]:
     state = dict(before_state)
 
     if "root_cause" in patch:
@@ -177,7 +180,9 @@ def build_ai_state(
             "root_cause": root_cause,
             "root_cause_detail": root_cause_detail,
             "root_cause_note": root_cause_note,
-            "root_cause_source": "ai" if (root_cause or "").strip().lower() != "unanalyzed" else "",
+            "root_cause_source": (
+                "ai" if (root_cause or "").strip().lower() != "unanalyzed" else ""
+            ),
             "root_cause_confidence": confidence,
             "solution": solution,
             "solution_note": solution_note,
@@ -189,7 +194,9 @@ def build_ai_state(
 def _next_revision_number(db: Session, run_id: str, item_id: str) -> int:
     max_revision = (
         db.query(func.max(RootCauseRevision.revision_number))
-        .filter(RootCauseRevision.run_id == run_id, RootCauseRevision.item_id == item_id)
+        .filter(
+            RootCauseRevision.run_id == run_id, RootCauseRevision.item_id == item_id
+        )
         .scalar()
     )
     return int(max_revision or 0) + 1
@@ -203,7 +210,9 @@ def _snapshot_scores(db: Session, run_id: str, item_id: str) -> dict[str, Any]:
     )
     snap: dict[str, Any] = {}
     for score in scores:
-        snap[score.metric_name] = score.score_numeric if score.score_numeric is not None else score.score_raw
+        snap[score.metric_name] = (
+            score.score_numeric if score.score_numeric is not None else score.score_raw
+        )
     return snap
 
 
@@ -237,7 +246,11 @@ def replace_metric_review_candidate(
         .all()
     )
     ai_baseline = next(
-        (candidate for candidate in active_candidates if str(candidate.ai_root_cause or "").strip()),
+        (
+            candidate
+            for candidate in active_candidates
+            if str(candidate.ai_root_cause or "").strip()
+        ),
         None,
     )
     if ai_baseline is None and actor_source != "ai":
@@ -276,7 +289,9 @@ def replace_metric_review_candidate(
         expected_snapshot=item.expected,
         output_snapshot=item.output,
         scores_snapshot=_snapshot_scores(db, run.id, item.item_id),
-        ai_root_cause=(root_cause if is_ai else (ai_baseline.ai_root_cause if ai_baseline else "")),
+        ai_root_cause=(
+            root_cause if is_ai else (ai_baseline.ai_root_cause if ai_baseline else "")
+        ),
         ai_root_cause_detail=(
             str(analysis.get("root_cause_detail") or "")
             if is_ai
@@ -303,8 +318,12 @@ def replace_metric_review_candidate(
             else (ai_baseline.ai_solution_note if ai_baseline else "")
         ),
         human_root_cause="" if is_ai else root_cause,
-        human_root_cause_detail="" if is_ai else str(analysis.get("root_cause_detail") or ""),
-        human_root_cause_note="" if is_ai else str(analysis.get("root_cause_note") or ""),
+        human_root_cause_detail=(
+            "" if is_ai else str(analysis.get("root_cause_detail") or "")
+        ),
+        human_root_cause_note=(
+            "" if is_ai else str(analysis.get("root_cause_note") or "")
+        ),
         human_solution="" if is_ai else str(analysis.get("solution") or ""),
         human_solution_note="" if is_ai else str(analysis.get("solution_note") or ""),
         corrected_by_user_id=actor_user_id,
@@ -332,7 +351,9 @@ def _build_candidate_snapshot(
     reviewed_at: Optional[datetime] = None,
     review_comment: str = "",
 ) -> ReviewCorrection:
-    had_real_ai = ai_state.get("root_cause_source") == "ai" and bool(ai_state.get("root_cause"))
+    had_real_ai = ai_state.get("root_cause_source") == "ai" and bool(
+        ai_state.get("root_cause")
+    )
     return ReviewCorrection(
         run_id=run.id,
         item_id=item.item_id,
@@ -342,7 +363,9 @@ def _build_candidate_snapshot(
         output_snapshot=item.output,
         scores_snapshot=scores_snapshot,
         ai_root_cause=ai_state.get("root_cause", "") if had_real_ai else "",
-        ai_root_cause_detail=ai_state.get("root_cause_detail", "") if had_real_ai else "",
+        ai_root_cause_detail=(
+            ai_state.get("root_cause_detail", "") if had_real_ai else ""
+        ),
         ai_root_cause_note=ai_state.get("root_cause_note", "") if had_real_ai else "",
         ai_confidence=ai_state.get("root_cause_confidence") if had_real_ai else None,
         ai_solution=ai_state.get("solution", "") if had_real_ai else "",
@@ -471,16 +494,22 @@ def _deactivate_active_candidates(
     )
     for candidate in active_candidates:
         candidate.is_active = False
-        if candidate.status in {
-            CorrectionStatus.PENDING,
-            CorrectionStatus.REJECTED,
-            CorrectionStatus.WITHDRAWN,
-            CorrectionStatus.SUPERSEDED,
-        } and deactivation_status is not None:
+        if (
+            candidate.status
+            in {
+                CorrectionStatus.PENDING,
+                CorrectionStatus.REJECTED,
+                CorrectionStatus.WITHDRAWN,
+                CorrectionStatus.SUPERSEDED,
+            }
+            and deactivation_status is not None
+        ):
             candidate.status = deactivation_status
 
 
-def _find_active_candidates(db: Session, *, run_id: str, item_id: str) -> list[ReviewCorrection]:
+def _find_active_candidates(
+    db: Session, *, run_id: str, item_id: str
+) -> list[ReviewCorrection]:
     return (
         db.query(ReviewCorrection)
         .filter(
@@ -509,7 +538,9 @@ def apply_root_cause_change(
     if (human_patch is None) == (next_state is None):
         raise ValueError("Provide exactly one of human_patch or next_state")
 
-    before_state = extract_analysis_state(item.item_metadata if isinstance(item.item_metadata, dict) else {})
+    before_state = extract_analysis_state(
+        item.item_metadata if isinstance(item.item_metadata, dict) else {}
+    )
     after_state = (
         apply_human_patch(before_state, human_patch or {})
         if human_patch is not None
@@ -525,7 +556,9 @@ def apply_root_cause_change(
             after_state=after_state,
         )
 
-    item.item_metadata = build_item_metadata(item.item_metadata if isinstance(item.item_metadata, dict) else {}, after_state)
+    item.item_metadata = build_item_metadata(
+        item.item_metadata if isinstance(item.item_metadata, dict) else {}, after_state
+    )
 
     created_at = to_storage_utc(revision_created_at) or utc_now_naive()
     revision = RootCauseRevision(
@@ -544,7 +577,9 @@ def apply_root_cause_change(
 
     candidate: Optional[ReviewCorrection] = None
     if actor_source == "human":
-        active_candidates = _find_active_candidates(db, run_id=run.id, item_id=item.item_id)
+        active_candidates = _find_active_candidates(
+            db, run_id=run.id, item_id=item.item_id
+        )
         ai_baseline = _resolve_ai_baseline(
             db,
             run_id=run.id,
@@ -552,14 +587,21 @@ def apply_root_cause_change(
             before_state=before_state,
             active_candidates=active_candidates,
         )
-        active_approved = next((c for c in active_candidates if c.status == CorrectionStatus.APPROVED), None)
+        active_approved = next(
+            (c for c in active_candidates if c.status == CorrectionStatus.APPROVED),
+            None,
+        )
         auto_approve_human_only = (
             active_approved is not None
             and ai_baseline.get("root_cause_source") != "ai"
             and not (active_approved.ai_root_cause or "").strip()
             and bool(after_state.get("root_cause"))
         )
-        deactivation_status = CorrectionStatus.WITHDRAWN if not after_state.get("root_cause") else CorrectionStatus.SUPERSEDED
+        deactivation_status = (
+            CorrectionStatus.WITHDRAWN
+            if not after_state.get("root_cause")
+            else CorrectionStatus.SUPERSEDED
+        )
         _deactivate_active_candidates(
             db,
             run_id=run.id,
@@ -576,10 +618,20 @@ def apply_root_cause_change(
                 revision_id=revision.id,
                 scores_snapshot=_snapshot_scores(db, run.id, item.item_id),
                 created_at=created_at,
-                status=CorrectionStatus.APPROVED if auto_approve_human_only else CorrectionStatus.PENDING,
-                reviewed_by_user_id=active_approved.reviewed_by_user_id if auto_approve_human_only else None,
+                status=(
+                    CorrectionStatus.APPROVED
+                    if auto_approve_human_only
+                    else CorrectionStatus.PENDING
+                ),
+                reviewed_by_user_id=(
+                    active_approved.reviewed_by_user_id
+                    if auto_approve_human_only
+                    else None
+                ),
                 reviewed_at=created_at if auto_approve_human_only else None,
-                review_comment=active_approved.review_comment if auto_approve_human_only else "",
+                review_comment=(
+                    active_approved.review_comment if auto_approve_human_only else ""
+                ),
             )
             db.add(candidate)
             if auto_approve_human_only and active_approved is not None:

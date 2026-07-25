@@ -309,8 +309,6 @@ Configure your LLM provider on the **Profile** page — set model, API key, and 
    - **Root cause category** (e.g., Hallucination, Reasoning Error, Context Missing, Knowledge Gap)
    - **Root cause detail** — specific sub-issue within the category
    - **Root cause note** — explanation
-   - **Solution** — suggested fix
-   - **Solution note** — additional solution context
 
 AI-suggested values show a robot icon with confidence indicator. Human-confirmed ones show a checkmark.
 
@@ -321,15 +319,15 @@ Before running analysis, click **Auto-Analyze** to open the **Playground** modal
 - **Upload reference documents** — PDF, DOCX, text, Markdown, HTML, CSV, JSON, and YAML files are converted to text and automatically included in every analyzer prompt for the current session
 - **Edit the system prompt** and preview the rendered prompt
 - **Map variables** and add **additional instructions** with custom-variable interpolation
-- **Toggle the correction bank** — approved corrections are used as few-shot examples
 - **Adjust temperature** and other settings
 - **Edit category and detail catalogs** — add/remove root cause categories and their nested detail sub-issues
-- **Edit solution categories**
-- **Run test analyses** on selected items and inspect the generated context, few-shot examples, and results before launching the full analysis
+- **Run test analyses** on selected items and inspect the generated context and results before launching the full analysis
 
 ### Correction Bank
 
-Every human correction (with feedback notes) is stored as a few-shot example. Only **approved** corrections feed the bank. The analyzer's catalogs merge built-in defaults, current-run values, and approved history so suggestions reflect real reviewer vocabulary.
+Every human correction (with feedback notes) is stored for review and audit history. Approved corrections can also provide evidence when generating versioned project analysis rules, but correction examples are not included in per-item analyzer prompts.
+
+Project analysis rules use the same release lifecycle as platform datasets. Edit rules in a mutable draft, publish the reviewed draft as an immutable `vN` snapshot, and move the `production` alias when that version should become the analyzer default. New drafts can be cloned from any prior version, and the analyzer page shows lineage and rule-level comparisons. Saved AI analysis metadata records the resolved production rule-version ID for reproducibility.
 
 ---
 

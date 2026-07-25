@@ -1,20 +1,21 @@
 from __future__ import annotations
 
+import ipaddress
 import re
 import secrets
+import socket
 from typing import Any, Dict, Iterable, Optional
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy import func
-from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
-
 from qym_platform.auth import Principal, require_ui_principal
 from qym_platform.datetime_utils import to_api_timestamp, utc_now_naive
 from qym_platform.db.models import (
     ApiKey,
     Project,
+    ProjectAnalysisRuleAlias,
+    ProjectAnalysisRuleVersion,
     ProjectLlmConnection,
     ProjectMembership,
     ProjectRole,
@@ -24,7 +25,12 @@ from qym_platform.db.models import (
 )
 from qym_platform.deps import get_db
 from qym_platform.openai_compat import create_chat_completion_compat
-from qym_platform.permissions import can_manage_project_members, get_project_membership, has_project_access
+from qym_platform.permissions import (
+    can_manage_project_members,
+    get_project_membership,
+    has_project_access,
+    is_project_manager,
+)
 from qym_platform.secrets import (
     build_llm_config_storage,
     encryption_available,
@@ -32,7 +38,9 @@ from qym_platform.secrets import (
 )
 from qym_platform.security import api_key_prefix, hash_api_key
 from qym_platform.settings import PlatformSettings
-
+from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
 
 router = APIRouter()
 
@@ -61,11 +69,60 @@ def _get_project_by_slug(db: Session, slug: str) -> Project:
     return project
 
 
-def _require_project_access(db: Session, principal: Principal, project_id: str) -> Project:
+def _require_project_access(
+    db: Session, principal: Principal, project_id: str
+) -> Project:
     project = _get_project(db, project_id)
     if not has_project_access(db, principal, project.id):
         raise HTTPException(status_code=403, detail="Access denied")
     return project
+
+
+def _require_project_manager(
+    db: Session, principal: Principal, project_id: str
+) -> Project:
+    project = _require_project_access(db, principal, project_id)
+    if not is_project_manager(db, principal, project.id):
+        raise HTTPException(status_code=403, detail="Project manager access required")
+    return project
+
+
+def _validate_llm_base_url(value: str, settings: PlatformSettings) -> str:
+    """Validate an outbound LLM endpoint and block private-network SSRF by default."""
+    normalized = str(value or "").strip().rstrip("/")
+    parsed = urlparse(normalized)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        raise HTTPException(
+            status_code=400,
+            detail="LLM base URL must be an absolute http:// or https:// URL",
+        )
+    if parsed.username or parsed.password or parsed.fragment:
+        raise HTTPException(
+            status_code=400,
+            detail="LLM base URL cannot contain credentials or a URL fragment",
+        )
+    if settings.allow_private_llm_base_urls:
+        return normalized
+
+    try:
+        addresses = {
+            ipaddress.ip_address(sockaddr[0])
+            for *_, sockaddr in socket.getaddrinfo(parsed.hostname, parsed.port or 443)
+        }
+    except (OSError, ValueError) as exc:
+        raise HTTPException(
+            status_code=400,
+            detail="LLM base URL hostname could not be resolved",
+        ) from exc
+    if not addresses or any(not address.is_global for address in addresses):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "LLM base URL resolves to a non-public address. Set "
+                "QYM_ALLOW_PRIVATE_LLM_BASE_URLS=true only for trusted local providers."
+            ),
+        )
+    return normalized
 
 
 def _membership_role(db: Session, principal: Principal, project_id: str) -> str:
@@ -113,12 +170,16 @@ def _project_payload(
     member_count = (
         int(member_counts[project.id])
         if member_counts is not None and project.id in member_counts
-        else db.query(ProjectMembership).filter(ProjectMembership.project_id == project.id).count()
+        else db.query(ProjectMembership)
+        .filter(ProjectMembership.project_id == project.id)
+        .count()
     )
     run_count = (
         int(run_counts[project.id])
         if run_counts is not None and project.id in run_counts
-        else db.query(Run.id).filter(Run.project_id == project.id, Run.deleted_at.is_(None)).count()
+        else db.query(Run.id)
+        .filter(Run.project_id == project.id, Run.deleted_at.is_(None))
+        .count()
     )
     return {
         "id": project.id,
@@ -128,13 +189,17 @@ def _project_payload(
         "is_active": project.is_active,
         "member_count": member_count,
         "run_count": run_count,
-        "role": role if role is not None else _membership_role(db, principal, project.id),
+        "role": (
+            role if role is not None else _membership_role(db, principal, project.id)
+        ),
         "created_at": to_api_timestamp(project.created_at),
         "updated_at": to_api_timestamp(project.updated_at),
     }
 
 
-def serialize_project_payloads(db: Session, projects: Iterable[Project], principal: Principal) -> list[Dict[str, Any]]:
+def serialize_project_payloads(
+    db: Session, projects: Iterable[Project], principal: Principal
+) -> list[Dict[str, Any]]:
     project_list = list(projects)
     if not project_list:
         return []
@@ -148,10 +213,16 @@ def serialize_project_payloads(db: Session, projects: Iterable[Project], princip
     else:
         role_rows = (
             db.query(ProjectMembership.project_id, ProjectMembership.role)
-            .filter(ProjectMembership.user_id == principal.user.id, ProjectMembership.project_id.in_(project_ids))
+            .filter(
+                ProjectMembership.user_id == principal.user.id,
+                ProjectMembership.project_id.in_(project_ids),
+            )
             .all()
         )
-        role_map = {project_id: role.value if hasattr(role, "value") else str(role) for project_id, role in role_rows}
+        role_map = {
+            project_id: role.value if hasattr(role, "value") else str(role)
+            for project_id, role in role_rows
+        }
 
     return [
         _project_payload(
@@ -171,7 +242,10 @@ def _can_create_project(db: Session, principal: Principal) -> bool:
         return True
     return (
         db.query(ProjectMembership.id)
-        .filter(ProjectMembership.user_id == principal.user.id, ProjectMembership.role == ProjectRole.MANAGER)
+        .filter(
+            ProjectMembership.user_id == principal.user.id,
+            ProjectMembership.role == ProjectRole.MANAGER,
+        )
         .first()
         is not None
     )
@@ -188,10 +262,15 @@ def _serialize_member(member: ProjectMembership, user: User) -> Dict[str, Any]:
     }
 
 
-def _ensure_not_last_manager(db: Session, project_id: str, target_user_id: str, next_role: Optional[ProjectRole]) -> None:
+def _ensure_not_last_manager(
+    db: Session, project_id: str, target_user_id: str, next_role: Optional[ProjectRole]
+) -> None:
     current = (
         db.query(ProjectMembership)
-        .filter(ProjectMembership.project_id == project_id, ProjectMembership.user_id == target_user_id)
+        .filter(
+            ProjectMembership.project_id == project_id,
+            ProjectMembership.user_id == target_user_id,
+        )
         .first()
     )
     if not current or current.role != ProjectRole.MANAGER:
@@ -200,11 +279,16 @@ def _ensure_not_last_manager(db: Session, project_id: str, target_user_id: str, 
         return
     manager_count = (
         db.query(ProjectMembership)
-        .filter(ProjectMembership.project_id == project_id, ProjectMembership.role == ProjectRole.MANAGER)
+        .filter(
+            ProjectMembership.project_id == project_id,
+            ProjectMembership.role == ProjectRole.MANAGER,
+        )
         .count()
     )
     if manager_count <= 1:
-        raise HTTPException(status_code=400, detail="Project must retain at least one manager")
+        raise HTTPException(
+            status_code=400, detail="Project must retain at least one manager"
+        )
 
 
 class CreateProjectRequest(BaseModel):
@@ -260,17 +344,24 @@ def _serialize_connection(conn: ProjectLlmConnection) -> Dict[str, Any]:
         "llm_base_url": conn.llm_base_url,
         "llm_model": conn.llm_model,
         "llm_api_key_set": bool(conn.llm_api_key_encrypted),
-        "llm_api_key_hint": ("••••" + conn.llm_api_key_last4) if conn.llm_api_key_last4 else "",
+        "llm_api_key_hint": (
+            ("••••" + conn.llm_api_key_last4) if conn.llm_api_key_last4 else ""
+        ),
         "is_default": conn.is_default,
         "created_at": to_api_timestamp(conn.created_at),
         "updated_at": to_api_timestamp(conn.updated_at),
     }
 
 
-def _get_connection(db: Session, project_id: str, connection_id: str) -> ProjectLlmConnection:
+def _get_connection(
+    db: Session, project_id: str, connection_id: str
+) -> ProjectLlmConnection:
     conn = (
         db.query(ProjectLlmConnection)
-        .filter(ProjectLlmConnection.id == connection_id, ProjectLlmConnection.project_id == project_id)
+        .filter(
+            ProjectLlmConnection.id == connection_id,
+            ProjectLlmConnection.project_id == project_id,
+        )
         .first()
     )
     if not conn:
@@ -287,7 +378,7 @@ def _apply_connection_key(
 ) -> None:
     """Set base_url/model/name and resolve the API key (new / keep / clear)."""
     conn.name = req.name.strip()
-    conn.llm_base_url = req.llm_base_url.strip().rstrip("/")
+    conn.llm_base_url = _validate_llm_base_url(req.llm_base_url, settings)
     conn.llm_model = req.llm_model.strip()
 
     api_key = req.llm_api_key.strip()
@@ -300,9 +391,14 @@ def _apply_connection_key(
         conn.llm_api_key_last4 = ""
         return
     if not encryption_available(settings):
-        raise HTTPException(status_code=400, detail="LLM config encryption is not configured")
+        raise HTTPException(
+            status_code=400, detail="LLM config encryption is not configured"
+        )
     stored = build_llm_config_storage(
-        base_url=conn.llm_base_url, model=conn.llm_model, api_key=api_key, settings=settings
+        base_url=conn.llm_base_url,
+        model=conn.llm_model,
+        api_key=api_key,
+        settings=settings,
     )
     conn.llm_api_key_encrypted = stored["llm_api_key_encrypted"]
     conn.llm_api_key_last4 = stored["llm_api_key_last4"]
@@ -318,7 +414,9 @@ def list_llm_connections(
     conns = (
         db.query(ProjectLlmConnection)
         .filter(ProjectLlmConnection.project_id == project_id)
-        .order_by(ProjectLlmConnection.is_default.desc(), ProjectLlmConnection.created_at)
+        .order_by(
+            ProjectLlmConnection.is_default.desc(), ProjectLlmConnection.created_at
+        )
         .all()
     )
     return {"connections": [_serialize_connection(c) for c in conns]}
@@ -331,10 +429,16 @@ def create_llm_connection(
     db: Session = Depends(get_db),
     principal: Principal = Depends(require_ui_principal),
 ) -> Dict[str, Any]:
-    _require_project_access(db, principal, project_id)
+    _require_project_manager(db, principal, project_id)
     settings = PlatformSettings()
-    existing = db.query(ProjectLlmConnection).filter(ProjectLlmConnection.project_id == project_id).count()
-    conn = ProjectLlmConnection(project_id=project_id, created_by_user_id=principal.user.id)
+    existing = (
+        db.query(ProjectLlmConnection)
+        .filter(ProjectLlmConnection.project_id == project_id)
+        .count()
+    )
+    conn = ProjectLlmConnection(
+        project_id=project_id, created_by_user_id=principal.user.id
+    )
     _apply_connection_key(conn, req, is_new=True, settings=settings)
     conn.is_default = existing == 0  # first connection becomes the default
     db.add(conn)
@@ -342,7 +446,9 @@ def create_llm_connection(
         db.commit()
     except IntegrityError:
         db.rollback()
-        raise HTTPException(status_code=400, detail="A connection with that name already exists")
+        raise HTTPException(
+            status_code=400, detail="A connection with that name already exists"
+        )
     db.refresh(conn)
     return _serialize_connection(conn)
 
@@ -355,7 +461,7 @@ def update_llm_connection(
     db: Session = Depends(get_db),
     principal: Principal = Depends(require_ui_principal),
 ) -> Dict[str, Any]:
-    _require_project_access(db, principal, project_id)
+    _require_project_manager(db, principal, project_id)
     settings = PlatformSettings()
     conn = _get_connection(db, project_id, connection_id)
     _apply_connection_key(conn, req, is_new=False, settings=settings)
@@ -363,7 +469,9 @@ def update_llm_connection(
         db.commit()
     except IntegrityError:
         db.rollback()
-        raise HTTPException(status_code=400, detail="A connection with that name already exists")
+        raise HTTPException(
+            status_code=400, detail="A connection with that name already exists"
+        )
     db.refresh(conn)
     return _serialize_connection(conn)
 
@@ -375,7 +483,7 @@ def delete_llm_connection(
     db: Session = Depends(get_db),
     principal: Principal = Depends(require_ui_principal),
 ) -> Dict[str, Any]:
-    _require_project_access(db, principal, project_id)
+    _require_project_manager(db, principal, project_id)
     conn = _get_connection(db, project_id, connection_id)
     was_default = conn.is_default
     db.delete(conn)
@@ -401,7 +509,7 @@ def set_default_llm_connection(
     db: Session = Depends(get_db),
     principal: Principal = Depends(require_ui_principal),
 ) -> Dict[str, Any]:
-    _require_project_access(db, principal, project_id)
+    _require_project_manager(db, principal, project_id)
     conn = _get_connection(db, project_id, connection_id)
     db.query(ProjectLlmConnection).filter(
         ProjectLlmConnection.project_id == project_id
@@ -419,7 +527,7 @@ async def test_llm_connection(
     db: Session = Depends(get_db),
     principal: Principal = Depends(require_ui_principal),
 ) -> Dict[str, Any]:
-    _require_project_access(db, principal, project_id)
+    _require_project_manager(db, principal, project_id)
     settings = PlatformSettings()
     conn = _get_connection(db, project_id, connection_id)
     cfg = {
@@ -431,11 +539,15 @@ async def test_llm_connection(
     except RuntimeError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     if not api_key:
-        raise HTTPException(status_code=400, detail="No API key configured for this connection")
+        raise HTTPException(
+            status_code=400, detail="No API key configured for this connection"
+        )
 
     from openai import AsyncOpenAI
 
-    client = AsyncOpenAI(base_url=conn.llm_base_url or "https://api.openai.com/v1", api_key=api_key)
+    client = AsyncOpenAI(
+        base_url=conn.llm_base_url or "https://api.openai.com/v1", api_key=api_key
+    )
     model = conn.llm_model or "gpt-4o-mini"
     try:
         resp = await create_chat_completion_compat(
@@ -474,7 +586,10 @@ def create_project_for_creator(
     principal: Principal = Depends(require_ui_principal),
 ) -> Dict[str, Any]:
     if not _can_create_project(db, principal):
-        raise HTTPException(status_code=403, detail="Only admins and project managers can create projects")
+        raise HTTPException(
+            status_code=403,
+            detail="Only admins and project managers can create projects",
+        )
     slug = _slugify(req.slug or req.name)
     if db.query(Project).filter(Project.slug == slug).first():
         raise HTTPException(status_code=400, detail="Project slug already exists")
@@ -555,11 +670,16 @@ def add_project_member(
         raise HTTPException(status_code=404, detail="User not found")
     existing = (
         db.query(ProjectMembership)
-        .filter(ProjectMembership.project_id == project.id, ProjectMembership.user_id == user.id)
+        .filter(
+            ProjectMembership.project_id == project.id,
+            ProjectMembership.user_id == user.id,
+        )
         .first()
     )
     if existing:
-        raise HTTPException(status_code=400, detail="User is already a member of this project")
+        raise HTTPException(
+            status_code=400, detail="User is already a member of this project"
+        )
     member = ProjectMembership(
         project_id=project.id,
         user_id=user.id,
@@ -585,7 +705,10 @@ def update_project_member(
         raise HTTPException(status_code=403, detail="Manager only")
     member = (
         db.query(ProjectMembership)
-        .filter(ProjectMembership.project_id == project_id, ProjectMembership.user_id == user_id)
+        .filter(
+            ProjectMembership.project_id == project_id,
+            ProjectMembership.user_id == user_id,
+        )
         .first()
     )
     if not member:
@@ -611,7 +734,10 @@ def remove_project_member(
         raise HTTPException(status_code=403, detail="Manager only")
     member = (
         db.query(ProjectMembership)
-        .filter(ProjectMembership.project_id == project_id, ProjectMembership.user_id == user_id)
+        .filter(
+            ProjectMembership.project_id == project_id,
+            ProjectMembership.user_id == user_id,
+        )
         .first()
     )
     if not member:
@@ -688,7 +814,11 @@ def revoke_project_api_key(
     principal: Principal = Depends(require_ui_principal),
 ) -> Dict[str, Any]:
     _require_project_access(db, principal, project_id)
-    key = db.query(ApiKey).filter(ApiKey.id == key_id, ApiKey.project_id == project_id).first()
+    key = (
+        db.query(ApiKey)
+        .filter(ApiKey.id == key_id, ApiKey.project_id == project_id)
+        .first()
+    )
     if not key:
         raise HTTPException(status_code=404, detail="API key not found")
     is_owner = key.user_id == principal.user.id
@@ -747,7 +877,11 @@ def update_project(
         project.name = req.name.strip()
     if req.slug is not None:
         next_slug = _slugify(req.slug)
-        conflict = db.query(Project).filter(Project.slug == next_slug, Project.id != project.id).first()
+        conflict = (
+            db.query(Project)
+            .filter(Project.slug == next_slug, Project.id != project.id)
+            .first()
+        )
         if conflict:
             raise HTTPException(status_code=400, detail="Project slug already exists")
         project.slug = next_slug
@@ -774,7 +908,15 @@ def archive_project(
         db.commit()
         return {"ok": True, "project_id": project.id, "archived": True}
     db.query(ApiKey).filter(ApiKey.project_id == project.id).delete()
-    db.query(ProjectMembership).filter(ProjectMembership.project_id == project.id).delete()
+    db.query(ProjectAnalysisRuleAlias).filter(
+        ProjectAnalysisRuleAlias.project_id == project.id
+    ).delete()
+    db.query(ProjectAnalysisRuleVersion).filter(
+        ProjectAnalysisRuleVersion.project_id == project.id
+    ).delete()
+    db.query(ProjectMembership).filter(
+        ProjectMembership.project_id == project.id
+    ).delete()
     db.delete(project)
     db.commit()
     return {"ok": True, "project_id": project.id, "deleted": True}

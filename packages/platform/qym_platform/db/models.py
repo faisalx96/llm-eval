@@ -53,6 +53,12 @@ class DatasetVersionStatus(str, enum.Enum):
     ARCHIVED = "archived"
 
 
+class AnalysisRuleVersionStatus(str, enum.Enum):
+    DRAFT = "draft"
+    PUBLISHED = "published"
+    ARCHIVED = "archived"
+
+
 class ApprovalDecision(str, enum.Enum):
     APPROVED = "APPROVED"
     REJECTED = "REJECTED"
@@ -103,11 +109,107 @@ class Project(Base):
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     slug: Mapped[str] = mapped_column(String(200), nullable=False, unique=True, index=True)
     description: Mapped[str] = mapped_column(Text, default="")
-    analyzer_roles: Mapped[list[dict[str, str]]] = mapped_column(JSON, default=list)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
     created_by_user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class ProjectAnalysisRuleVersion(Base):
+    """Project-scoped analyzer rules draft or immutable published snapshot."""
+
+    __tablename__ = "project_analysis_rule_versions"
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid4())
+    )
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), index=True)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    name: Mapped[str] = mapped_column(String(200), default="")
+    description: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[AnalysisRuleVersionStatus] = mapped_column(
+        Enum(
+            AnalysisRuleVersionStatus,
+            values_callable=lambda e: [x.value for x in e],
+        ),
+        default=AnalysisRuleVersionStatus.DRAFT,
+    )
+    rules: Mapped[list[dict[str, str]]] = mapped_column(JSON, default=list)
+    source: Mapped[str] = mapped_column(String(30), default="manual")
+    parent_version_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("project_analysis_rule_versions.id"), nullable=True
+    )
+    base_version_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("project_analysis_rule_versions.id"), nullable=True
+    )
+    content_hash: Mapped[str] = mapped_column(String(64), default="")
+    created_by_user_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("users.id"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+    published_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    published_by_user_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("users.id"), nullable=True
+    )
+    activated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    activated_by_user_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("users.id"), nullable=True
+    )
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    deleted_by_user_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("users.id"), nullable=True
+    )
+    restored_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    restored_by_user_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("users.id"), nullable=True
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "project_id",
+            "version",
+            name="uq_project_analysis_rule_version",
+        ),
+        Index(
+            "ix_project_analysis_rule_versions_status",
+            "project_id",
+            "status",
+        ),
+        Index(
+            "ix_project_analysis_rule_versions_parent",
+            "parent_version_id",
+        ),
+        Index(
+            "ix_project_analysis_rule_versions_base",
+            "base_version_id",
+        ),
+    )
+
+
+class ProjectAnalysisRuleAlias(Base):
+    """Mutable project-scoped pointer to a published analyzer rule version."""
+
+    __tablename__ = "project_analysis_rule_aliases"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), index=True)
+    alias: Mapped[str] = mapped_column(String(100), nullable=False)
+    rule_version_id: Mapped[str] = mapped_column(
+        ForeignKey("project_analysis_rule_versions.id"), index=True
+    )
+    updated_by_user_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "project_id", "alias", name="uq_project_analysis_rule_alias"
+        ),
+    )
 
 
 class ProjectMembership(Base):

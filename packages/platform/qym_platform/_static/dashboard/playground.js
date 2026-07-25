@@ -10,7 +10,6 @@ window.QymPlayground = (function () {
   var _overlay = null;
   var _config = null;
   var _connectionId = null;
-  var _corrections = [];
   var _testResults = [];
   var _running = false;
   var _previewTimer = null;
@@ -20,7 +19,12 @@ window.QymPlayground = (function () {
   var _customVars = [];
   var _configUnlocked = false;
   var _referenceDocuments = [];
-  var _analysisRoles = [];
+  var _analysisRules = [];
+  var _ruleVersions = [];
+  var _selectedRuleVersionId = null;
+  var _canDeleteRuleVersions = false;
+  var _canActivateRuleVersions = false;
+  var _canRestoreRuleVersions = false;
   var _documentUploadsInFlight = 0;
 
   // ── Public API ──
@@ -40,7 +44,7 @@ window.QymPlayground = (function () {
     if (_overlay) _overlay.style.display = 'none';
   }
 
-  // ── Fetch config + corrections then build modal ──
+  // ── Fetch analyzer configuration then build modal ──
 
   function _fetchConfigAndOpen() {
     var runId = _getRunId();
@@ -49,20 +53,29 @@ window.QymPlayground = (function () {
 
     Promise.all([
       fetch(base('api/runs/' + runId + '/analysis-config')).then(function (r) { if (!r.ok) throw new Error('Config: HTTP ' + r.status); return r.json(); }),
-      fetch(base('api/runs/' + runId + '/corrections')).then(function (r) { if (!r.ok) throw new Error('Corrections: HTTP ' + r.status); return r.json(); }),
       fetch(base('api/runs/' + runId + '/analysis-documents')).then(function (r) { if (!r.ok) throw new Error('Documents: HTTP ' + r.status); return r.json(); }),
+      fetch(base('api/runs/' + runId + '/analysis-rule-versions?include_deleted=true')).then(function (r) { if (!r.ok) throw new Error('Rule versions: HTTP ' + r.status); return r.json(); }),
     ]).then(function (results) {
       _config = results[0];
       var _conns = (_config && _config.llm_connections) || [];
       _connectionId = (_config && _config.default_connection_id) || (_conns[0] && _conns[0].id) || null;
-      _corrections = (results[1] && results[1].corrections) || [];
       _testResults = [];
       _matchedPage = 0;
       _selectedItemId = null;
       _customVars = [];
       _configUnlocked = true;
-      _referenceDocuments = (results[2] && results[2].documents) || [];
-      _analysisRoles = (_config && _config.analysis_roles) || [];
+      _referenceDocuments = (results[1] && results[1].documents) || [];
+      _analysisRules = (_config && _config.analysis_rules) || [];
+      _ruleVersions = (results[2] && results[2].versions) || [];
+      _selectedRuleVersionId = (_config && _config.analysis_rule_version && _config.analysis_rule_version.id)
+        || (results[2] && results[2].production_version_id)
+        || (_ruleVersions[0] && _ruleVersions[0].id)
+        || null;
+      var selectedRuleVersion = _ruleVersions.find(function (version) { return version.id === _selectedRuleVersionId; });
+      if (selectedRuleVersion) _analysisRules = selectedRuleVersion.rules || [];
+      _canDeleteRuleVersions = !!(results[2] && results[2].can_delete);
+      _canActivateRuleVersions = !!(results[2] && results[2].can_activate);
+      _canRestoreRuleVersions = !!(results[2] && results[2].can_restore);
       _documentUploadsInFlight = 0;
       _createModal();
       _overlay.style.display = 'flex';
@@ -75,6 +88,15 @@ window.QymPlayground = (function () {
   // ── Helpers ──
 
   function _getRunId() { return _opts.getRunId ? _opts.getRunId() : null; }
+
+  function _getSelectedMetrics() {
+    if (_opts.getMetrics) {
+      var selected = _opts.getMetrics();
+      return Array.isArray(selected) ? selected : [];
+    }
+    var metric = _opts.getMetric ? _opts.getMetric() : null;
+    return metric ? [metric] : null;
+  }
 
   function _esc(text) {
     if (_opts.escapeHtml) return _opts.escapeHtml(text);
@@ -178,29 +200,43 @@ window.QymPlayground = (function () {
     return s.length > maxLen ? s.slice(0, maxLen) + '\u2026' : s;
   }
 
+  // Legacy root-cause palette shared by prompt previews, corrections, items,
+  // and test results. Matching is case-insensitive so catalog variants do not
+  // silently change color.
+  var _RC_COLORS = {
+    'Hallucination': '#ef4444', 'Incomplete Answer': '#f97316',
+    'Wrong Format': '#00d4aa', 'Context Missing': '#3b82f6',
+    'Reasoning Error': '#a855f7', 'Tool Use Error': '#ec4899',
+    'Instruction Following': '#14b8a6', 'Knowledge Gap': '#6366f1',
+    'Dataset Issue': '#eab308',
+  };
+
+  function _rootCauseColor(value, fallback) {
+    var normalized = String(value || '').trim().toLowerCase();
+    var names = Object.keys(_RC_COLORS);
+    for (var i = 0; i < names.length; i++) {
+      if (names[i].toLowerCase() === normalized) return _RC_COLORS[names[i]];
+    }
+    return fallback === undefined ? '#e07a5f' : fallback;
+  }
+
   function _highlightPreview(escaped) {
     // Highlight section labels like INPUT:, EXPECTED OUTPUT:, ACTUAL OUTPUT:, etc.
-    escaped = escaped.replace(/^(REFERENCE DOCUMENTS:|DOCUMENT:|INPUT:|EXPECTED OUTPUT:|ACTUAL OUTPUT:|ERROR:|METRIC SCORES:|METADATA:|METRIC METADATA(?: \([^)]+\))?:)/gm,
+    escaped = escaped.replace(/^(REFERENCE DOCUMENTS:|DOCUMENT:|INPUT:|EXPECTED OUTPUT:|ACTUAL OUTPUT:|ERROR:|SELECTED METRIC RESULT:|ITEM METADATA:|SELECTED METADATA:)/gm,
       '<span class="pg-hl-label">$1</span>');
-    // Highlight --- Example --- / --- End Example --- blocks
-    escaped = escaped.replace(/^(--- (?:Example|End Example) ---)/gm,
-      '<span class="pg-hl-example">$1</span>');
-    // Highlight CORRECT root_cause: lines
-    escaped = escaped.replace(/^(CORRECT root_cause:.*)/gm,
-      '<span class="pg-hl-correct">$1</span>');
     // Highlight bulleted list items (root cause categories and details, including indented)
-    escaped = escaped.replace(/^( *- .+)$/gm,
-      '<span class="pg-hl-category">$1</span>');
+    escaped = escaped.replace(/^( *- (.+))$/gm, function (line, fullLine, name) {
+      var color = _rootCauseColor(name, '');
+      return color
+        ? '<span class="pg-hl-category" style="color:' + color + '">' + fullLine + '</span>'
+        : '<span class="pg-hl-category">' + fullLine + '</span>';
+    });
     // Highlight category headers in grouped details (e.g. "  Gold Query:")
     escaped = escaped.replace(/^( {2}\S.+:)$/gm,
       '<span class="pg-hl-label">$1</span>');
     // Highlight Additional Instructions block (label + all content after it until end)
     escaped = escaped.replace(/(Additional Instructions:\n)([\s\S]*)$/m,
       '<span class="pg-hl-label">$1</span><span class="pg-hl-dynamic">$2</span>');
-    escaped = escaped.replace(/^(CORRECT root_cause_detail:.*)/gm,
-      '<span class="pg-hl-correct">$1</span>');
-    escaped = escaped.replace(/^(CORRECT reasoning:.*)/gm,
-      '<span class="pg-hl-correct">$1</span>');
     // Highlight JSON response format hints
     escaped = escaped.replace(/(&quot;root_cause&quot;|&quot;root_cause_detail&quot;|&quot;root_cause_note&quot;|&quot;confidence&quot;)/g,
       '<span class="pg-hl-json-key">$1</span>');
@@ -538,6 +574,7 @@ window.QymPlayground = (function () {
     var humanOverwriteEl = document.getElementById('pg-allow-human-overwrite');
     var allowHumanOverwrite = humanOverwriteEl ? humanOverwriteEl.checked : false;
     var threshold = _opts.getThreshold ? _opts.getThreshold() : 0.8;
+    var selectedMetrics = _getSelectedMetrics();
 
     return rows.filter(function (r) {
       var md = r.item_metadata;
@@ -550,6 +587,7 @@ window.QymPlayground = (function () {
       var failedMetrics = [];
       if (metricScores) {
         Object.keys(metricScores).forEach(function (metricName) {
+          if (selectedMetrics && selectedMetrics.indexOf(metricName) === -1) return;
           var metricScore = metricScores[metricName];
           var metricThreshold = metricThresholds[metricName] == null ? threshold : Number(metricThresholds[metricName]);
           var direction = String(metricDirections[metricName] || 'maximize').toLowerCase();
@@ -715,15 +753,48 @@ window.QymPlayground = (function () {
     return Number(value || 0).toLocaleString() + ' characters';
   }
 
-  function _buildAnalysisRolesEditor() {
-    if (_analysisRoles.length === 0) {
-      return '<div class="pg-role-empty">No roles yet. Infer roles after selecting reference documents, or add one manually.</div>';
+  function _buildAnalysisRulesEditor() {
+    var selected = _ruleVersions.find(function (version) { return version.id === _selectedRuleVersionId; });
+    var readOnly = !selected || selected.status !== 'draft';
+    if (_analysisRules.length === 0) {
+      return '<div class="pg-rule-empty">' + (readOnly
+        ? 'This version has no rules. Create a draft before editing.'
+        : 'No rules yet. Generate rules after selecting reference documents, or add one manually.') + '</div>';
     }
-    return _analysisRoles.map(function (role, index) {
-      return '<div class="pg-role-item" data-role-index="' + index + '">' +
-        '<div class="pg-role-item-head"><span>Role ' + (index + 1) + '</span><button class="pg-role-remove" type="button" data-role-index="' + index + '">Remove</button></div>' +
-        '<input class="pg-role-name" type="text" value="' + _escAttr(role.name || '') + '" placeholder="Role name" aria-label="Role name" />' +
-        '<textarea class="pg-role-description" placeholder="Domain knowledge, invariants, and evidence this role contributes" aria-label="Role description">' + _esc(role.description || '') + '</textarea>' +
+    return _analysisRules.map(function (rule, index) {
+      return '<div class="pg-rule-item" data-rule-index="' + index + '" data-rule-id="' + _escAttr(rule.id || '') + '">' +
+        '<div class="pg-rule-item-head"><span>Rule ' + (index + 1) + '</span><button class="pg-rule-action pg-rule-action-danger pg-rule-remove" type="button" data-rule-index="' + index + '"' + (readOnly ? ' disabled' : '') + '>Remove</button></div>' +
+        '<input class="pg-rule-title" type="text" value="' + _escAttr(rule.title || '') + '" placeholder="Rule title" aria-label="Rule title"' + (readOnly ? ' disabled' : '') + ' />' +
+        '<textarea class="pg-rule-instruction" placeholder="What must be checked and how it affects the diagnosis" aria-label="Rule instruction"' + (readOnly ? ' disabled' : '') + '>' + _esc(rule.instruction || '') + '</textarea>' +
+      '</div>';
+    }).join('');
+  }
+
+  function _buildRuleVersionHistory() {
+    if (_ruleVersions.length === 0) {
+      return '<div class="pg-rule-empty">No saved versions yet.</div>';
+    }
+    return _ruleVersions.map(function (version) {
+      var state = version.status === 'draft' ? 'Draft' : (version.is_active ? 'Production' : (version.status || 'Published'));
+      var created = version.created_at ? new Date(version.created_at).toLocaleString() : 'Unknown date';
+      var actions = [];
+      if (version.id !== _selectedRuleVersionId) {
+        actions.push('<button class="pg-rule-action" type="button" data-open-rule-version="' + _escAttr(version.id) + '">Open</button>');
+      }
+      if (version.status === 'draft' && _canActivateRuleVersions) {
+        actions.push('<button class="pg-rule-action pg-rule-action-primary" type="button" data-publish-rule-version="' + _escAttr(version.id) + '">Publish</button>');
+      }
+      if (version.status === 'published' && !version.is_active && _canActivateRuleVersions) {
+        actions.push('<button class="pg-rule-action pg-rule-action-primary" type="button" data-activate-rule-version="' + _escAttr(version.id) + '">Set production</button>');
+      }
+      if (version.parent_version_id) {
+        actions.push('<button class="pg-rule-action" type="button" data-compare-rule-version="' + _escAttr(version.id) + '">Compare</button>');
+      }
+      return '<div class="pg-rule-version' + (version.id === _selectedRuleVersionId ? ' pg-rule-version-selected' : '') + '">' +
+        '<div class="pg-rule-version-header"><span class="pg-rule-version-name">v' + version.version + '</span>' +
+        '<span class="pg-rule-version-state">' + _esc(state) + '</span></div>' +
+        '<div class="pg-rule-version-meta">' + _esc(version.name || version.source) + ' · ' + version.rules.length + ' rules · ' + _esc(created) + '</div>' +
+        (actions.length ? '<div class="pg-rule-version-actions">' + actions.join('') + '</div>' : '') +
       '</div>';
     }).join('');
   }
@@ -758,17 +829,40 @@ window.QymPlayground = (function () {
     descriptionBody += '<div class="pg-instructions-hint">Describe what the project does, who it serves, and what a correct output should accomplish. This context is included in every analyzer prompt.</div>';
     descriptionBody += '<textarea class="pg-instructions-textarea pg-project-description" id="pg-project-description" placeholder="e.g. This assistant converts natural-language analytics questions into read-only SQL for our warehouse. A correct response must use the provided schema, preserve the user intent, and avoid data-changing statements." spellcheck="true" required aria-required="true"></textarea>';
     descriptionBody += '<div class="pg-required-message" id="pg-project-description-error">Enter a project description before testing or running the analyzer.</div>';
-    var rolesBody = '<div class="pg-instructions-hint">Roles are neutral domain-knowledge lenses. The role writer reads selected documents and approved corrections, then captures facts and past lessons without creating label shortcuts.</div>' +
-      '<div class="pg-role-list" id="pg-role-list">' + _buildAnalysisRolesEditor() + '</div>' +
-      '<button class="pg-context-secondary" id="pg-add-role" type="button">Add role</button>';
+    var rulesBody = '<div class="pg-instructions-hint">Rules are shared requirements and decision instructions applied during diagnosis.</div>' +
+      '<div class="pg-rule-inference-options">' +
+        '<div class="pg-rule-inference-heading">Generate rules from</div>' +
+        '<label class="pg-inference-toggle">' +
+          '<input id="pg-infer-use-description" type="checkbox" checked />' +
+          '<span class="pg-inference-switch" aria-hidden="true"></span>' +
+          '<span class="pg-inference-copy"><strong>Project description</strong><span>Use the saved business and correctness context.</span></span>' +
+        '</label>' +
+        '<label class="pg-inference-toggle">' +
+          '<input id="pg-infer-use-documents" type="checkbox" checked />' +
+          '<span class="pg-inference-switch" aria-hidden="true"></span>' +
+          '<span class="pg-inference-copy"><strong>Selected documents</strong><span>Use documents currently selected for this run.</span></span>' +
+        '</label>' +
+        '<label class="pg-inference-toggle">' +
+          '<input id="pg-infer-use-examples" type="checkbox" checked />' +
+          '<span class="pg-inference-switch" aria-hidden="true"></span>' +
+          '<span class="pg-inference-copy"><strong>Approved English examples</strong><span>Use every approved English correction for this project and task.</span></span>' +
+        '</label>' +
+      '</div>' +
+      '<div class="pg-rule-list" id="pg-rule-list">' + _buildAnalysisRulesEditor() + '</div>' +
+      '<button class="pg-context-secondary" id="pg-add-rule" type="button">Add rule</button>' +
+      '<div class="pg-context-divider"></div>' +
+      '<h3 class="pg-context-title">Version history</h3>' +
+      '<div class="pg-rule-version-list" id="pg-rule-version-list">' + _buildRuleVersionHistory() + '</div>' +
+      '<div class="pg-rule-compare" id="pg-rule-version-compare" hidden></div>';
     html += '<aside class="pg-context-panel">' +
       '<div class="pg-context-eyebrow">Project context</div>' +
       '<h2 class="pg-context-title">Description</h2>' + descriptionBody +
       '<div class="pg-context-divider"></div>' +
-      '<h2 class="pg-context-title">Analysis roles</h2>' + rolesBody +
+      '<h2 class="pg-context-title">Analysis rules</h2>' + rulesBody +
       '<div class="pg-context-actions">' +
-        '<button class="pg-context-secondary" id="pg-save-context" type="button">Save context</button>' +
-        '<button class="pg-context-primary" id="pg-infer-roles" type="button">Infer roles</button>' +
+        '<button class="pg-context-secondary" id="pg-save-context" type="button">Save draft</button>' +
+        '<button class="pg-context-secondary" id="pg-create-rule-version" type="button">Create draft</button>' +
+        '<button class="pg-context-primary" id="pg-infer-rules" type="button">Generate rules</button>' +
       '</div>' +
       '<div class="pg-context-status" id="pg-context-status" role="status" aria-live="polite"></div>' +
     '</aside>';
@@ -776,7 +870,7 @@ window.QymPlayground = (function () {
 
     // ── Reference Documents ──
     var documentsBody = '';
-    documentsBody += '<div class="pg-instructions-hint">Manage the shared project document library. Uploaded documents remain available to every project member; selections apply to this run.</div>';
+    documentsBody += '<div class="pg-instructions-hint">Manage the shared project document library. Uploaded documents remain available to every project member; checked documents are included in the current analysis.</div>';
     documentsBody += '<label class="pg-document-dropzone" id="pg-document-dropzone" for="pg-document-input">' +
       '<span class="pg-document-upload-title">Choose documents or drop them here</span>' +
       '<span class="pg-document-upload-help">PDF, DOCX, TXT, Markdown, HTML, CSV, JSON, or YAML · up to 10 MB each</span>' +
@@ -832,9 +926,6 @@ window.QymPlayground = (function () {
 
     // ── Variable Mapping ──
     html += _buildVariableMapping();
-
-    // ── Few-Shot Examples ──
-    html += _buildFewShotExamples();
 
     // ── Filter & Matched Items ──
     var matchedCount = _getMatchedItems().length;
@@ -970,105 +1061,7 @@ window.QymPlayground = (function () {
     return html;
   }
 
-  // ── Few-Shot Examples Section ──
-
-  function _buildFewShotExamples() {
-    var body = '';
-
-    if (_corrections.length === 0) {
-      body += '<div class="pg-empty-msg">No corrections yet \u2014 corrections are created when you manually edit an AI-assigned root cause in the items table</div>';
-    } else {
-      body += '<div id="pg-corrections-list">';
-      for (var c = 0; c < _corrections.length; c++) {
-        var cor = _corrections[c];
-        var humanColor = _RC_COLORS[cor.human_root_cause] || '#e07a5f';
-        var aiColor = _RC_COLORS[cor.ai_root_cause] || '#e07a5f';
-        var hasAiSuggestion = !!(cor.ai_root_cause && cor.ai_root_cause !== 'Unanalyzed');
-        body += '<div class="pg-example-card">';
-
-        // Header: checkbox + correction flow
-        body += '<label class="pg-example-header">';
-        body += '<span class="custom-checkbox"><input type="checkbox" data-correction-id="' + cor.id + '" checked /><span class="checkmark"></span></span>';
-        body += '<span class="pg-example-num">#' + (c + 1) + '</span>';
-        if (hasAiSuggestion) {
-          body += '<span class="pg-example-ai-tag">AI Suggested</span>';
-          body += '<span class="pg-example-flow-arrow">\u2192</span>';
-        }
-        body += '<span class="pg-example-human-tag">' + _esc(hasAiSuggestion ? 'Human Corrected' : 'Human Labeled') + '</span>';
-        body += '</label>';
-
-        // Data preview
-        body += '<div class="pg-example-body">';
-
-        body += '<div class="pg-example-badges-row">';
-        if (hasAiSuggestion) {
-          body += '<div class="pg-example-badge-group">';
-          body += '<span class="pg-example-badge-label">AI</span>';
-          if (cor.ai_root_cause_detail) {
-            body += '<span class="pg-example-badge pg-example-badge-detail ai-suggested" style="border-color:' + aiColor + '40;color:' + aiColor + ';background:' + aiColor + '15;">' + _esc(cor.ai_root_cause_detail) + '</span>';
-          }
-          body += '<span class="pg-example-badge pg-example-badge-category ai-suggested" style="border-color:' + aiColor + '40;color:' + aiColor + ';background:' + aiColor + '15;">' + _esc(cor.ai_root_cause) + '</span>';
-          body += '</div>';
-        }
-
-        body += '<div class="pg-example-badge-group">';
-        body += '<span class="pg-example-badge-label">' + _esc(hasAiSuggestion ? 'Corrected' : 'Labeled') + '</span>';
-        if (cor.human_root_cause_detail) {
-          body += '<span class="pg-example-badge pg-example-badge-detail" style="border-color:' + humanColor + '40;color:' + humanColor + ';background:' + humanColor + '15;">' + _esc(cor.human_root_cause_detail) + '</span>';
-        }
-        body += '<span class="pg-example-badge pg-example-badge-category" style="border-color:' + humanColor + '40;color:' + humanColor + ';background:' + humanColor + '15;">' + _esc(cor.human_root_cause) + '</span>';
-        body += '</div>';
-        body += '</div>';
-
-        if (cor.input_snapshot != null) {
-          body += '<div class="pg-example-field">';
-          body += '<span class="pg-example-field-lbl">Input</span>';
-          body += '<span class="pg-example-field-val">' + _esc(_truncate(cor.input_snapshot, 120)) + '</span>';
-          body += '</div>';
-        }
-
-        var midRow = '';
-        if (cor.expected_snapshot != null) {
-          midRow += '<div class="pg-example-field pg-example-half">';
-          midRow += '<span class="pg-example-field-lbl">Expected</span>';
-          midRow += '<span class="pg-example-field-val">' + _esc(_truncate(cor.expected_snapshot, 80)) + '</span>';
-          midRow += '</div>';
-        }
-        if (cor.output_snapshot != null) {
-          midRow += '<div class="pg-example-field pg-example-half">';
-          midRow += '<span class="pg-example-field-lbl">Output</span>';
-          midRow += '<span class="pg-example-field-val">' + _esc(_truncate(cor.output_snapshot, 80)) + '</span>';
-          midRow += '</div>';
-        }
-        if (midRow) body += '<div class="pg-example-row">' + midRow + '</div>';
-
-        if (cor.human_root_cause_note) {
-          body += '<div class="pg-example-feedback">';
-          body += '<span class="pg-example-field-lbl">Feedback</span>';
-          body += '<span class="pg-example-feedback-text">' + _esc(cor.human_root_cause_note) + '</span>';
-          body += '</div>';
-        }
-
-        body += '</div>'; // pg-example-body
-        body += '</div>'; // pg-example-card
-      }
-      body += '</div>';
-    }
-    return _section('Few-Shot Examples', body, {
-      open: false,
-      badge: String(_corrections.length),
-      extraSummary: _corrections.length > 0 ? '<button class="pg-reset-btn" id="pg-toggle-all-corrections">Toggle All</button>' : '',
-    });
-  }
-
   // ── Matched Items Table ──
-
-  var _RC_COLORS = {
-    'Hallucination': '#ef4444', 'Incomplete Answer': '#f97316',
-    'Wrong Format': '#00d4aa', 'Context Missing': '#3b82f6',
-    'Reasoning Error': '#a855f7', 'Tool Use Error': '#ec4899',
-    'Instruction Following': '#14b8a6', 'Knowledge Gap': '#6366f1',
-  };
 
   function _buildMatchedItemsTable() {
     var matched = _getMatchedItems();
@@ -1093,7 +1086,7 @@ window.QymPlayground = (function () {
       var rcSource = md.root_cause_source || '';
       var rcConfidence = md.root_cause_confidence;
       var isAi = rcSource === 'ai';
-      var rcColor = _RC_COLORS[rc] || '#e07a5f';
+      var rcColor = _rootCauseColor(rc);
       html += '<div class="pg-item-card' + (isSelected ? ' pg-item-selected' : '') + '" data-item-id="' + _escAttr(r.item_id) + '">';
 
       // Top row: index, score, status
@@ -1147,8 +1140,8 @@ window.QymPlayground = (function () {
       cfg.project_description = descriptionEl.value.trim();
     }
 
-    var roles = _readAnalysisRolesFromEditor();
-    if (roles.length > 0) cfg.analysis_roles = roles;
+    var rules = _readAnalysisRulesFromEditor();
+    cfg.analysis_rules = rules;
 
     var selectedDocuments = _referenceDocuments.filter(function (document) { return document.selected !== false; });
     if (selectedDocuments.length > 0) {
@@ -1200,23 +1193,6 @@ window.QymPlayground = (function () {
     // Custom variable mapping
     var customMapping = _getCustomVarMapping();
     if (customMapping) cfg.custom_variable_mapping = customMapping;
-
-    // Corrections
-    var correctionChecks = _overlay ? _overlay.querySelectorAll('#pg-corrections-list input[type="checkbox"][data-correction-id]') : [];
-    if (correctionChecks.length > 0) {
-      var allChecked = true;
-      var noneChecked = true;
-      var ids = [];
-      correctionChecks.forEach(function (cb) {
-        if (cb.checked) { noneChecked = false; ids.push(parseInt(cb.dataset.correctionId, 10)); }
-        else { allChecked = false; }
-      });
-      if (noneChecked) {
-        cfg.corrections_enabled = false;
-      } else if (!allChecked) {
-        cfg.correction_ids = ids;
-      }
-    }
 
     return cfg;
   }
@@ -1359,23 +1335,242 @@ window.QymPlayground = (function () {
     return hasAny ? mapping : null;
   }
 
-  function _readAnalysisRolesFromEditor() {
-    var list = document.getElementById('pg-role-list');
-    if (!list) return _analysisRoles.slice();
-    var roles = [];
-    list.querySelectorAll('.pg-role-item').forEach(function (item) {
-      var nameEl = item.querySelector('.pg-role-name');
-      var descriptionEl = item.querySelector('.pg-role-description');
-      var name = nameEl ? nameEl.value.trim() : '';
-      var description = descriptionEl ? descriptionEl.value.trim() : '';
-      if (name && description) roles.push({ name: name, description: description });
+  function _readAnalysisRuleDraftsFromEditor() {
+    var list = document.getElementById('pg-rule-list');
+    if (!list) return _analysisRules.slice();
+    var rules = [];
+    list.querySelectorAll('.pg-rule-item').forEach(function (item) {
+      var titleEl = item.querySelector('.pg-rule-title');
+      var instructionEl = item.querySelector('.pg-rule-instruction');
+      var title = titleEl ? titleEl.value.trim() : '';
+      var instruction = instructionEl ? instructionEl.value.trim() : '';
+      rules.push({ id: item.dataset.ruleId || undefined, title: title, instruction: instruction });
     });
-    return roles.slice(0, 8);
+    return rules.slice(0, 20);
   }
 
-  function _renderAnalysisRolesEditor() {
-    var list = document.getElementById('pg-role-list');
-    if (list) list.innerHTML = _buildAnalysisRolesEditor();
+  function _readAnalysisRulesFromEditor() {
+    return _readAnalysisRuleDraftsFromEditor().filter(function (rule) {
+      return rule.title && rule.instruction;
+    });
+  }
+
+  function _validateAnalysisRuleDrafts() {
+    var list = document.getElementById('pg-rule-list');
+    if (!list) return true;
+    var invalidField = null;
+    list.querySelectorAll('.pg-rule-item').forEach(function (item) {
+      var titleEl = item.querySelector('.pg-rule-title');
+      var instructionEl = item.querySelector('.pg-rule-instruction');
+      var titleMissing = !titleEl || !titleEl.value.trim();
+      var instructionMissing = !instructionEl || !instructionEl.value.trim();
+      if (titleEl) titleEl.classList.toggle('pg-field-invalid', titleMissing);
+      if (instructionEl) instructionEl.classList.toggle('pg-field-invalid', instructionMissing);
+      if (!invalidField && (titleMissing || instructionMissing)) {
+        invalidField = titleMissing ? titleEl : instructionEl;
+      }
+    });
+    if (!invalidField) return true;
+    invalidField.focus();
+    _setContextStatus('Complete the title and instruction for every rule before saving.', true);
+    return false;
+  }
+
+  function _renderAnalysisRulesEditor() {
+    var list = document.getElementById('pg-rule-list');
+    if (list) list.innerHTML = _buildAnalysisRulesEditor();
+    var selected = _ruleVersions.find(function (version) { return version.id === _selectedRuleVersionId; });
+    var editable = !!selected && selected.status === 'draft';
+    var addButton = document.getElementById('pg-add-rule');
+    var saveButton = document.getElementById('pg-save-context');
+    if (addButton) addButton.disabled = !editable;
+    if (saveButton) saveButton.disabled = !editable;
+  }
+
+  function _setRuleEditorBusy(isBusy) {
+    var list = document.getElementById('pg-rule-list');
+    if (!list) return;
+    list.querySelectorAll('input, textarea, button').forEach(function (control) {
+      control.disabled = isBusy;
+    });
+    var addButton = document.getElementById('pg-add-rule');
+    if (addButton) addButton.disabled = isBusy;
+  }
+
+  function _renderRuleVersionHistory() {
+    var list = document.getElementById('pg-rule-version-list');
+    if (list) list.innerHTML = _buildRuleVersionHistory();
+  }
+
+  function _refreshRuleVersions(syncEditor) {
+    var runId = _getRunId();
+    var base = _opts.apiUrl || function (p) { return '/' + p; };
+    return fetch(base('api/runs/' + runId + '/analysis-rule-versions?include_deleted=true'))
+      .then(function (response) {
+        if (!response.ok) throw new Error('Could not load rule version history');
+        return response.json();
+      })
+      .then(function (data) {
+        _ruleVersions = data.versions || [];
+        _canDeleteRuleVersions = !!data.can_delete;
+        _canActivateRuleVersions = !!data.can_activate;
+        _canRestoreRuleVersions = !!data.can_restore;
+        if (syncEditor) {
+          var selected = _ruleVersions.find(function (version) { return version.id === _selectedRuleVersionId; });
+          if (!selected) {
+            selected = _ruleVersions.find(function (version) { return version.is_active; }) || _ruleVersions[0];
+            _selectedRuleVersionId = selected ? selected.id : null;
+          }
+          _analysisRules = selected ? selected.rules : [];
+          if (_config) _config.analysis_rules = _analysisRules;
+          _renderAnalysisRulesEditor();
+        }
+        _renderRuleVersionHistory();
+      });
+  }
+
+  function _changeRuleVersion(versionId, action) {
+    var runId = _getRunId();
+    var base = _opts.apiUrl || function (p) { return '/' + p; };
+    var suffix = action === 'restore'
+      ? '/restore'
+      : (action === 'activate' ? '/activate' : (action === 'permanent-delete' ? '/permanent' : ''));
+    return fetch(base('api/runs/' + runId + '/analysis-rule-versions/' + encodeURIComponent(versionId) + suffix), {
+      method: action === 'delete' || action === 'permanent-delete' ? 'DELETE' : 'POST',
+    }).then(function (response) {
+      if (!response.ok) return response.json().then(function (data) { throw new Error(data.detail || 'Could not update rule version'); });
+      return _refreshRuleVersions(true);
+    }).then(function () {
+      var message = action === 'restore'
+        ? 'Rule version restored.'
+        : (action === 'activate'
+          ? 'Production rule version changed.'
+          : (action === 'permanent-delete'
+            ? 'Rule version permanently deleted.'
+            : 'Rule version deleted. The latest available version is now active.'));
+      _setContextStatus(message, false);
+      _scheduleAutoPreview(0);
+    }).catch(function (error) {
+      _setContextStatus(error.message || 'Could not update rule version.', true);
+    });
+  }
+
+  function _openRuleVersion(versionId) {
+    var version = _ruleVersions.find(function (candidate) { return candidate.id === versionId; });
+    if (!version) return;
+    _selectedRuleVersionId = version.id;
+    _analysisRules = (version.rules || []).slice();
+    if (_config) _config.analysis_rules = _analysisRules;
+    _renderAnalysisRulesEditor();
+    _renderRuleVersionHistory();
+    _setContextStatus(
+      'Opened v' + version.version + (version.status === 'draft' ? ' draft.' : ' (read-only).'),
+      false
+    );
+    _scheduleAutoPreview(0);
+  }
+
+  function _createRuleDraft() {
+    var runId = _getRunId();
+    var base = _opts.apiUrl || function (p) { return '/' + p; };
+    var selected = _ruleVersions.find(function (version) { return version.id === _selectedRuleVersionId; });
+    var draftName = window.prompt('Optional name for the new draft:', '') || '';
+    return fetch(base('api/runs/' + runId + '/analysis-rule-versions'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from_version: selected ? String(selected.version) : null,
+        name: draftName.trim(),
+      }),
+    }).then(function (response) {
+      if (!response.ok) return response.json().then(function (data) { throw new Error(data.detail || 'Could not create draft'); });
+      return response.json();
+    }).then(function (data) {
+      _selectedRuleVersionId = data.version.id;
+      return _refreshRuleVersions(true).then(function () {
+        _setContextStatus('Created draft v' + data.version.version + '.', false);
+      });
+    });
+  }
+
+  function _publishRuleVersion(versionId) {
+    var version = _ruleVersions.find(function (candidate) { return candidate.id === versionId; });
+    if (!version) return Promise.resolve();
+    if (!window.confirm('Publish v' + version.version + ' as an immutable snapshot? Future edits will require a new draft.')) {
+      return Promise.resolve();
+    }
+    var setProduction = window.confirm('Set v' + version.version + ' as the production ruleset after publishing?');
+    var runId = _getRunId();
+    var base = _opts.apiUrl || function (p) { return '/' + p; };
+    return fetch(base('api/runs/' + runId + '/analysis-rule-versions/' + encodeURIComponent(String(version.version)) + ':publish'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ set_alias: setProduction ? 'production' : null }),
+    }).then(function (response) {
+      if (!response.ok) return response.json().then(function (data) { throw new Error(data.detail || 'Could not publish rule version'); });
+      return response.json();
+    }).then(function () {
+      return _refreshRuleVersions(true);
+    }).then(function () {
+      _setContextStatus(
+        'Published v' + version.version + (setProduction ? ' and set it as production.' : '.'),
+        false
+      );
+    });
+  }
+
+  function _compareRuleVersion(versionId) {
+    var version = _ruleVersions.find(function (candidate) { return candidate.id === versionId; });
+    var parent = version && _ruleVersions.find(function (candidate) { return candidate.id === version.parent_version_id; });
+    if (!version || !parent) return;
+    var runId = _getRunId();
+    var base = _opts.apiUrl || function (p) { return '/' + p; };
+    fetch(base('api/runs/' + runId + '/analysis-rule-versions/' + encodeURIComponent(String(version.version)) + ':compare?base=' + encodeURIComponent(String(parent.version))))
+      .then(function (response) {
+        if (!response.ok) return response.json().then(function (data) { throw new Error(data.detail || 'Could not compare rule versions'); });
+        return response.json();
+      })
+      .then(function (data) {
+        var summary = data.summary || {};
+        var compare = document.getElementById('pg-rule-version-compare');
+        if (compare) {
+          function compactRuleTitle(rule) {
+            return _esc((rule && rule.title) || 'Untitled rule');
+          }
+          function renderEntry(item, kind) {
+            var rule = kind === 'changed' ? (item.after || item.before || {}) : item;
+            var detail = kind === 'changed'
+              ? '<div class="pg-rule-compare-detail-grid"><div><span>Before</span><p>' + _esc((item.before && item.before.instruction) || '') + '</p></div><div><span>After</span><p>' + _esc((item.after && item.after.instruction) || '') + '</p></div></div>'
+              : '<p>' + _esc(rule.instruction || '') + '</p>';
+            return '<details class="pg-rule-compare-entry pg-rule-compare-' + kind + '"><summary><span class="pg-rule-compare-kind">' + (kind === 'changed' ? 'Changed' : (kind === 'added' ? 'Added' : 'Removed')) + '</span><strong>' + compactRuleTitle(rule) + '</strong><span class="pg-rule-compare-chevron">›</span></summary><div class="pg-rule-compare-entry-body">' + detail + '</div></details>';
+          }
+          function renderSection(title, key, items, kind, open) {
+            if (!items.length) return '';
+            var entries = items.map(function (item) { return renderEntry(item, kind); }).join('');
+            return '<details class="pg-rule-compare-group"' + (open ? ' open' : '') + '><summary><span>' + title + '</span><span class="pg-rule-compare-count">' + items.length + '</span></summary><div class="pg-rule-compare-group-body">' + entries + '</div></details>';
+          }
+          var sections = [
+            renderSection('Changed rules', 'changed', data.changed_rules || [], 'changed', true),
+            renderSection('Added rules', 'added', data.added_rules || [], 'added', false),
+            renderSection('Removed rules', 'removed', data.removed_rules || [], 'removed', false),
+          ].join('');
+          compare.innerHTML = '<div class="pg-rule-compare-header"><div><span class="pg-rule-compare-eyebrow">Comparison</span><strong>v' + _esc(String(parent.version)) + ' → v' + _esc(String(version.version)) + '</strong></div><button class="pg-rule-action" type="button" data-close-rule-compare>Close</button></div>' +
+            '<div class="pg-rule-compare-stats"><span><strong>' + (summary.changed || 0) + '</strong> changed</span><span><strong>' + (summary.added || 0) + '</strong> added</span><span><strong>' + (summary.removed || 0) + '</strong> removed</span><span><strong>' + (summary.unchanged || 0) + '</strong> unchanged</span></div>' +
+            (sections || '<div class="pg-rule-version-meta">No rule content changed.</div>');
+          compare.hidden = false;
+        }
+        _setContextStatus(
+          'v' + parent.version + ' → v' + version.version + ': ' +
+          (summary.added || 0) + ' added, ' +
+          (summary.removed || 0) + ' removed, ' +
+          (summary.changed || 0) + ' changed, ' +
+          (summary.unchanged || 0) + ' unchanged.',
+          false
+        );
+      })
+      .catch(function (error) {
+        _setContextStatus(error.message || 'Could not compare rule versions.', true);
+      });
   }
 
   function _setContextStatus(message, isError) {
@@ -1385,16 +1580,19 @@ window.QymPlayground = (function () {
     status.classList.toggle('pg-context-status-error', !!isError);
   }
 
-  function _saveAnalysisContext() {
+  function _saveAnalysisContext(createNewVersion) {
     if (!_validateProjectDescription()) return Promise.reject(new Error('Project description is required'));
+    if (!_validateAnalysisRuleDrafts()) return Promise.reject(new Error('Every rule requires a title and instruction'));
     var runId = _getRunId();
     var base = _opts.apiUrl || function (p) { return '/' + p; };
     var descriptionEl = document.getElementById('pg-project-description');
     var payload = {
       project_description: descriptionEl ? descriptionEl.value.trim() : '',
-      analysis_roles: _readAnalysisRolesFromEditor(),
+      analysis_rules: _readAnalysisRulesFromEditor(),
+      create_new_version: !!createNewVersion,
+      rule_version_id: _selectedRuleVersionId,
     };
-    _setContextStatus('Saving project context…', false);
+    _setContextStatus(createNewVersion ? 'Creating a new rule version…' : 'Saving project context…', false);
     return fetch(base('api/runs/' + runId + '/analysis-context'), {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -1403,13 +1601,23 @@ window.QymPlayground = (function () {
       if (!response.ok) return response.json().then(function (data) { throw new Error(data.detail || 'Could not save context'); });
       return response.json();
     }).then(function (data) {
-      _analysisRoles = data.analysis_roles || [];
+      _selectedRuleVersionId = data.rule_version && data.rule_version.id;
+      _analysisRules = data.analysis_rules || [];
       if (_config) {
         _config.project_description = data.project_description || '';
-        _config.analysis_roles = _analysisRoles;
+        _config.analysis_rules = _analysisRules;
       }
-      _renderAnalysisRolesEditor();
-      _setContextStatus('Project context saved.', false);
+      _renderAnalysisRulesEditor();
+      return _refreshRuleVersions(false).then(function () {
+        _setContextStatus(
+          createNewVersion
+            ? 'Created draft v' + data.rule_version.version + '.'
+            : 'Saved draft v' + data.rule_version.version + '.',
+          false
+        );
+        return data;
+      });
+    }).then(function (data) {
       _scheduleAutoPreview(0);
       return data;
     }).catch(function (error) {
@@ -1418,43 +1626,61 @@ window.QymPlayground = (function () {
     });
   }
 
-  function _inferAnalysisRoles() {
+  function _inferAnalysisRules() {
     if (!_validateProjectDescription()) return;
     var runId = _getRunId();
     var base = _opts.apiUrl || function (p) { return '/' + p; };
     var descriptionEl = document.getElementById('pg-project-description');
-    var button = document.getElementById('pg-infer-roles');
+    var useDescriptionEl = document.getElementById('pg-infer-use-description');
+    var useDocumentsEl = document.getElementById('pg-infer-use-documents');
+    var useExamplesEl = document.getElementById('pg-infer-use-examples');
+    var inferenceSources = {
+      include_project_description: !useDescriptionEl || useDescriptionEl.checked,
+      include_documents: !useDocumentsEl || useDocumentsEl.checked,
+      include_examples: !useExamplesEl || useExamplesEl.checked,
+    };
+    if (!inferenceSources.include_project_description && !inferenceSources.include_documents && !inferenceSources.include_examples) {
+      _setContextStatus('Select at least one source before generating rules.', true);
+      return;
+    }
+    var button = document.getElementById('pg-infer-rules');
     if (button) {
       button.disabled = true;
       button.textContent = 'Inferring…';
     }
-    _setContextStatus('Reading selected documents and approved corrections…', false);
-    fetch(base('api/runs/' + runId + '/analysis-roles/infer'), {
+    _setContextStatus('Reading the selected inference sources…', false);
+    fetch(base('api/runs/' + runId + '/analysis-rules/infer'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         project_description: descriptionEl ? descriptionEl.value.trim() : '',
+        include_project_description: inferenceSources.include_project_description,
+        include_documents: inferenceSources.include_documents,
+        include_examples: inferenceSources.include_examples,
         connection_id: _connectionId,
       }),
     }).then(function (response) {
-      if (!response.ok) return response.json().then(function (data) { throw new Error(data.detail || 'Could not infer roles'); });
+      if (!response.ok) return response.json().then(function (data) { throw new Error(data.detail || 'Could not generate rules'); });
       return response.json();
     }).then(function (data) {
-      _analysisRoles = data.analysis_roles || [];
+      _analysisRules = data.analysis_rules || [];
+      _selectedRuleVersionId = data.rule_version && data.rule_version.id;
       if (_config) {
         _config.project_description = data.project_description || '';
-        _config.analysis_roles = _analysisRoles;
+        _config.analysis_rules = _analysisRules;
       }
-      _renderAnalysisRolesEditor();
-      _setContextStatus('Inferred ' + _analysisRoles.length + ' roles from ' + data.documents_used + ' documents and ' + data.examples_used + ' approved examples.', false);
-      _scheduleAutoPreview(0);
+      _renderAnalysisRulesEditor();
+      return _refreshRuleVersions(false).then(function () {
+        _setContextStatus('Generated ' + _analysisRules.length + ' rules in draft v' + data.rule_version.version + ' from ' + data.documents_used + ' documents and ' + data.examples_used + ' approved examples. Review and publish the draft to use it in production.', false);
+        _scheduleAutoPreview(0);
+      });
     }).catch(function (error) {
-      _setContextStatus(error.message || 'Could not infer roles.', true);
-      if (_opts.showToast) _opts.showToast('error', 'Role Inference Failed', error.message);
+      _setContextStatus(error.message || 'Could not generate rules.', true);
+      if (_opts.showToast) _opts.showToast('error', 'Rule Generation Failed', error.message);
     }).finally(function () {
       if (button) {
         button.disabled = false;
-        button.textContent = 'Infer roles';
+        button.textContent = 'Generate rules';
       }
     });
   }
@@ -1470,36 +1696,84 @@ window.QymPlayground = (function () {
         _scheduleAutoPreview();
       });
     }
-    var roleList = document.getElementById('pg-role-list');
-    if (roleList) {
-      roleList.addEventListener('input', function () { _scheduleAutoPreview(); });
-      roleList.addEventListener('click', function (event) {
-        var remove = event.target.closest('.pg-role-remove');
+    var ruleList = document.getElementById('pg-rule-list');
+    if (ruleList) {
+      ruleList.addEventListener('input', function (event) {
+        if (event.target) event.target.classList.remove('pg-field-invalid');
+        _analysisRules = _readAnalysisRuleDraftsFromEditor();
+        _scheduleAutoPreview();
+      });
+      ruleList.addEventListener('click', function (event) {
+        var remove = event.target.closest('.pg-rule-remove');
         if (!remove) return;
-        _analysisRoles = _readAnalysisRolesFromEditor();
-        var index = parseInt(remove.dataset.roleIndex, 10);
-        if (!Number.isNaN(index)) _analysisRoles.splice(index, 1);
-        _renderAnalysisRolesEditor();
-        _scheduleAutoPreview(0);
+        _analysisRules = _readAnalysisRuleDraftsFromEditor();
+        var index = parseInt(remove.dataset.ruleIndex, 10);
+        if (Number.isNaN(index)) return;
+        _analysisRules.splice(index, 1);
+        _renderAnalysisRulesEditor();
+        _setRuleEditorBusy(true);
+        _setContextStatus('Removing rule from the current version…', false);
+        _saveAnalysisContext().catch(function () {
+          _setContextStatus('The rule was removed locally but could not be saved. Retry Save context before refreshing.', true);
+        }).finally(function () {
+          _setRuleEditorBusy(false);
+        });
       });
     }
-    var addRole = document.getElementById('pg-add-role');
-    if (addRole) addRole.addEventListener('click', function () {
-      _analysisRoles = _readAnalysisRolesFromEditor();
-      if (_analysisRoles.length >= 8) {
-        _setContextStatus('A project can have at most 8 analysis roles.', true);
+    var addRule = document.getElementById('pg-add-rule');
+    if (addRule) addRule.addEventListener('click', function () {
+      var selected = _ruleVersions.find(function (version) { return version.id === _selectedRuleVersionId; });
+      if (!selected || selected.status !== 'draft') {
+        _setContextStatus('Create or open a draft before editing rules.', true);
         return;
       }
-      _analysisRoles.push({ name: '', description: '' });
-      _renderAnalysisRolesEditor();
+      _analysisRules = _readAnalysisRuleDraftsFromEditor();
+      if (_analysisRules.length >= 20) {
+        _setContextStatus('A project can have at most 20 analysis rules.', true);
+        return;
+      }
+      _analysisRules.push({ title: '', instruction: '' });
+      _renderAnalysisRulesEditor();
+      var newRuleTitle = ruleList.querySelector('.pg-rule-item:last-child .pg-rule-title');
+      if (newRuleTitle) {
+        newRuleTitle.scrollIntoView({ block: 'nearest' });
+        newRuleTitle.focus();
+      }
     });
     var saveContext = document.getElementById('pg-save-context');
     if (saveContext) saveContext.addEventListener('click', function () {
       saveContext.disabled = true;
       _saveAnalysisContext().catch(function () {}).finally(function () { saveContext.disabled = false; });
     });
-    var inferRoles = document.getElementById('pg-infer-roles');
-    if (inferRoles) inferRoles.addEventListener('click', _inferAnalysisRoles);
+    _renderAnalysisRulesEditor();
+    var createRuleVersion = document.getElementById('pg-create-rule-version');
+    if (createRuleVersion) createRuleVersion.addEventListener('click', function () {
+      createRuleVersion.disabled = true;
+      _createRuleDraft().catch(function (error) {
+        _setContextStatus(error.message || 'Could not create rule draft.', true);
+      }).finally(function () { createRuleVersion.disabled = false; });
+    });
+    var inferRules = document.getElementById('pg-infer-rules');
+    if (inferRules) inferRules.addEventListener('click', _inferAnalysisRules);
+    var ruleVersionList = document.getElementById('pg-rule-version-list');
+    if (ruleVersionList) ruleVersionList.addEventListener('click', function (event) {
+      var open = event.target.closest('[data-open-rule-version]');
+      var activate = event.target.closest('[data-activate-rule-version]');
+      var publish = event.target.closest('[data-publish-rule-version]');
+      var compare = event.target.closest('[data-compare-rule-version]');
+      if (open) _openRuleVersion(open.dataset.openRuleVersion);
+      if (activate) _changeRuleVersion(activate.dataset.activateRuleVersion, 'activate');
+      if (publish) _publishRuleVersion(publish.dataset.publishRuleVersion).catch(function (error) {
+        _setContextStatus(error.message || 'Could not publish rule version.', true);
+      });
+      if (compare) _compareRuleVersion(compare.dataset.compareRuleVersion);
+    });
+    var ruleVersionCompare = document.getElementById('pg-rule-version-compare');
+    if (ruleVersionCompare) ruleVersionCompare.addEventListener('click', function (event) {
+      if (event.target.closest('[data-close-rule-compare]')) {
+        ruleVersionCompare.hidden = true;
+      }
+    });
 
     var documentInput = document.getElementById('pg-document-input');
     if (documentInput) {
@@ -1679,26 +1953,6 @@ window.QymPlayground = (function () {
       });
     });
 
-    // Correction toggles
-    var corrList = _overlay.querySelector('#pg-corrections-list');
-    if (corrList) {
-      corrList.querySelectorAll('input[type="checkbox"]').forEach(function (cb) {
-        cb.addEventListener('change', function () { _scheduleAutoPreview(); });
-      });
-    }
-
-    // Toggle all corrections
-    var toggleAllBtn = document.getElementById('pg-toggle-all-corrections');
-    if (toggleAllBtn) {
-      toggleAllBtn.addEventListener('click', function () {
-        var checks = _overlay.querySelectorAll('#pg-corrections-list input[type="checkbox"][data-correction-id]');
-        var anyChecked = false;
-        checks.forEach(function (cb) { if (cb.checked) anyChecked = true; });
-        checks.forEach(function (cb) { cb.checked = !anyChecked; });
-        _scheduleAutoPreview();
-      });
-    }
-
     // Filter changes
     var maxScore = document.getElementById('pg-max-score');
     var skipAnalyzed = document.getElementById('pg-skip-analyzed');
@@ -1816,11 +2070,14 @@ window.QymPlayground = (function () {
     var matched = _getMatchedItems();
     var runAllBtn = document.getElementById('pg-runall-btn');
     var testBtn = document.getElementById('pg-test-btn');
+    var selectedMetrics = _getSelectedMetrics();
+    var metricsReady = selectedMetrics === null || selectedMetrics.length > 0;
     var ready = !!(
       _config &&
       _config.llm_configured &&
       _hasProjectDescription() &&
-      _documentUploadsInFlight === 0
+      _documentUploadsInFlight === 0 &&
+      metricsReady
     );
     if (runAllBtn) {
       runAllBtn.textContent = 'Analyze failures (' + matched.length + ' items)';
@@ -2045,34 +2302,23 @@ window.QymPlayground = (function () {
       return;
     }
 
-    var RC_COLORS = {
-      'Hallucination': '#ef4444', 'Incomplete Answer': '#f97316',
-      'Wrong Format': '#00d4aa', 'Context Missing': '#3b82f6',
-      'Reasoning Error': 'var(--accent-tertiary)', 'Tool Use Error': '#ec4899',
-      'Instruction Following': '#14b8a6', 'Knowledge Gap': '#6366f1',
-    };
     container.innerHTML = _testResults.map(function (r) {
-      var color = RC_COLORS[r.root_cause] || '#e07a5f';
+      var color = _rootCauseColor(r.root_cause);
       var confPct = Math.round((r.confidence || 0) * 100);
       var errorHtml = r.error ? '<div class="pg-result-error">' + _esc(r.error) + '</div>' : '';
 
       var fieldsBadgesHtml = '';
       var inputSectionHtml = '';
-      var fewShotHtml = '';
       if (r.messages && r.messages.length > 0) {
         var userMsg = '';
+        var systemMsg = '';
         for (var m = 0; m < r.messages.length; m++) {
           if (r.messages[m].role === 'user') userMsg = r.messages[m].content || '';
+          if (r.messages[m].role === 'system') systemMsg = r.messages[m].content || '';
         }
 
-        var examples = [];
-        var examplePattern = /--- Example ---\n([\s\S]*?)--- End Example ---/g;
-        var match;
-        while ((match = examplePattern.exec(userMsg)) !== null) {
-          examples.push(match[1].trim());
-        }
-
-        var itemCtxMatch = userMsg.match(/Now analyze this evaluation item:\n\n([\s\S]*?)\n\nDetermine the root cause/)
+        var itemCtxMatch = systemMsg.match(/EVALUATION ITEM DATA:\n([\s\S]*?)\n\nRespond ONLY/)
+          || userMsg.match(/Now analyze this evaluation item:\n\n([\s\S]*?)\n\nDetermine the root cause/)
           || userMsg.match(/Now analyze this evaluation item:\n\n([\s\S]*?)\n\n/);
         var itemCtx = itemCtxMatch ? itemCtxMatch[1].trim() : '';
 
@@ -2081,8 +2327,9 @@ window.QymPlayground = (function () {
           { key: 'expected', label: 'Expected', pattern: /^EXPECTED OUTPUT:/m },
           { key: 'output', label: 'Output', pattern: /^ACTUAL OUTPUT:/m },
           { key: 'error', label: 'Error', pattern: /^ERROR:/m },
-          { key: 'scores', label: 'Scores', pattern: /^METRIC SCORES:/m },
-          { key: 'metadata', label: 'Metadata', pattern: /^(?:METADATA:|METRIC METADATA(?: \([^)]+\))?:)/m },
+          { key: 'metric', label: 'Metric', pattern: /^SELECTED METRIC RESULT:/m },
+          { key: 'metadata', label: 'Metadata', pattern: /^(?:ITEM METADATA:|SELECTED METADATA:)/m },
+          { key: 'trace', label: 'Trace', pattern: /^TRACE EVIDENCE:/m },
         ];
         var badges = fieldDefs.map(function (fd) {
           var present = fd.pattern.test(itemCtx);
@@ -2098,22 +2345,6 @@ window.QymPlayground = (function () {
             '</details>';
         }
 
-        if (examples.length > 0) {
-          fewShotHtml =
-            '<details class="pg-result-details">' +
-              '<summary class="pg-result-details-summary">Few-Shot Examples (' + examples.length + ')</summary>' +
-              '<div class="pg-result-details-content">' +
-                examples.map(function (ex, i) {
-                  var correctMatch = ex.match(/CORRECT root_cause:\s*(.+)/);
-                  var correctLabel = correctMatch ? correctMatch[1].trim() : 'Example ' + (i + 1);
-                  return '<div class="pg-fewshot-example">' +
-                    '<div class="pg-fewshot-header">Example ' + (i + 1) + ' \u2014 <span style="color:var(--accent-tertiary-soft);">' + _esc(correctLabel) + '</span></div>' +
-                    '<pre class="pg-fewshot-content">' + _esc(ex) + '</pre>' +
-                  '</div>';
-                }).join('') +
-              '</div>' +
-            '</details>';
-        }
       }
 
 
@@ -2131,7 +2362,6 @@ window.QymPlayground = (function () {
         errorHtml +
         fieldsBadgesHtml +
         inputSectionHtml +
-        fewShotHtml +
       '</div>';
     }).join('');
   }
@@ -2162,6 +2392,10 @@ window.QymPlayground = (function () {
       config: cfg,
       connection_id: _connectionId,
     };
+    if (_opts.getMetrics) {
+      body.metric = null;
+      body.metrics = _getSelectedMetrics();
+    }
 
     var btn = document.getElementById('pg-runall-btn');
     if (btn) { btn.disabled = true; btn.textContent = '\u23F3 Analyzing\u2026'; }
@@ -2325,5 +2559,12 @@ window.QymPlayground = (function () {
   }
 
   // ── Public API ──
-  return { init: init, open: open, close: close };
+  return {
+    init: init,
+    open: open,
+    close: close,
+    refreshFilters: function () {
+      if (_overlay) _onFilterChange();
+    },
+  };
 })();

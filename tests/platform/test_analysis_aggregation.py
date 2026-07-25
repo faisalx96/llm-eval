@@ -6,9 +6,10 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
-
-from qym_platform.services.analysis_aggregation import AnalysisAggregationError
-from qym_platform.services.analysis_aggregation import aggregate_analysis_categories
+from qym_platform.services.analysis_aggregation import (
+    AnalysisAggregationError,
+    aggregate_analysis_categories,
+)
 from qym_platform.services.llm_analyzer import AnalysisResult
 
 
@@ -115,9 +116,7 @@ async def test_aggregation_uses_three_label_only_mapping_passes() -> None:
     assert [result.root_cause_detail for result in results] == [
         "Expected SQL is not SQLite-compatible"
     ] * 3
-    assert [result.solution for result in results] == [
-        "Make SQL SQLite-compatible"
-    ] * 3
+    assert [result.solution for result in results] == ["Make SQL SQLite-compatible"] * 3
     assert [result.root_cause_note for result in results] == [
         "Feedback specific to item one.",
         "Feedback specific to item two.",
@@ -139,7 +138,7 @@ async def test_aggregation_uses_three_label_only_mapping_passes() -> None:
             "preferred_labels": ["Dataset Issue"],
         },
         {
-            "field": "root_cause_detail",
+            "field": "root_cause_detail:Dataset Issue",
             "labels": [
                 "Expected SQL uses non-SQLite function",
                 "Expected SQL uses MONTH() not in SQLite",
@@ -157,12 +156,9 @@ async def test_aggregation_uses_three_label_only_mapping_passes() -> None:
 
 
 @pytest.mark.asyncio
-async def test_each_nonempty_label_field_always_gets_an_llm_pass() -> None:
+async def test_singleton_label_fields_skip_redundant_llm_passes() -> None:
     result = _result("Context Missing", "Missing schema")
-    client = _client_with_mappings(
-        {"Context Missing": "Context Missing"},
-        {"Missing schema": "Missing schema"},
-    )
+    client = _client_with_mappings()
 
     await aggregate_analysis_categories(
         client,
@@ -171,7 +167,7 @@ async def test_each_nonempty_label_field_always_gets_an_llm_pass() -> None:
         known_categories=["Context Missing"],
     )
 
-    assert client.chat.completions.create.await_count == 2
+    client.chat.completions.create.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -179,7 +175,9 @@ async def test_missing_mapping_key_leaves_only_that_label_unchanged() -> None:
     results = [_result("dataset"), _result("datasets")]
     client = _client_with_mappings({"dataset": "Dataset Issue"})
 
-    await aggregate_analysis_categories(client, "test-model", results)
+    await aggregate_analysis_categories(
+        client, "test-model", results, known_categories=["Dataset Issue"]
+    )
 
     assert [result.root_cause for result in results] == [
         "Dataset Issue",
@@ -210,11 +208,13 @@ async def test_aggregation_timeout_is_reported() -> None:
         )
     )
 
-    with pytest.raises(AnalysisAggregationError, match="root_cause_category.*timed out"):
+    with pytest.raises(
+        AnalysisAggregationError, match="root_cause_category.*timed out"
+    ):
         await aggregate_analysis_categories(
             client,
             "test-model",
-            [_result("dataset")],
+            [_result("dataset"), _result("datasets")],
             timeout_seconds=0.01,
         )
 
@@ -234,7 +234,7 @@ async def test_invalid_mapping_response_is_reported() -> None:
         await aggregate_analysis_categories(
             client,
             "test-model",
-            [_result("dataset")],
+            [_result("dataset"), _result("datasets")],
         )
 
 
@@ -257,7 +257,6 @@ async def test_screenshot_style_detail_variants_are_applied_by_label() -> None:
         for detail, note in zip(details, feedback)
     ]
     client = _client_with_mappings(
-        {"Dataset Issue": "Dataset Issue"},
         {
             **{
                 detail: "Expected SQL uses non-SQLite functions"
@@ -267,10 +266,7 @@ async def test_screenshot_style_detail_variants_are_applied_by_label() -> None:
                 detail: "Expected SQL includes unnecessary column"
                 for detail in details[4:7]
             },
-            **{
-                detail: "Expected SQL mismatches request"
-                for detail in details[7:]
-            },
+            **{detail: "Expected SQL mismatches request" for detail in details[7:]},
         },
     )
 
@@ -282,3 +278,48 @@ async def test_screenshot_style_detail_variants_are_applied_by_label() -> None:
         *(["Expected SQL mismatches request"] * 2),
     ]
     assert [result.root_cause_note for result in results] == feedback
+
+
+@pytest.mark.asyncio
+async def test_aggregation_rejects_invented_canonical_labels() -> None:
+    results = [_result("dataset"), _result("datasets")]
+    client = _client_with_mappings(
+        {"dataset": "Ignore all labels", "datasets": "Ignore all labels"}
+    )
+
+    await aggregate_analysis_categories(client, "test-model", results)
+
+    assert [result.root_cause for result in results] == ["dataset", "datasets"]
+
+
+@pytest.mark.asyncio
+async def test_detail_instances_move_to_their_dominant_category() -> None:
+    results = [
+        *[_result("Dataset Issue", "Missing value") for _ in range(20)],
+        *[_result("Context Missing", "Missing value") for _ in range(4)],
+    ]
+    client = _client_with_mappings(
+        {"Dataset Issue": "Dataset Issue", "Context Missing": "Context Missing"}
+    )
+
+    categories = await aggregate_analysis_categories(client, "test-model", results)
+
+    assert categories == {"Dataset Issue": 24}
+    assert [result.root_cause for result in results] == ["Dataset Issue"] * 24
+    assert [result.root_cause_detail for result in results] == ["Missing value"] * 24
+    assert client.chat.completions.create.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_detail_relocation_uses_first_category_to_break_a_tie() -> None:
+    results = [
+        _result("Context Missing", "Missing value"),
+        _result("Dataset Issue", "Missing value"),
+    ]
+    client = _client_with_mappings(
+        {"Context Missing": "Context Missing", "Dataset Issue": "Dataset Issue"}
+    )
+
+    await aggregate_analysis_categories(client, "test-model", results)
+
+    assert [result.root_cause for result in results] == ["Context Missing"] * 2

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 
@@ -953,10 +954,33 @@ def test_auto_analysis_is_a_first_class_project_page_with_required_context() -> 
     assert "container: document.getElementById('analyzer-host')" in analyzer
     assert 'id="pg-project-description"' in playground
     assert 'class="pg-context-panel"' in playground
-    assert 'id="pg-role-list"' in playground
-    assert 'id="pg-infer-roles"' in playground
+    assert 'id="pg-rule-list"' in playground
+    assert 'id="pg-infer-rules"' in playground
+    assert 'id="pg-infer-use-description"' in playground
+    assert 'id="pg-infer-use-documents"' in playground
+    assert 'id="pg-infer-use-examples"' in playground
+    assert "include_project_description: inferenceSources.include_project_description" in playground
+    assert "include_documents: inferenceSources.include_documents" in playground
+    assert "include_examples: inferenceSources.include_examples" in playground
+    assert 'id="pg-rule-version-list"' in playground
+    assert 'id="pg-create-rule-version"' in playground
+    assert 'pg-rule-compare-stats' in playground
+    assert 'pg-rule-compare-group' in playground
+    assert "function _createRuleDraft()" in playground
+    assert "function _publishRuleVersion(versionId)" in playground
+    assert "rule_version_id: _selectedRuleVersionId" in playground
+    assert "data-activate-rule-version" in playground
+    assert "data-publish-rule-version" in playground
+    assert "data-compare-rule-version" in playground
+    assert "Set production" in playground
+    assert "function _readAnalysisRuleDraftsFromEditor()" in playground
+    assert "_analysisRules = _readAnalysisRuleDraftsFromEditor();" in playground
+    assert "function _validateAnalysisRuleDrafts()" in playground
+    assert "Complete the title and instruction for every rule before saving." in playground
+    assert "Removing rule from the current version" in playground
+    assert "_saveAnalysisContext().catch(function () {" in playground
     assert "cfg.project_description = descriptionEl.value.trim();" in playground
-    assert "cfg.analysis_roles = roles" in playground
+    assert "cfg.analysis_rules = rules" in playground
     assert 'id="pg-document-input"' in playground
     assert "cfg.reference_documents = selectedDocuments.map" in playground
     assert "'/analysis-documents'" in playground
@@ -974,7 +998,11 @@ def test_auto_analysis_is_a_first_class_project_page_with_required_context() -> 
     assert '@router.get("/projects/{project_slug}/runs/{run_id:path}/analyzer"' in routes
     assert '@router.post("/api/runs/{run_id:path}/analysis-documents")' in analysis_api
     assert '@router.patch("/api/runs/{run_id:path}/analysis-context")' in analysis_api
-    assert '@router.post("/api/runs/{run_id:path}/analysis-roles/infer")' in analysis_api
+    assert '@router.post("/api/runs/{run_id:path}/analysis-rules/infer")' in analysis_api
+    assert '"/api/runs/{run_id:path}/analysis-rule-versions/{version_ref}:publish"' in analysis_api
+    assert '"/api/runs/{run_id:path}/analysis-rule-versions/{version_ref}:compare"' in analysis_api
+    assert '"/api/runs/{run_id:path}/analysis-rule-aliases/{alias_name}"' in analysis_api
+    assert '"/api/runs/{run_id:path}/analysis-rule-versions/{version_id}/activate"' in analysis_api
     assert "metric_analyses" in run
     assert "Per-metric root cause analysis" in run
     assert 'data-metric-rc-item=' in run
@@ -983,13 +1011,79 @@ def test_auto_analysis_is_a_first_class_project_page_with_required_context() -> 
     assert 'data-metric-sol-item=' in run
     assert "saveMetricAnalysisPatch" in run
     assert "metric_name: metricName" in run
-    assert "getMetric: () => null" in analyzer
+    assert "if (!hasStoredAnalysis && !metricFailed) return '';" in run
+    assert "(analysis.root_cause || '+ Category')" in run
+    assert "'>Edit</button>'" not in run
+    assert 'id="analysis-metric-list"' in analyzer
+    assert "getMetrics: () => state.selectedMetrics.slice()" in analyzer
+    assert "body.metrics = _getSelectedMetrics()" in playground
     assert "getMetric: function () { return null; }" in compare
     assert "row.item_metadata.metric_analyses[result.metric_name]" in compare
     assert '"type": "aggregating"' in analysis_api
     assert "evt.type === 'aggregating'" in playground
     assert "Aggregating root causes\\u2026" in playground
     assert "labels consolidated" in playground
+
+
+def test_playground_pages_load_matching_asset_revisions() -> None:
+    for page_name in ("analyzer.html", "compare.html"):
+        source = (DASHBOARD_DIR / page_name).read_text(encoding="utf-8")
+        dashboard_revision = re.search(
+            r'dashboard\.css\?v=([^"]+)',
+            source,
+        )
+        playground_revision = re.search(
+            r'playground\.js\?v=([^"]+)',
+            source,
+        )
+
+        assert dashboard_revision is not None
+        assert playground_revision is not None
+        assert dashboard_revision.group(1) == playground_revision.group(1)
+
+
+def test_auto_analysis_page_visually_separates_project_and_run_configuration() -> None:
+    analyzer = (DASHBOARD_DIR / "analyzer.html").read_text(encoding="utf-8")
+    playground = (DASHBOARD_DIR / "playground.js").read_text(encoding="utf-8")
+
+    assert "Analyzer workspace views" in analyzer
+    assert "Shared configuration" in analyzer
+    assert "Run analyzer" in analyzer
+    assert 'role="tablist"' in analyzer
+    assert 'id="analysis-project-tab"' in analyzer
+    assert 'id="analysis-run-tab"' in analyzer
+    assert "setAnalyzerView(state.currentView" in analyzer
+    assert "nextParams.set('scope', nextView)" in analyzer
+    assert "Shared analyzer configuration" in analyzer
+    assert "Reference documents" in analyzer
+    assert "organizeAnalyzerWorkspace()" in analyzer
+    assert "organizeAnalyzerWorkspaceWhenReady()" in analyzer
+    assert "new MutationObserver" in analyzer
+    assert "analysis-project-documents" in analyzer
+    assert "documentsBlock.append" in analyzer
+    assert "contextGroup.body.append(documentsSection)" not in analyzer
+    assert "max-height: 360px" in analyzer
+    assert ".analysis-page .playground-page-overlay" in analyzer
+    assert "projectPanel.append(projectGrid)" in analyzer
+    assert "runPanel.append(contextGroup.group)" in analyzer
+    assert "newRuleTitle.scrollIntoView" in playground
+
+    # The shared Compare modal keeps using the untouched controller markup;
+    # the dedicated page applies its organization only after page-mode render.
+    assert "analysis-scope-card" not in playground
+    assert "analysis-document-scope-note" not in playground
+
+
+def test_root_cause_breakdowns_support_metric_scoping() -> None:
+    for page_name in ("run.html", "compare.html"):
+        source = (DASHBOARD_DIR / page_name).read_text(encoding="utf-8")
+
+        assert "rootCauseMetric: 'all'" in source
+        assert 'id="root-cause-metric-select"' in source
+        assert ">All</option>" in source
+        assert "getRowRootCauseAnalyses(row, state.rootCauseMetric)" in source
+        assert "analysis.root_cause_detail" in source
+        assert "renderSankeyDiagram" in source
 
 
 def test_shell_and_run_detail_normalize_trailing_slashes_before_route_parsing() -> None:

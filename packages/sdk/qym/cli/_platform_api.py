@@ -11,6 +11,7 @@ import os
 from typing import Any, Optional
 from urllib import request as urlrequest
 from urllib.error import HTTPError, URLError
+from urllib.parse import quote
 
 from ..platform.defaults import DEFAULT_PLATFORM_URL
 from ..platform.tls import urlopen
@@ -46,7 +47,9 @@ class PlatformAPIClient:
         platform_url: Optional[str] = None,
         api_key: Optional[str] = None,
     ):
-        self.platform_url = (platform_url or get_platform_url_env(DEFAULT_PLATFORM_URL)).rstrip("/")
+        self.platform_url = (
+            platform_url or get_platform_url_env(DEFAULT_PLATFORM_URL)
+        ).rstrip("/")
         self.api_key = api_key or os.getenv("QYM_API_KEY")
 
     def _headers(self) -> dict[str, str]:
@@ -130,8 +133,9 @@ class PlatformAPIClient:
     # ── Analysis operations ─────────────────────────────────────
 
     def analyze_run(self, run_id: str, body: dict | None = None) -> dict:
-        """POST /v1/runs/{run_id}/analyze -> trigger AI analysis."""
-        return self._post(f"/v1/runs/{run_id}/analyze", body=body)
+        """POST /api/runs/{run_id}/analyze -> trigger AI analysis."""
+        encoded_run_id = quote(run_id, safe="")
+        return self._post(f"/api/runs/{encoded_run_id}/analyze", body=body)
 
     # ── Connectivity ────────────────────────────────────────────
 

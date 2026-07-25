@@ -9,12 +9,14 @@ import pytest
 from cryptography.fernet import Fernet
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
-from sqlalchemy.pool import StaticPool
 from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.pool import StaticPool
 
 os.environ.setdefault("QYM_DATABASE_URL", "sqlite:///:memory:")
 os.environ.setdefault("QYM_AUTH_MODE", "proxy_headers")
-os.environ.setdefault("QYM_LLM_CONFIG_ENCRYPTION_KEY", Fernet.generate_key().decode("utf-8"))
+os.environ.setdefault(
+    "QYM_LLM_CONFIG_ENCRYPTION_KEY", Fernet.generate_key().decode("utf-8")
+)
 ROOT = Path(__file__).resolve().parents[2]
 PLATFORM_SRC = ROOT / "packages" / "platform"
 SDK_SRC = ROOT / "packages" / "sdk"
@@ -31,6 +33,7 @@ from qym_platform.db.models import (
     AuditLog,
     CorrectionStatus,
     Project,
+    ProjectLlmConnection,
     ProjectMembership,
     ProjectRole,
     ReviewCorrection,
@@ -49,7 +52,9 @@ from qym_platform.security import api_key_prefix, hash_api_key
 def session_factory(monkeypatch):
     monkeypatch.setenv("QYM_DATABASE_URL", "sqlite:///:memory:")
     monkeypatch.setenv("QYM_AUTH_MODE", "proxy_headers")
-    monkeypatch.setenv("QYM_LLM_CONFIG_ENCRYPTION_KEY", Fernet.generate_key().decode("utf-8"))
+    monkeypatch.setenv(
+        "QYM_LLM_CONFIG_ENCRYPTION_KEY", Fernet.generate_key().decode("utf-8")
+    )
     monkeypatch.setenv("QYM_ALLOW_LEGACY_EMPTY_API_KEY_SCOPES", "true")
     engine = create_engine(
         "sqlite://",
@@ -92,20 +97,50 @@ def _auth_headers(token: str) -> dict[str, str]:
 
 
 def _seed_platform_data(session: Session) -> None:
-    manager_a = User(id="manager-a", email="manager-a@example.com", role=UserRole.MEMBER)
-    manager_b = User(id="manager-b", email="manager-b@example.com", role=UserRole.MEMBER)
+    manager_a = User(
+        id="manager-a", email="manager-a@example.com", role=UserRole.MEMBER
+    )
+    manager_b = User(
+        id="manager-b", email="manager-b@example.com", role=UserRole.MEMBER
+    )
     owner = User(id="owner-1", email="owner@example.com", role=UserRole.MEMBER)
     other = User(id="other-1", email="other@example.com", role=UserRole.MEMBER)
-    nonmember = User(id="nonmember-1", email="nonmember@example.com", role=UserRole.MEMBER)
+    nonmember = User(
+        id="nonmember-1", email="nonmember@example.com", role=UserRole.MEMBER
+    )
     admin = User(id="admin-1", email="admin@example.com", role=UserRole.ADMIN)
 
-    project_a = Project(id="project-a", name="Project A", slug="project-a", created_by_user_id=admin.id)
-    project_b = Project(id="project-b", name="Project B", slug="project-b", created_by_user_id=admin.id)
+    project_a = Project(
+        id="project-a", name="Project A", slug="project-a", created_by_user_id=admin.id
+    )
+    project_b = Project(
+        id="project-b", name="Project B", slug="project-b", created_by_user_id=admin.id
+    )
     memberships = [
-        ProjectMembership(project_id=project_a.id, user_id=manager_a.id, role=ProjectRole.MANAGER, added_by_user_id=admin.id),
-        ProjectMembership(project_id=project_a.id, user_id=owner.id, role=ProjectRole.MEMBER, added_by_user_id=admin.id),
-        ProjectMembership(project_id=project_b.id, user_id=manager_b.id, role=ProjectRole.MANAGER, added_by_user_id=admin.id),
-        ProjectMembership(project_id=project_b.id, user_id=other.id, role=ProjectRole.MEMBER, added_by_user_id=admin.id),
+        ProjectMembership(
+            project_id=project_a.id,
+            user_id=manager_a.id,
+            role=ProjectRole.MANAGER,
+            added_by_user_id=admin.id,
+        ),
+        ProjectMembership(
+            project_id=project_a.id,
+            user_id=owner.id,
+            role=ProjectRole.MEMBER,
+            added_by_user_id=admin.id,
+        ),
+        ProjectMembership(
+            project_id=project_b.id,
+            user_id=manager_b.id,
+            role=ProjectRole.MANAGER,
+            added_by_user_id=admin.id,
+        ),
+        ProjectMembership(
+            project_id=project_b.id,
+            user_id=other.id,
+            role=ProjectRole.MEMBER,
+            added_by_user_id=admin.id,
+        ),
     ]
 
     run = Run(
@@ -152,7 +187,9 @@ def _seed_platform_data(session: Session) -> None:
         status=CorrectionStatus.PENDING,
         is_active=True,
     )
-    session.add_all([manager_a, manager_b, owner, other, nonmember, admin, project_a, project_b])
+    session.add_all(
+        [manager_a, manager_b, owner, other, nonmember, admin, project_a, project_b]
+    )
     session.add_all(memberships)
     session.add_all([run, item, score, correction])
     session.commit()
@@ -203,21 +240,36 @@ def test_run_mutation_permissions_enforced(client, session_factory) -> None:
     owner_metric = client.post(
         "/api/runs/update_metric",
         headers=_headers("owner@example.com"),
-        json={"file_path": "run-1", "row_index": 0, "metric_name": "judge", "new_score": 0.9},
+        json={
+            "file_path": "run-1",
+            "row_index": 0,
+            "metric_name": "judge",
+            "new_score": 0.9,
+        },
     )
     assert owner_metric.status_code == 200
 
     manager_metric = client.post(
         "/api/runs/update_metric",
         headers=_headers("manager-a@example.com"),
-        json={"file_path": "run-1", "row_index": 0, "metric_name": "judge", "new_score": 0.7},
+        json={
+            "file_path": "run-1",
+            "row_index": 0,
+            "metric_name": "judge",
+            "new_score": 0.7,
+        },
     )
     assert manager_metric.status_code == 200
 
     other_metric = client.post(
         "/api/runs/update_metric",
         headers=_headers("other@example.com"),
-        json={"file_path": "run-1", "row_index": 0, "metric_name": "judge", "new_score": 0.1},
+        json={
+            "file_path": "run-1",
+            "row_index": 0,
+            "metric_name": "judge",
+            "new_score": 0.1,
+        },
     )
     assert other_metric.status_code == 403
 
@@ -297,7 +349,10 @@ def test_run_mutation_permissions_enforced(client, session_factory) -> None:
         json={"selected": True},
     )
     assert manager_can_change_project_document_selection.status_code == 200
-    assert manager_can_change_project_document_selection.json()["document"]["selected"] is True
+    assert (
+        manager_can_change_project_document_selection.json()["document"]["selected"]
+        is True
+    )
 
     shared_selection = client.get(
         "/api/runs/run-1/analysis-documents",
@@ -320,7 +375,47 @@ def test_run_mutation_permissions_enforced(client, session_factory) -> None:
     assert deleted.json() == {"ok": True, "document_id": document_id}
 
 
-def test_metric_root_cause_edits_are_scoped_and_audited(client, session_factory) -> None:
+def test_regular_member_cannot_repoint_preserved_llm_key(
+    client, session_factory, monkeypatch
+) -> None:
+    with session_factory() as session:
+        _seed_platform_data(session)
+    monkeypatch.setenv("QYM_ALLOW_PRIVATE_LLM_BASE_URLS", "true")
+
+    created = client.post(
+        "/v1/projects/project-a/llm-connections",
+        headers=_headers("manager-a@example.com"),
+        json={
+            "name": "trusted",
+            "llm_base_url": "http://127.0.0.1:9999/v1",
+            "llm_model": "test-model",
+            "llm_api_key": "sk-protected",
+        },
+    )
+    assert created.status_code == 200
+
+    denied = client.put(
+        f"/v1/projects/project-a/llm-connections/{created.json()['id']}",
+        headers=_headers("owner@example.com"),
+        json={
+            "name": "stolen",
+            "llm_base_url": "https://attacker.example/v1",
+            "llm_model": "test-model",
+            "llm_api_key": "__KEEP__",
+        },
+    )
+
+    assert denied.status_code == 403
+    with session_factory() as session:
+        connection = session.get(ProjectLlmConnection, created.json()["id"])
+        assert connection is not None
+        assert connection.name == "trusted"
+        assert connection.llm_base_url == "http://127.0.0.1:9999/v1"
+
+
+def test_metric_root_cause_edits_are_scoped_and_audited(
+    client, session_factory
+) -> None:
     with session_factory() as session:
         _seed_platform_data(session)
         item = (
@@ -380,10 +475,14 @@ def test_metric_root_cause_edits_are_scoped_and_audited(client, session_factory)
         },
     )
     assert annotated.status_code == 200
-    annotated_analysis = annotated.json()["row"]["item_metadata"]["metric_analyses"]["judge"]
+    annotated_analysis = annotated.json()["row"]["item_metadata"]["metric_analyses"][
+        "judge"
+    ]
     assert annotated_analysis["root_cause"] == "Reasoning Error"
     assert annotated_analysis["root_cause_detail"] == "Wrong join key"
-    assert annotated_analysis["root_cause_note"] == "Reviewed against the expected output."
+    assert (
+        annotated_analysis["root_cause_note"] == "Reviewed against the expected output."
+    )
 
     unknown_metric = client.post(
         "/api/runs/update_root_cause",
@@ -414,11 +513,15 @@ def test_correction_review_permissions_and_filtering(client, session_factory) ->
     with session_factory() as session:
         _seed_platform_data(session)
 
-    manager_list = client.get("/api/corrections", headers=_headers("manager-a@example.com"))
+    manager_list = client.get(
+        "/api/corrections", headers=_headers("manager-a@example.com")
+    )
     assert manager_list.status_code == 200
     assert len(manager_list.json()["corrections"]) == 1
 
-    outsider_list = client.get("/api/corrections", headers=_headers("other@example.com"))
+    outsider_list = client.get(
+        "/api/corrections", headers=_headers("other@example.com")
+    )
     assert outsider_list.status_code == 200
     assert outsider_list.json()["corrections"] == []
 
@@ -458,7 +561,10 @@ def test_correction_review_permissions_and_filtering(client, session_factory) ->
         assert correction is not None
         assert correction.status == CorrectionStatus.REJECTED
         assert correction.is_active is False
-        assert correction.review_comment == "Rejected automatically after deletion request."
+        assert (
+            correction.review_comment
+            == "Rejected automatically after deletion request."
+        )
 
     manager_list_after_delete = client.get(
         "/api/corrections", headers=_headers("manager-a@example.com")
@@ -480,6 +586,12 @@ def test_api_key_scopes_are_not_enforced(client, session_factory) -> None:
         response = client.post(
             "/v1/runs",
             headers=_auth_headers(token),
-            json={"task": "task", "dataset": "dataset", "metrics": [], "run_metadata": {}, "run_config": {}},
+            json={
+                "task": "task",
+                "dataset": "dataset",
+                "metrics": [],
+                "run_metadata": {},
+                "run_config": {},
+            },
         )
         assert response.status_code == 200, (token, response.text)
