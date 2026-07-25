@@ -38,6 +38,7 @@ from qym_platform.api.analysis import (
     _persist_aggregated_bindings,
     _persisted_ai_analysis_bindings,
     _playground_config_to_analyzer,
+    _resolve_analysis_rule_version,
     _reject_candidate,
     _save_analysis_results,
     _validate_requested_metric,
@@ -46,7 +47,9 @@ from qym_platform.api.analysis import (
     approve_metric_analysis,
     compare_project_analysis_rule_versions,
     create_project_analysis_rule_version,
+    delete_project_analysis_rule_version,
     list_project_analysis_rule_versions,
+    permanently_delete_project_analysis_rule_version,
     publish_project_analysis_rule_version,
     update_analysis_context,
     upload_analysis_document,
@@ -57,6 +60,7 @@ from qym_platform.db.base import Base
 from qym_platform.db.models import (
     CorrectionStatus,
     Project,
+    ProjectAnalysisRuleAlias,
     ProjectAnalysisRuleVersion,
     ProjectMembership,
     ProjectRole,
@@ -2542,6 +2546,130 @@ def test_publishing_without_promotion_keeps_existing_production(
     )
     assert history["production_version_id"] == first["rule_version"]["id"]
     assert second["version"]["id"] != history["production_version_id"]
+
+
+def test_deleting_production_rule_uses_another_non_deleted_published_version(
+    db_session: Session,
+) -> None:
+    _, manager, run, _ = _seed_run(db_session)
+    principal = Principal(user=manager, auth_type="session")
+    first = update_analysis_context(
+        run.id,
+        AnalysisContextUpdate(
+            project_description="Test project",
+            analysis_rules=[
+                AnalyzerRuleConfig(title="First", instruction="First rule.")
+            ],
+        ),
+        db_session,
+        principal,
+    )
+    publish_project_analysis_rule_version(
+        run.id,
+        "v1",
+        AnalysisRuleVersionPublish(set_alias="production"),
+        db_session,
+        principal,
+    )
+    second = create_project_analysis_rule_version(
+        run.id,
+        AnalysisRuleVersionCreate(from_version="v1"),
+        db_session,
+        principal,
+    )
+    publish_project_analysis_rule_version(
+        run.id,
+        "v2",
+        AnalysisRuleVersionPublish(),
+        db_session,
+        principal,
+    )
+
+    deleted = delete_project_analysis_rule_version(
+        run.id, first["rule_version"]["id"], db_session, principal
+    )
+
+    assert deleted["active_version"]["id"] == second["version"]["id"]
+    assert (
+        db_session.query(ProjectAnalysisRuleAlias)
+        .filter(
+            ProjectAnalysisRuleAlias.project_id == run.project_id,
+            ProjectAnalysisRuleAlias.alias == "production",
+        )
+        .first()
+        is None
+    )
+    assert (
+        _resolve_analysis_rule_version(db_session, run.project_id, "production").id
+        == second["version"]["id"]
+    )
+
+
+def test_permanent_rule_deletion_returns_conflict_when_referenced(
+    db_session: Session,
+) -> None:
+    actor, manager, run, _ = _seed_run(db_session)
+    manager.role = UserRole.ADMIN
+    principal = Principal(user=manager, auth_type="session")
+    parent = _create_analysis_rule_version(
+        db_session,
+        project_id=run.project_id,
+        rules=[{"title": "Parent", "instruction": "Parent rule."}],
+        source="manual",
+        actor_user_id=actor.id,
+    )
+    child = _create_analysis_rule_version(
+        db_session,
+        project_id=run.project_id,
+        rules=[{"title": "Child", "instruction": "Child rule."}],
+        source="manual",
+        actor_user_id=actor.id,
+        force_new=True,
+        parent=parent,
+    )
+    parent.deleted_at = datetime.utcnow()
+    db_session.commit()
+
+    with pytest.raises(HTTPException) as exc_info:
+        permanently_delete_project_analysis_rule_version(
+            run.id, parent.id, db_session, principal
+        )
+
+    assert exc_info.value.status_code == 409
+    assert "descendant versions" in str(exc_info.value.detail)
+    assert db_session.get(ProjectAnalysisRuleVersion, child.id) is not None
+
+
+def test_item_level_change_preserves_metric_specific_candidates(
+    db_session: Session,
+) -> None:
+    actor, _, run, item = _seed_run(db_session)
+    metric_candidate = ReviewCorrection(
+        run_id=run.id,
+        item_id=item.item_id,
+        metric_name="accuracy",
+        task=run.task,
+        ai_root_cause="Metric-only cause",
+        human_root_cause="",
+        is_active=True,
+        status=CorrectionStatus.PENDING,
+    )
+    db_session.add(metric_candidate)
+    db_session.commit()
+
+    apply_root_cause_change(
+        db_session,
+        run=run,
+        item=item,
+        actor_user_id=actor.id,
+        actor_source="human",
+        human_patch={"root_cause": "Item-level cause"},
+    )
+    db_session.commit()
+    db_session.refresh(metric_candidate)
+
+    assert metric_candidate.is_active is True
+    assert metric_candidate.status == CorrectionStatus.PENDING
 
 
 def test_identical_analysis_rules_do_not_create_duplicate_version(

@@ -76,6 +76,7 @@ from qym_platform.services.root_cause_changes import (
 )
 from qym_platform.settings import PlatformSettings
 from sqlalchemy import String, and_, cast, func, or_, tuple_
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, object_session
 
 logger = logging.getLogger(__name__)
@@ -114,6 +115,7 @@ def _active_analysis_rule_version(
         db.query(ProjectAnalysisRuleVersion)
         .filter(
             ProjectAnalysisRuleVersion.project_id == project_id,
+            ProjectAnalysisRuleVersion.deleted_at.is_(None),
             ProjectAnalysisRuleVersion.status
             == AnalysisRuleVersionStatus.PUBLISHED,
         )
@@ -219,7 +221,7 @@ def _resolve_analysis_rule_version(
     )
     if alias:
         version = db.get(ProjectAnalysisRuleVersion, alias.rule_version_id)
-        if version:
+        if version is not None and version.deleted_at is None:
             return version
     if clean == "production":
         version = _active_analysis_rule_version(db, project_id)
@@ -2474,6 +2476,13 @@ def delete_project_analysis_rule_version(
         raise HTTPException(status_code=409, detail="Rule version is already deleted")
     version.deleted_at = utc_now_naive()
     version.deleted_by_user_id = principal.user.id
+    # Aliases are mutable pointers and must never continue to name a deleted
+    # version. Removing the pointer lets the production resolver use its
+    # published-version fallback (if one remains).
+    db.query(ProjectAnalysisRuleAlias).filter(
+        ProjectAnalysisRuleAlias.project_id == run.project_id,
+        ProjectAnalysisRuleAlias.rule_version_id == version.id,
+    ).delete(synchronize_session=False)
     db.commit()
     active = _active_analysis_rule_version(db, run.project_id)
     return {
@@ -2557,8 +2566,45 @@ def permanently_delete_project_analysis_rule_version(
             status_code=409,
             detail="Rule version must be deleted before it can be permanently removed",
         )
-    db.delete(version)
-    db.commit()
+    has_aliases = (
+        db.query(ProjectAnalysisRuleAlias.id)
+        .filter(ProjectAnalysisRuleAlias.rule_version_id == version.id)
+        .first()
+        is not None
+    )
+    has_descendants = (
+        db.query(ProjectAnalysisRuleVersion.id)
+        .filter(
+            or_(
+                ProjectAnalysisRuleVersion.parent_version_id == version.id,
+                ProjectAnalysisRuleVersion.base_version_id == version.id,
+            )
+        )
+        .first()
+        is not None
+    )
+    if has_aliases or has_descendants:
+        references = []
+        if has_aliases:
+            references.append("aliases")
+        if has_descendants:
+            references.append("descendant versions")
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Rule version cannot be permanently removed while referenced by "
+                + " and ".join(references)
+            ),
+        )
+    try:
+        db.delete(version)
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="Rule version cannot be permanently removed while referenced",
+        )
     return {"permanently_deleted_version_id": version_id}
 
 

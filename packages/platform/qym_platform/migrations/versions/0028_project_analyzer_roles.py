@@ -26,7 +26,7 @@ def upgrade() -> None:
                 nullable=False,
                 server_default=sa.text("'[]'"),
             )
-        ) 
+        )
 
 
 def downgrade() -> None:

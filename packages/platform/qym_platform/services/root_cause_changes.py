@@ -463,6 +463,7 @@ def _resolve_ai_baseline(
         .filter(
             ReviewCorrection.run_id == run_id,
             ReviewCorrection.item_id == item_id,
+            ReviewCorrection.metric_name.is_(None),
             ReviewCorrection.ai_root_cause.is_not(None),
             ReviewCorrection.ai_root_cause != "",
         )
@@ -488,6 +489,7 @@ def _deactivate_active_candidates(
         .filter(
             ReviewCorrection.run_id == run_id,
             ReviewCorrection.item_id == item_id,
+            ReviewCorrection.metric_name.is_(None),
             ReviewCorrection.is_active.is_(True),
         )
         .all()
@@ -515,6 +517,7 @@ def _find_active_candidates(
         .filter(
             ReviewCorrection.run_id == run_id,
             ReviewCorrection.item_id == item_id,
+            ReviewCorrection.metric_name.is_(None),
             ReviewCorrection.is_active.is_(True),
         )
         .all()
