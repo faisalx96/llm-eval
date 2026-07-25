@@ -7,6 +7,7 @@ import zlib
 from dataclasses import dataclass
 from html.parser import HTMLParser
 from io import BytesIO
+from multiprocessing import get_all_start_methods, get_context
 from pathlib import Path
 from xml.etree import ElementTree
 from zipfile import BadZipFile, ZipFile
@@ -20,6 +21,8 @@ MAX_DOCX_DOCUMENT_XML_BYTES = 4 * 1024 * 1024
 MAX_DOCX_COMPRESSION_RATIO = 100
 MAX_PDF_PAGES = 100
 MAX_PDF_DECOMPRESSED_BYTES = 4 * 1024 * 1024
+MAX_PDF_EXTRACTION_SECONDS = 5
+MAX_PDF_WORKER_MEMORY_BYTES = 256 * 1024 * 1024
 
 SUPPORTED_DOCUMENT_EXTENSIONS = {
     ".csv",
@@ -224,7 +227,7 @@ def _prepare_pdf_page_content(page: object, remaining: int) -> int:
     return consumed
 
 
-def _extract_pdf(data: bytes) -> str:
+def _extract_pdf_in_worker(data: bytes) -> str:
     try:
         from pypdf import PdfReader
     except ImportError as exc:  # pragma: no cover - dependency is installed in production
@@ -258,6 +261,60 @@ def _extract_pdf(data: bytes) -> str:
         raise DocumentExtractionError(
             "The PDF could not be read. Scanned PDFs need OCR before upload."
         ) from exc
+
+
+def _pdf_extraction_worker(connection: object, data: bytes) -> None:
+    """Parse untrusted PDF data outside the request worker's resource budget."""
+    try:
+        try:
+            import resource
+
+            resource.setrlimit(
+                resource.RLIMIT_AS,
+                (MAX_PDF_WORKER_MEMORY_BYTES, MAX_PDF_WORKER_MEMORY_BYTES),
+            )
+            resource.setrlimit(
+                resource.RLIMIT_CPU,
+                (MAX_PDF_EXTRACTION_SECONDS, MAX_PDF_EXTRACTION_SECONDS + 1),
+            )
+        except (ImportError, OSError, ValueError):
+            # The parent still enforces a wall-clock timeout on platforms
+            # without POSIX resource limits.
+            pass
+        connection.send(("ok", _extract_pdf_in_worker(data)))
+    except Exception as exc:  # noqa: BLE001 - returned as a safe upload error
+        connection.send(("error", str(exc)))
+    finally:
+        connection.close()
+
+
+def _extract_pdf(data: bytes) -> str:
+    """Extract PDF text in a bounded child process to contain parser expansion."""
+    method = "fork" if "fork" in get_all_start_methods() else "spawn"
+    context = get_context(method)
+    parent_connection, child_connection = context.Pipe(duplex=False)
+    process = context.Process(target=_pdf_extraction_worker, args=(child_connection, data))
+    process.start()
+    child_connection.close()
+    try:
+        if not parent_connection.poll(MAX_PDF_EXTRACTION_SECONDS):
+            process.terminate()
+            process.join()
+            raise DocumentExtractionError("PDF extraction exceeded the time limit.")
+        try:
+            status, payload = parent_connection.recv()
+        except EOFError as exc:
+            raise DocumentExtractionError(
+                "PDF extraction exceeded the resource limit."
+            ) from exc
+    finally:
+        parent_connection.close()
+        if process.is_alive():
+            process.terminate()
+        process.join()
+    if status != "ok":
+        raise DocumentExtractionError(str(payload) or "The PDF could not be read.")
+    return str(payload)
 
 
 def _normalize_text(text: str) -> str:

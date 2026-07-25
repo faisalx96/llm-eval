@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import os
 import sys
 import types
@@ -236,6 +237,29 @@ def test_llm_endpoint_validation_rechecks_current_dns(monkeypatch) -> None:
         endpoint_security.validate_llm_base_url(
             "https://provider.example/v1", allow_private=False
         )
+
+
+def test_llm_transport_connects_to_the_validated_address(monkeypatch) -> None:
+    import qym_platform.llm_endpoint_security as endpoint_security
+
+    backend = endpoint_security.PinnedAsyncNetworkBackend(allow_private=False)
+    captured: dict[str, object] = {}
+    stream = object()
+
+    async def connect_tcp(host, port, **kwargs):
+        captured.update(host=host, port=port, **kwargs)
+        return stream
+
+    monkeypatch.setattr(
+        endpoint_security,
+        "_resolve_public_address",
+        lambda *args, **kwargs: "8.8.8.8",
+    )
+    monkeypatch.setattr(backend._backend, "connect_tcp", connect_tcp)
+
+    assert asyncio.run(backend.connect_tcp("provider.example", 443)) is stream
+    assert captured["host"] == "8.8.8.8"
+    assert captured["port"] == 443
 
 
 def test_create_reports_missing_encryption_key(
