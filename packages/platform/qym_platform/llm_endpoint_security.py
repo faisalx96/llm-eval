@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import asyncio
 import ipaddress
 import socket
 from urllib.parse import urlparse
 
 import httpcore
 import httpx
+
+
+DNS_RESOLUTION_TIMEOUT_SECONDS = 5.0
 
 
 class LlmEndpointValidationError(ValueError):
@@ -54,6 +58,30 @@ def validate_llm_base_url(value: str, *, allow_private: bool) -> str:
     return normalized
 
 
+async def _resolve_public_address_async(
+    hostname: str,
+    port: int,
+    *,
+    allow_private: bool,
+    timeout: float | None,
+) -> str:
+    """Resolve DNS off the event loop and cap it by the connection deadline."""
+    if allow_private:
+        return hostname
+    try:
+        return await asyncio.wait_for(
+            asyncio.to_thread(
+                _resolve_public_address,
+                hostname,
+                port,
+                allow_private=False,
+            ),
+            timeout=timeout or DNS_RESOLUTION_TIMEOUT_SECONDS,
+        )
+    except TimeoutError as exc:
+        raise LlmEndpointValidationError("LLM base URL hostname resolution timed out") from exc
+
+
 class PinnedAsyncNetworkBackend(httpcore.AsyncNetworkBackend):
     """Connect to the address we validated, while httpcore keeps host/SNI intact."""
 
@@ -69,8 +97,11 @@ class PinnedAsyncNetworkBackend(httpcore.AsyncNetworkBackend):
         local_address: str | None = None,
         socket_options: object = None,
     ) -> httpcore.AsyncNetworkStream:
-        pinned_address = _resolve_public_address(
-            host, port, allow_private=self._allow_private
+        pinned_address = await _resolve_public_address_async(
+            host,
+            port,
+            allow_private=self._allow_private,
+            timeout=timeout,
         )
         return await self._backend.connect_tcp(
             pinned_address,

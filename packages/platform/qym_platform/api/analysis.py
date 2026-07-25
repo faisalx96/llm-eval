@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Literal, Optional, Union
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from anyio import CapacityLimiter, to_thread
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from qym_platform.auth import Principal, require_ui_principal
@@ -85,6 +86,10 @@ from sqlalchemy.orm import Session, object_session
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["analysis"])
+
+# PDF extraction can wait on a resource-limited child process. Keep that wait
+# off the event loop and bound concurrent extraction work per application worker.
+_DOCUMENT_EXTRACTION_LIMITER = CapacityLimiter(2)
 
 MappingSource = Union[str, List[str]]
 
@@ -1917,7 +1922,12 @@ async def upload_analysis_document(
         )
 
     try:
-        document = extract_document_text(file.filename or "document", raw)
+        document = await to_thread.run_sync(
+            extract_document_text,
+            file.filename or "document",
+            raw,
+            limiter=_DOCUMENT_EXTRACTION_LIMITER,
+        )
     except UnsupportedDocumentError as exc:
         raise HTTPException(status_code=415, detail=str(exc)) from exc
     except DocumentExtractionError as exc:

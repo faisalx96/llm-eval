@@ -7,7 +7,7 @@ import zlib
 from dataclasses import dataclass
 from html.parser import HTMLParser
 from io import BytesIO
-from multiprocessing import get_all_start_methods, get_context
+from multiprocessing import get_context
 from pathlib import Path
 from xml.etree import ElementTree
 from zipfile import BadZipFile, ZipFile
@@ -290,8 +290,7 @@ def _pdf_extraction_worker(connection: object, data: bytes) -> None:
 
 def _extract_pdf(data: bytes) -> str:
     """Extract PDF text in a bounded child process to contain parser expansion."""
-    method = "fork" if "fork" in get_all_start_methods() else "spawn"
-    context = get_context(method)
+    context = get_context("spawn")
     parent_connection, child_connection = context.Pipe(duplex=False)
     process = context.Process(target=_pdf_extraction_worker, args=(child_connection, data))
     process.start()
