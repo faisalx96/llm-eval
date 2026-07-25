@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import zlib
 from dataclasses import dataclass
 from html.parser import HTMLParser
 from io import BytesIO
@@ -17,6 +18,8 @@ MAX_REFERENCE_DOCUMENT_CHARS = 40_000
 # compressed upload limit so a tiny archive cannot consume unbounded memory.
 MAX_DOCX_DOCUMENT_XML_BYTES = 4 * 1024 * 1024
 MAX_DOCX_COMPRESSION_RATIO = 100
+MAX_PDF_PAGES = 100
+MAX_PDF_DECOMPRESSED_BYTES = 4 * 1024 * 1024
 
 SUPPORTED_DOCUMENT_EXTENSIONS = {
     ".csv",
@@ -166,6 +169,61 @@ def _extract_docx(data: bytes) -> str:
     return "".join(parts)
 
 
+def _pdf_stream_objects(page: object) -> list[object]:
+    """Return the page content streams without asking pypdf to decode them."""
+    try:
+        contents = page.raw_get("/Contents")
+    except KeyError:
+        return []
+    contents = contents.get_object()
+    if isinstance(contents, list):
+        return [stream.get_object() for stream in contents]
+    return [contents]
+
+
+def _safe_flate_decode(data: bytes, limit: int) -> bytes:
+    decoder = zlib.decompressobj()
+    decoded = decoder.decompress(data, limit + 1)
+    if len(decoded) > limit or decoder.unconsumed_tail:
+        raise DocumentExtractionError("The PDF content exceeds the extraction limit.")
+    decoded += decoder.flush(limit - len(decoded) + 1)
+    if len(decoded) > limit:
+        raise DocumentExtractionError("The PDF content exceeds the extraction limit.")
+    return decoded
+
+
+def _prepare_pdf_page_content(page: object, remaining: int) -> int:
+    """Bound page-content expansion before pypdf text extraction decodes it."""
+    from pypdf.generic import DecodedStreamObject, EncodedStreamObject
+
+    consumed = 0
+    for stream in _pdf_stream_objects(page):
+        if not isinstance(stream, EncodedStreamObject):
+            raw = getattr(stream, "_data", b"")
+            if len(raw) > remaining - consumed:
+                raise DocumentExtractionError(
+                    "The PDF content exceeds the extraction limit."
+                )
+            consumed += len(raw)
+            continue
+        filters = stream.get("/Filter")
+        filter_names = (
+            [str(filter_name) for filter_name in filters]
+            if isinstance(filters, list)
+            else [str(filters)]
+        )
+        if filter_names not in (["/FlateDecode"], ["/Fl"]):
+            raise DocumentExtractionError(
+                "The PDF uses an unsupported compressed content stream."
+            )
+        decoded = _safe_flate_decode(stream._data, remaining - consumed)
+        decoded_stream = DecodedStreamObject()
+        decoded_stream.set_data(decoded)
+        stream.decoded_self = decoded_stream
+        consumed += len(decoded)
+    return consumed
+
+
 def _extract_pdf(data: bytes) -> str:
     try:
         from pypdf import PdfReader
@@ -174,7 +232,28 @@ def _extract_pdf(data: bytes) -> str:
 
     try:
         reader = PdfReader(BytesIO(data))
-        return "\n\n".join((page.extract_text() or "") for page in reader.pages)
+        if len(reader.pages) > MAX_PDF_PAGES:
+            raise DocumentExtractionError(
+                f"The PDF exceeds the {MAX_PDF_PAGES}-page extraction limit."
+            )
+        parts: list[str] = []
+        decompressed_bytes = 0
+        extracted_chars = 0
+        for page in reader.pages:
+            decompressed_bytes += _prepare_pdf_page_content(
+                page, MAX_PDF_DECOMPRESSED_BYTES - decompressed_bytes
+            )
+            page_text = page.extract_text() or ""
+            remaining_chars = MAX_REFERENCE_DOCUMENT_CHARS + 1 - extracted_chars
+            if remaining_chars <= 0:
+                break
+            parts.append(page_text[:remaining_chars])
+            extracted_chars += len(parts[-1])
+            if extracted_chars > MAX_REFERENCE_DOCUMENT_CHARS:
+                break
+        return "\n\n".join(parts)
+    except DocumentExtractionError:
+        raise
     except Exception as exc:
         raise DocumentExtractionError(
             "The PDF could not be read. Scanned PDFs need OCR before upload."

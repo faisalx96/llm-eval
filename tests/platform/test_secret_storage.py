@@ -131,7 +131,7 @@ def test_connection_key_is_encrypted_and_masked(
     captured: dict[str, object] = {"calls": []}
 
     class FakeAsyncOpenAI:
-        def __init__(self, *, base_url: str, api_key: str):
+        def __init__(self, *, base_url: str, api_key: str, http_client: object):
             captured["base_url"] = base_url
             captured["api_key"] = api_key
             self.chat = types.SimpleNamespace(
@@ -214,6 +214,28 @@ def test_private_llm_base_url_is_blocked_by_default(
 
     assert response.status_code == 400
     assert "non-public address" in response.json()["detail"]
+
+
+def test_llm_endpoint_validation_rechecks_current_dns(monkeypatch) -> None:
+    import qym_platform.llm_endpoint_security as endpoint_security
+
+    responses = iter(
+        [
+            [(None, None, None, None, ("8.8.8.8", 443))],
+            [(None, None, None, None, ("127.0.0.1", 443))],
+        ]
+    )
+    monkeypatch.setattr(
+        endpoint_security.socket, "getaddrinfo", lambda *args: next(responses)
+    )
+
+    assert endpoint_security.validate_llm_base_url(
+        "https://provider.example/v1", allow_private=False
+    ) == "https://provider.example/v1"
+    with pytest.raises(endpoint_security.LlmEndpointValidationError, match="non-public"):
+        endpoint_security.validate_llm_base_url(
+            "https://provider.example/v1", allow_private=False
+        )
 
 
 def test_create_reports_missing_encryption_key(

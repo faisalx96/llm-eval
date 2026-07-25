@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 from io import BytesIO
+import zlib
 from zipfile import ZipFile
 
 import pytest
 
 from qym_platform.services.document_extractor import (
     MAX_DOCX_DOCUMENT_XML_BYTES,
+    MAX_PDF_DECOMPRESSED_BYTES,
     MAX_REFERENCE_DOCUMENT_CHARS,
     MAX_REFERENCE_UPLOAD_BYTES,
     DocumentExtractionError,
@@ -96,6 +98,37 @@ def test_extract_pdf_reads_page_text() -> None:
     document = extract_document_text("requirements.pdf", bytes(pdf))
 
     assert document.content == "Reference requirement text"
+
+
+def test_extract_pdf_rejects_expanded_content_stream() -> None:
+    expanded = b"q " * (MAX_PDF_DECOMPRESSED_BYTES // 2 + 1)
+    compressed = zlib.compress(expanded)
+    objects = [
+        b"1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n",
+        b"2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n",
+        b"3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R >>\nendobj\n",
+        (
+            f"4 0 obj\n<< /Length {len(compressed)} /Filter /FlateDecode >>\nstream\n".encode()
+            + compressed
+            + b"\nendstream\nendobj\n"
+        ),
+    ]
+    pdf = bytearray(b"%PDF-1.4\n")
+    offsets = []
+    for obj in objects:
+        offsets.append(len(pdf))
+        pdf.extend(obj)
+    xref_offset = len(pdf)
+    pdf.extend(f"xref\n0 {len(objects) + 1}\n".encode())
+    pdf.extend(b"0000000000 65535 f \n")
+    for offset in offsets:
+        pdf.extend(f"{offset:010d} 00000 n \n".encode())
+    pdf.extend(
+        f"trailer\n<< /Size {len(objects) + 1} /Root 1 0 R >>\nstartxref\n{xref_offset}\n%%EOF\n".encode()
+    )
+
+    with pytest.raises(DocumentExtractionError, match="exceeds the extraction limit"):
+        extract_document_text("bomb.pdf", bytes(pdf))
 
 
 def test_extract_html_omits_script_and_style_content() -> None:

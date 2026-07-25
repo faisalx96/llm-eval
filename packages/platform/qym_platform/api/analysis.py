@@ -36,6 +36,10 @@ from qym_platform.db.models import (
     UserRole,
 )
 from qym_platform.deps import get_db
+from qym_platform.llm_endpoint_security import (
+    LlmEndpointValidationError,
+    validate_llm_base_url,
+)
 from qym_platform.permissions import (
     apply_reviewable_run_filter,
     can_review_run,
@@ -601,8 +605,15 @@ def _get_llm_config(
         )
     except RuntimeError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+    try:
+        base_url = validate_llm_base_url(
+            conn.llm_base_url or "https://api.openai.com/v1",
+            allow_private=PlatformSettings().allow_private_llm_base_urls,
+        )
+    except LlmEndpointValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {
-        "llm_base_url": conn.llm_base_url or "https://api.openai.com/v1",
+        "llm_base_url": base_url,
         "llm_model": conn.llm_model or "gpt-4o-mini",
         "llm_api_key": api_key,
         "connection_id": conn.id,

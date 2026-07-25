@@ -23,6 +23,11 @@ from qym_platform.db.models import (
     RunMetricSpec,
 )
 from qym_platform.openai_compat import create_chat_completion_compat
+from qym_platform.llm_endpoint_security import (
+    create_llm_http_client,
+    validate_llm_base_url,
+)
+from qym_platform.settings import PlatformSettings
 from qym_platform.services.document_extractor import MAX_REFERENCE_DOCUMENT_CHARS
 from sqlalchemy.orm import Session, object_session
 
@@ -359,9 +364,17 @@ async def infer_analysis_rules(
 
 def build_client(llm_config: dict[str, Any]) -> AsyncOpenAI:
     """Build an AsyncOpenAI client from the user's llm_config."""
+    settings = PlatformSettings()
+    base_url = validate_llm_base_url(
+        llm_config.get("llm_base_url", "https://api.openai.com/v1"),
+        allow_private=settings.allow_private_llm_base_urls,
+    )
     return AsyncOpenAI(
-        base_url=llm_config.get("llm_base_url", "https://api.openai.com/v1"),
+        base_url=base_url,
         api_key=llm_config.get("llm_api_key", ""),
+        http_client=create_llm_http_client(
+            allow_private=settings.allow_private_llm_base_urls
+        ),
     )
 
 

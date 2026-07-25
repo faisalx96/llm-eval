@@ -1,11 +1,8 @@
 from __future__ import annotations
 
-import ipaddress
 import re
 import secrets
-import socket
 from typing import Any, Dict, Iterable, Optional
-from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -24,6 +21,11 @@ from qym_platform.db.models import (
     UserRole,
 )
 from qym_platform.deps import get_db
+from qym_platform.llm_endpoint_security import (
+    LlmEndpointValidationError,
+    create_llm_http_client,
+    validate_llm_base_url,
+)
 from qym_platform.openai_compat import create_chat_completion_compat
 from qym_platform.permissions import (
     can_manage_project_members,
@@ -89,40 +91,15 @@ def _require_project_manager(
 
 def _validate_llm_base_url(value: str, settings: PlatformSettings) -> str:
     """Validate an outbound LLM endpoint and block private-network SSRF by default."""
-    normalized = str(value or "").strip().rstrip("/")
-    parsed = urlparse(normalized)
-    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
-        raise HTTPException(
-            status_code=400,
-            detail="LLM base URL must be an absolute http:// or https:// URL",
-        )
-    if parsed.username or parsed.password or parsed.fragment:
-        raise HTTPException(
-            status_code=400,
-            detail="LLM base URL cannot contain credentials or a URL fragment",
-        )
-    if settings.allow_private_llm_base_urls:
-        return normalized
-
     try:
-        addresses = {
-            ipaddress.ip_address(sockaddr[0])
-            for *_, sockaddr in socket.getaddrinfo(parsed.hostname, parsed.port or 443)
-        }
-    except (OSError, ValueError) as exc:
-        raise HTTPException(
-            status_code=400,
-            detail="LLM base URL hostname could not be resolved",
-        ) from exc
-    if not addresses or any(not address.is_global for address in addresses):
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                "LLM base URL resolves to a non-public address. Set "
-                "QYM_ALLOW_PRIVATE_LLM_BASE_URLS=true only for trusted local providers."
-            ),
+        return validate_llm_base_url(
+            value, allow_private=settings.allow_private_llm_base_urls
         )
-    return normalized
+    except LlmEndpointValidationError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc),
+        )
 
 
 def _membership_role(db: Session, principal: Principal, project_id: str) -> str:
@@ -546,7 +523,13 @@ async def test_llm_connection(
     from openai import AsyncOpenAI
 
     client = AsyncOpenAI(
-        base_url=conn.llm_base_url or "https://api.openai.com/v1", api_key=api_key
+        base_url=_validate_llm_base_url(
+            conn.llm_base_url or "https://api.openai.com/v1", settings
+        ),
+        api_key=api_key,
+        http_client=create_llm_http_client(
+            allow_private=settings.allow_private_llm_base_urls
+        ),
     )
     model = conn.llm_model or "gpt-4o-mini"
     try:
