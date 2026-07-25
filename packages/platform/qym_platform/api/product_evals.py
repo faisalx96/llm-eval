@@ -53,6 +53,7 @@ class ProductEvalSubmitRequest(BaseModel):
     run_name: Optional[str] = None
     task_name: Optional[str] = None
     model: Optional[str] = None
+    run_count: Optional[int] = Field(default=None, ge=1, le=100)
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
 
@@ -184,9 +185,12 @@ def _job_payload(
         "eval_id": snapshot["eval_id"],
         "status": status,
         "qym_project_id": snapshot["project_id"],
+        "run_count": snapshot["expected_runs"],
         "runs": runs,
         "qym_compare_url": _qym_compare_url(qym_run_ids),
-        "group_analysis": snapshot["group_analysis"] if snapshot["status"] == "COMPLETED" else None,
+        "group_analysis": snapshot["group_analysis"]
+        if snapshot["status"] == "COMPLETED"
+        else None,
         "created_at": snapshot["created_at"],
         "updated_at": snapshot["updated_at"],
     }
@@ -201,9 +205,7 @@ def _product_eval_metadata(run: Run) -> Dict[str, Any]:
     return product_eval if isinstance(product_eval, dict) else {}
 
 
-def _runs_for_eval_id(
-    db: Session, principal: Principal, eval_id: str
-) -> List[Run]:
+def _runs_for_eval_id(db: Session, principal: Principal, eval_id: str) -> List[Run]:
     query = Run.active(db).filter(Run.owner_user_id == principal.user.id)
     if principal.project_id:
         query = query.filter(Run.project_id == principal.project_id)
@@ -258,7 +260,10 @@ def _group_analysis_from_db_runs(
         from qym.core.group_analysis import analyze_group_runs
         from qym.core.results import EvaluationResult
     except Exception:
-        logger.warning("Product eval group analysis unavailable: qym SDK import failed", exc_info=True)
+        logger.warning(
+            "Product eval group analysis unavailable: qym SDK import failed",
+            exc_info=True,
+        )
         return None
 
     results = []
@@ -285,9 +290,7 @@ def _group_analysis_from_db_runs(
                 result.add_metadata(item.item_id, dict(item.item_metadata))
             score = scores_by_item.get(item.item_id)
             latency_seconds = (
-                float(item.latency_ms) / 1000.0
-                if item.latency_ms is not None
-                else None
+                float(item.latency_ms) / 1000.0 if item.latency_ms is not None else None
             )
             if item.error:
                 result.add_error(
@@ -338,6 +341,11 @@ def _db_eval_payload(db: Session, eval_id: str, runs: List[Run]) -> Dict[str, An
     project_id = ordered[0].project_id if ordered else None
     created_at = min((run.created_at for run in ordered), default=None)
     updated_at = max((run.updated_at for run in ordered), default=None)
+    run_count = (
+        int(_product_eval_metadata(ordered[0]).get("attempts") or len(ordered))
+        if ordered
+        else 0
+    )
     payload_runs = []
     for index, run in enumerate(ordered, start=1):
         details = _run_summary_payload(db, run)
@@ -355,6 +363,7 @@ def _db_eval_payload(db: Session, eval_id: str, runs: List[Run]) -> Dict[str, An
         "eval_id": eval_id,
         "status": status,
         "qym_project_id": project_id,
+        "run_count": run_count,
         "runs": payload_runs,
         "qym_compare_url": _qym_compare_url(run_ids),
         "group_analysis": (
@@ -372,7 +381,11 @@ def _require_job_access(
     if not job:
         return _error_response(404, "not_found", "Eval not found")
     snapshot = job.to_dict()
-    if snapshot.get("project_id") and principal.project_id and snapshot["project_id"] != principal.project_id:
+    if (
+        snapshot.get("project_id")
+        and principal.project_id
+        and snapshot["project_id"] != principal.project_id
+    ):
         return _error_response(403, "forbidden", "Forbidden")
     if job.owner_user_id and job.owner_user_id != principal.user.id:
         return _error_response(403, "forbidden", "Forbidden")
@@ -394,12 +407,12 @@ def _require_run_access(db: Session, principal: Principal, run_id: str) -> Run:
     return run
 
 
-def _stop_product_eval_runs(db: Session, job: ProductEvalJob, principal: Principal) -> int:
+def _stop_product_eval_runs(
+    db: Session, job: ProductEvalJob, principal: Principal
+) -> int:
     snapshot = job.to_dict()
     run_ids = {
-        str(row["qym_run_id"])
-        for row in snapshot["runs"]
-        if row.get("qym_run_id")
+        str(row["qym_run_id"]) for row in snapshot["runs"] if row.get("qym_run_id")
     }
     if snapshot.get("run_id"):
         run_ids.add(str(snapshot["run_id"]))
@@ -658,7 +671,9 @@ def submit_product_eval(
         )
     if extra_fields:
         joined = ", ".join(sorted(extra_fields))
-        return _error_response(400, "invalid_request", f"Unsupported field(s): {joined}")
+        return _error_response(
+            400, "invalid_request", f"Unsupported field(s): {joined}"
+        )
 
     try:
         job = job_manager.submit(
@@ -678,6 +693,7 @@ def submit_product_eval(
             metadata=request.metadata,
             owner_user_id=principal.user.id,
             project_id=principal.project_id,
+            run_count=request.run_count,
         )
     except ProductEvalError as exc:
         return _error_response(400, "invalid_request", str(exc))
@@ -692,7 +708,9 @@ def submit_product_eval(
         return _error_response(500, "preset_error", str(exc))
 
     job.wait_for_run(timeout=5.0)
-    return JSONResponse(_ok(_job_payload(job, db=db, principal=principal)), status_code=202)
+    return JSONResponse(
+        _ok(_job_payload(job, db=db, principal=principal)), status_code=202
+    )
 
 
 @router.get("/jobs/{job_id}")

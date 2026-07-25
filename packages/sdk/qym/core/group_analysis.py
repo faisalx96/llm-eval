@@ -11,6 +11,7 @@ import math
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Sequence
 
+from .reducers import noise_report, unbiased_pass_at_k, unbiased_pass_hat_k
 from .results import EvaluationResult
 
 
@@ -83,12 +84,17 @@ def analyze_group_runs(
     metric: str,
     threshold: float = 0.8,
     track_distribution: bool = False,
+    report_k: Optional[int] = None,
 ) -> Dict[str, Any]:
     """Analyze one group of runs using platform-compatible item-level metrics.
 
     This matches the platform item-level aggregation mode: item IDs are unioned
     across runs, and each item is evaluated with the scores that are present.
     Missing or null scores are excluded; error rows score as 0.
+
+    ``report_k`` publishes pass@k / pass^k at k below the number of runs via
+    the unbiased subset estimators (run 9, report pass@3). Omitted, the
+    estimators coincide with the observed metrics — historical behavior.
     """
     runs = [_rows_for_result(result, metric) for result in results]
     k = len(runs)
@@ -98,8 +104,8 @@ def analyze_group_runs(
     for run in runs:
         item_ids.update(run.rows.keys())
 
-    pass_at_k_count = 0
-    pass_hat_k_count = 0
+    pass_at_k_sum = 0.0
+    pass_hat_k_sum = 0.0
     total_consistency_sum = 0.0
     items_with_multiple_runs = 0
     total_reliability_sum = 0.0
@@ -149,10 +155,9 @@ def analyze_group_runs(
         if distribution is not None:
             distribution[pass_count] += 1
 
-        if pass_count > 0:
-            pass_at_k_count += 1
-        if pass_count == score_count and score_count > 0:
-            pass_hat_k_count += 1
+        k_eff = min(report_k, score_count) if report_k else score_count
+        pass_at_k_sum += unbiased_pass_at_k(score_count, pass_count, k_eff)
+        pass_hat_k_sum += unbiased_pass_hat_k(score_count, pass_count, k_eff)
 
         consistency = None
         reliability = None
@@ -190,12 +195,13 @@ def analyze_group_runs(
         "metric": metric,
         "threshold": threshold,
         "k": k,
+        "report_k": report_k,
         "total_items": total_items,
         "total_score_count": total_score_count,
         "total_score_sum": total_score_sum,
         "failed_count": failed_count,
-        "pass_at_k": pass_at_k_count / total_items if total_items else 0.0,
-        "pass_hat_k": pass_hat_k_count / total_items if total_items else 0.0,
+        "pass_at_k": pass_at_k_sum / total_items if total_items else 0.0,
+        "pass_hat_k": pass_hat_k_sum / total_items if total_items else 0.0,
         "avg_at_k": total_score_sum / total_score_count if total_score_count else 0.0,
         "avg_score": total_score_sum / total_score_count if total_score_count else 0.0,
         "max_at_k": max_score_sum / total_items if total_items else 0.0,
@@ -226,8 +232,17 @@ def compare_group_runs(
     *,
     metric: str,
     threshold: float = 0.8,
+    report_k: Optional[int] = None,
+    confidence: float = 0.95,
 ) -> Dict[str, Any]:
-    """Compare two groups using the platform's strict cohort semantics."""
+    """Compare two groups using the platform's strict cohort semantics.
+
+    Besides the raw deltas, the result carries a ``noise`` report per metric:
+    the luck band (how far the delta could wander on run luck alone, at
+    ``confidence``), a p-value, and a verdict — ``improved`` / ``regressed`` /
+    ``within_noise``. ``report_k`` selects the published pass@k (unbiased,
+    estimated from all runs on each side).
+    """
     left_runs = [_rows_for_result(result, metric) for result in left_results]
     right_runs = [_rows_for_result(result, metric) for result in right_results]
 
@@ -238,6 +253,8 @@ def compare_group_runs(
         "left_run_count": len(left_runs),
         "right_run_count": len(right_runs),
         "k": len(left_runs),
+        "report_k": report_k,
+        "confidence": confidence,
         "left": _finalize_compare_aggregate(_new_compare_aggregate(), 0),
         "right": _finalize_compare_aggregate(_new_compare_aggregate(), 0),
         "deltas": {
@@ -246,6 +263,13 @@ def compare_group_runs(
             "avg_at_k": 0.0,
             "consistency": 0.0,
             "reliability": 0.0,
+        },
+        "noise": {
+            "pass_at_k": None,
+            "pass_hat_k": None,
+            "avg_at_k": None,
+            "consistency": None,
+            "reliability": None,
         },
         "summary": {
             "improved_count": 0,
@@ -267,6 +291,8 @@ def compare_group_runs(
     left_agg = _new_compare_aggregate()
     right_agg = _new_compare_aggregate()
     total_attempts_delta = 0.0
+    left_scores_by_item: Dict[str, List[float]] = {}
+    right_scores_by_item: Dict[str, List[float]] = {}
 
     for item_id in sorted(item_ids):
         left_values = _collect_group_values(left_runs, item_id)
@@ -277,8 +303,10 @@ def compare_group_runs(
             continue
 
         result["eligible_items"] += 1
-        _update_compare_aggregate(left_agg, left_values, threshold)
-        _update_compare_aggregate(right_agg, right_values, threshold)
+        left_scores_by_item[item_id] = left_values["scores"]
+        right_scores_by_item[item_id] = right_values["scores"]
+        _update_compare_aggregate(left_agg, left_values, threshold, report_k)
+        _update_compare_aggregate(right_agg, right_values, threshold, report_k)
 
         left_passes = [score >= threshold for score in left_values["scores"]]
         right_passes = [score >= threshold for score in right_values["scores"]]
@@ -342,6 +370,14 @@ def compare_group_runs(
     result["summary"]["avg_attempts_delta"] = (
         total_attempts_delta / eligible_items if eligible_items else 0.0
     )
+    if eligible_items:
+        result["noise"] = noise_report(
+            left_scores_by_item,
+            right_scores_by_item,
+            threshold=threshold,
+            report_k=report_k,
+            confidence=confidence,
+        )
     result["items"].sort(
         key=lambda item: (
             -item["move"],
@@ -508,8 +544,8 @@ def _collect_group_values(
 
 def _new_compare_aggregate() -> Dict[str, Any]:
     return {
-        "pass_at_k_count": 0,
-        "pass_hat_k_count": 0,
+        "pass_at_k_sum": 0.0,
+        "pass_hat_k_sum": 0.0,
         "total_consistency_sum": 0.0,
         "items_with_multiple_runs": 0,
         "total_reliability_sum": 0.0,
@@ -522,7 +558,10 @@ def _new_compare_aggregate() -> Dict[str, Any]:
 
 
 def _update_compare_aggregate(
-    aggregate: Dict[str, Any], group_values: Dict[str, Any], threshold: float
+    aggregate: Dict[str, Any],
+    group_values: Dict[str, Any],
+    threshold: float,
+    report_k: Optional[int] = None,
 ) -> None:
     scores = group_values["scores"]
     attempts = group_values["attempts"]
@@ -534,10 +573,14 @@ def _update_compare_aggregate(
     aggregate["total_attempts_sum"] += sum(attempts)
     aggregate["total_attempts_count"] += len(attempts)
 
-    if pass_count > 0:
-        aggregate["pass_at_k_count"] += 1
-    if pass_count == score_count and score_count > 0:
-        aggregate["pass_hat_k_count"] += 1
+    if score_count > 0:
+        k_eff = min(report_k, score_count) if report_k else score_count
+        aggregate["pass_at_k_sum"] += unbiased_pass_at_k(
+            score_count, pass_count, k_eff
+        )
+        aggregate["pass_hat_k_sum"] += unbiased_pass_hat_k(
+            score_count, pass_count, k_eff
+        )
     if score_count > 1:
         fail_count = score_count - pass_count
         aggregate["total_consistency_sum"] += (
@@ -554,10 +597,10 @@ def _finalize_compare_aggregate(
 ) -> Dict[str, Any]:
     return {
         "pass_at_k": (
-            aggregate["pass_at_k_count"] / eligible_items if eligible_items else 0.0
+            aggregate["pass_at_k_sum"] / eligible_items if eligible_items else 0.0
         ),
         "pass_hat_k": (
-            aggregate["pass_hat_k_count"] / eligible_items if eligible_items else 0.0
+            aggregate["pass_hat_k_sum"] / eligible_items if eligible_items else 0.0
         ),
         "avg_at_k": (
             aggregate["total_score_sum"] / aggregate["total_score_count"]

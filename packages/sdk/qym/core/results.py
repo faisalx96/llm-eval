@@ -58,6 +58,9 @@ class EvaluationResult:
         # successful pass's fields with per-metric scores replaced by the
         # mean over passes) so every existing consumer keeps working.
         self.samples: int = 1
+        # Publish pass@k at this k, estimated from all samples passes
+        # (None -> k = samples, the historical behavior).
+        self.report_k: Optional[int] = None
         self.passes: Dict[str, Dict[int, Dict[str, Any]]] = {}
 
     def add_input(self, item_id: str, task_input: Any):
@@ -236,15 +239,27 @@ class EvaluationResult:
         self,
         metric: Optional[str] = None,
         threshold: float = 0.8,
+        report_k: Optional[int] = None,
     ) -> Dict[str, Optional[float]]:
         """The reported group set (Pass@k, Pass^k, Avg@k, Max@k, Consistency,
-        Reliability) with k = samples. Key names match analyze_group_runs."""
+        Reliability) with k = samples. Key names match analyze_group_runs.
+
+        ``report_k`` publishes pass@k below the sampled count via the
+        unbiased subset estimator (run 9 passes, report pass@3); it defaults
+        to the run's configured ``report_k``."""
         from .reducers import group_stats as _group_stats
 
+        if report_k is None:
+            report_k = self.report_k
+        if report_k is not None and report_k > max(self.samples, 1):
+            raise ValueError(
+                f"report_k ({report_k}) cannot exceed samples ({self.samples})"
+            )
         return _group_stats(
             self.item_pass_scores(metric),
             threshold=threshold,
             k=max(self.samples, 1),
+            report_k=report_k,
         )
 
     def finish(self):
@@ -277,22 +292,22 @@ class EvaluationResult:
         Returns dict with: mean, std, min, max, success_rate.
         For repeat runs (samples > 1) the stats are computed over ALL
         per-pass scores (failed pass -> 0.0) — "mean per attempt" — and the
-        dict gains ci_low/ci_high (bootstrap 95% CI on the mean).
+        dict gains ci_low/ci_high (bootstrap 95% CI on the mean). The
+        bootstrap resamples items, keeping each item's passes together:
+        passes of the same item are correlated, so a flat resample would
+        understate the interval.
         """
         if self.samples > 1 and self.passes:
-            from .reducers import mean_ci
+            from .reducers import clustered_mean_ci
 
-            flat = [
-                score
-                for scores_list in self.item_pass_scores(metric_name).values()
-                for score in scores_list
-            ]
+            groups = list(self.item_pass_scores(metric_name).values())
+            flat = [score for scores_list in groups for score in scores_list]
             if not flat:
                 return {
                     'mean': 0.0, 'std': 0.0, 'min': 0.0, 'max': 0.0,
                     'success_rate': 0.0, 'ci_low': 0.0, 'ci_high': 0.0,
                 }
-            ci = mean_ci(flat)
+            ci = clustered_mean_ci(groups)
             return {
                 'mean': ci['mean'],
                 'std': statistics.stdev(flat) if len(flat) > 1 else 0.0,

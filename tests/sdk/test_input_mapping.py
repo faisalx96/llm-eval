@@ -79,11 +79,11 @@ def test_evaluator_metric_arguments_include_original_and_mapped_inputs(mock_data
     }
 
 
-def test_scalar_metric_input_uses_original_single_column_name(mock_dataset):
+def test_scalar_metric_input_stays_scalar_and_exposes_column_name(mock_dataset):
     def task(question):
         return question
 
-    def metric(output, expected, input_data):
+    def metric(output, expected, input_data, question):
         return 1.0
 
     mock_dataset.input_cols = ["question"]
@@ -102,14 +102,15 @@ def test_scalar_metric_input_uses_original_single_column_name(mock_dataset):
     )
 
     assert args == ()
-    assert kwargs["input_data"] == {"question": "What is AI?"}
+    assert kwargs["input_data"] == "What is AI?"
+    assert kwargs["question"] == "What is AI?"
 
 
-def test_scalar_metric_input_uses_mapped_single_column_name(mock_dataset):
+def test_scalar_metric_input_stays_scalar_and_exposes_mapped_name(mock_dataset):
     def task(question):
         return question
 
-    def metric(output, expected, input_data):
+    def metric(output, expected, input_data, question):
         return 1.0
 
     mock_dataset.input_cols = ["prompt"]
@@ -128,7 +129,40 @@ def test_scalar_metric_input_uses_mapped_single_column_name(mock_dataset):
         input_data="What is AI?",
     )
 
-    assert kwargs["input_data"] == {"question": "What is AI?"}
+    assert kwargs["input_data"] == "What is AI?"
+    assert kwargs["question"] == "What is AI?"
+
+
+def test_mapping_preserves_original_dict_for_input_data(mock_dataset):
+    def task(question, schema):
+        return f"{question} :: {schema}"
+
+    def metric(output, expected, input_data):
+        return 1.0
+
+    evaluator = Evaluator(
+        task=task,
+        dataset=mock_dataset,
+        metrics=[metric],
+        input_mapping={
+            "sql_prompt": "question",
+            "sql_context": "schema",
+        },
+        config={"otel_enabled": False},
+    )
+    original = {
+        "sql_prompt": "List users",
+        "sql_context": "CREATE TABLE users(id INT)",
+    }
+
+    _, kwargs = evaluator._resolve_metric_arguments(
+        metric,
+        output="SELECT 1",
+        expected="SELECT 1",
+        input_data=original,
+    )
+
+    assert kwargs["input_data"] is original
 
 
 def test_scalar_metric_input_stays_scalar_without_schema_or_mapping(mock_dataset):

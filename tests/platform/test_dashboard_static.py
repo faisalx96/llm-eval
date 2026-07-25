@@ -221,7 +221,7 @@ def test_run_page_supports_single_pass_scope() -> None:
     # pass pages read as a single run: no group tiles/sweep/curve, no
     # Repeat Stability chart panels, no per-pass dot strips on item cards
     assert "if (samplesCount <= 1 || IS_EXPORT || state.viewPass)" in source
-    assert source.count("const repeatSeries = state.viewPass ? [] :") == 2
+    assert source.count("const repeatSeries = state.viewPass ? [] :") == 1
     assert "(!state.viewPass && row.pass_scores && metric)" in source
     # edits are allowed and routed to the viewed pass
     assert "updateMetricScore(filePath, rowIndex, metricName, input.value, state.viewPass)" in source
@@ -273,6 +273,7 @@ def test_run_page_supports_single_pass_scope() -> None:
 
 def test_repeat_run_analysis_uses_shared_visual_language() -> None:
     source = (DASHBOARD_DIR / "run.html").read_text(encoding="utf-8")
+    dashboard_js = DASHBOARD_JS.read_text(encoding="utf-8")
     repeat_analysis = source.split("async function renderSamplesAnalysis()", 1)[1].split("function wireTopActions", 1)[0]
 
     assert 'class="model-stat-box"' in source
@@ -292,6 +293,9 @@ def test_repeat_run_analysis_uses_shared_visual_language() -> None:
     assert "window.QymMetrics.getMetricColorClass(v, mTypeOf(m))" in source
     assert "statTile('Max@' + samplesCount" not in source
     assert "statTile('Avg Score'" in source
+    assert "const finalRepeatPoint = group.band?.[samplesCount]" in source
+    assert "statTile(estimatorLabel('@'), estActive ? g.pass_at_k : finalPassAtK" in source
+    assert "statTile(estimatorLabel('^'), estActive ? g.pass_hat_k : finalPassHatK" in source
 
     # sweep rows deep-link to that pass's page (cmd/ctrl-click opens a tab)
     assert "'<tr data-sw-pass=\"' + p.pass_number + '\"" in source
@@ -302,13 +306,33 @@ def test_repeat_run_analysis_uses_shared_visual_language() -> None:
     assert "function curveChartHtml(W = 620, H = 230)" in source
     assert "function fitCurveChart()" in source
     assert "requestAnimationFrame(fitCurveChart)" in source
-    assert "flex: 1 1 auto;" in _rule(source, ".samples-curve {")
+    assert "flex: none;" in _rule(source, ".samples-curve {")
     assert "statTile('Errors'" in source
     assert "statTile('Avg Latency'" in source
     assert source.index("statTile('Avg Latency'") < source.index("statTile('Errors'")
-    assert "escapeHtml(groupMetricLabel) + ' vs k</div>'" in source
-    assert "Probability that at least one or all selected attempts pass." in repeat_analysis
+    assert '<div class="samples-zone-title">Repeat Performance</div>' in repeat_analysis
+    assert "data-samples-statistic" in repeat_analysis
+    assert "{ key: 'compare', label: 'Compare'" in repeat_analysis
+    assert "class=\"samples-statistic-tabs\" role=\"tablist\"" in repeat_analysis
+    assert "class=\"samples-statistic-btn" in repeat_analysis
+    assert "samples-statistic-select" not in source
+    assert "samplesStatistic: 'compare'" in source
+    assert "Pass@k" in repeat_analysis
+    assert "Pass^k" in repeat_analysis
+    assert "{ key: 'cumulative_avg', label: 'Average'" in repeat_analysis
+    assert "divergencePath" not in repeat_analysis
+    assert ">divergence<" not in repeat_analysis
+    assert "visibleKeys.map(key => intervalPathFor(key, isComparison ? 0.08 : 0.12))" in repeat_analysis
+    assert "const whiskersFor = key =>" not in repeat_analysis
+    assert "Attempts allowed" in repeat_analysis
+    assert "Passes observed" in repeat_analysis
+    assert "95% uncertainty" in repeat_analysis
+    assert "Uncertainty when generalizing to another comparable set" in repeat_analysis
     assert "Items by exact correct-pass count." in repeat_analysis
+    assert "Repeat Stability" in repeat_analysis
+    assert "Quality–Stability Map" in repeat_analysis
+    assert "if (!isBool && groupMetricType !== 'numeric'" in repeat_analysis
+    assert "Threshold Explorer" in repeat_analysis
     assert 'fill="var(--success-dim)"' not in repeat_analysis
     shared_box_rule = _rule(source, ".metric-card,")
     assert ".samples-chart-block," in shared_box_rule
@@ -354,19 +378,36 @@ def test_repeat_run_analysis_uses_shared_visual_language() -> None:
     assert ">Avg lat</th>" not in source
     assert ">Err</th>" not in source
     assert ".samples-correct-col" in source
-    assert "height: 230px;" in _rule(source, ".samples-curve {")
+    assert "height: 260px;" in _rule(source, ".samples-curve {")
     assert "height: 230px;" in _rule(source, ".samples-correct-chart {")
     assert "border-bottom:" not in _rule(source, ".samples-correct-chart {")
-    assert "const paddedSpan = Math.max(0.2, observedSpan * 1.4);" in repeat_analysis
-    assert "const yTicks = Array.from({ length: 5 }" in repeat_analysis
-    assert "with y-axis from" in repeat_analysis
+    assert "const tickStep = observedSpan > 0.8 ? 0.2 : 0.1;" in repeat_analysis
+    assert "Math.floor((observedMin - padding) / tickStep)" in repeat_analysis
+    assert "Math.ceil((observedMax + padding) / tickStep)" in repeat_analysis
+    assert "yTicks = Array.from({ length: tickCount + 1 }" in repeat_analysis
+    assert "statisticInterval" in repeat_analysis
+    assert "intervalPath" in repeat_analysis
+    assert "samples-band-table-wrap" in repeat_analysis
+    assert "samples-band-cell-ci" in repeat_analysis
+    assert "±" in repeat_analysis
+    assert "{ key: 'cumulative_avg', label: 'Average' }" in repeat_analysis
     assert "samples-curve-value" in repeat_analysis
     assert "ri-point-value" in source
     assert "formatPercent(value, 0)" in source
     assert "labelOffset: 14" in source
     paired_chart_rule = _rule(source, ".samples-charts-row > .samples-chart-block {")
     assert "align-self: stretch;" in paired_chart_rule
-    assert "height: 100%;" in paired_chart_rule
+    assert "height: auto;" in paired_chart_rule
+    assert "max-width:" not in _rule(source, ".samples-charts-row {")
+    assert "max-width:" not in _rule(source, ".samples-stability-section {")
+    assert "max-width:" not in _rule(source, ".ri-insights {")
+    assert "grid-template-columns: minmax(0, 2fr) minmax(320px, 1fr);" in _rule(source, ".samples-charts-row.with-distribution {")
+    assert "const stabilityPanelsHtml = stabilityMapHtml + thresholdExplorerHtml;" in repeat_analysis
+    assert "(distBlockHtml ? ' with-distribution' : '')" in repeat_analysis
+    assert "distBlockHtml +" in repeat_analysis
+    assert 'stabilityMapHtml = \'<div class="ri-panel half"' in repeat_analysis
+    assert "metric_cis" not in dashboard_js
+    assert "metric-ci" not in dashboard_js
 
 
 def test_shared_latency_formatter_normalizes_minute_rollover() -> None:
@@ -382,10 +423,8 @@ def test_run_detail_includes_non_redundant_intelligence_charts() -> None:
     active = source.split("function buildDeepAnalysisCharts(rows)", 1)[1].split("function renderOverview", 1)[0]
 
     assert "function buildDeepAnalysisCharts(rows)" in source
-    assert "Metric Relationships" in active
     assert "Metric Correlation" in active
     assert "Metric Relationship" in active
-    assert "Quality and Latency" in active
     assert "Quality–Latency Frontier" in active
     assert "Fast + strong zone" in active
     assert "Slow + weak zone" in active
@@ -401,20 +440,16 @@ def test_run_detail_includes_non_redundant_intelligence_charts() -> None:
     assert 'r="3.5" fill="var(--chart-1)"' in active
     assert "const radius = 3.5 + Math.min(2" in active
     assert 'stroke-width="1.5"' in active
-    assert "Repeat Stability" in active
-    assert "Quality–Stability Map" in active
-    assert "Threshold Explorer" in active
-    assert "Score Estimate by Pass Count" in active
+    assert "Repeat Stability" not in active
+    assert "Score Estimate by Pass Count" not in active
     assert "ri-x-axis" in active
     assert "ri-y-axis" in active
+    assert "samplesStatistic" in source
     assert "repeatAnalysisMetric" not in source
     assert "repeatStabilityHiddenMetrics" not in source
     assert "data-ri-repeat-metric" not in active
     assert "data-ri-stability-metric" not in active
     assert "ri-legend-toggle" not in active
-    assert "const repeatMetricName = state.samplesMetric || state.selectedMetric;" in active
-    assert "const visibleStabilitySeries = [repeatMetric];" in active
-    assert "const thresholdMetric = repeatMetric;" in active
     assert "state.samplesMetric = nextMetric;" in source
     assert "renderOverview(getFilteredItems());" in source
     assert "rotateMatrixLabels" in active
@@ -431,6 +466,10 @@ def test_run_detail_includes_non_redundant_intelligence_charts() -> None:
     assert "Observed Performance by Pass" not in active
     assert "intelligenceCharts +" in source
     assert "const intelligenceCharts = buildDeepAnalysisCharts(rows);" in source
+    assert "const deepPanels = relationshipPanels.concat(frontierPanel ? [frontierPanel] : []);" in active
+    assert 'class="ri-grid deep-analysis-grid"' in active
+    assert 'relationshipPanels.push(\'<div class="ri-panel">' in active
+    assert 'frontierPanel = \'<div class="ri-panel">' in active
     assert "radar" not in source.lower()
 
 

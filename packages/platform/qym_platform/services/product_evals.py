@@ -72,7 +72,9 @@ class ProductEvalJob:
     updated_at: datetime = field(default_factory=datetime.utcnow)
     _lock: threading.RLock = field(default_factory=threading.RLock, repr=False)
     _run_ready: threading.Event = field(default_factory=threading.Event, repr=False)
-    _stop_requested: threading.Event = field(default_factory=threading.Event, repr=False)
+    _stop_requested: threading.Event = field(
+        default_factory=threading.Event, repr=False
+    )
     _future: Optional[Future] = field(default=None, repr=False)
 
     @property
@@ -248,7 +250,7 @@ def _format_missing_script_error(script_path: Path) -> str:
     return f"Preset script not found: {script_path}"
 
 
-def _insightor_platform_config() -> tuple[Dict[str, Any], int]:
+def _insightor_platform_config() -> tuple[Dict[str, Any], int, int, str]:
     settings = ProductEvalSettings()
     config = {
         "max_concurrency": settings.max_concurrency,
@@ -262,12 +264,22 @@ def _insightor_platform_config() -> tuple[Dict[str, Any], int]:
         raise ProductEvalError(
             "QYM_PRODUCT_EVAL_MAX_CONCURRENCY * QYM_PRODUCT_EVAL_MAX_PARALLEL_RUNS must be less than or equal to 20"
         )
-    return config, max_parallel_runs
+    default_dataset = settings.default_dataset.strip()
+    if not default_dataset:
+        raise ProductEvalError(
+            "QYM_PRODUCT_EVAL_DEFAULT_DATASET must be a non-empty Qym dataset name"
+        )
+    return config, max_parallel_runs, settings.run_count, default_dataset
 
 
 def get_preset(name: str) -> ProductEvalPreset:
     if name == "insightor":
-        default_config, max_parallel_runs = _insightor_platform_config()
+        (
+            default_config,
+            max_parallel_runs,
+            run_count,
+            default_dataset,
+        ) = _insightor_platform_config()
         return ProductEvalPreset(
             name="insightor",
             script_path=_default_insightor_script(),
@@ -275,9 +287,9 @@ def get_preset(name: str) -> ProductEvalPreset:
             metric_name="accuracy",
             dataset_env=None,
             model_env="MODEL",
-            default_dataset_name="playground_set_v2",
+            default_dataset_name=default_dataset,
             default_config=default_config,
-            run_count=3,
+            run_count=run_count,
             max_parallel_runs=max_parallel_runs,
         )
     if name == "test":
@@ -293,7 +305,7 @@ def get_preset(name: str) -> ProductEvalPreset:
                 "max_concurrency": 10,
                 "timeout": 30,
             },
-            run_count=3,
+            run_count=settings.run_count,
             max_parallel_runs=settings.max_parallel_runs,
         )
     raise ProductEvalError(f"Unknown product eval preset: {name}")
@@ -304,7 +316,7 @@ def validate_dataset_name(dataset_name: Optional[str]) -> Optional[str]:
         return None
     clean = str(dataset_name).strip()
     if not clean:
-        raise ProductEvalError("dataset must be a non-empty Langfuse dataset name")
+        raise ProductEvalError("dataset must be a non-empty Qym dataset name")
     return clean
 
 
@@ -514,6 +526,7 @@ class ProductEvalJobManager:
         owner_user_id: Optional[str] = None,
         project_id: Optional[str] = None,
         platform_url: Optional[str] = None,
+        run_count: Optional[int] = None,
     ) -> ProductEvalJob:
         requested_dataset = validate_dataset_name(dataset_name)
         preset = validate_submit_request(
@@ -522,12 +535,15 @@ class ProductEvalJobManager:
             runtime_inputs=runtime_inputs,
         )
         validated_runtime_inputs = validate_runtime_inputs(preset, runtime_inputs)
+        resolved_run_count = preset.run_count if run_count is None else int(run_count)
+        if not 1 <= resolved_run_count <= 100:
+            raise ProductEvalError("run_count must be between 1 and 100")
         job = ProductEvalJob(
             job_id=f"eval_{uuid4().hex}",
             preset=preset.name,
             owner_user_id=owner_user_id,
             project_id=project_id,
-            expected_runs=preset.run_count,
+            expected_runs=resolved_run_count,
         )
         job.initialize_planned_runs()
         with self._lock:
@@ -549,6 +565,7 @@ class ProductEvalJobManager:
                 model,
                 dict(metadata or {}),
                 platform_url,
+                resolved_run_count,
             )
         except Exception:
             with self._lock:
@@ -584,6 +601,7 @@ class ProductEvalJobManager:
         model: Optional[str],
         metadata: Dict[str, Any],
         platform_url: Optional[str],
+        run_count: int = 3,
     ) -> None:
         job.mark(status="RUNNING")
         try:
@@ -630,9 +648,7 @@ class ProductEvalJobManager:
             env_model = os.getenv(preset.model_env) if preset.model_env else None
             resolved_model = model or env_model or getattr(module, "MODEL", None)
             settings = PlatformSettings()
-            resolved_platform_url = (
-                platform_url or settings.base_url
-            ).rstrip("/")
+            resolved_platform_url = (platform_url or settings.base_url).rstrip("/")
 
             def build_run_metadata(attempt: int) -> Dict[str, Any]:
                 run_metadata = dict(metadata or {})
@@ -645,7 +661,7 @@ class ProductEvalJobManager:
                         "preset": preset.name,
                         "eval_id": job.eval_id,
                         "attempt": attempt,
-                        "attempts": preset.run_count,
+                        "attempts": run_count,
                     }
                 )
                 run_metadata["product_eval"] = product_eval
@@ -718,7 +734,7 @@ class ProductEvalJobManager:
                         status="STOPPED" if job.stop_requested() else "COMPLETED",
                     )
 
-            if preset.run_count > 1:
+            if run_count > 1:
                 # Repeat runs are native now: ONE run with samples=k replaces
                 # the old k-RunSpec fan-out (one dashboard row, per-pass
                 # storage, group metrics computed by the run itself).
@@ -740,7 +756,7 @@ class ProductEvalJobManager:
                     **evaluator_config,
                     "run_metadata": build_run_metadata(1),
                     "run_name": base_name,
-                    "samples": int(preset.run_count),
+                    "samples": run_count,
                     # Stop requests take effect mid-run (the old batch loop
                     # checked between run_parallel batches).
                     "should_stop": job.stop_requested,

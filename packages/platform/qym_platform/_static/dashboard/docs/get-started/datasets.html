@@ -94,7 +94,7 @@ result = Evaluator(
     },
 ).run()</pre>
 <p>The original dict remains the dataset input shown in artifacts and the UI. During the task call, the adapter passes the mapped names; during metric calls, both original names (<code>sql_prompt</code>, <code>sql_context</code>) and mapped names (<code>question</code>, <code>schema</code>) are available.</p>
-<p>Single-column CSVs preserve scalar task behavior while giving metrics a named input. With <code>input_col="question"</code>, the task receives the scalar cell value and metrics receive <code>{"question": value}</code>. When <code>input_mapping</code> renames that column, metrics receive the mapped name. A scalar input from a dataset without declared column schema stays scalar because qym cannot infer a field name safely.</p>
+<p>Single-column CSVs preserve the scalar value for both the task and a metric's <code>input_data</code> parameter. The declared column name is also exposed as an individual metric parameter and judge placeholder. With <code>input_col="question"</code>, <code>input_data</code> stays scalar while <code>question</code> resolves to the same value. When <code>input_mapping</code> renames that column, the mapped name is exposed without changing <code>input_data</code>.</p>
 
 <h3>JSON-in-cell parsing rule</h3>
 <p>CSV cells are parsed with deliberately minimal magic. The rule (verified in <code>_parse_cell</code>):</p>

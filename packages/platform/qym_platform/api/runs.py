@@ -1079,44 +1079,10 @@ def legacy_list_runs(
             "count": float(row.score_count or 0),
         }
 
-    # --- Batch query: per-pass score spread for repeat runs (samples > 1) ---
-    # Normal-approximation 95% CI half-width over all per-pass scores; the
-    # ±CI in the metric cell is the visual marker of a multi-sample run.
+    # Repeat-run summaries power the pass-dot strip on the runs list. Detailed
+    # uncertainty belongs on the run page, where its meaning can be explained;
+    # the scan-oriented list intentionally exposes only point estimates.
     sampled_run_ids = [r.id for r in runs if int(getattr(r, "samples", 1) or 1) > 1]
-    ci_map: Dict[str, Dict[str, float]] = {}
-    if sampled_run_ids:
-        from qym_platform.db.models import RunItemPassScore
-
-        spread_rows = (
-            db.query(
-                RunItemPassScore.run_id,
-                RunItemPassScore.metric_name,
-                func.avg(RunItemPassScore.score_numeric).label("mean"),
-                func.count(RunItemPassScore.score_numeric).label("n"),
-                (
-                    func.avg(
-                        RunItemPassScore.score_numeric * RunItemPassScore.score_numeric
-                    )
-                ).label("mean_sq"),
-            )
-            .filter(
-                RunItemPassScore.run_id.in_(sampled_run_ids),
-                RunItemPassScore.score_numeric.isnot(None),
-            )
-            .group_by(RunItemPassScore.run_id, RunItemPassScore.metric_name)
-            .all()
-        )
-        for row in spread_rows:
-            n = int(row.n or 0)
-            if n < 2 or row.mean is None or row.mean_sq is None:
-                continue
-            variance = max(0.0, float(row.mean_sq) - float(row.mean) ** 2)
-            half_width = 1.96 * (variance ** 0.5) / (n ** 0.5)
-            ci_map.setdefault(row.run_id, {})[row.metric_name] = half_width
-
-    # Repeat runs: tiny per-pass summaries (status + primary-metric mean +
-    # error count) power the pass-dot strip on the runs list without a
-    # per-row /passes fetch. Status semantics mirror /api/runs/{id}/passes.
     pass_summary_map: Dict[str, List[Dict[str, Any]]] = {}
     if sampled_run_ids:
         from qym_platform.db.models import RunItemAttempt, RunItemPassScore
@@ -1325,7 +1291,11 @@ def legacy_list_runs(
             "status": r.status,
             "run_config": {},  # Omit full config from list view for payload size
             "samples": int(getattr(r, "samples", 1) or 1),
-            "metric_cis": ci_map.get(r.id) or None,
+            "report_k": (
+                r.run_config.get("report_k")
+                if isinstance(r.run_config, dict)
+                else None
+            ),
             "pass_summaries": pass_summary_map.get(r.id) or None,
             "last_completed_pass": (
                 r.run_metadata.get("last_completed_pass")
@@ -2301,9 +2271,10 @@ def run_group_metrics(
     if not can_view_run(db, principal, run):
         return {"error": "Access denied"}
 
-    from qym.core.reducers import estimate_pass_at, estimate_pass_hat, group_stats
+    from qym.core.reducers import group_stats
 
     from qym_platform.db.models import RunItemPassScore
+    from qym_platform.services.repeat_analysis import cached_repeat_analysis
 
     samples = int(getattr(run, "samples", 1) or 1)
     metric_name = metric or (run.metrics[0] if run.metrics else None)
@@ -2324,34 +2295,47 @@ def run_group_metrics(
         .order_by(RunItemPassScore.item_id, RunItemPassScore.pass_number)
         .all()
     )
-    for item_id, _pass_number, score_numeric in rows:
-        items_scores.setdefault(item_id, []).append(
-            float(score_numeric) if score_numeric is not None else 0.0
-        )
+    score_rows = []
+    for item_id, pass_number, score_numeric in rows:
+        numeric = float(score_numeric) if score_numeric is not None else 0.0
+        items_scores.setdefault(item_id, []).append(numeric)
+        score_rows.append((str(item_id), int(pass_number), numeric))
 
-    stats = group_stats(items_scores, threshold=threshold, k=samples)
-    max_k = max((len(v) for v in items_scores.values()), default=0)
-    band = {
-        k: {
-            "pass_at_k": estimate_pass_at(items_scores, k, threshold=threshold),
-            "pass_hat_k": estimate_pass_hat(items_scores, k, threshold=threshold),
-        }
-        for k in range(1, max_k + 1)
-    }
-    # Correct distribution (same shape as the Compare/Models views):
-    # distribution[n] = how many items had exactly n passing passes.
-    distribution = [0] * (samples + 1)
-    for scores in items_scores.values():
-        n_correct = sum(1 for s in scores if s >= threshold)
-        distribution[min(n_correct, samples)] += 1
+    run_config = run.run_config if isinstance(run.run_config, dict) else {}
+    raw_report_k = run_config.get("report_k")
+    report_k = (
+        int(raw_report_k)
+        if isinstance(raw_report_k, (int, float)) and 1 <= int(raw_report_k) <= samples
+        else None
+    )
+    stats = group_stats(
+        items_scores, threshold=threshold, k=samples, report_k=report_k
+    )
+    analysis = cached_repeat_analysis(
+        db,
+        run_id=run.id,
+        metric_name=metric_name,
+        threshold=threshold,
+        samples=samples,
+        rows=score_rows,
+        items_scores=items_scores,
+    )
     return {
         "run_id": run.id,
         "metric": metric_name,
         "threshold": threshold,
         "samples": samples,
+        "report_k": report_k,
         "group": stats,
-        "band": band,
-        "distribution": distribution,
+        "band": analysis.get("band", {}),
+        "distribution": analysis.get("distribution", []),
+        "uncertainty": {
+            "confidence": analysis.get("confidence"),
+            "bootstrap_iterations": analysis.get("bootstrap_iterations"),
+            "minimum_items": analysis.get("minimum_uncertainty_items"),
+            "method": analysis.get("method"),
+            "method_version": analysis.get("method_version"),
+        },
     }
 
 

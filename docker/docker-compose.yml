@@ -39,6 +39,7 @@ services:
       QYM_PLATFORM_SSL_VERIFY: ${QYM_PLATFORM_SSL_VERIFY:-}
       QYM_CA_BUNDLE: ${QYM_CA_BUNDLE:-}
       QYM_SSL_VERIFY: ${QYM_SSL_VERIFY:-}
+      QYM_PRODUCT_EVAL_RUN_COUNT: ${QYM_PRODUCT_EVAL_RUN_COUNT:-3}
     ports:
       - "8000:8000"
     depends_on:

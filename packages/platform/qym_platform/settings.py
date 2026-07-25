@@ -17,7 +17,10 @@ class PlatformSettings(BaseSettings):
     # Core
     environment: str = Field(default="dev")
     base_url: str = Field(default="http://localhost:8000")
-    root_path: str = Field(default="", description="URL prefix when served behind a reverse proxy (e.g. /qym)")
+    root_path: str = Field(
+        default="",
+        description="URL prefix when served behind a reverse proxy (e.g. /qym)",
+    )
 
     # Auth
     auth_mode: str = Field(default="none")  # none|proxy_headers|oidc|saml (SSO later)
@@ -38,7 +41,9 @@ class PlatformSettings(BaseSettings):
     llm_config_encryption_key: str = Field(default="")
 
     # Visibility
-    hidden_tasks: str = Field(default="", description="Comma-separated task names to hide from listings")
+    hidden_tasks: str = Field(
+        default="", description="Comma-separated task names to hide from listings"
+    )
 
     # Storage (raw artifacts)
     artifact_store_path: str = Field(default="./artifacts")
@@ -50,9 +55,11 @@ class PlatformSettings(BaseSettings):
     product_eval_max_workers: int = Field(default=3, ge=1)
     product_eval_max_concurrency: int = Field(default=10, ge=1, le=20)
     product_eval_timeout: int = Field(default=900, ge=1, le=900)
-    product_eval_max_retries: int = Field(default=0, ge=0, le=2)
+    product_eval_max_retries: int = Field(default=1, ge=0, le=2)
     product_eval_max_parallel_runs: int = Field(default=1, ge=1, le=3)
     product_eval_metric_timeout: int = Field(default=300, ge=1)
+    product_eval_run_count: int = Field(default=3, ge=1, le=100)
+    product_eval_default_dataset: str = Field(default="playground_set_v2")
 
 
 class ProductEvalSettings(BaseSettings):
@@ -68,6 +75,8 @@ class ProductEvalSettings(BaseSettings):
     max_workers: int = Field(default=3, ge=1)
     max_concurrency: int = Field(default=10, ge=1, le=20)
     timeout: int = Field(default=900, ge=1, le=900)
-    max_retries: int = Field(default=0, ge=0, le=2)
+    max_retries: int = Field(default=1, ge=0, le=2)
     max_parallel_runs: int = Field(default=1, ge=1, le=3)
     metric_timeout: int = Field(default=300, ge=1)
+    run_count: int = Field(default=3, ge=1, le=100)
+    default_dataset: str = Field(default="playground_set_v2")

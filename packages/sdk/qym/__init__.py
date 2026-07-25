@@ -6,7 +6,7 @@ Evaluate any LLM task with just 3 lines of code:
     results = evaluator.run()
 """
 
-__version__ = "0.9.0"
+from ._version import __version__
 
 # Load .env from the caller's CWD as early as possible, so module-level reads of
 # os.environ (e.g. qym.platform.defaults.DEFAULT_PLATFORM_URL) see the right values.

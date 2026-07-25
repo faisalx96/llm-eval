@@ -3356,6 +3356,14 @@ body.chart-col-resize-active {
 .metric-score.score-2 { color: var(--score-2); }
 .metric-score.score-1 { color: var(--score-1); }
 
+/* Inline metric pills on item-by-item cards (run, compare, pass comparison)
+   share the same score ramp. */
+.metric-score-value.score-5 { color: var(--score-5); }
+.metric-score-value.score-4 { color: var(--score-4); }
+.metric-score-value.score-3 { color: var(--score-3); }
+.metric-score-value.score-2 { color: var(--score-2); }
+.metric-score-value.score-1 { color: var(--score-1); }
+
 .metric-na {
   color: var(--text-dim);
   font-size: var(--font-sm);
@@ -4577,8 +4585,8 @@ body.chart-col-resize-active {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 15px;
-  height: 15px;
+  width: 12px;
+  height: 12px;
   border-radius: 50%;
   background: var(--text-muted);
   color: var(--bg-base);
@@ -4934,8 +4942,8 @@ body.chart-col-resize-active {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 15px;
-  height: 15px;
+  width: 12px;
+  height: 12px;
   border-radius: 50%;
   background: var(--accent-primary);
   color: var(--bg-base);
@@ -8553,15 +8561,58 @@ td.col-trace-metric-value {
   margin-left: 2px;
 }
 
-/* ±CI half-width beside a metric mean — the multi-sample marker. */
-.metric-ci {
+/* report_k needs headroom: pass@k from barely k passes is high-noise. */
+.metric-noise-warn {
   font-size: var(--font-sm);
-  font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums;
-  color: var(--text-muted);
+  color: var(--warning);
   margin-left: var(--space-xs);
-  white-space: nowrap;
+  cursor: help;
 }
+
+.stat-info-icon.est-info-icon .stat-info-tooltip { display: none !important; }
+
+/* Estimator help mark: qym's stat-info-icon, sized for dense labels. The
+   nested .stat-info-tooltip appears instantly on hover of the symbol. */
+.stat-info-icon.est-info-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  height: 12px;
+  margin-left: 4px;
+  border-radius: 50%;
+  background: var(--accent-primary);
+  color: var(--bg-base);
+  font-size: var(--font-xs);
+  font-weight: 700;
+  font-style: italic;
+  font-family: var(--font-sans);
+  cursor: help;
+  position: relative;
+  flex-shrink: 0;
+  vertical-align: 1px;
+}
+
+/* Estimator mark: barred accent @k (x̄-style "averaged over all draws") plus
+   a small "i" inviting the teaching hover. Teal @k = estimated from the full
+   pass pool; plain @k = literal run count. */
+.est-atk {
+  position: relative;
+  color: var(--accent-primary);
+  cursor: help;
+}
+
+.est-atk::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -3px;
+  height: 1.5px;
+  background: var(--accent-primary);
+  border-radius: 1px;
+}
+
 
 /* Shared pass-status marker used by the run-detail repeat table. */
 .sp-dot {

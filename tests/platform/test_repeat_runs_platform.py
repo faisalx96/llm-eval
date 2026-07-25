@@ -41,6 +41,7 @@ from qym_platform.db.models import (
     RunItemAttempt,
     RunItemPassScore,
     RunItemScore,
+    RunMetricAnalysis,
     RunTraceAggregate,
     RunWorkflowStatus,
     User,
@@ -325,6 +326,17 @@ def test_detail_passes_and_group_metrics_endpoints():
         assert set(gm["band"].keys()) == {1, 2, 3}
         assert gm["band"][1]["pass_at_k"] == pytest.approx(1.0 / 3.0)
         assert gm["band"][3]["pass_at_k"] == pytest.approx(1.0)
+        assert gm["band"][1]["cumulative_avg"] == pytest.approx(1.0)
+        assert gm["band"][2]["cumulative_avg"] == pytest.approx(0.5)
+        assert gm["band"][3]["cumulative_avg"] == pytest.approx(1.0 / 3.0)
+        assert gm["band"][1]["uncertainty"]["pass_at_k"] is None
+        assert gm["uncertainty"] == {
+            "confidence": 0.95,
+            "bootstrap_iterations": 2000,
+            "minimum_items": 20,
+            "method": "item_bootstrap",
+            "method_version": 1,
+        }
 
 
 def test_update_metric_with_pass_number_edits_pass_and_rereduces_mean():
@@ -496,3 +508,129 @@ def test_old_sdk_events_without_pass_number_still_ingest():
             .one()
         )
         assert attempt.pass_number == 1
+
+
+def test_runs_list_omits_uncertainty_from_scan_oriented_summary():
+    app, SessionLocal = _make_env()
+    with SessionLocal() as session:
+        _seed(session, token="test-token", samples=3)
+        # Two items x 3 passes, internally consistent (worst case for pooling):
+        # item-1 always 1.0, item-2 always 0.0.
+        for item_id, score in (("item-1", 1.0), ("item-2", 0.0)):
+            session.add(
+                RunItem(run_id=RUN_ID, item_id=item_id, index=0, input={"q": "x"})
+            )
+            for pass_number in (1, 2, 3):
+                session.add(
+                    RunItemPassScore(
+                        run_id=RUN_ID,
+                        item_id=item_id,
+                        metric_name="accuracy",
+                        pass_number=pass_number,
+                        score_numeric=score,
+                    )
+                )
+        session.commit()
+
+    with SessionLocal() as session:
+        user = session.query(User).filter(User.id == "user-1").one()
+        principal = Principal(
+            user=user, auth_type="api_key", scopes=(), project_id="project-1"
+        )
+        payload = legacy_list_runs(
+            limit=100,
+            offset=0,
+            project_slug="project-1",
+            status=None,
+            exclude_live=False,
+            user=None,
+            user_id=None,
+            owner_user_id=None,
+            db=session,
+            principal=principal,
+        )
+        summaries = [
+            s
+            for models in payload["tasks"].values()
+            for run_list in models.values()
+            for s in run_list
+        ]
+        summary = next(s for s in summaries if s["run_id"] == RUN_ID)
+        assert "metric_cis" not in summary
+
+
+def test_group_metrics_respects_report_k_from_run_config():
+    """run_config.report_k publishes pass@k estimated from all samples: the
+    endpoint reports it, and group stats use the unbiased subset estimator."""
+    app, SessionLocal = _make_env()
+    with SessionLocal() as session:
+        _seed(session, token="test-token", samples=3)
+        run = session.query(Run).filter(Run.id == RUN_ID).one()
+        run.run_config = {"samples": 3, "report_k": 2}
+        session.commit()
+
+    with TestClient(app) as client:
+        _ingest(client, _sampled_run_events(), "test-token")
+
+    with SessionLocal() as session:
+        user = session.query(User).filter(User.id == "user-1").one()
+        principal = Principal(
+            user=user, auth_type="api_key", scopes=(), project_id="project-1"
+        )
+        gm = run_group_metrics(
+            RUN_ID, metric=None, threshold=0.8, db=session, principal=principal
+        )
+        assert gm["report_k"] == 2
+        # item-1: c=1 of n=3 -> unbiased pass@2 = 1 - C(2,2)/C(3,2) = 2/3
+        assert gm["group"]["pass_at_k"] == pytest.approx(2.0 / 3.0)
+        assert gm["group"]["report_k"] == 2
+
+
+def test_group_metrics_bootstrap_is_cached_and_invalidated_by_score_changes():
+    app, SessionLocal = _make_env()
+    with SessionLocal() as session:
+        _seed(session, token="test-token", samples=3)
+        for index in range(20):
+            item_id = f"item-{index}"
+            session.add(
+                RunItem(run_id=RUN_ID, item_id=item_id, index=index, input={"q": index})
+            )
+            for pass_number in (1, 2, 3):
+                session.add(
+                    RunItemPassScore(
+                        run_id=RUN_ID,
+                        item_id=item_id,
+                        metric_name="accuracy",
+                        pass_number=pass_number,
+                        score_numeric=float((index + pass_number) % 2),
+                    )
+                )
+        session.commit()
+        principal = Principal(
+            user=session.query(User).filter(User.id == "user-1").one(),
+            auth_type="api_key", scopes=(), project_id="project-1",
+        )
+
+        first = run_group_metrics(
+            RUN_ID, metric="accuracy", threshold=0.8, db=session, principal=principal
+        )
+        interval = first["band"][1]["uncertainty"]["cumulative_avg"]
+        assert interval is not None
+        assert interval["low"] < first["band"][1]["cumulative_avg"] < interval["high"]
+        assert session.query(RunMetricAnalysis).count() == 1
+        signature = session.query(RunMetricAnalysis.source_signature).scalar()
+
+        second = run_group_metrics(
+            RUN_ID, metric="accuracy", threshold=0.8, db=session, principal=principal
+        )
+        assert second["band"] == first["band"]
+        assert session.query(RunMetricAnalysis).count() == 1
+
+        score = session.query(RunItemPassScore).first()
+        score.score_numeric = 1.0 - float(score.score_numeric or 0.0)
+        session.commit()
+        run_group_metrics(
+            RUN_ID, metric="accuracy", threshold=0.8, db=session, principal=principal
+        )
+        assert session.query(RunMetricAnalysis).count() == 1
+        assert session.query(RunMetricAnalysis.source_signature).scalar() != signature
