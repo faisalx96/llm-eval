@@ -57,6 +57,25 @@ def _require_admin(principal: Principal) -> None:
         raise HTTPException(status_code=403, detail="Admin only")
 
 
+def _add_default_analysis_rule_version(
+    db: Session,
+    *,
+    project_id: str,
+    actor_user_id: str,
+) -> None:
+    """Give every new project one editable rules version."""
+    db.add(
+        ProjectAnalysisRuleVersion(
+            project_id=project_id,
+            version=1,
+            name="v1",
+            rules=[],
+            source="manual",
+            created_by_user_id=actor_user_id,
+        )
+    )
+
+
 def _get_project(db: Session, project_id: str) -> Project:
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
@@ -593,6 +612,11 @@ def create_project_for_creator(
             added_by_user_id=principal.user.id,
         )
     )
+    _add_default_analysis_rule_version(
+        db,
+        project_id=project.id,
+        actor_user_id=principal.user.id,
+    )
     db.commit()
     db.refresh(project)
     return _project_payload(db, project, principal)
@@ -841,6 +865,11 @@ def create_project(
             role=ProjectRole.MANAGER,
             added_by_user_id=principal.user.id,
         )
+    )
+    _add_default_analysis_rule_version(
+        db,
+        project_id=project.id,
+        actor_user_id=principal.user.id,
     )
     db.commit()
     db.refresh(project)

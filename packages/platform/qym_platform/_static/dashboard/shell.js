@@ -804,7 +804,10 @@
         +     '<button class="shell-btn ' + (options.confirmClass || 'shell-btn-primary') + '" id="shell-confirm-submit" type="button">' + esc(options.confirmLabel || 'Confirm') + '</button>'
         +   '</div>'
         + '</div>';
-      document.body.appendChild(dialog);
+      var mount = options.mount && options.mount.appendChild
+        ? options.mount
+        : document.body;
+      mount.appendChild(dialog);
 
       var closeBtn = dialog.querySelector('.shell-modal-close');
       var cancelBtn = document.getElementById('shell-confirm-cancel');
@@ -957,7 +960,10 @@
         +     '<button class="shell-btn ' + (options.confirmClass || 'shell-btn-primary') + '" id="shell-form-submit" type="button">' + esc(options.confirmLabel || 'Save') + '</button>'
         +   '</div>'
         + '</div>';
-      document.body.appendChild(dialog);
+      var mount = options.mount && options.mount.appendChild
+        ? options.mount
+        : document.body;
+      mount.appendChild(dialog);
 
       var closeBtn = dialog.querySelector('.shell-modal-close');
       var cancelBtn = document.getElementById('shell-form-cancel');

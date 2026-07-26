@@ -753,6 +753,11 @@ window.QymPlayground = (function () {
     return Number(value || 0).toLocaleString() + ' characters';
   }
 
+  function _formatRuleCount() {
+    var count = _analysisRules.length;
+    return count + ' ' + (count === 1 ? 'rule' : 'rules') + ' · unlimited';
+  }
+
   function _buildAnalysisRulesEditor() {
     var selected = _ruleVersions.find(function (version) { return version.id === _selectedRuleVersionId; });
     var readOnly = !selected || selected.status !== 'draft';
@@ -774,6 +779,7 @@ window.QymPlayground = (function () {
     if (_ruleVersions.length === 0) {
       return '<div class="pg-rule-empty">No saved versions yet.</div>';
     }
+    var liveVersionCount = _ruleVersions.filter(function (version) { return !version.is_deleted; }).length;
     return _ruleVersions.map(function (version) {
       var state = version.status === 'draft' ? 'Draft' : (version.is_active ? 'Production' : (version.status || 'Published'));
       var created = version.created_at ? new Date(version.created_at).toLocaleString() : 'Unknown date';
@@ -789,6 +795,9 @@ window.QymPlayground = (function () {
       }
       if (version.parent_version_id) {
         actions.push('<button class="pg-rule-action" type="button" data-compare-rule-version="' + _escAttr(version.id) + '">Compare</button>');
+      }
+      if (_canDeleteRuleVersions && !version.is_deleted && liveVersionCount > 1) {
+        actions.push('<button class="pg-rule-action pg-rule-action-danger" type="button" data-delete-rule-version="' + _escAttr(version.id) + '">Delete</button>');
       }
       return '<div class="pg-rule-version' + (version.id === _selectedRuleVersionId ? ' pg-rule-version-selected' : '') + '">' +
         '<div class="pg-rule-version-header"><span class="pg-rule-version-name">v' + version.version + '</span>' +
@@ -845,11 +854,14 @@ window.QymPlayground = (function () {
         '<label class="pg-inference-toggle">' +
           '<input id="pg-infer-use-examples" type="checkbox" checked />' +
           '<span class="pg-inference-switch" aria-hidden="true"></span>' +
-          '<span class="pg-inference-copy"><strong>Approved English examples</strong><span>Use every approved English correction for this project and task.</span></span>' +
+          '<span class="pg-inference-copy"><strong>Approved examples</strong><span>Use every approved correction for this project and task.</span></span>' +
         '</label>' +
       '</div>' +
       '<div class="pg-rule-list" id="pg-rule-list">' + _buildAnalysisRulesEditor() + '</div>' +
-      '<button class="pg-context-secondary" id="pg-add-rule" type="button">Add rule</button>' +
+      '<div class="pg-rule-editor-actions">' +
+        '<span class="pg-rule-count" id="pg-rule-count" aria-live="polite">' + _formatRuleCount() + '</span>' +
+        '<button class="pg-context-secondary" id="pg-add-rule" type="button">Add rule</button>' +
+      '</div>' +
       '<div class="pg-context-divider"></div>' +
       '<h3 class="pg-context-title">Version history</h3>' +
       '<div class="pg-rule-version-list" id="pg-rule-version-list">' + _buildRuleVersionHistory() + '</div>' +
@@ -1346,7 +1358,7 @@ window.QymPlayground = (function () {
       var instruction = instructionEl ? instructionEl.value.trim() : '';
       rules.push({ id: item.dataset.ruleId || undefined, title: title, instruction: instruction });
     });
-    return rules.slice(0, 20);
+    return rules;
   }
 
   function _readAnalysisRulesFromEditor() {
@@ -1379,6 +1391,8 @@ window.QymPlayground = (function () {
   function _renderAnalysisRulesEditor() {
     var list = document.getElementById('pg-rule-list');
     if (list) list.innerHTML = _buildAnalysisRulesEditor();
+    var count = document.getElementById('pg-rule-count');
+    if (count) count.textContent = _formatRuleCount();
     var selected = _ruleVersions.find(function (version) { return version.id === _selectedRuleVersionId; });
     var editable = !!selected && selected.status === 'draft';
     var addButton = document.getElementById('pg-add-rule');
@@ -1447,11 +1461,34 @@ window.QymPlayground = (function () {
           ? 'Production rule version changed.'
           : (action === 'permanent-delete'
             ? 'Rule version permanently deleted.'
-            : 'Rule version deleted. The latest available version is now active.'));
+            : 'Rule version permanently deleted.'));
       _setContextStatus(message, false);
       _scheduleAutoPreview(0);
     }).catch(function (error) {
       _setContextStatus(error.message || 'Could not update rule version.', true);
+    });
+  }
+
+  function _confirmRuleVersionDeletion(versionId) {
+    var version = _ruleVersions.find(function (candidate) { return candidate.id === versionId; });
+    if (!version) return Promise.resolve();
+    if (!window.QymShell || typeof window.QymShell.openConfirmDialog !== 'function') {
+      _setContextStatus('The confirmation dialog is unavailable. Reload the page and try again.', true);
+      return Promise.resolve();
+    }
+    return window.QymShell.openConfirmDialog({
+      mount: _overlay || document.body,
+      title: 'Delete v' + version.version + ' permanently?',
+      description: [
+        'This permanently removes this rules version and its rules.',
+        'Other versions will remain. This action cannot be undone.',
+      ],
+      cancelLabel: 'Keep version',
+      confirmLabel: 'Delete version',
+      confirmClass: 'shell-btn-danger',
+    }).then(function (result) {
+      if (!result || !result.confirmed) return;
+      return _changeRuleVersion(versionId, 'delete');
     });
   }
 
@@ -1474,13 +1511,11 @@ window.QymPlayground = (function () {
     var runId = _getRunId();
     var base = _opts.apiUrl || function (p) { return '/' + p; };
     var selected = _ruleVersions.find(function (version) { return version.id === _selectedRuleVersionId; });
-    var draftName = window.prompt('Optional name for the new draft:', '') || '';
     return fetch(base('api/runs/' + runId + '/analysis-rule-versions'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         from_version: selected ? String(selected.version) : null,
-        name: draftName.trim(),
       }),
     }).then(function (response) {
       if (!response.ok) return response.json().then(function (data) { throw new Error(data.detail || 'Could not create draft'); });
@@ -1496,22 +1531,45 @@ window.QymPlayground = (function () {
   function _publishRuleVersion(versionId) {
     var version = _ruleVersions.find(function (candidate) { return candidate.id === versionId; });
     if (!version) return Promise.resolve();
-    if (!window.confirm('Publish v' + version.version + ' as an immutable snapshot? Future edits will require a new draft.')) {
+    if (!window.QymShell || typeof window.QymShell.openFormDialog !== 'function') {
+      _setContextStatus('The publish dialog is unavailable. Reload the page and try again.', true);
       return Promise.resolve();
     }
-    var setProduction = window.confirm('Set v' + version.version + ' as the production ruleset after publishing?');
     var runId = _getRunId();
     var base = _opts.apiUrl || function (p) { return '/' + p; };
-    return fetch(base('api/runs/' + runId + '/analysis-rule-versions/' + encodeURIComponent(String(version.version)) + ':publish'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ set_alias: setProduction ? 'production' : null }),
-    }).then(function (response) {
-      if (!response.ok) return response.json().then(function (data) { throw new Error(data.detail || 'Could not publish rule version'); });
-      return response.json();
-    }).then(function () {
-      return _refreshRuleVersions(true);
-    }).then(function () {
+    var setProduction = false;
+    return window.QymShell.openFormDialog({
+      mount: _overlay || document.body,
+      title: 'Publish v' + version.version + '?',
+      description: 'Publishing creates an immutable snapshot. Future edits will require a new draft.',
+      fields: [
+        {
+          name: 'setProduction',
+          type: 'checkbox',
+          value: false,
+          checkboxLabel: 'Set as production',
+          help: 'Use this version for future analysis runs.',
+        },
+      ],
+      cancelLabel: 'Keep draft',
+      confirmLabel: 'Publish version',
+      submittingLabel: 'Publishing…',
+      onSubmit: function (values) {
+        return fetch(base('api/runs/' + runId + '/analysis-rule-versions/' + encodeURIComponent(String(version.version)) + ':publish'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ set_alias: values.setProduction ? 'production' : null }),
+        }).then(function (response) {
+          if (!response.ok) return response.json().then(function (data) { throw new Error(data.detail || 'Could not publish rule version'); });
+          return response.json();
+        });
+      },
+    }).then(function (result) {
+      if (!result || !result.confirmed) return false;
+      setProduction = !!(result.values && result.values.setProduction);
+      return _refreshRuleVersions(true).then(function () { return true; });
+    }).then(function (didPublish) {
+      if (!didPublish) return;
       _setContextStatus(
         'Published v' + version.version + (setProduction ? ' and set it as production.' : '.'),
         false
@@ -1728,10 +1786,6 @@ window.QymPlayground = (function () {
         return;
       }
       _analysisRules = _readAnalysisRuleDraftsFromEditor();
-      if (_analysisRules.length >= 20) {
-        _setContextStatus('A project can have at most 20 analysis rules.', true);
-        return;
-      }
       _analysisRules.push({ title: '', instruction: '' });
       _renderAnalysisRulesEditor();
       var newRuleTitle = ruleList.querySelector('.pg-rule-item:last-child .pg-rule-title');
@@ -1761,12 +1815,14 @@ window.QymPlayground = (function () {
       var activate = event.target.closest('[data-activate-rule-version]');
       var publish = event.target.closest('[data-publish-rule-version]');
       var compare = event.target.closest('[data-compare-rule-version]');
+      var remove = event.target.closest('[data-delete-rule-version]');
       if (open) _openRuleVersion(open.dataset.openRuleVersion);
       if (activate) _changeRuleVersion(activate.dataset.activateRuleVersion, 'activate');
       if (publish) _publishRuleVersion(publish.dataset.publishRuleVersion).catch(function (error) {
         _setContextStatus(error.message || 'Could not publish rule version.', true);
       });
       if (compare) _compareRuleVersion(compare.dataset.compareRuleVersion);
+      if (remove) _confirmRuleVersionDeletion(remove.dataset.deleteRuleVersion);
     });
     var ruleVersionCompare = document.getElementById('pg-rule-version-compare');
     if (ruleVersionCompare) ruleVersionCompare.addEventListener('click', function (event) {

@@ -7695,6 +7695,11 @@
         }
         const legacyCategory = String(md.root_cause || '').trim();
         const legacyMetric = String(md.root_cause_metric_name || '').trim();
+        // A metric-backed compatibility summary is derivative data. Older
+        // deletions could leave it behind after removing the metric analysis;
+        // do not resurrect that orphan as an item-level diagnosis.
+        if (legacyMetric && md.root_cause_source !== 'human' &&
+            !isValid(metricAnalyses[legacyMetric])) return [];
         const canUseLegacy = metricFilter === 'all' || legacyMetric === metricFilter ||
           (!legacyMetric && state.allMetrics.length <= 1);
         return legacyCategory && canUseLegacy ? [{
@@ -8845,7 +8850,7 @@
         return (!tied && best) ? best : null;
       }
 
-      function renderPassCompareBlock(baseRow, itemId, displayItemId, metric, threshold, rootCauseHtml) {
+      function renderPassCompareBlock(baseRow, itemId, displayItemId, metric, threshold, analysisHtml) {
         const passAttempts = Array.isArray(baseRow.pass_attempts) ? baseRow.pass_attempts : [];
         const attempts = passAttempts
           .map((att, i) => att ? { ...att, pass_number: att.pass_number || i + 1 } : null)
@@ -8939,7 +8944,7 @@
         return '<div class="item-run-output pass-cmp">' +
           '<div class="output-header"><span class="output-status-cluster"><span class="run-label">OUTPUT · ALL PASSES</span><span class="pass-cmp-summary">' + summary + '</span></span><span class="output-actions">' + modesHtml + '</span></div>' +
           '<div class="pass-cmp-grid" style="--pass-cmp-cols:' + cols.length + ';">' + cols.join('') + '</div>' +
-          rootCauseHtml +
+          analysisHtml +
         '</div>';
       }
 
@@ -9185,105 +9190,6 @@
             }
           }
 
-          // Root cause + Solution (side by side for failed items)
-          const reviewCorrectionId = row.review_correction_id;
-          const reviewStatus = String(row.review_correction_status || '').toLowerCase();
-          let rootCauseHtml = '';
-          const itemPassed = pfClass === 'pass';
-          const rowRc = row.item_metadata?.root_cause || '';
-          const rowRcDetail = row.item_metadata?.root_cause_detail || '';
-          const rowRcNote = row.item_metadata?.root_cause_note || '';
-          const rowSol = row.item_metadata?.solution || '';
-          const rowSolNote = row.item_metadata?.solution_note || '';
-          // Build root cause group (detail + category badges + shared feedback)
-          let rcGroupHtml = '';
-          const rcSource = row.item_metadata?.root_cause_source || '';
-          const rcConfidence = row.item_metadata?.root_cause_confidence;
-          const isAi = rcSource === 'ai';
-
-          if (rowRc || rowRcDetail || !itemPassed) {
-            const feedbackIcon = '<svg class="feedback-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 3h12v8H4l-2 2V3z"/></svg>';
-
-            const rcColor = rootCauseColor(rowRc);
-
-            // Detail badge (specific issue) — uses same color as category
-            let rcDetailBadge = '';
-            if (rowRcDetail) {
-              const aiClass = isAi ? ' ai-suggested' : '';
-              const aiIcon = isAi ? '<span class="ai-indicator" title="AI suggested">\uD83E\uDD16</span>' : '';
-              rcDetailBadge = '<span class="meta-badge badge-rc-detail' + aiClass + '" data-rcdetail-item="' + escapeAttr(itemId) + '" style="border-color:' + rcColor + '40;color:' + rcColor + ';background:' + rcColor + '15;max-width:100%;box-sizing:border-box;display:inline-flex;" title="Root cause: ' + escapeAttr(rowRcDetail) + '. Click to change.">' + aiIcon + escapeHtml(rowRcDetail) + '</span>';
-            } else if (!itemPassed) {
-              rcDetailBadge = '<button class="root-cause-assign-btn" data-rcdetail-item="' + escapeAttr(itemId) + '" title="Assign root cause"><span class="badge-icon">+</span>Root Cause</button>';
-            }
-
-            // Category badge (broad preset)
-            let rcCategoryBadge = '';
-            if (rowRc) {
-              const aiClass = isAi ? ' ai-suggested' : '';
-              let confidenceDot = '';
-              const aiIcon = isAi ? '<span class="ai-indicator" title="AI suggested">\uD83E\uDD16</span>' : '';
-              if (isAi && rcConfidence != null) {
-                const dotColor = rcConfidence >= 0.8 ? '#22c55e' : (rcConfidence >= 0.5 ? '#eab308' : '#ef4444');
-                confidenceDot = '<span class="confidence-dot" style="background:' + dotColor + ';" title="Confidence: ' + (rcConfidence * 100).toFixed(0) + '%"></span>';
-              }
-              rcCategoryBadge = '<span class="meta-badge badge-root-cause' + aiClass + '" data-rc-item="' + escapeAttr(itemId) + '" style="border-color:' + rcColor + '40;color:' + rcColor + ';background:' + rcColor + '15;max-width:100%;box-sizing:border-box;display:inline-flex;" title="Category: ' + escapeAttr(rowRc) + '. Click to change.">' + aiIcon + escapeHtml(rowRc) + confidenceDot + '</span>';
-            } else if (!itemPassed) {
-              rcCategoryBadge = '<button class="root-cause-assign-btn rc-category-assign" data-rc-item="' + escapeAttr(itemId) + '" title="Assign root cause category"><span class="badge-icon">+</span>Category</button>';
-            }
-
-            // Feedback (shared across both badges)
-            var feedbackHtml = '';
-            if (rowRc || rowRcDetail) {
-              feedbackHtml = rowRcNote
-                ? '<div class="feedback-section"><div class="feedback-display" data-feedback-item="' + escapeAttr(itemId) + '" title="Click to edit feedback">' + feedbackIcon + '<span class="feedback-text">' + escapeHtml(rowRcNote) + '</span></div></div>'
-                : '<div class="feedback-section"><div class="feedback-display" data-feedback-item="' + escapeAttr(itemId) + '" title="Click to add feedback">' + feedbackIcon + '<span class="feedback-text feedback-placeholder">Add feedback\u2026</span></div></div>';
-            }
-
-            // Solution badge group
-            let solBadgeHtml = '';
-            if (rowSol) {
-              const solColor = SOLUTION_COLORS[rowSol] || '#60a5fa';
-              const solSource = row.item_metadata?.solution_source || '';
-              const solIsAi = solSource === 'ai';
-              const solIcon = solIsAi ? '<span class="ai-indicator">\uD83E\uDD16</span>' : '';
-              solBadgeHtml = '<div class="rc-badge-group" style="max-width:100%;">' +
-                '<span class="rc-sol-label sol-label">\uD83D\uDEE0 SOLUTION</span>' +
-                '<span class="meta-badge badge-solution' + (solIsAi ? ' ai-suggested' : '') + '" data-sol-item="' + escapeAttr(itemId) + '" style="border-color:' + solColor + '40;color:' + solColor + ';background:' + solColor + '15;max-width:100%;box-sizing:border-box;display:inline-flex;" title="Solution: ' + escapeAttr(rowSol) + '. Click to change.">' + solIcon + escapeHtml(rowSol) + '</span>' +
-                (rowSolNote ? '<div class="sol-note-text">' + escapeHtml(rowSolNote) + '</div>' : '') +
-              '</div>';
-            } else if (!itemPassed) {
-              solBadgeHtml = '<div class="rc-badge-group" style="max-width:100%;">' +
-                '<span class="rc-sol-label sol-label">\uD83D\uDEE0 SOLUTION</span>' +
-                '<button class="solution-assign-btn" data-sol-item="' + escapeAttr(itemId) + '" title="Suggest solution"><span class="badge-icon">+</span>Solution</button>' +
-              '</div>';
-            }
-
-            // Combine all badge groups + feedback
-            var reviewStatusHtml = '';
-            if (reviewStatus === 'approved') {
-              reviewStatusHtml = '<div class="rc-inline-actions"><div class="rc-status-pill approved">Approved</div></div>';
-            } else if (reviewStatus === 'pending' && reviewCorrectionId) {
-              reviewStatusHtml = '<div class="rc-inline-actions"><div class="rc-status-pill pending">Pending Review</div><button class="rc-approve-btn" data-approve-correction="' + escapeAttr(String(reviewCorrectionId)) + '" data-approve-item="' + escapeAttr(itemId) + '">\u2713 Approve</button></div>';
-            }
-            var solSep = solBadgeHtml ? '<div class="rc-badges-sep"></div>' : '';
-            rootCauseHtml = '<div class="rc-sol-row">' +
-              reviewStatusHtml +
-              '<div class="rc-badges-row">' +
-                '<div class="rc-badge-group" style="max-width:100%;">' +
-                  '<span class="rc-sol-label rc-label">\u26A0 ROOT CAUSE</span>' +
-                  rcDetailBadge +
-                '</div>' +
-                '<div class="rc-badge-group" style="max-width:100%;">' +
-                  '<span class="rc-sol-label rc-label">\uD83D\uDCC2 CATEGORY</span>' +
-                  rcCategoryBadge +
-                '</div>' +
-                solSep +
-                solBadgeHtml +
-              '</div>' +
-              feedbackHtml +
-            '</div>';
-          }
-
           // Metric details
           let metricDetailsHtml = '';
           const hasMetricMeta = Object.keys(metricMeta).length > 0;
@@ -9338,10 +9244,10 @@
 
           let outputBlockHtml = '';
           if (passCompareMode) {
-            outputBlockHtml = renderPassCompareBlock(baseRow, itemId, displayItemId, metric, threshold, rootCauseHtml + perMetricAnalysisHtml);
+            outputBlockHtml = renderPassCompareBlock(baseRow, itemId, displayItemId, metric, threshold, perMetricAnalysisHtml);
           }
           if (!outputBlockHtml) {
-            outputBlockHtml = '<div class="item-run-output"><div class="output-header"><span class="output-status-cluster"><span class="run-label">' + outputLabel + '</span>' + statusIndicator + durationPart + timePart + '</span><span class="output-actions">' + copyBtn + traceChip + langfuseChip + '</span></div><div class="output-text ' + (status === 'error' ? 'score-1' : '') + '">' + renderMarkdownSafe(output) + '</div><div class="metric-scores-inline">' + metricScoresHtml + '</div>' + _renderTraceChips(row.trace_stats, row.retry_count) + metricEditHtml + rootCauseHtml + perMetricAnalysisHtml + toggleHtml + metricDetailsHtml + '</div>';
+            outputBlockHtml = '<div class="item-run-output"><div class="output-header"><span class="output-status-cluster"><span class="run-label">' + outputLabel + '</span>' + statusIndicator + durationPart + timePart + '</span><span class="output-actions">' + copyBtn + traceChip + langfuseChip + '</span></div><div class="output-text ' + (status === 'error' ? 'score-1' : '') + '">' + renderMarkdownSafe(output) + '</div><div class="metric-scores-inline">' + metricScoresHtml + '</div>' + _renderTraceChips(row.trace_stats, row.retry_count) + metricEditHtml + perMetricAnalysisHtml + toggleHtml + metricDetailsHtml + '</div>';
           }
 
           return '<div class="item-card' + (lensPass ? ' pass-lensed' : '') + '">' +

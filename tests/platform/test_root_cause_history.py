@@ -83,9 +83,8 @@ from qym_platform.services.llm_analyzer import (
     AnalysisResult,
     analyze_single_item,
     build_analysis_prompt,
-    get_all_approved_english_examples,
+    get_all_approved_examples,
     get_few_shot_examples,
-    is_english_approved_example,
     normalize_analysis_rules,
     parse_llm_response,
 )
@@ -602,6 +601,131 @@ def test_delete_request_rejects_and_removes_active_candidate(
     assert len(revisions) == 3
     assert revisions[-1].actor_source == "system"
     assert revisions[-1].after_state.get("root_cause") == ""
+
+
+def test_deleting_metric_reviews_retargets_then_clears_legacy_summary(
+    db_session: Session,
+) -> None:
+    actor, reviewer, run, item = _seed_run(db_session)
+    run.metrics = ["accuracy", "format"]
+    results = [
+        AnalysisResult(
+            item_id=item.item_id,
+            metric_name="accuracy",
+            root_cause="Reasoning Error",
+            root_cause_detail="Wrong join key",
+            root_cause_note="Accuracy diagnosis",
+            confidence=0.9,
+            solution="Add Output Validation",
+        ),
+        AnalysisResult(
+            item_id=item.item_id,
+            metric_name="format",
+            root_cause="Wrong Format",
+            root_cause_detail="Invalid response envelope",
+            root_cause_note="Format diagnosis",
+            confidence=0.8,
+            solution="Refine Prompt Instructions",
+        ),
+    ]
+    _save_analysis_results(
+        db_session,
+        run,
+        [(item, "accuracy"), (item, "format")],
+        results,
+        Principal(user=actor, auth_type="none"),
+    )
+    candidates = (
+        db_session.query(ReviewCorrection)
+        .filter(
+            ReviewCorrection.run_id == run.id,
+            ReviewCorrection.item_id == item.item_id,
+            ReviewCorrection.is_active.is_(True),
+        )
+        .order_by(ReviewCorrection.metric_name.asc())
+        .all()
+    )
+
+    _delete_active_candidate(
+        db_session,
+        correction=candidates[0],
+        reviewer_id=reviewer.id,
+        comment="Delete accuracy review.",
+        reviewed_at=datetime.utcnow(),
+    )
+    db_session.commit()
+    db_session.refresh(item)
+
+    assert set(item.item_metadata["metric_analyses"]) == {"format"}
+    assert item.item_metadata["root_cause_metric_name"] == "format"
+    assert item.item_metadata["root_cause"] == "Wrong Format"
+    assert item.item_metadata["root_cause_detail"] == "Invalid response envelope"
+    assert item.item_metadata["root_cause_note"] == "Format diagnosis"
+
+    _delete_active_candidate(
+        db_session,
+        correction=candidates[1],
+        reviewer_id=reviewer.id,
+        comment="Delete format review.",
+        reviewed_at=datetime.utcnow(),
+    )
+    db_session.commit()
+    db_session.refresh(item)
+
+    assert "metric_analyses" not in item.item_metadata
+    assert "root_cause_metric_name" not in item.item_metadata
+    assert "root_cause" not in item.item_metadata
+    assert "root_cause_detail" not in item.item_metadata
+    assert "root_cause_note" not in item.item_metadata
+    assert "solution" not in item.item_metadata
+
+
+def test_deleting_metric_review_preserves_independent_human_item_summary(
+    db_session: Session,
+) -> None:
+    actor, reviewer, run, item = _seed_run(db_session)
+    item.item_metadata = {
+        "root_cause": "Context Missing",
+        "root_cause_detail": "Missing schema context",
+        "root_cause_note": "Human-authored item diagnosis",
+        "root_cause_source": "human",
+        "metric_analyses": {
+            "accuracy": {
+                "source": "ai",
+                "root_cause": "Reasoning Error",
+                "root_cause_detail": "Wrong join key",
+            }
+        },
+    }
+    candidate = ReviewCorrection(
+        run_id=run.id,
+        item_id=item.item_id,
+        metric_name="accuracy",
+        task=run.task,
+        ai_root_cause="Reasoning Error",
+        ai_root_cause_detail="Wrong join key",
+        corrected_by_user_id=actor.id,
+        is_active=True,
+        status=CorrectionStatus.PENDING,
+    )
+    db_session.add(candidate)
+    db_session.commit()
+
+    _delete_active_candidate(
+        db_session,
+        correction=candidate,
+        reviewer_id=reviewer.id,
+        comment="Delete metric review.",
+        reviewed_at=datetime.utcnow(),
+    )
+    db_session.commit()
+    db_session.refresh(item)
+
+    assert "metric_analyses" not in item.item_metadata
+    assert item.item_metadata["root_cause"] == "Context Missing"
+    assert item.item_metadata["root_cause_detail"] == "Missing schema context"
+    assert item.item_metadata["root_cause_note"] == "Human-authored item diagnosis"
+    assert item.item_metadata["root_cause_source"] == "human"
 
 
 def test_editing_approved_human_only_candidate_stays_approved_and_does_not_fake_ai(
@@ -1350,7 +1474,8 @@ def test_default_prompt_requests_only_diagnosis_fields() -> (
 
     assert '"root_cause": "<broad category>"' in system_content
     assert (
-        '"root_cause_detail": "<specific sub-issue, 4-5 words max>"' in system_content
+        '"root_cause_detail": "<reusable failure mechanism, 2-6 words>"'
+        in system_content
     )
     assert '"confidence": <float between 0.0-1.0>' in system_content
     assert (
@@ -1360,6 +1485,10 @@ def test_default_prompt_requests_only_diagnosis_fields() -> (
     assert '"solution"' not in system_content
     assert "Add Validation" not in system_content
     assert "Analyze only the selected metric" in system_content
+    assert (
+        "not restate this item's specific table, column, entity, date, function"
+        in system_content
+    )
     assert "recommendation or remediation fields" in system_content
 
 
@@ -1587,6 +1716,22 @@ def test_playground_config_passes_project_description_to_analyzer() -> None:
     assert _playground_config_to_analyzer(config) == {
         "project_description": "A support assistant for billing questions.",
     }
+
+
+def test_rule_request_models_allow_more_than_twenty_rules() -> None:
+    rules = [
+        {
+            "title": f"Rule {index}",
+            "instruction": f"Check requirement {index}.",
+        }
+        for index in range(21)
+    ]
+
+    playground_config = PlaygroundConfig.model_validate({"analysis_rules": rules})
+    context_update = AnalysisContextUpdate.model_validate({"analysis_rules": rules})
+
+    assert len(playground_config.analysis_rules or []) == 21
+    assert len(context_update.analysis_rules) == 21
 
 
 def test_analysis_targets_include_every_failed_metric_and_skip_each_completed_metric(
@@ -2042,6 +2187,22 @@ def test_persisted_aggregation_labels_respect_selected_metric_scope(
     ] == [("format", "Wrong Format")]
 
 
+def test_persisted_aggregation_ignores_deleted_metric_legacy_summary(
+    db_session: Session,
+) -> None:
+    _, _, _, item = _seed_run(db_session)
+    item.item_metadata = {
+        "root_cause": "Dataset Issue",
+        "root_cause_detail": "Expected SQL mismatch",
+        "root_cause_source": "ai",
+        "root_cause_metric_name": "accuracy",
+    }
+
+    bindings = _persisted_ai_analysis_bindings([item], [])
+
+    assert bindings == []
+
+
 @pytest.mark.asyncio
 async def test_zero_target_aggregation_is_a_noop_without_llm_calls(
     db_session: Session,
@@ -2149,38 +2310,16 @@ def test_analysis_rules_are_normalized_and_included_in_prompt() -> None:
     assert "business requirements" in RULE_WRITER_SYSTEM_PROMPT
     assert "decision logic" in RULE_WRITER_SYSTEM_PROMPT
 
-
-def test_non_english_approved_examples_are_discarded() -> None:
-    def correction(question: str) -> SimpleNamespace:
-        return SimpleNamespace(
-            input_snapshot={"question": question},
-            expected_snapshot=None,
-            output_snapshot=None,
-            human_root_cause="Reasoning Error",
-            human_root_cause_detail="",
-            human_root_cause_note="",
-            human_solution="",
-            human_solution_note="",
-        )
-
-    assert is_english_approved_example(
-        correction(
-            "The assistant ignored the requested date filter and returned records from every year."
-        )
+    more_than_twenty = normalize_analysis_rules(
+        [
+            {"title": f"Rule {index}", "instruction": f"Instruction {index}."}
+            for index in range(21)
+        ]
     )
-    assert not is_english_approved_example(
-        correction(
-            "La respuesta ignoró el filtro de fecha solicitado y devolvió registros de todos los años."
-        )
-    )
-    assert not is_english_approved_example(
-        correction(
-            "تجاهلت الإجابة نطاق التاريخ المطلوب وأعادت نتائج من جميع السنوات."
-        )
-    )
+    assert len(more_than_twenty) == 21
 
 
-def test_all_approved_english_examples_are_returned_without_cap(
+def test_all_approved_examples_are_returned_without_cap(
     db_session: Session,
 ) -> None:
     actor, reviewer, run, _ = _seed_run(db_session)
@@ -2189,7 +2328,7 @@ def test_all_approved_english_examples_are_returned_without_cap(
         corrections.append(
             ReviewCorrection(
                 run_id=run.id,
-                item_id=f"english-{index}",
+                item_id=f"example-{index}",
                 task=run.task,
                 input_snapshot={
                     "question": (
@@ -2233,14 +2372,17 @@ def test_all_approved_english_examples_are_returned_without_cap(
     db_session.add_all(corrections)
     db_session.commit()
 
-    approved = get_all_approved_english_examples(
+    approved = get_all_approved_examples(
         db_session,
         task=run.task,
         project_id=run.project_id,
     )
 
-    assert len(approved) == 25
-    assert all(correction.item_id.startswith("english-") for correction in approved)
+    assert len(approved) == 26
+    assert {correction.item_id for correction in approved} == {
+        *(f"example-{index}" for index in range(25)),
+        "spanish-example",
+    }
 
 
 def test_rule_writer_prompt_includes_every_approved_example(
@@ -2391,6 +2533,70 @@ def test_rule_writer_uses_reasoning_when_content_is_empty(
     assert rules[0]["title"] == "Evidence"
 
 
+def test_analysis_context_can_edit_and_add_rules_beyond_twenty(
+    db_session: Session,
+) -> None:
+    _, manager, run, _ = _seed_run(db_session)
+    principal = Principal(user=manager, auth_type="session")
+    initial_rules = [
+        AnalyzerRuleConfig(
+            title=f"Rule {index}",
+            instruction=f"Check requirement {index}.",
+        )
+        for index in range(21)
+    ]
+
+    created = update_analysis_context(
+        run.id,
+        AnalysisContextUpdate(
+            project_description="Test project",
+            analysis_rules=initial_rules,
+        ),
+        db_session,
+        principal,
+    )
+
+    assert len(created["analysis_rules"]) == 21
+
+    edited_rules = [
+        AnalyzerRuleConfig(
+            id=rule["id"],
+            title=rule["title"],
+            instruction=(
+                "Check the updated requirement."
+                if index == 0
+                else rule["instruction"]
+            ),
+        )
+        for index, rule in enumerate(created["analysis_rules"])
+    ]
+    edited_rules.append(
+        AnalyzerRuleConfig(
+            title="New rule",
+            instruction="Check the newly added requirement.",
+        )
+    )
+
+    updated = update_analysis_context(
+        run.id,
+        AnalysisContextUpdate(
+            project_description="Test project",
+            rule_version_id=created["rule_version"]["id"],
+            analysis_rules=edited_rules,
+        ),
+        db_session,
+        principal,
+    )
+
+    assert len(updated["analysis_rules"]) == 22
+    assert updated["analysis_rules"][0] == {
+        "id": created["analysis_rules"][0]["id"],
+        "title": "Rule 0",
+        "instruction": "Check the updated requirement.",
+    }
+    assert updated["analysis_rules"][-1]["title"] == "New rule"
+
+
 def test_project_analysis_rule_versions_follow_draft_publish_production_lifecycle(
     db_session: Session,
 ) -> None:
@@ -2412,6 +2618,7 @@ def test_project_analysis_rule_versions_follow_draft_publish_production_lifecycl
         manager_principal,
     )
     assert first["rule_version"]["version"] == 1
+    assert first["rule_version"]["name"] == "v1"
     assert first["rule_version"]["status"] == "draft"
     assert first["rule_version"]["is_active"] is False
 
@@ -2461,6 +2668,7 @@ def test_project_analysis_rule_versions_follow_draft_publish_production_lifecycl
         manager_principal,
     )
     assert second["version"]["version"] == 2
+    assert second["version"]["name"] == "v2"
     assert second["version"]["status"] == "draft"
     assert second["version"]["parent_version_id"] == first["rule_version"]["id"]
     original_rule_id = second["version"]["rules"][0]["id"]
@@ -2548,6 +2756,48 @@ def test_publishing_without_promotion_keeps_existing_production(
     assert second["version"]["id"] != history["production_version_id"]
 
 
+def test_run_owner_can_delete_analysis_rule_version(
+    db_session: Session,
+) -> None:
+    actor, _manager, run, _ = _seed_run(db_session)
+    version = _create_analysis_rule_version(
+        db_session,
+        project_id=run.project_id,
+        rules=[{"title": "Evidence", "instruction": "Use supplied evidence."}],
+        source="manual",
+        actor_user_id=actor.id,
+        force_new=True,
+    )
+    _create_analysis_rule_version(
+        db_session,
+        project_id=run.project_id,
+        rules=[{"title": "Keep", "instruction": "Keep one version alive."}],
+        source="manual",
+        actor_user_id=actor.id,
+        force_new=True,
+        parent=version,
+    )
+    db_session.commit()
+
+    history = list_project_analysis_rule_versions(
+        run.id,
+        False,
+        db_session,
+        Principal(user=actor, auth_type="session"),
+    )
+    assert history["can_delete"] is True
+
+    deleted = delete_project_analysis_rule_version(
+        run.id,
+        version.id,
+        db_session,
+        Principal(user=actor, auth_type="session"),
+    )
+
+    assert deleted["deleted_version_id"] == version.id
+    assert db_session.get(ProjectAnalysisRuleVersion, version.id) is None
+
+
 def test_deleting_production_rule_uses_another_non_deleted_published_version(
     db_session: Session,
 ) -> None:
@@ -2591,6 +2841,17 @@ def test_deleting_production_rule_uses_another_non_deleted_published_version(
 
     assert deleted["active_version"]["id"] == second["version"]["id"]
     assert (
+        db_session.get(
+            ProjectAnalysisRuleVersion,
+            first["rule_version"]["id"],
+        )
+        is None
+    )
+    remaining = db_session.get(ProjectAnalysisRuleVersion, second["version"]["id"])
+    assert remaining is not None
+    assert remaining.parent_version_id is None
+    assert remaining.base_version_id is None
+    assert (
         db_session.query(ProjectAnalysisRuleAlias)
         .filter(
             ProjectAnalysisRuleAlias.project_id == run.project_id,
@@ -2605,7 +2866,9 @@ def test_deleting_production_rule_uses_another_non_deleted_published_version(
     )
 
 
-def test_deleted_draft_cannot_be_resolved_or_edited(db_session: Session) -> None:
+def test_deleted_draft_is_removed_and_cannot_be_resolved_or_edited(
+    db_session: Session,
+) -> None:
     _, manager, run, _ = _seed_run(db_session)
     principal = Principal(user=manager, auth_type="session")
     created = update_analysis_context(
@@ -2618,7 +2881,20 @@ def test_deleted_draft_cannot_be_resolved_or_edited(db_session: Session) -> None
         principal,
     )
     version_id = created["rule_version"]["id"]
+    version = db_session.get(ProjectAnalysisRuleVersion, version_id)
+    assert version is not None
+    _create_analysis_rule_version(
+        db_session,
+        project_id=run.project_id,
+        rules=[{"title": "Keep", "instruction": "Keep one version alive."}],
+        source="manual",
+        actor_user_id=manager.id,
+        force_new=True,
+        parent=version,
+    )
+    db_session.commit()
     delete_project_analysis_rule_version(run.id, version_id, db_session, principal)
+    assert db_session.get(ProjectAnalysisRuleVersion, version_id) is None
 
     with pytest.raises(HTTPException) as resolve_error:
         _resolve_analysis_rule_version(db_session, run.project_id, version_id)
@@ -2637,7 +2913,32 @@ def test_deleted_draft_cannot_be_resolved_or_edited(db_session: Session) -> None
             db_session,
             principal,
         )
-    assert update_error.value.status_code == 409
+    assert update_error.value.status_code == 404
+
+
+def test_last_live_rule_version_cannot_be_deleted(db_session: Session) -> None:
+    actor, manager, run, _ = _seed_run(db_session)
+    version = _create_analysis_rule_version(
+        db_session,
+        project_id=run.project_id,
+        rules=[{"title": "Required", "instruction": "Keep this version."}],
+        source="manual",
+        actor_user_id=actor.id,
+        force_new=True,
+    )
+    db_session.commit()
+
+    with pytest.raises(HTTPException) as exc_info:
+        delete_project_analysis_rule_version(
+            run.id,
+            version.id,
+            db_session,
+            Principal(user=manager, auth_type="session"),
+        )
+
+    assert exc_info.value.status_code == 409
+    assert exc_info.value.detail == "At least one rule version must remain"
+    assert db_session.get(ProjectAnalysisRuleVersion, version.id) is not None
 
 
 def test_permanent_rule_deletion_returns_conflict_when_referenced(

@@ -5280,6 +5280,18 @@ body.chart-col-resize-active {
   gap: var(--space-md);
 }
 
+.pg-rule-editor-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+}
+
+.pg-rule-count {
+  color: var(--text-muted);
+  font-size: var(--font-sm);
+}
+
 .pg-rule-inference-options {
   display: flex;
   flex-direction: column;

@@ -43,6 +43,7 @@ from qym_platform.llm_endpoint_security import (
 )
 from qym_platform.permissions import (
     apply_reviewable_run_filter,
+    can_delete_run,
     can_review_run,
     can_view_run,
     is_project_manager,
@@ -68,7 +69,7 @@ from qym_platform.services.llm_analyzer import (
     analyze_single_item,
     build_analysis_prompt,
     build_client,
-    get_all_approved_english_examples,
+    get_all_approved_examples,
     infer_analysis_rules,
     normalize_analysis_rules,
 )
@@ -292,7 +293,6 @@ def _create_analysis_rule_version(
     actor_user_id: str | None,
     force_new: bool = False,
     parent: ProjectAnalysisRuleVersion | None = None,
-    name: str = "",
     description: str = "",
 ) -> ProjectAnalysisRuleVersion:
     """Create a mutable draft derived from another rule version."""
@@ -315,10 +315,11 @@ def _create_analysis_rule_version(
                     .scalar()
                     or 0
                 )
+                version_number = int(latest_number) + 1
                 version = ProjectAnalysisRuleVersion(
                     project_id=project_id,
-                    version=int(latest_number) + 1,
-                    name=name.strip(),
+                    version=version_number,
+                    name=f"v{version_number}",
                     description=description,
                     status=AnalysisRuleVersionStatus.DRAFT,
                     rules=normalized,
@@ -358,6 +359,8 @@ def _save_active_analysis_rules(
 ) -> ProjectAnalysisRuleVersion:
     """Update a draft, creating one from production when necessary."""
     target = db.get(ProjectAnalysisRuleVersion, version_id) if version_id else None
+    if version_id and target is None:
+        raise HTTPException(status_code=404, detail="Analysis rule version not found")
     if target is not None and target.project_id != project_id:
         raise HTTPException(status_code=404, detail="Analysis rule version not found")
     if target is not None and target.deleted_at is not None:
@@ -466,9 +469,7 @@ class PlaygroundConfig(BaseModel):
     """Configuration overrides for the AI evaluator playground."""
 
     project_description: Optional[str] = Field(default=None, max_length=20_000)
-    analysis_rules: Optional[List[AnalyzerRuleConfig]] = Field(
-        default=None, max_length=20
-    )
+    analysis_rules: Optional[List[AnalyzerRuleConfig]] = None
     reference_documents: Optional[List[ReferenceDocument]] = Field(
         default=None, max_length=8
     )
@@ -531,9 +532,7 @@ class AnalysisContextUpdate(BaseModel):
     """Project-scoped analyzer context edited in the analyzer side panel."""
 
     project_description: str = Field(default="", max_length=20_000)
-    analysis_rules: List[AnalyzerRuleConfig] = Field(
-        default_factory=list, max_length=20
-    )
+    analysis_rules: List[AnalyzerRuleConfig] = Field(default_factory=list)
     create_new_version: bool = False
     rule_version_id: Optional[str] = None
     from_version: Optional[str] = None
@@ -543,7 +542,6 @@ class AnalysisRuleVersionCreate(BaseModel):
     """Create a draft rule version, optionally deriving from another version."""
 
     from_version: Optional[str] = None
-    name: str = Field(default="", max_length=200)
     description: str = Field(default="", max_length=4000)
 
 
@@ -869,6 +867,7 @@ def _persisted_ai_analysis_bindings(
         meta = item.item_metadata if isinstance(item.item_metadata, dict) else {}
         root_cause = str(meta.get("root_cause") or "").strip()
         root_cause_detail = str(meta.get("root_cause_detail") or "").strip()
+        legacy_metric_name = str(meta.get("root_cause_metric_name") or "").strip()
         metric_analyses = meta.get("metric_analyses")
         valid_metric_analyses = (
             {
@@ -883,12 +882,17 @@ def _persisted_ai_analysis_bindings(
             if isinstance(metric_analyses, dict)
             else {}
         )
+        legacy_metric_is_orphaned = bool(
+            legacy_metric_name
+            and legacy_metric_name not in valid_metric_analyses
+        )
         if (
             root_cause
             and meta.get("root_cause_source") == "ai"
             and metric_scope is None
             and item.item_id not in target_item_ids
             and not valid_metric_analyses
+            and not legacy_metric_is_orphaned
         ):
             bindings.append(
                 _PersistedAnalysisBinding(
@@ -2035,9 +2039,7 @@ def update_analysis_context(
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
     if not is_project_manager(db, principal, run.project_id):
-        raise HTTPException(
-            status_code=403, detail="Project manager access required"
-        )
+        raise HTTPException(status_code=403, detail="Project manager access required")
     project = db.get(Project, run.project_id)
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found")
@@ -2125,7 +2127,7 @@ async def infer_project_analysis_rules(
         else []
     )
     corrections = (
-        get_all_approved_english_examples(
+        get_all_approved_examples(
             db,
             task=run.task,
             project_id=run.project_id,
@@ -2150,6 +2152,17 @@ async def infer_project_analysis_rules(
             ],
             corrections=corrections,
         )
+    except asyncio.TimeoutError as exc:
+        logger.warning(
+            "Rule inference timed out for run=%s project=%s model=%s",
+            run.id,
+            run.project_id,
+            llm_config.get("llm_model", "unknown"),
+        )
+        raise HTTPException(
+            status_code=504,
+            detail="Rule inference timed out while waiting for the LLM provider. Try again or use a faster model.",
+        ) from exc
     except ValueError as exc:
         logger.warning(
             "Rule inference returned no usable rules for run=%s project=%s model=%s: %s",
@@ -2193,7 +2206,7 @@ async def infer_project_analysis_rules(
         "sources_used": {
             "project_description": request.include_project_description,
             "documents": request.include_documents,
-            "approved_english_examples": request.include_examples,
+            "approved_examples": request.include_examples,
         },
     }
 
@@ -2227,7 +2240,7 @@ def list_project_analysis_rule_versions(
             )
             for version in versions
         ],
-        "can_delete": is_project_manager(db, principal, run.project_id),
+        "can_delete": can_delete_run(db, principal, run),
         "can_activate": is_project_manager(db, principal, run.project_id),
         "can_restore": is_admin,
         "production_version_id": active.id if active else None,
@@ -2283,7 +2296,6 @@ def create_project_analysis_rule_version(
         actor_user_id=principal.user.id,
         force_new=True,
         parent=parent,
-        name=request.name,
         description=request.description,
     )
     db.commit()
@@ -2500,13 +2512,14 @@ def delete_project_analysis_rule_version(
     db: Session = Depends(get_db),
     principal: Principal = Depends(require_ui_principal),
 ) -> Dict[str, Any]:
-    """Soft-delete a project rules version."""
+    """Permanently delete a project rules version."""
     run = Run.active(db).filter(Run.id == run_id).first()
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
-    if not is_project_manager(db, principal, run.project_id):
+    if not can_delete_run(db, principal, run):
         raise HTTPException(
-            status_code=403, detail="Project manager access required"
+            status_code=403,
+            detail="Run owner or project manager access required",
         )
     version = (
         db.query(ProjectAnalysisRuleVersion)
@@ -2518,21 +2531,54 @@ def delete_project_analysis_rule_version(
     )
     if not version:
         raise HTTPException(status_code=404, detail="Rule version not found")
-    if version.deleted_at is not None:
-        raise HTTPException(status_code=409, detail="Rule version is already deleted")
-    version.deleted_at = utc_now_naive()
-    version.deleted_by_user_id = principal.user.id
-    # Aliases are mutable pointers and must never continue to name a deleted
-    # version. Removing the pointer lets the production resolver use its
-    # published-version fallback (if one remains).
+    remaining_live_versions = (
+        db.query(ProjectAnalysisRuleVersion.id)
+        .filter(
+            ProjectAnalysisRuleVersion.project_id == run.project_id,
+            ProjectAnalysisRuleVersion.id != version.id,
+            ProjectAnalysisRuleVersion.deleted_at.is_(None),
+        )
+        .count()
+    )
+    if remaining_live_versions < 1:
+        raise HTTPException(
+            status_code=409,
+            detail="At least one rule version must remain",
+        )
+    deleted_version_id = version.id
+    descendants = (
+        db.query(ProjectAnalysisRuleVersion)
+        .filter(
+            ProjectAnalysisRuleVersion.project_id == run.project_id,
+            or_(
+                ProjectAnalysisRuleVersion.parent_version_id == version.id,
+                ProjectAnalysisRuleVersion.base_version_id == version.id,
+            ),
+        )
+        .all()
+    )
+    for descendant in descendants:
+        if descendant.parent_version_id == version.id:
+            descendant.parent_version_id = None
+        if descendant.base_version_id == version.id:
+            descendant.base_version_id = None
     db.query(ProjectAnalysisRuleAlias).filter(
         ProjectAnalysisRuleAlias.project_id == run.project_id,
         ProjectAnalysisRuleAlias.rule_version_id == version.id,
     ).delete(synchronize_session=False)
-    db.commit()
+    try:
+        db.flush()
+        db.delete(version)
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="Rule version cannot be deleted while referenced",
+        ) from exc
     active = _active_analysis_rule_version(db, run.project_id)
     return {
-        "deleted_version_id": version.id,
+        "deleted_version_id": deleted_version_id,
         "active_version": (
             _analysis_rule_version_payload(active, active_version_id=active.id)
             if active
@@ -3422,6 +3468,67 @@ def _reject_candidate(
     correction.review_comment = comment
 
 
+def _sync_legacy_summary_after_metric_deletion(
+    *,
+    run: Run,
+    meta: dict[str, Any],
+    deleted_metric_name: str,
+    metric_analyses: dict[str, Any],
+) -> dict[str, Any]:
+    """Keep the compatibility item summary aligned with metric diagnoses."""
+    legacy_metric_name = str(meta.get("root_cause_metric_name") or "").strip()
+    if (
+        meta.get("root_cause_source") == "human"
+        or legacy_metric_name != deleted_metric_name
+    ):
+        return meta
+
+    run_metric_names = [str(metric_name) for metric_name in (run.metrics or [])]
+    run_metric_name_set = set(run_metric_names)
+    ordered_metric_names = [
+        *run_metric_names,
+        *(
+            str(metric_name)
+            for metric_name in metric_analyses
+            if str(metric_name) not in run_metric_name_set
+        ),
+    ]
+    replacement: tuple[str, dict[str, Any]] | None = None
+    for metric_name in ordered_metric_names:
+        analysis = metric_analyses.get(metric_name)
+        if (
+            isinstance(analysis, dict)
+            and not analysis.get("error")
+            and str(analysis.get("root_cause") or "").strip()
+        ):
+            replacement = (metric_name, analysis)
+            break
+
+    if replacement is None:
+        return build_item_metadata(meta, {})
+
+    replacement_metric_name, analysis = replacement
+    source = str(analysis.get("source") or "").strip()
+    if source not in {"ai", "human", "system"}:
+        source = "ai"
+    solution = str(analysis.get("solution") or "").strip()
+    synced = build_item_metadata(
+        meta,
+        {
+            "root_cause": analysis.get("root_cause"),
+            "root_cause_detail": analysis.get("root_cause_detail"),
+            "root_cause_note": analysis.get("root_cause_note"),
+            "root_cause_source": source,
+            "root_cause_confidence": analysis.get("confidence"),
+            "solution": solution,
+            "solution_note": analysis.get("solution_note"),
+            "solution_source": source if solution else "",
+        },
+    )
+    synced["root_cause_metric_name"] = replacement_metric_name
+    return synced
+
+
 def _delete_active_candidate(
     db: Session,
     *,
@@ -3454,7 +3561,12 @@ def _delete_active_candidate(
             meta["metric_analyses"] = metric_analyses
         else:
             meta.pop("metric_analyses", None)
-        item.item_metadata = meta
+        item.item_metadata = _sync_legacy_summary_after_metric_deletion(
+            run=run,
+            meta=meta,
+            deleted_metric_name=correction.metric_name,
+            metric_analyses=metric_analyses,
+        )
         correction.status = CorrectionStatus.REJECTED
         correction.is_active = False
         correction.reviewed_by_user_id = reviewer_id

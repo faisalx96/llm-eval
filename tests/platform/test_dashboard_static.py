@@ -955,6 +955,11 @@ def test_auto_analysis_is_a_first_class_project_page_with_required_context() -> 
     assert 'id="pg-project-description"' in playground
     assert 'class="pg-context-panel"' in playground
     assert 'id="pg-rule-list"' in playground
+    assert 'id="pg-rule-count"' in playground
+    assert "function _formatRuleCount()" in playground
+    assert "· unlimited" in playground
+    assert "_MAX_ANALYSIS_RULES" not in playground
+    assert "_analysisRules.push({ title: '', instruction: '' });" in playground
     assert 'id="pg-infer-rules"' in playground
     assert 'id="pg-infer-use-description"' in playground
     assert 'id="pg-infer-use-documents"' in playground
@@ -972,6 +977,17 @@ def test_auto_analysis_is_a_first_class_project_page_with_required_context() -> 
     assert "data-activate-rule-version" in playground
     assert "data-publish-rule-version" in playground
     assert "data-compare-rule-version" in playground
+    assert "data-delete-rule-version" in playground
+    assert "_confirmRuleVersionDeletion" in playground
+    assert "Delete version" in playground
+    assert "window.confirm('Delete this rule version?" not in playground
+    assert "This action cannot be undone." in playground
+    assert "liveVersionCount > 1" in playground
+    assert "openFormDialog" in playground
+    assert "Set as production" in playground
+    assert "window.confirm(" not in playground
+    assert "window.prompt(" not in playground
+    assert "window.alert(" not in playground
     assert "Set production" in playground
     assert "function _readAnalysisRuleDraftsFromEditor()" in playground
     assert "_analysisRules = _readAnalysisRuleDraftsFromEditor();" in playground
@@ -1005,6 +1021,10 @@ def test_auto_analysis_is_a_first_class_project_page_with_required_context() -> 
     assert '"/api/runs/{run_id:path}/analysis-rule-versions/{version_id}/activate"' in analysis_api
     assert "metric_analyses" in run
     assert "Per-metric root cause analysis" in run
+    assert "legacyMetric && md.root_cause_source !== 'human'" in run
+    assert "!isValid(metricAnalyses[legacyMetric])) return [];" in run
+    assert "rootCauseHtml" not in run
+    assert "'<div class=\"rc-sol-row\">'" not in run
     assert 'data-metric-rc-item=' in run
     assert 'data-metric-rcdetail-item=' in run
     assert 'data-metric-feedback-item=' in run
