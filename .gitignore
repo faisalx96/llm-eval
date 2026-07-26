@@ -88,6 +88,8 @@ node_modules/
 # Results / generated outputs
 qym_results/
 outputs/
+/output/
+.codex_build/
 *.csv
 *.xlsx
 /results

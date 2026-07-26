@@ -20,6 +20,7 @@ COPY packages/sdk/qym/_version.py /app/packages/sdk/qym/_version.py
 COPY packages/platform/pyproject.toml /app/packages/platform/pyproject.toml
 RUN mkdir -p /app/packages/sdk/qym /app/packages/platform/qym_platform
 RUN touch /app/packages/sdk/qym/__init__.py /app/packages/platform/qym_platform/__init__.py
+COPY packages/sdk/qym/_version.py /app/packages/sdk/qym/_version.py
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install -e /app/packages/sdk -e /app/packages/platform
 
