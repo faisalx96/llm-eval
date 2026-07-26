@@ -704,6 +704,7 @@ def test_deleting_metric_review_preserves_independent_human_item_summary(
         task=run.task,
         ai_root_cause="Reasoning Error",
         ai_root_cause_detail="Wrong join key",
+        human_root_cause="",
         corrected_by_user_id=actor.id,
         is_active=True,
         status=CorrectionStatus.PENDING,

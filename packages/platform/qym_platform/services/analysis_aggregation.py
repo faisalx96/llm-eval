@@ -32,10 +32,10 @@ class AnalysisAggregationError(RuntimeError):
 
 
 AGGREGATION_SYSTEM_PROMPT = (
-    "You consolidate three related taxonomies: broad root-cause categories, "
-    "specific root-cause details, and suggested solutions. Your primary job is to "
+    "You consolidate two related taxonomies: broad root-cause categories, "
+    "specific root-cause details. Your primary job is to "
     "find recurring mechanisms, not to preserve item-specific wording.\n\n"
-    "MERGE AGGRESSIVELY when labels imply the same diagnosis or the same fix. "
+    "MERGE AGGRESSIVELY when labels imply the same diagnosis. "
     "Abstract away entity names, table names, column names, dates, function names, "
     "vendors, and other example-specific nouns. These details explain an instance; "
     "they do not create a new root-cause type. For example, missing named tables "
