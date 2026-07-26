@@ -4,14 +4,18 @@
 
 ---
 
-**Coverage:** this summary groups everything shipped after commit `e2fda02` through `548e15a`.
+**Coverage:** this summary groups everything shipped after commit `e2fda02`. The
+current analyzer branch adds the project-scoped changes summarized below; see the
+[full branch record](BRANCH_CHANGES_LLM_ANALYZER.md) for implementation and API
+details.
 
 ## 🌟 Major Highlights
 
 - 🔁 **Repeat runs & pass@k** *(July 2026)* — `samples=8` evaluates every item 8× as ONE run with Pass@k/Pass^k/Consistency/Reliability, confidence intervals, per-pass storage end-to-end, an accuracy-vs-k curve, and repeat-run UI (×k pills, pass expansion, dot strips); replaces the duplicate-spec duct-tape and the timestamp grouping heuristic
-- 🤖 **AI Evaluator Playground** — preview, test, and run AI analysis with editable prompts, variable mapping, additional instructions, reusable category/detail catalogs, and visible few-shot examples before launching analysis
+- 🤖 **AI Evaluator Playground** — preview, test, and run AI analysis with editable prompts, variable mapping, additional instructions, reusable category/detail catalogs, and visible generated context before launching analysis
+- 🧭 **Project-scoped metric-aware analyzer** — choose several metrics, supply project descriptions and bounded reference documents, generate versioned analyzer rules, and preserve a separate diagnosis/review candidate for each item/metric target
 - 🧠 **Structured analysis workflow** — root-cause analysis expanded from a single label into **category + detail + note + solution + solution note**, with inline editing across run and compare views
-- ✅ **Corrections review system** — a dedicated review queue now supports approval states, inline edits, bulk moderation, immutable revision history, and approved-example curation for the analyzer
+- ✅ **Corrections review system** — a dedicated review queue now supports approval states, inline edits, bulk moderation, immutable revision history, metric-scoped candidates, and approved evidence for rule generation
 - 📊 **Dashboard redesign for scale** — charts now use per-task cards with dataset tabs and run/version/model grouping, while the runs dashboard adds pagination, sticky tables, metric visibility, and stronger version filtering
 - ⚖️ **LLM-as-judge metrics** — 7 built-in judges (relevance, faithfulness, correctness, hallucination, toxicity, conciseness, tool calling) plus a `create_judge()` factory for custom binary or multi-level judges, with structured results (score + label + explanation) stored in the platform
 - 🖥️ **Agent-native CLI + sturdier SDK runs** — the new Typer CLI adds noun-verb commands and JSON output, while the SDK adds version capture, retries, STOPPED/PENDING statuses, OTEL tracing, and stable CSV item identity
@@ -20,7 +24,9 @@
 ## 🤖 Analysis & Review
 
 - AI analysis now supports `root_cause_detail`, `root_cause_note`, `solution`, and `solution_note`, and preserves both AI and human versions in review records
-- Approved corrections are the only examples reused by the analyzer; stale approvals now promote the active candidate for that run item
+- Approved corrections are evidence for project rule generation; they are not inserted as few-shot examples into each per-item analyzer prompt. Stale approvals still promote the active candidate for that run item and metric.
+- Analysis prompts now include project, metric, model, useful trace, document, and rule context with secret redaction; default output is diagnosis-only JSON and saved results include analyzer provenance.
+- Project analysis rules follow a draft → published → production alias lifecycle with lineage, content hashes, guarded deletion operations, and migration support.
 - Root-cause catalogs now merge built-in defaults, current-run values, approved task history, and category→detail mappings
 - Reviews preserve input / expected / output / score snapshots and append-only revision timelines, while newer approved examples supersede older ones for the same item
 - Approval filtering in run and compare views is now simplified to `All`, `Approved`, and `Not Approved`

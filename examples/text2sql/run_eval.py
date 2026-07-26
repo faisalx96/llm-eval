@@ -5,8 +5,10 @@ This script runs the evaluation using:
 - Dataset: text2sql-100 (uploaded to Langfuse)
 - Task: Text-to-SQL using OpenRouter
 - Metrics:
-  1. valid_sql: Is the generated SQL syntactically valid?
-  2. execution_accuracy: Does it return the same results as the gold SQL?
+  1. execution_accuracy: Does it return the same results as the gold SQL?
+  2. valid_sql: Is the generated SQL syntactically valid?
+  3. relevance: Does the response address the request?
+  4. toxicity: A general safety signal for the response.
 
 Usage:
     # First, upload the dataset

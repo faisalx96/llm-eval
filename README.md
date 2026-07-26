@@ -34,7 +34,7 @@ qym solves this by making evaluation structured, repeatable, observable, and tea
 - Built-in metrics, custom metrics, and LLM-as-judge evaluation
 - Automatic tracing of LLM calls, tools, reasoning steps, latency, tokens, and errors
 - A live platform for run history, comparison, charts, and version tracking
-- AI-powered root cause analysis for understanding failure patterns
+- Project-scoped, metric-aware AI root cause analysis with document context and versioned rules
 - Human review, approval, and correction workflows for governance and continuous improvement
 
 ## Why It Matters
@@ -54,7 +54,7 @@ qym is not just a scoring tool. The platform adds operational visibility and col
 - Embedded trace viewer
 - Version-aware dashboards
 - Role-based access and approval workflows
-- Review queues and reusable correction history
+- Review queues, metric-scoped candidates, and append-only correction history
 
 ## Bottom Line
 
@@ -170,6 +170,7 @@ For non-Docker platform setup and admin operations, see the [Platform README](pa
 
 - [Platform README](packages/platform/README.md) - local setup and operator overview
 - [Platform User Guide](packages/platform/docs/USER_GUIDE.md) - dashboard workflows and analysis features
+- [LLM analyzer branch record](docs/BRANCH_CHANGES_LLM_ANALYZER.md) - analyzer behavior, API surface, security, migrations, and verification coverage
 
 ## License
 

@@ -2,7 +2,7 @@
 
 ## Evaluation objective
 
-The analyzer should determine whether generated SQL is a faithful implementation of the natural-language request in the supplied SQL context. It should explain failure patterns in business terms, identify the responsible layer, and recommend changes that can improve future runs.
+The analyzer should determine whether generated SQL is a faithful implementation of the natural-language request in the supplied SQL context. It should explain failure patterns in business terms and identify the responsible layer. The default analyzer returns diagnosis fields only; reviewers can record remediation separately in the correction workflow.
 
 For every failed or suspicious item, inspect the question, SQL context, expected SQL, generated SQL, metric scores, metric metadata, and trace evidence together. Do not diagnose an item from the aggregate score alone.
 
@@ -68,6 +68,6 @@ Assign the most specific primary cause and mention meaningful secondary causes:
 
 ## Reporting standard
 
-An analysis should state what failed, why it matters to the business request, the evidence supporting the diagnosis, and the smallest durable fix. Separate recommendations into task-prompt changes, dataset or expected-answer corrections, metric changes, and infrastructure fixes. Avoid claiming that a model is broadly weak when the evidence supports only a specific pattern or a small number of examples.
+An analysis should state what failed, why it matters to the business request, and the evidence supporting the diagnosis. When a reviewer records a remediation, separate it into task-prompt changes, dataset or expected-answer corrections, metric changes, and infrastructure fixes. Avoid claiming that a model is broadly weak when the evidence supports only a specific pattern or a small number of examples.
 
 When aggregating results, segment at least by operation type and SQL complexity. Overall averages can hide high-risk failures in mutations, joins, subqueries, window functions, and DDL.

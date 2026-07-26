@@ -39,7 +39,7 @@ The SDK supports [Langfuse](https://langfuse.com) datasets with tracing or local
 - **Repeat Runs & Pass@k** — `samples=8` evaluates every item 8× as ONE run; Pass@k, Pass^k, Consistency, and Reliability computed automatically with confidence intervals
 - **LLM-as-Judge Metrics** — Built-in judges for relevance, faithfulness, correctness, hallucination, toxicity, conciseness, and tool calling, plus a `create_judge()` factory for custom judges
 - **Auto-Instrumentation** — Instrumentation support is included in the base install so supported LLM calls can be traced without a separate extra
-- **Real-Time Dashboard** — Terminal UI + platform dashboard with live progress, metrics, trace viewer, AI root cause analysis, and corrections review
+- **Real-Time Dashboard** — Terminal UI + platform dashboard with live progress, metrics, trace viewer, project-scoped metric-aware AI analysis, and corrections review
 - **Version Tracking** — Auto-detects git branch and commit per run for version leaderboards
 - **Framework Agnostic** — Works with LangChain, LangGraph, LlamaIndex, CrewAI, Haystack, OpenAI Agents, or any Python function
 - **Flexible Datasets** — Use Langfuse datasets (with tracing) or local CSV files (custom column names supported)
@@ -270,7 +270,7 @@ qym dashboard   # Opens the platform in your browser
 - **Compare view** — side-by-side item comparison with winner badges, score range filters, root-cause/solution breakdown with Sankey visualization
 - **Charts view** — per-task cards with dataset tabs, Run/Version/Model grouping, and version leaderboard
 - **Trace viewer** — embedded per-item span tree with LLM message reconstruction, reasoning display, error path highlighting, and framework noise collapsing
-- **AI analysis** — one-click root cause analysis with an interactive playground for prompt editing, category catalogs, and correction bank
+- **AI analysis** — project-scoped metric-aware root cause analysis with prompt preview/testing, reference documents, versioned rules, and category catalogs
 - **Corrections review** — dedicated approval queue with bulk moderation and revision history
 - **Team workflows** — role-based visibility, approval workflows, and org-level access controls
 
