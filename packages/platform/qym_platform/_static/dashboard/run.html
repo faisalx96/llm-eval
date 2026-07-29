@@ -2084,6 +2084,40 @@
       gap: 3px;
       min-width: 0;
     }
+    /* Multi-metric filter chips: a chip cycles any -> passed -> failed */
+    .metric-filter-chips {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .metric-filter-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 10px;
+      border-radius: 100px;
+      font-size: var(--font-xs);
+      font-weight: 500;
+      font-family: var(--font-sans);
+      border: 1px solid var(--border-subtle);
+      background: var(--bg-elevated);
+      color: var(--text-secondary);
+      cursor: pointer;
+      user-select: none;
+      transition: all 0.15s;
+    }
+    .metric-filter-chip:hover { border-color: var(--border-default); color: var(--text-primary); }
+    .metric-filter-chip.passed {
+      border-color: rgba(16, 185, 129, 0.5);
+      background: rgba(16, 185, 129, 0.12);
+      color: var(--score-5);
+    }
+    .metric-filter-chip.failed {
+      border-color: rgba(239, 68, 68, 0.5);
+      background: rgba(239, 68, 68, 0.12);
+      color: var(--score-1);
+    }
     .fp-label {
       font-size: var(--font-xs);
       font-family: var(--font-sans);
@@ -4728,6 +4762,12 @@
                 <option value="trace_errors">With Trace Errors</option>
               </select>
             </div>
+            <!-- Per-metric passed/failed conditions, AND-combined. A chip
+                 cycles any -> passed -> failed. -->
+            <div class="fp-group" id="fp-metric-filters" style="display:none;">
+              <span class="fp-label">Metrics</span>
+              <div class="metric-filter-chips" id="metric-filter-chips"></div>
+            </div>
             <div class="fp-group" id="fp-threshold-group" style="display:none;">
               <span class="fp-label">Pass if &ge;</span>
               <div class="threshold-control" id="threshold-control">
@@ -4905,6 +4945,7 @@
         selectedMetric: null,
         samplesMetric: null,
         itemFilter: 'all',
+        metricFilters: {},   // metric name -> 'passed' | 'failed' (AND-combined)
         approvalFilter: null,
         approvalValues: ['approved', 'not_approved'],
         sortBy: 'index',
@@ -5586,6 +5627,7 @@
             state.metricThresholds[metricName] = metricSpec?.pass_threshold ?? 0.8;
           }
         }
+        renderMetricFilterChips();
 
         // Collect metadata
         const metaKeySet = new Set();
@@ -8357,6 +8399,56 @@
 
       // ── Filtering & Items ──
 
+      // Multi-metric filter: one passed/failed condition per metric, all
+      // conditions must hold. Each metric judges against its own threshold.
+      function rowMatchesMetricFilters(row) {
+        const filters = state.metricFilters || {};
+        for (const [name, cond] of Object.entries(filters)) {
+          if (cond !== 'passed' && cond !== 'failed') continue;
+          const i = state.allMetrics.indexOf(name);
+          if (i < 0) continue;
+          const mType = state.metricTypes[name] || 'score';
+          if (mType === 'numeric') continue; // no pass direction
+          const isB = state.metricIsBoolean[name];
+          const thr = isB ? 0.9999 : (state.metricThresholds[name] || 0.8);
+          const v = window.QymMetrics.parseScoreValue((row.metric_values || [])[i]);
+          if (cond === 'passed') {
+            if (v === null || v < thr) return false;
+          } else if (v === null || v >= thr) {
+            return false;
+          }
+        }
+        return true;
+      }
+
+      function renderMetricFilterChips() {
+        const group = el('fp-metric-filters');
+        const wrap = el('metric-filter-chips');
+        if (!group || !wrap) return;
+        const names = state.allMetrics.filter(n => (state.metricTypes[n] || 'score') !== 'numeric');
+        if (names.length < 2) { group.style.display = 'none'; return; }
+        group.style.display = '';
+        wrap.innerHTML = names.map(name => {
+          const cond = (state.metricFilters || {})[name] || '';
+          const stateLabel = cond === 'passed' ? ' · passed' : (cond === 'failed' ? ' · failed' : '');
+          const cls = cond ? ' ' + cond : '';
+          return '<button type="button" class="metric-filter-chip' + cls + '" data-metric-filter="' + escapeAttr(name) + '" aria-pressed="' + (cond ? 'true' : 'false') + '" title="Click to cycle: any → passed → failed">' + escapeHtml(name) + stateLabel + '</button>';
+        }).join('');
+        wrap.querySelectorAll('[data-metric-filter]').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const name = btn.dataset.metricFilter;
+            state.metricFilters = state.metricFilters || {};
+            const current = state.metricFilters[name] || '';
+            if (current === '') state.metricFilters[name] = 'passed';
+            else if (current === 'passed') state.metricFilters[name] = 'failed';
+            else delete state.metricFilters[name];
+            state.page = 1;
+            renderMetricFilterChips();
+            renderItems();
+          });
+        });
+      }
+
       function getFilteredItems() {
         const rows = state.snapshot.rows || [];
         const metric = state.selectedMetric;
@@ -8446,6 +8538,9 @@
           } else if (state.itemFilter === 'trace_errors') {
             if (getRowTraceErrorCount(row) <= 0) continue;
           }
+
+          // Multi-metric conditions: every set metric must match (AND).
+          if (!rowMatchesMetricFilters(row)) continue;
 
           // Score distribution filter
           if (state.scoreDistFilter) {
@@ -10144,6 +10239,7 @@
       function countActiveFilters() {
         let n = 0;
         if (state.itemFilter !== 'all') n++;
+        n += Object.keys(state.metricFilters || {}).length;
         if (state.approvalFilter !== null) n++;
         if (state.sortBy !== 'index') n++;
         if (state.searchQuery) n++;
@@ -10169,6 +10265,8 @@
 
       function clearAllFilters() {
         state.itemFilter = 'all';
+        state.metricFilters = {};
+        renderMetricFilterChips();
         state.approvalFilter = null;
         state.sortBy = 'index';
         state.searchQuery = '';
