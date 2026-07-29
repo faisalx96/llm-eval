@@ -2949,24 +2949,6 @@
     return out;
   }
 
-  // #7: Extract base timestamp from run name/id for grouping.
-  // e.g. "my_task-gpt4-260218-1430-2" -> "260218-1430"
-  // Runs with the same task + base timestamp belong together.
-  function extractRunTimestampGroup(run) {
-    // Repeat runs are ONE logical run — never glue them into legacy
-    // timestamp groups (runs.samples replaced the heuristic for new runs).
-    if (run.samples > 1) return null;
-    const productEval = run.product_eval || {};
-    if (productEval && productEval.eval_id) {
-      return `${run.task_name}|||product_eval:${productEval.eval_id}`;
-    }
-    const name = run.run_name || run.external_run_id || '';
-    // Match YYMMDD-HHMM (optionally followed by -N counter)
-    const m = name.match(/(\d{6}-\d{4})(?:-\d+)?$/);
-    if (!m) return null;
-    return `${run.task_name}|||${m[1]}`;
-  }
-
   function renderTableView() {
     const allRuns = state.filteredRuns;
     const tbody = el('runs-tbody');
@@ -3037,116 +3019,12 @@
     const pagination = getTablePageSlice(allRuns);
     const runs = pagination.pageRuns;
 
-    // #7: Group runs by task + base timestamp (same batch = same task, same YYMMDD-HHMM)
-    const groupMap = {};  // groupKey -> { runs: [{run, idx}], ... }
-    const runGroupKeys = [];
-    runs.forEach((r, idx) => {
-      const key = extractRunTimestampGroup(r);
-      runGroupKeys.push(key);
-      if (key) {
-        if (!groupMap[key]) groupMap[key] = [];
-        groupMap[key].push({ run: r, idx });
-      }
-    });
-
-    // Only groups with >1 run are real groups
-    const realGroups = {};
-    for (const [key, members] of Object.entries(groupMap)) {
-      if (members.length > 1) realGroups[key] = members;
-    }
-
-    // Track which groups are collapsed (default: collapsed)
-    if (!state._collapsedGroups) state._collapsedGroups = {};
-
-    let lastGroupKey = null;
-    let groupCounter = 0;
     // Align run names across rows when any visible run carries a disclosure
     // chevron (mock option C's hidden-toggle trick).
     const anyRepeatRows = runs.some(r => r.samples > 1);
 
     tbody.innerHTML = runs.map((run, pageIdx) => {
       const idx = pagination.start + pageIdx;
-      const groupKey = runGroupKeys[pageIdx];
-      const isGrouped = groupKey && realGroups[groupKey];
-      const isFirstInGroup = isGrouped && groupKey !== lastGroupKey;
-      const nextGroupKey = runGroupKeys[pageIdx + 1];
-      const isLastInGroup = isGrouped && nextGroupKey !== groupKey;
-      let groupHeaderHtml = '';
-
-      if (isFirstInGroup) {
-        groupCounter++;
-        const groupId = `rg_${groupCounter}`;
-        const members = realGroups[groupKey];
-        const groupSize = members.length;
-        // Derive group title: task_name is always available; show user-provided
-        // run_name only if it differs from the auto-generated task-model pattern
-        const configRunName = run.run_name || '';
-        // Strip timestamp+counter suffix, then strip model suffix to get user's intent
-        let userBaseName = configRunName.replace(/-\d{6}-\d{4}(?:-\d+)?$/, '');
-        // Collect all model names in this group to strip them from the base name
-        const groupModels = [...new Set(members.map(m => stripModelProvider(m.run.model_name || '')).filter(Boolean))];
-        for (const model of groupModels) {
-          if (userBaseName.endsWith('-' + model)) {
-            userBaseName = userBaseName.slice(0, -(model.length + 1));
-          }
-        }
-        const taskName = run.task_name || '';
-        let baseLabel;
-        if (userBaseName && userBaseName !== taskName) {
-          baseLabel = `${userBaseName} · ${taskName}`;
-        } else {
-          baseLabel = taskName || userBaseName || 'Group';
-        }
-        // Extract timestamp for display
-        const tsSource = run.run_name || run.external_run_id || '';
-        const tsMatch = tsSource.match(/(\d{6})-(\d{4})(?:-\d+)?$/);
-        let tsLabel = '';
-        if (tsMatch) {
-          const [, yymmdd, hhmm] = tsMatch;
-          const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-          const mm = yymmdd.slice(2,4); const dd = yymmdd.slice(4,6);
-          const monthName = months[parseInt(mm, 10) - 1] || mm;
-          tsLabel = ` · ${monthName} ${parseInt(dd, 10)} · ${hhmm.slice(0,2)}:${hhmm.slice(2)}`;
-        }
-        const isCollapsed = state._collapsedGroups[groupKey] === true; // default expanded
-        const arrow = isCollapsed ? '▶' : '▼';
-        const memberFilePaths = members.map(m => m.run.file_path);
-        const selectedGroupRunCount = memberFilePaths.filter(filePath => state.selectedRuns.has(filePath)).length;
-        const allGroupRunsSelected = selectedGroupRunCount === memberFilePaths.length;
-        const someGroupRunsSelected = selectedGroupRunCount > 0 && !allGroupRunsSelected;
-
-        groupHeaderHtml = `<tr class="run-group-header${isCollapsed ? ' collapsed' : ''}" data-group-key="${escapeHtml(groupKey)}" data-group-id="${groupId}">
-          <td colspan="${colCount}" style="padding:6px 0;background:var(--bg-elevated);cursor:pointer;user-select:none;">
-            <div class="group-header-content">
-              <div class="group-header-main">
-                <span class="group-toggle-arrow">${arrow}</span>
-                <label class="custom-checkbox group-select-checkbox" onclick="event.stopPropagation();" title="Select all runs in this group">
-                  <input
-                    type="checkbox"
-                    class="group-select-input"
-                    data-group-files='${JSON.stringify(memberFilePaths)}'
-                    ${allGroupRunsSelected ? 'checked' : ''}
-                    ${someGroupRunsSelected ? 'data-indeterminate="true"' : ''}
-                  />
-                  <span class="checkmark"></span>
-                </label>
-                <span class="group-header-title" title="${escapeHtml(baseLabel)}">${escapeHtml(baseLabel)}</span>
-                ${tsLabel ? `<span class="group-header-timestamp">${tsLabel}</span>` : ''}
-                <span class="group-header-count">${groupSize} runs</span>
-              </div>
-              <div class="group-header-actions">
-                <button class="group-compare-btn action-btn" data-group-files='${JSON.stringify(memberFilePaths)}' onclick="event.stopPropagation();">Compare</button>
-              </div>
-            </div>
-          </td>
-        </tr>`;
-      }
-      lastGroupKey = groupKey;
-
-      // If this run belongs to a collapsed group, hide it (header row stays visible)
-      const isCollapsed = isGrouped && state._collapsedGroups[groupKey] === true;
-      const hiddenAttr = (isGrouped && isCollapsed) ? 'style="display:none;"' : '';
-      const groupDataAttr = isGrouped ? `data-member-of="${escapeHtml(groupKey)}"` : '';
       const dt = formatDate(run.timestamp);
       const durationText = formatDurationMs(run.duration_ms);
       const isSelected = state.selectedRuns.has(run.file_path);
@@ -3157,9 +3035,6 @@
         idx % 2 === 0 ? 'run-row-even' : 'run-row-odd',
         isSelected ? 'selected' : '',
         isFocused ? 'focused' : '',
-        isGrouped ? 'grouped-run' : '',
-        isGrouped && isFirstInGroup ? 'grouped-run-start' : '',
-        isGrouped && isLastInGroup ? 'grouped-run-end' : '',
         // Option B: a repeat run stays a sortable data row but reads as the
         // header of its pass rows — elevated surface, strong top rule.
         run.samples > 1 ? 'repeat-run-header' : '',
@@ -3218,8 +3093,8 @@
         }
       }
 
-      return `${groupHeaderHtml}
-        <tr data-idx="${idx}" data-file="${encodeURIComponent(run.file_path)}" ${groupDataAttr} ${hiddenAttr}
+      return `
+        <tr data-idx="${idx}" data-file="${encodeURIComponent(run.file_path)}"
             class="${rowClasses}">
           <td class="col-select" onclick="event.stopPropagation()">
             <label class="custom-checkbox">
@@ -3483,24 +3358,6 @@
 
       tr.addEventListener('dblclick', () => {
         openRun(filePath);
-      });
-    });
-
-    // #7: Wire group header click to toggle collapse
-    // Convention: state._collapsedGroups[key] === true means collapsed; absent/false means expanded
-    tbody.querySelectorAll('.run-group-header').forEach(header => {
-      header.addEventListener('click', () => {
-        const groupKey = header.dataset.groupKey;
-        if (!groupKey) return;
-        const wasCollapsed = state._collapsedGroups[groupKey] === true;
-        state._collapsedGroups[groupKey] = !wasCollapsed;
-        const nowExpanded = !state._collapsedGroups[groupKey];
-        header.classList.toggle('collapsed', !nowExpanded);
-        const arrow = header.querySelector('.group-toggle-arrow');
-        if (arrow) arrow.textContent = nowExpanded ? '▼' : '▶';
-        tbody.querySelectorAll(`tr[data-member-of="${groupKey}"]`).forEach(row => {
-          row.style.display = nowExpanded ? '' : 'none';
-        });
       });
     });
 
@@ -3984,34 +3841,6 @@
           // just hold their space and then snap — instant reads as crisp.
           samplesDetailRows(runId).forEach(detail => detail.remove());
         }
-      });
-    });
-
-    // #7: Wire "Compare All" buttons on group headers
-    tbody.querySelectorAll('.group-compare-btn').forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        try {
-          const files = JSON.parse(btn.dataset.groupFiles);
-          if (Array.isArray(files) && files.length >= 2) {
-            sessionStorage.setItem('compareRuns', JSON.stringify(files));
-            const params = files.map(f => 'runs=' + encodeURIComponent(f)).join('&');
-            navigateTo(apiUrl('compare?' + params));
-          }
-        } catch {}
-      });
-    });
-
-    tbody.querySelectorAll('.group-select-input').forEach(input => {
-      if (input.dataset.indeterminate === 'true') input.indeterminate = true;
-      input.addEventListener('click', (e) => {
-        e.stopPropagation();
-      });
-      input.addEventListener('change', (e) => {
-        e.stopPropagation();
-        try {
-          toggleGroupSelection(JSON.parse(input.dataset.groupFiles));
-        } catch {}
       });
     });
 
@@ -5282,21 +5111,6 @@
     if (labels.length === 1) return labels[0];
     if (labels.length === 2) return `${labels[0]}, ${labels[1]}`;
     return `${labels[0]}, ${labels[1]} +${labels.length - 2}`;
-  }
-
-  function toggleGroupSelection(filePaths) {
-    if (!Array.isArray(filePaths) || filePaths.length === 0) return;
-    if (getActiveCohortAnchorRuns()) {
-      showToast('error', 'Group Selection Disabled In Cohort Mode', 'Select Cohort B runs one by one. Cohort mode requires an exact, disjoint set.');
-      return;
-    }
-    const allSelected = filePaths.every(filePath => state.selectedRuns.has(filePath));
-    if (allSelected) {
-      filePaths.forEach(filePath => state.selectedRuns.delete(filePath));
-    } else {
-      filePaths.forEach(filePath => state.selectedRuns.add(filePath));
-    }
-    render();
   }
 
   function openRun(filePath, e) {
