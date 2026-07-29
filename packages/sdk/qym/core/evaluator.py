@@ -545,6 +545,7 @@ class Evaluator:
         self.max_metric_concurrency = self.config.max_metric_concurrency
         self.timeout = self.config.timeout
         self.metric_timeout = self.config.metric_timeout
+        self.metric_max_retries = self.config.metric_max_retries
         self.max_retries = self.config.max_retries
         self.samples = self.config.samples
         # Passes execute strictly sequentially, so a single instance-level
@@ -2458,28 +2459,33 @@ class Evaluator:
                 )
 
         try:
-            # Apply wall-clock cap on the metric call itself.
+            # Apply wall-clock cap on the metric call itself. A timeout
+            # retries up to metric_max_retries; when the last attempt also
+            # times out, the TimeoutError falls through to the ordinary
+            # metric-error handler below (score 0 + error traceback), so the
+            # UI surfaces it like any other metric error.
             usage_scope_token = None
             if self.metric_timeout is not None:
                 try:
                     usage_scope_token = self._otel.bind_usage_scope("metric")
-                    score = await asyncio.wait_for(
-                        _run_metric_inner(), timeout=self.metric_timeout
-                    )
-                except asyncio.TimeoutError:
-                    metric_status = "timeout"
-                    logger.warning(
-                        "Metric %s timed out after %.1fs — recording sentinel score",
-                        m_name,
-                        self.metric_timeout,
-                    )
-                    score = {
-                        "score": 0.0,
-                        "label": "timeout",
-                        "metadata": {
-                            "error": f"metric timeout after {self.metric_timeout}s",
-                        },
-                    }
+                    attempts = self.metric_max_retries + 1
+                    for attempt in range(1, attempts + 1):
+                        try:
+                            score = await asyncio.wait_for(
+                                _run_metric_inner(), timeout=self.metric_timeout
+                            )
+                            break
+                        except asyncio.TimeoutError:
+                            if attempt >= attempts:
+                                metric_status = "timeout"
+                                raise
+                            logger.warning(
+                                "Metric %s timed out after %.1fs (attempt %d/%d) — retrying",
+                                m_name,
+                                self.metric_timeout,
+                                attempt,
+                                attempts,
+                            )
                 finally:
                     self._otel.reset_usage_scope(usage_scope_token)
             else:
@@ -2544,12 +2550,26 @@ class Evaluator:
             )
             return m_name, score
         except Exception as e:
-            metric_status = "error"
+            if metric_status != "timeout":
+                metric_status = "error"
             if isinstance(e, JudgeInputError):
                 console.print(e.rich_message())
+            elif isinstance(e, asyncio.TimeoutError):
+                logger.error(
+                    "Metric %s timed out after %.1fs on all %d attempts",
+                    m_name,
+                    self.metric_timeout,
+                    self.metric_max_retries + 1,
+                )
             else:
                 logger.error(f"Metric {m_name} failed: {e}")
-            score = {"score": 0, "error": traceback.format_exc()}
+            error_text = (
+                f"metric timeout after {self.metric_timeout}s "
+                f"({self.metric_max_retries + 1} attempts)"
+                if isinstance(e, asyncio.TimeoutError)
+                else traceback.format_exc()
+            )
+            score = {"score": 0, "error": error_text}
             self._notify_observer(
                 "on_metric_result",
                 item_index=index,

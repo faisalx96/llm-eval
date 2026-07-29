@@ -152,10 +152,11 @@ def _make_single_item_csv() -> str:
 
 
 @pytest.mark.asyncio
-async def test_t12_hung_metric_gets_timeout_sentinel_and_fast_metric_real_score(tmp_path):
+async def test_t12_hung_metric_times_out_retries_and_errors(tmp_path):
     """Mix a hung metric and a fast metric on a single item and assert that
-    (a) the whole eval finishes within ``metric_timeout + 5s``,
-    (b) the hung metric gets score=0 with label="timeout",
+    (a) the whole eval finishes within the retry budget,
+    (b) the hung metric retries metric_max_retries times, then lands in the
+        ordinary metric-error path: score=0 with an error text,
     (c) the fast metric returns its real score.
     Regression for T1.2 — without the fix, the eval would hang indefinitely."""
     from qym import Evaluator
@@ -183,6 +184,7 @@ async def test_t12_hung_metric_gets_timeout_sentinel_and_fast_metric_real_score(
                 "max_concurrency": 1,
                 "max_metric_concurrency": 2,
                 "metric_timeout": 1.5,
+                "metric_max_retries": 1,
                 "live_mode": "local",
                 "otel_enabled": False,
                 # short name + tmp dir: the derived checkpoint path would
@@ -212,11 +214,13 @@ async def test_t12_hung_metric_gets_timeout_sentinel_and_fast_metric_real_score(
 
         fast_score = fast.get("score") if isinstance(fast, dict) else getattr(fast, "score", None)
         hung_score = hung.get("score") if isinstance(hung, dict) else getattr(hung, "score", None)
-        hung_label = hung.get("label") if isinstance(hung, dict) else getattr(hung, "label", None)
+        hung_error = hung.get("error") if isinstance(hung, dict) else getattr(hung, "error", None)
 
         assert fast_score == 0.75
         assert hung_score == 0.0
-        assert hung_label == "timeout", f"expected label='timeout', got {hung_label!r}"
+        assert hung_error and "metric timeout" in str(hung_error), (
+            f"expected an ordinary metric error mentioning the timeout, got {hung_error!r}"
+        )
     finally:
         os.unlink(csv_path)
 

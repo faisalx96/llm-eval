@@ -19,6 +19,10 @@ class EvaluatorConfig(BaseModel):
     # hung upstream within ~1 minute per item. Override for slow custom metrics;
     # set to None to disable.
     metric_timeout: Optional[float] = Field(default=60.0, gt=0)
+    # Retries for a metric call that hits metric_timeout. After the last
+    # attempt the timeout is recorded through the ordinary metric-error path
+    # (score 0 + error traceback), so the UI shows it like any other error.
+    metric_max_retries: int = Field(default=2, ge=0)
     max_retries: int = Field(default=2, ge=0)
     # Repeat runs: evaluate every dataset item `samples` times (k sequential
     # passes over the dataset) inside ONE logical run. Per-pass scores are
