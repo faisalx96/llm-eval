@@ -51,27 +51,22 @@ def test_empty_dashboard_links_to_first_run_docs() -> None:
     assert "emptyDocsLink.href = apiUrl('docs-guide#get-started/first-run');" in source
 
 
-def test_repeat_run_rows_render_pass_dot_strip() -> None:
-    """×k rows carry a per-pass dot strip (primary-metric score colors) fed by
-    the pass_summaries field of the runs-list payload."""
+def test_repeat_run_rows_use_header_treatment() -> None:
+    """×k rows are data rows with header treatment (Option B): elevated
+    surface, strong top rule, a pass-count chip — and no pass-dot strip."""
     source = DASHBOARD_JS.read_text(encoding="utf-8")
     styles = (DASHBOARD_DIR / "dashboard.css").read_text(encoding="utf-8")
-    api = RUNS_API.read_text(encoding="utf-8")
 
-    assert "function renderPassDots(run)" in source
-    assert "run.pass_summaries" in source
-    assert "${renderPassDots(run)}" in source
-    # informational only — the samples-toggle button stays the sole expander
-    assert "querySelectorAll('.pass-dots')" not in source
-    assert 'class="pdot' in source
+    assert "run.samples > 1 ? 'repeat-run-header' : ''" in source
+    assert 'class="run-pass-count"' in source
+    assert "${run.samples} passes" in source
+    # the dot strip is gone; the count chip and chevron carry the signal
+    assert "renderPassDots" not in source
+    assert ".pdot" not in styles
+    assert ".pass-dots" not in styles
 
-    assert ".pass-dots" in styles
-    assert ".pdot.score-5" in styles
-    assert ".pdot.pending" in styles
-    assert ".pdot.running" in styles
-    assert ".pdot.err" in styles
-
-    assert '"pass_summaries": pass_summary_map.get(r.id) or None,' in api
+    assert ".runs-table > tbody > tr.repeat-run-header > td" in styles
+    assert ".run-pass-count" in styles
 
 
 def test_repeat_run_expander_uses_accessible_attached_inspector() -> None:
@@ -99,11 +94,11 @@ def test_repeat_drawer_follows_mock_option_c() -> None:
     source = DASHBOARD_JS.read_text(encoding="utf-8")
     styles = (DASHBOARD_DIR / "dashboard.css").read_text(encoding="utf-8")
 
-    # leading disclosure chevron before the run name (mock C's toggle), pass
-    # dots after it, and a spacer aligning chevron-less rows; no hover card
+    # leading disclosure chevron before the run name (mock C's toggle), the
+    # pass-count chip after it, and a spacer aligning chevron-less rows
     toggle_at = source.index('class="samples-toggle${samplesOpen')
     run_id_at = source.index('<span class="run-id"', toggle_at)
-    assert toggle_at < run_id_at < source.index('${renderPassDots(run)}', toggle_at)
+    assert toggle_at < run_id_at < source.index('class="run-pass-count"', toggle_at)
     assert 'class="samples-toggle-spacer"' in source
     assert ".samples-toggle.open .samples-toggle-chevron" in styles
     assert "verdict-card" not in source
@@ -221,7 +216,7 @@ def test_run_page_supports_single_pass_scope() -> None:
     # Repeat Stability chart panels, no per-pass dot strips on item cards
     assert "if (samplesCount <= 1 || IS_EXPORT || state.viewPass)" in source
     assert source.count("const repeatSeries = state.viewPass ? [] :") == 1
-    assert "(!state.viewPass && row.pass_scores && metric)" in source
+    assert "!state.viewPass && passAttempts" in source
     # edits are allowed and routed to the viewed pass
     assert "updateMetricScore(filePath, rowIndex, metricName, input.value, state.viewPass)" in source
     assert "...(passNumber ? { pass_number: passNumber } : {})," in source
@@ -242,24 +237,15 @@ def test_run_page_supports_single_pass_scope() -> None:
     # pass scope swaps outputs/latency/traces too, from per-pass attempts
     assert "row.pass_attempts[state.viewPass - 1]" in source
 
-    # the compact output-header switcher offers Summary or any pass;
-    # lensed cards hide score edits (edits apply to the reduced score)
-    assert 'class="attempt-switch"' not in source
-    assert 'data-pass="' in source
-    assert "state.itemPassLens" in source
-    assert 'class="pass-dot pass-dot-switch' in source
-    assert "pass-dot-summary" in source
-    assert "View all-pass summary" in source
-    assert ">All</button>" in source
-    assert "output from latest available pass" in source
-    assert "const outputLabel = shownOutputPass ? 'OUTPUT · PASS '" in source
-    assert "+ passNumber + '</button>'" in source
+    # the lens and its All/pass dot switcher are gone: expanded repeat items
+    # show every pass side by side as variant columns instead
+    assert "state.itemPassLens" not in source
+    assert "pass-dot-switch" not in source
+    assert "pass-lensed" not in source
+    assert "renderAnswerColumns" in source
+    assert 'class="variant-chip' in source
+    assert "OUTPUT · ALL PASSES" in source
     assert 'aria-pressed="' in source
-    assert "querySelectorAll('.pass-dot-switch')" in source
-    assert ".pass-dot-switch.active" in source
-    assert "inset 0 0 0 2px color-mix(in srgb, var(--warning) 65%" in source
-    assert "0 0 4px color-mix(in srgb, var(--warning) 25%" in source
-    assert ".item-card.pass-lensed .metric-edit-open { display: none; }" in source
 
     # the API ships per-pass attempts on run-detail rows, and update_metric
     # accepts a pass_number and re-reduces the run-level mean
@@ -523,7 +509,9 @@ def test_run_category_breakdown_keeps_cards_and_adds_repeat_aware_compare_view()
     assert "width: 2px;" in marker_rule
     assert "background: var(--text-secondary);" in marker_rule
     assert "<span>| ' + baselineScope" not in source
-    assert "data-category-expand" in source
+    # the 6-card cap is gone: every category card renders, no Show-more
+    assert "data-category-expand" not in source
+    assert "groupStats.slice(0, 6)" not in source
     assert "metricType !== 'numeric'" in source
 
 

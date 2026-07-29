@@ -1633,6 +1633,7 @@ def _build_run_data(db: Session, run: Run) -> Dict[str, Any]:
     # Repeat runs: per-pass scores power the dot strips in the items table.
     run_samples = int(getattr(run, "samples", 1) or 1)
     pass_scores_by_item: Dict[str, Dict[str, Dict[int, Optional[float]]]] = {}
+    pass_meta_by_item: Dict[str, Dict[str, Dict[int, Dict[str, Any]]]] = {}
     pass_attempts_by_item: Dict[str, Dict[int, Dict[str, Any]]] = {}
     if run_samples > 1:
         from qym_platform.db.models import RunItemAttempt, RunItemPassScore
@@ -1645,6 +1646,16 @@ def _build_run_data(db: Session, run: Run) -> Dict[str, Any]:
             pass_scores_by_item.setdefault(ps.item_id, {}).setdefault(
                 ps.metric_name, {}
             )[int(ps.pass_number)] = ps.score_numeric
+            # Per-pass judge output, same shape as row-level metric_meta.
+            ps_meta: dict[str, Any] = dict(ps.meta) if ps.meta else {}
+            if ps.label:
+                ps_meta.setdefault("label", ps.label)
+            if ps.explanation:
+                ps_meta.setdefault("explanation", ps.explanation)
+            if ps_meta:
+                pass_meta_by_item.setdefault(ps.item_id, {}).setdefault(
+                    ps.metric_name, {}
+                )[int(ps.pass_number)] = ps_meta
 
         # Every pass's final attempt — output, latency, trace — so the UI can
         # show each attempt, not just the item's last one.
@@ -1776,6 +1787,21 @@ def _build_run_data(db: Session, run: Run) -> Dict[str, Any]:
                         ).items()
                     }
                     if run_samples > 1
+                    else None
+                ),
+                # Repeat runs: metric -> [meta per pass, index 0 = pass 1] —
+                # each pass's judge output (explanation, label, …).
+                "pass_metric_meta": (
+                    {
+                        m: [
+                            by_pass.get(p)
+                            for p in range(1, run_samples + 1)
+                        ]
+                        for m, by_pass in (
+                            pass_meta_by_item.get(it.item_id) or {}
+                        ).items()
+                    }
+                    if run_samples > 1 and pass_meta_by_item.get(it.item_id)
                     else None
                 ),
                 # Repeat runs: [attempt per pass, index 0 = pass 1] — each

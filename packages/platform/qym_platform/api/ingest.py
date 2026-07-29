@@ -1248,6 +1248,8 @@ async def ingest_events(
                         pass_number=payload.pass_number,
                         score_numeric=payload.score_numeric,
                         label=payload.label,
+                        meta=_sanitize_for_json(payload.meta),
+                        explanation=payload.explanation,
                     )
                     pass_score_cache[
                         (payload.item_id, payload.metric_name, payload.pass_number)
@@ -1256,6 +1258,8 @@ async def ingest_events(
                 else:
                     pass_score.score_numeric = payload.score_numeric
                     pass_score.label = payload.label
+                    pass_score.meta = _sanitize_for_json(payload.meta)
+                    pass_score.explanation = payload.explanation
                 db.flush()
                 reduced_numeric = (
                     db.query(func.avg(RunItemPassScore.score_numeric))

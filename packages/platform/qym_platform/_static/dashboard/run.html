@@ -2494,6 +2494,12 @@
       overflow-x: auto;
     }
     .det-body.hidden { display: none; }
+    .det-pass-label {
+      font-family: var(--font-mono);
+      font-size: var(--font-sm);
+      color: var(--text-muted);
+      margin-top: var(--space-sm);
+    }
     .item-index {
       font-family: var(--font-mono);
       font-size: var(--font-md);
@@ -8632,6 +8638,30 @@
         const hidden = (state.itemHiddenVariants || {})[itemId] || new Set();
         const passLabelFor = (group) => group.map(a => a.pass_number).sort((x, y) => x - y).join(' · ');
 
+        // Per-pass metric details: each pass's judge output renders inside
+        // its own column, next to the output it judged.
+        const safeColId = btoa(itemId).replace(/[+/=]/g, '_');
+        const passMeta = baseRow.pass_metric_meta || null;
+        const metaFor = (passNo) => {
+          if (!passMeta) return null;
+          const perMetric = {};
+          state.allMetrics.forEach(name => {
+            const arr = passMeta[name];
+            const m = Array.isArray(arr) ? arr[passNo - 1] : null;
+            if (m && typeof m === 'object') perMetric[name] = m;
+          });
+          return Object.keys(perMetric).length ? perMetric : null;
+        };
+        const detZoneFor = (att) => {
+          const pm = metaFor(att.pass_number);
+          if (!pm) return '';
+          const vals = state.allMetrics.map(name => {
+            const v = scoreFor(name, att.pass_number);
+            return v === null ? '' : v;
+          });
+          return renderMetricDetailBlocks(pm, vals, safeColId + '_p' + att.pass_number);
+        };
+
         // Variant strip: one chip per distinct output; a chip toggles its column.
         const stripHtml = groups.length > 1
           ? '<div class="variant-strip"><span class="variant-strip-label">Showing</span>' +
@@ -8666,8 +8696,15 @@
                 }).join('');
                 return '<tr><td class="pass-cmp-vpass">pass ' + att.pass_number + '</td>' + cells + '<td class="num">' + (att.latency_ms ? formatLatency(att.latency_ms) : '—') + '</td></tr>';
               }).join('') + '</tbody></table></div>';
+          // Details: one zone per pass in the column (identical outputs can
+          // still carry different judge explanations).
+          const detsHtml = group.map(att => {
+            const zone = detZoneFor(att);
+            if (!zone) return '';
+            return (single ? '' : '<div class="det-pass-label">pass ' + att.pass_number + '</div>') + zone;
+          }).join('');
           return '<div class="pass-cmp-col' + (isBestG ? ' best' : '') + (allFailed ? ' failed' : '') + '">' +
-            caption + outputTextHtml(first) + scoresHtml +
+            caption + outputTextHtml(first) + scoresHtml + detsHtml +
             (traceBtnFor(first) ? '<div class="pass-cmp-actions">' + traceBtnFor(first) + '</div>' : '') +
           '</div>';
         }).filter(Boolean);
@@ -8950,8 +8987,12 @@
             '</div>';
           }
 
-          // Metric details: one closed toggle per metric, structured viewer
-          const metricDetailsHtml = renderMetricDetailBlocks(metricMeta, metricVals, safeId);
+          // Metric details: one closed toggle per metric, structured viewer.
+          // Repeat items with per-pass meta show details inside the columns
+          // instead — the item-level zone is the fallback for older runs.
+          const hasPassMeta = isRepeatItem && row.pass_metric_meta
+            && Object.keys(row.pass_metric_meta).length > 0;
+          const metricDetailsHtml = hasPassMeta ? '' : renderMetricDetailBlocks(metricMeta, metricVals, safeId);
 
           // Item metadata badges
           let itemMetadataHtml = '';
