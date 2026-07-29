@@ -8108,7 +8108,6 @@ td.col-trace-metric-value {
    elevated surface, strong top rule, and a pass-count chip. */
 .runs-table > tbody > tr.repeat-run-header > td {
   background: var(--bg-elevated);
-  border-top: 1.5px solid var(--border-strong);
 }
 /* Sticky columns carry their own zebra backgrounds; out-rank them so the
    frozen cells never split visually from the rest of the header row. */
