@@ -51,21 +51,21 @@ def test_empty_dashboard_links_to_first_run_docs() -> None:
     assert "emptyDocsLink.href = apiUrl('docs-guide#get-started/first-run');" in source
 
 
-def test_repeat_run_rows_use_header_treatment() -> None:
-    """×k rows are data rows with header treatment (Option B): elevated
-    surface, strong top rule, a pass-count chip — and no pass-dot strip."""
+def test_repeat_run_rows_are_ordinary_rows_with_pass_count_chip() -> None:
+    """×k rows read as ordinary data rows: no special surface, no dot
+    strip — the chevron and the pass-count chip carry the signal."""
     source = DASHBOARD_JS.read_text(encoding="utf-8")
     styles = (DASHBOARD_DIR / "dashboard.css").read_text(encoding="utf-8")
 
-    assert "run.samples > 1 ? 'repeat-run-header' : ''" in source
     assert 'class="run-pass-count"' in source
     assert "${run.samples} passes" in source
-    # the dot strip is gone; the count chip and chevron carry the signal
+    # the dot strip and the special row surface are gone
     assert "renderPassDots" not in source
+    assert "repeat-run-header" not in source
+    assert "repeat-run-header" not in styles
     assert ".pdot" not in styles
     assert ".pass-dots" not in styles
 
-    assert ".runs-table > tbody > tr.repeat-run-header > td" in styles
     assert ".run-pass-count" in styles
 
 

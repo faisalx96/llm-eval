@@ -8103,29 +8103,8 @@ td.col-trace-metric-value {
   flex: 0 0 auto;
 }
 
-/* Option B: a repeat run is one logical run — it keeps every column (so it
-   sorts against single runs) but reads as the header of its pass rows:
-   elevated surface, strong top rule, and a pass-count chip. */
-.runs-table > tbody > tr.repeat-run-header > td {
-  background: var(--bg-elevated);
-}
-/* Sticky columns carry their own zebra backgrounds; out-rank them so the
-   frozen cells never split visually from the rest of the header row. */
-.runs-table > tbody > tr.repeat-run-header > td.col-select,
-.runs-table > tbody > tr.repeat-run-header > td.col-status,
-.runs-table > tbody > tr.repeat-run-header > td.col-run,
-.runs-table > tbody > tr.repeat-run-header > td.col-task,
-.runs-table > tbody > tr.repeat-run-header > td.col-model {
-  background: var(--bg-elevated);
-}
-.runs-table > tbody > tr.repeat-run-header:hover > td,
-.runs-table > tbody > tr.repeat-run-header:hover > td.col-select,
-.runs-table > tbody > tr.repeat-run-header:hover > td.col-status,
-.runs-table > tbody > tr.repeat-run-header:hover > td.col-run,
-.runs-table > tbody > tr.repeat-run-header:hover > td.col-task,
-.runs-table > tbody > tr.repeat-run-header:hover > td.col-model {
-  background: var(--bg-hover);
-}
+/* Repeat runs read as ordinary rows; the chevron and the
+   pass-count chip carry the signal. */
 .run-pass-count {
   flex: 0 0 auto;
   padding: 1px 6px;

@@ -3035,9 +3035,6 @@
         idx % 2 === 0 ? 'run-row-even' : 'run-row-odd',
         isSelected ? 'selected' : '',
         isFocused ? 'focused' : '',
-        // Option B: a repeat run stays a sortable data row but reads as the
-        // header of its pass rows — elevated surface, strong top rule.
-        run.samples > 1 ? 'repeat-run-header' : '',
         samplesOpen ? 'samples-open' : '',
       ].filter(Boolean).join(' ');
 
