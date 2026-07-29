@@ -3086,6 +3086,23 @@ body.chart-col-resize-active {
   text-overflow: ellipsis;
 }
 
+/* Selection mode: the checkbox column exists only while the mode is on.
+   Zeroing the width variable keeps every sticky-column offset honest. */
+.table-container:not(.select-mode) .runs-table {
+  --runs-col-select-width: 0px;
+}
+.table-container:not(.select-mode) .runs-table .col-select {
+  display: none;
+}
+.select-mode-btn {
+  flex: 0 0 auto;
+}
+.select-mode-btn.active {
+  background: var(--accent-primary);
+  border-color: var(--accent-primary);
+  color: var(--bg-void);
+}
+
 /* ── Sticky columns: freeze first 5 columns on horizontal scroll ── */
 .runs-table .col-select {
   position: sticky;
@@ -8172,46 +8189,39 @@ td.col-trace-metric-value {
   flex: 0 0 auto;
 }
 
-/* Pass-dot strip: one dot per pass beside the toggle, colored by the
-   primary-metric score ramp — the stability story without expanding.
-   Informational only (tooltips per dot); the toggle opens the drawer. */
-.pass-dots {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
+/* Option B: a repeat run is one logical run — it keeps every column (so it
+   sorts against single runs) but reads as the header of its pass rows:
+   elevated surface, strong top rule, and a pass-count chip. */
+.runs-table > tbody > tr.repeat-run-header > td {
+  background: var(--bg-elevated);
+  border-top: 1.5px solid var(--border-strong);
+}
+/* Sticky columns carry their own zebra backgrounds; out-rank them so the
+   frozen cells never split visually from the rest of the header row. */
+.runs-table > tbody > tr.repeat-run-header > td.col-select,
+.runs-table > tbody > tr.repeat-run-header > td.col-status,
+.runs-table > tbody > tr.repeat-run-header > td.col-run,
+.runs-table > tbody > tr.repeat-run-header > td.col-task,
+.runs-table > tbody > tr.repeat-run-header > td.col-model {
+  background: var(--bg-elevated);
+}
+.runs-table > tbody > tr.repeat-run-header:hover > td,
+.runs-table > tbody > tr.repeat-run-header:hover > td.col-select,
+.runs-table > tbody > tr.repeat-run-header:hover > td.col-status,
+.runs-table > tbody > tr.repeat-run-header:hover > td.col-run,
+.runs-table > tbody > tr.repeat-run-header:hover > td.col-task,
+.runs-table > tbody > tr.repeat-run-header:hover > td.col-model {
+  background: var(--bg-hover);
+}
+.run-pass-count {
   flex: 0 0 auto;
-}
-.pdot {
-  width: 8px;
-  height: 8px;
-  border-radius: 2px;
-  background: var(--border-strong); /* completed pass on a numeric metric (no good/bad scale) */
-}
-.pdot.score-5 { background: var(--score-5); }
-.pdot.score-4 { background: var(--score-4); }
-.pdot.score-3 { background: var(--score-3); }
-.pdot.score-2 { background: var(--score-2); }
-.pdot.score-1 { background: var(--score-1); }
-.pdot.pending {
+  padding: 1px 6px;
+  border-radius: 3px;
   background: var(--bg-active);
-  box-shadow: inset 0 0 0 1px var(--border-strong);
-}
-.pdot.running {
-  background: var(--accent-secondary);
-  animation: pdot-pulse 1.6s ease-in-out infinite;
-}
-@keyframes pdot-pulse {
-  50% { opacity: 0.45; }
-}
-.pdot.err { box-shadow: 0 0 0 1.5px var(--error); }
-.pdot.pending.err {
-  box-shadow: inset 0 0 0 1px var(--border-strong), 0 0 0 1.5px var(--error);
-}
-.pdot-more {
-  font-family: var(--font-mono);
-  font-size: var(--font-xs);
   color: var(--text-muted);
-  margin-left: 2px;
+  font-size: var(--font-xs);
+  font-weight: 600;
+  white-space: nowrap;
 }
 
 /* report_k needs headroom: pass@k from barely k passes is high-noise. */

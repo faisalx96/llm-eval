@@ -153,6 +153,7 @@
     knownVersions: new Set(),
     knownVersionsProjectSlug: '',
     currentView: window.__QYM_INITIAL_VIEW__ || 'charts',
+    selectMode: false,       // checkbox column hidden until the user clicks Select
     selectedRuns: new Set(),
     focusedIndex: -1,
     aggregations: null,
@@ -336,46 +337,6 @@
       return `<td class="col-trace-metric-value"><span class="metric-score ${metricClass}">${traceMetric.fmt(value)}</span></td>`;
     }
     return `<td class="col-trace-metric-value">${traceMetric.fmt(value)}</td>`;
-  }
-
-  // Repeat runs: the pass-dot strip — one dot per pass on the parent row,
-  // score-colored by the primary metric. The stability story at a glance
-  // (informational only; the passes toggle opens the detail drawer).
-  function renderPassDots(run) {
-    const summaries = Array.isArray(run.pass_summaries) ? run.pass_summaries : [];
-    if (!(run.samples > 1) || summaries.length === 0) return '';
-    const MAX_DOTS = 8;
-    const shown = summaries.slice(0, MAX_DOTS);
-    const extra = summaries.length - shown.length;
-    const primaryMetric = (run.metrics || [])[0] || '';
-    const firstScored = shown.find(s => typeof s.primary_score === 'number');
-    const mType = state._metricTypes?.[primaryMetric]
-      || window.QymMetrics.detectMetricTypeFromAvg(firstScored ? firstScored.primary_score : null);
-    const dots = shown.map(s => {
-      const status = String(s.status || 'pending').toLowerCase();
-      const score = (typeof s.primary_score === 'number') ? s.primary_score : null;
-      const errs = Number(s.error_count) || 0;
-      let cls = status;
-      if (status === 'completed' && score !== null) {
-        const scoreClass = window.QymMetrics.getMetricColorClass(score, mType);
-        if (scoreClass) cls += ` ${scoreClass}`;
-      }
-      if (errs > 0) cls += ' err';
-      const scoreText = score !== null
-        ? `${primaryMetric} ${window.QymMetrics.formatMetricValue(score, mType)}`
-        : status;
-      const title = `pass ${s.pass_number}/${run.samples} — ${scoreText}`
-        + (errs > 0 ? ` · ${errs} item${errs === 1 ? '' : 's'} errored` : '')
-        + (status !== 'completed' && score !== null ? ` · ${status}` : '');
-      return `<span class="pdot ${cls}" title="${escapeHtml(title)}"></span>`;
-    }).join('');
-    const scoredText = shown
-      .map(s => (typeof s.primary_score === 'number'
-        ? window.QymMetrics.formatMetricValue(s.primary_score, mType)
-        : String(s.status || 'pending')))
-      .join(', ');
-    return `<span class="pass-dots" aria-label="Per-pass ${escapeHtml(primaryMetric)}: ${escapeHtml(scoredText)}">`
-      + `${dots}${extra > 0 ? `<span class="pdot-more">+${extra}</span>` : ''}</span>`;
   }
 
   function getRunComboPeerValues(runs, run, valueGetter) {
@@ -3199,6 +3160,9 @@
         isGrouped ? 'grouped-run' : '',
         isGrouped && isFirstInGroup ? 'grouped-run-start' : '',
         isGrouped && isLastInGroup ? 'grouped-run-end' : '',
+        // Option B: a repeat run stays a sortable data row but reads as the
+        // header of its pass rows — elevated surface, strong top rule.
+        run.samples > 1 ? 'repeat-run-header' : '',
         samplesOpen ? 'samples-open' : '',
       ].filter(Boolean).join(' ');
 
@@ -3278,7 +3242,7 @@
                 title="${samplesOpen ? 'Collapse' : 'Expand'} ${run.samples} pass results"><svg class="samples-toggle-chevron" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="m4 6 4 4 4-4"></path></svg></button>`
                 : (anyRepeatRows ? '<span class="samples-toggle-spacer" aria-hidden="true"></span>' : '')}
               <span class="run-id" title="${run.run_id}">${run.external_run_id ? truncateText(run.external_run_id, 30) : run.run_id.substring(0, 8)}</span>
-              ${renderPassDots(run)}
+              ${run.samples > 1 ? `<span class="run-pass-count">${run.samples} passes</span>` : ''}
             </div>
           </td>
           <td class="col-task">
@@ -4232,7 +4196,7 @@
     const isCohortMode = !!(cohortAnchor && cohortAnchor.length > 0);
 
     if (!panel) return;
-    if (selected.size === 0 && !isCohortMode) {
+    if (selected.size === 0 && !isCohortMode && !state.selectMode) {
       panel.style.display = 'none';
       return;
     }
@@ -5279,7 +5243,29 @@
   function clearSelection() {
     state.selectedRuns.clear();
     state.cohortAnchorRuns = null;
+    setSelectMode(false, { skipRender: true });
     render();
+  }
+
+  // Selection mode: the checkbox column and the action panel only exist
+  // while the mode is on. Entry: the Select button or the `x` shortcut.
+  // Exit: Escape or Clear (both land in clearSelection).
+  function setSelectMode(on, { skipRender = false } = {}) {
+    on = !!on;
+    if (state.selectMode === on) return;
+    state.selectMode = on;
+    const container = el('table-view');
+    if (container) container.classList.toggle('select-mode', on);
+    const btn = el('select-mode-btn');
+    if (btn) {
+      btn.classList.toggle('active', on);
+      btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    }
+    if (!on && !skipRender && (state.selectedRuns.size || state.cohortAnchorRuns)) {
+      state.selectedRuns.clear();
+      state.cohortAnchorRuns = null;
+    }
+    if (!skipRender) render();
   }
 
   function getCohortRunDisplayName(filePath) {
@@ -5564,6 +5550,7 @@
 
   function toggleFocusedSelect() {
     if (state.focusedIndex >= 0 && state.focusedIndex < state.filteredRuns.length) {
+      setSelectMode(true, { skipRender: true });
       const run = state.filteredRuns[state.focusedIndex];
       toggleSelect(run.file_path);
     }
@@ -6427,6 +6414,10 @@
 
   // Select all checkbox
   el('select-all')?.addEventListener('change', selectAll);
+  el('select-mode-btn')?.addEventListener('click', () => {
+    if (state.selectMode) clearSelection();
+    else setSelectMode(true);
+  });
   document.querySelectorAll('[data-table-page="prev"]').forEach(btn => btn.addEventListener('click', () => {
     setTablePage(state.tablePage - 1, { syncFocus: true });
     render();
