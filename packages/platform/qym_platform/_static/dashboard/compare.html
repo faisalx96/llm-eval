@@ -2512,6 +2512,101 @@
       padding-bottom: var(--space-sm);
       border-bottom: 1px solid var(--border-subtle);
     }
+    /* Item expander: the header is the toggle; collapsed cards are one
+       title line — the input text in a strong sans face, then one pill
+       per run with its selected-metric score. */
+    .item-header-expand { cursor: pointer; }
+    .item-header-expand:focus-visible {
+      outline: 2px solid var(--accent-primary);
+      outline-offset: 2px;
+      border-radius: 4px;
+    }
+    .item-comparison-row.item-collapsed .item-header {
+      border-bottom: none;
+      padding-bottom: 0;
+    }
+    .item-chevron {
+      color: var(--accent-primary);
+      font-size: var(--font-xs);
+      width: 12px;
+      flex: 0 0 auto;
+    }
+    .item-title {
+      font-family: var(--font-sans);
+      font-size: var(--font-md);
+      font-weight: 600;
+      color: var(--text-primary);
+      line-height: 1.45;
+      flex: 1 1 auto;
+      min-width: 0;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .item-agg-pills {
+      display: inline-flex;
+      gap: 6px;
+      flex: 0 0 auto;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+    .item-agg-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 2px 8px;
+      border-radius: 4px;
+      white-space: nowrap;
+      background: var(--bg-elevated);
+    }
+    /* Metric details: one closed toggle per metric inside each run's cell */
+    .metric-det-zone {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      border-top: 1px solid var(--border-subtle);
+      padding-top: var(--space-sm);
+      margin-top: var(--space-sm);
+    }
+    .metric-det { display: flex; flex-direction: column; }
+    .det-toggle {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      width: 100%;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: 4px;
+      padding: 4px 8px;
+      cursor: pointer;
+      font-family: var(--font-sans);
+      text-align: left;
+    }
+    .det-toggle:hover { background: var(--bg-hover); border-color: var(--accent-primary); }
+    .det-toggle.open {
+      border-bottom-left-radius: 0;
+      border-bottom-right-radius: 0;
+      border-color: var(--accent-primary);
+      background: var(--bg-elevated);
+    }
+    .det-caret { color: var(--accent-primary); font-size: var(--font-xs); }
+    .det-metric {
+      font-size: var(--font-sm);
+      color: var(--text-secondary);
+      font-weight: 600;
+      flex: 1;
+    }
+    .det-body {
+      border: 1px solid var(--accent-primary);
+      border-top: none;
+      border-bottom-left-radius: 4px;
+      border-bottom-right-radius: 4px;
+      padding: var(--space-sm);
+      background: var(--bg-surface);
+      overflow-x: auto;
+    }
+    .det-body.hidden { display: none; }
 
     .item-index {
       font-family: var(--font-mono);
@@ -2587,12 +2682,18 @@
       text-decoration: underline;
     }
 
+    /* Run columns keep a fixed readable width; the block scrolls sideways.
+       Columns never squeeze to fit the run count. */
     .item-outputs-row {
       display: grid;
-      grid-template-columns: repeat(var(--run-count, 2), 1fr);
+      grid-auto-flow: column;
+      grid-auto-columns: minmax(300px, 340px);
+      justify-content: start;
       gap: var(--space-sm);
       margin-top: var(--space-sm);
       align-items: start;
+      overflow-x: auto;
+      padding-bottom: 6px;
     }
 
     .item-run-output {
@@ -4620,6 +4721,7 @@
         visibleMetadataFields: {},    // #6: which metadata fields to show (key -> bool)
         allMetricMetaKeys: [],
         visibleMetricMetaFields: {},
+        itemExpanded: {},             // itemId -> true while the item card is open
         rootCauseFilter: null,        // null = all, [] = none, [...] = specific values
         taskErrorFilter: null,
         traceErrorFilter: null,
@@ -9266,6 +9368,44 @@
         }
       }
 
+      // Task 5: metric meta behind one closed toggle per metric, rendered
+      // through the same structured viewer as input/output. On the compare
+      // page every run's meta is per execution, so the blocks live inside
+      // each run's cell.
+      function _parseMetaDeep(val) {
+        if (typeof val !== 'string') return val;
+        const t = val.trim();
+        if ((t.startsWith('{') && t.endsWith('}')) || (t.startsWith('[') && t.endsWith(']'))) {
+          try { const p = JSON.parse(t); if (p !== null && typeof p === 'object') return p; } catch {}
+          const p = parsePythonDict(t);
+          if (p !== null) return p;
+        }
+        return val;
+      }
+      function renderMetricDetailBlocksForRun(metricMeta, metricNames, metricVals, safeId) {
+        if (!metricMeta || Object.keys(metricMeta).length === 0) return '';
+        const blocks = metricNames.map((name, i) => {
+          const meta = metricMeta[name] || {};
+          const metaKeys = Object.keys(meta).filter(k =>
+            !['modified', 'original_score'].includes(k)
+            && state.visibleMetricMetaFields[k] !== false
+            && meta[k] !== undefined && meta[k] !== null && meta[k] !== '');
+          if (!metaKeys.length) return '';
+          const obj = {};
+          metaKeys.forEach(k => { obj[k] = _parseMetaDeep(meta[k]); });
+          const v = window.QymMetrics.parseScoreValue((metricVals || [])[i]);
+          let badge = '';
+          if (v !== null) {
+            const mType = state.metricTypes?.[name] || 'score';
+            const cls = window.QymMetrics.getMetricColorClass(v, mType);
+            badge = `<span class="metric-score-value ${cls}">${window.QymMetrics.formatMetricObservation(v, mType, state.metricSpecs?.[name])}</span>`;
+          }
+          const bid = `det_${safeId}_${i}`;
+          return `<div class="metric-det"><button type="button" class="det-toggle" data-det-target="${bid}" aria-expanded="false"><span class="det-caret">▸</span><span class="det-metric">${escapeHtml(name)}</span>${badge}</button><div class="det-body hidden" id="${bid}">${formatObjectAsHtml(obj)}</div></div>`;
+        }).filter(Boolean).join('');
+        return blocks ? `<div class="metric-det-zone">${blocks}</div>` : '';
+      }
+
       function renderItemComparisonCard(itemId, rowData, options = {}) {
           // Get input and expected from any available row
           const inputRow = rowData.find(r => r);
@@ -9275,15 +9415,13 @@
           // Use a safe ID for DOM elements by encoding the itemId
           const safeBaseId = makeSafeDomId(itemId);
           const safeId = options.idSuffix ? `${safeBaseId}_${options.idSuffix}` : safeBaseId;
-
-          const perRunDetails = [];
+          const isExpanded = !!options.forceExpanded || !!(state.itemExpanded || {})[itemId];
           const outputCells = rowData.map((row, runIdx) => {
             const color = COLORS[runIdx % COLORS.length];
             const runInfo = state.runs[runIdx]?.run || {};
             const runFilePath = runInfo.file_path || '';
 
             if (!row) {
-              perRunDetails.push(`<div class="run-metric-details" data-item="${safeId}" style="border-left-color:${color}"></div>`);
               return `
                 <div class="item-run-output" style="border-left-color: ${color}">
                   <div class="compare-run-caption">
@@ -9388,34 +9526,8 @@
             const copyBtn = `<button class="copy-btn" data-copy-text="${escapeAttr(typeof output === 'object' ? JSON.stringify(output, null, 2) : String(output))}" title="Copy output">${COPY_ICON}</button>`;
             const langfuseChip = traceUrl ? `<a class="action-chip" href="${escapeAttr(traceUrl)}" target="_blank" title="View in Langfuse"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3.5H4A1.5 1.5 0 0 0 2.5 5v7A1.5 1.5 0 0 0 4 13.5h7A1.5 1.5 0 0 0 12.5 12v-2"/><path d="M9.5 2.5h4v4"/><path d="M13.25 2.75 7.5 8.5"/></svg>Langfuse</a>` : '';
 
-            // Build metric details for this run (collected, rendered after toggle)
-            const hasMetricMeta = Object.keys(metricMeta).length > 0;
-
-            if (hasMetricMeta) {
-              const detailRows = metricNames.map((name) => {
-                const meta = metricMeta[name] || {};
-                const metaKeys = Object.keys(meta).filter(k => !['modified','original_score'].includes(k) && state.visibleMetricMetaFields[k] !== false);
-                if (metaKeys.length === 0) return '';
-
-                return metaKeys.map(key => {
-                  const val = meta[key];
-                  if (val === undefined || val === null || val === '') return '';
-                  const displayName = formatFieldName(key);
-                  return `<div class="metric-detail-row">
-                    <span class="metric-detail-name">${escapeHtml(name)} · ${displayName}</span>
-                    <span class="metric-detail-value">${formatMetaValue(val)}</span>
-                  </div>`;
-                }).join('');
-              }).join('');
-
-              if (detailRows) {
-                perRunDetails.push(`<div class="run-metric-details" data-item="${safeId}" style="border-left-color:${color}">${detailRows}</div>`);
-              } else {
-                perRunDetails.push(`<div class="run-metric-details" data-item="${safeId}" style="border-left-color:${color}"></div>`);
-              }
-            } else {
-              perRunDetails.push(`<div class="run-metric-details" data-item="${safeId}" style="border-left-color:${color}"></div>`);
-            }
+            // Metric details for this run: closed toggles inside the cell
+            const detBlocksHtml = renderMetricDetailBlocksForRun(metricMeta, metricNames, metricVals, `${safeId}_r${runIdx}`);
 
             const winnerBadge = isWinner ? '<span class="winner-badge">★ Winner</span>' : '';
 
@@ -9531,12 +9643,11 @@
                 <div class="metric-scores-inline">${metricScoresHtml}</div>
                 ${_renderTraceChips(row.trace_stats, row.retry_count)}
                 ${metricEditHtml}
+                ${detBlocksHtml}
                 ${rootCauseHtml}
               </div>
             `;
           }).join('');
-          const perRunDetailsHtml = perRunDetails.join('');
-          const hasAnyMetricDetails = perRunDetails.some(h => !h.endsWith('"></div>'));
 
           // Format item ID for display (e.g., "item_5" -> "Item 6", or keep original if not matching pattern)
           let displayItemId = itemId;
@@ -9596,12 +9707,42 @@
             }
           }
 
+          // Collapsed header: the input itself is the title; each run's
+          // selected-metric score sits beside it as a color-dotted pill.
+          const titleText = (typeof input === 'object' ? JSON.stringify(input) : String(input)).replace(/\s+/g, ' ').trim();
+          const headerMetric = state.selectedItemsMetric;
+          const headerPills = rowData.map((row, runIdx) => {
+            if (!row) return '';
+            const run = state.runs[runIdx];
+            const runInfo = run?.run || {};
+            const mNames = run?.snapshot?.metric_names || runInfo.metric_names || [];
+            const mIdx = headerMetric ? mNames.indexOf(headerMetric) : 0;
+            if (mIdx < 0) return '';
+            const v = window.QymMetrics.parseScoreValue((row.metric_values || [])[mIdx]);
+            if (v === null) return '';
+            const mType = state.metricTypes?.[mNames[mIdx]] || 'score';
+            const cls = window.QymMetrics.getMetricColorClass(v, mType);
+            const display = window.QymMetrics.formatMetricObservation(v, mType, state.metricSpecs?.[mNames[mIdx]]);
+            const color = COLORS[runIdx % COLORS.length];
+            return `<span class="item-agg-pill" title="${escapeAttr((runInfo.run_name || ('Run ' + (runIdx + 1))) + ' \u00B7 ' + mNames[mIdx])}"><span class="compare-run-dot" style="background:${color}"></span><span class="metric-score-value ${cls}">${display}</span></span>`;
+          }).join('');
+          const expandable = !options.forceExpanded;
+          const headerHtml = `
+              <div class="item-header${expandable ? ' item-header-expand' : ''}"${expandable ? ` data-item-expand="${escapeAttr(itemId)}" role="button" tabindex="0" aria-expanded="${isExpanded}"` : ''}>
+                ${expandable ? `<span class="item-chevron">${isExpanded ? '\u25BE' : '\u25B8'}</span>` : ''}
+                <span class="item-index" title="ID: ${escapeHtml(itemId)}">${escapeHtml(displayItemId)}</span>
+                <span class="item-title">${escapeHtml(titleText)}</span>
+                <span class="item-agg-pills">${headerPills}</span>
+                <button class="copy-btn" data-item-id="${escapeAttr(itemId)}" title="Copy all fields">${COPY_ICON}</button>
+              </div>`;
+
+          if (!isExpanded) {
+            return `<div class="item-comparison-row item-collapsed">${headerHtml}</div>`;
+          }
+
           return `
             <div class="item-comparison-row">
-              <div class="item-header">
-                <span class="item-index" title="ID: ${escapeHtml(itemId)}">${escapeHtml(displayItemId)}</span>
-                <button class="copy-btn" data-item-id="${escapeAttr(itemId)}" title="Copy all fields">${COPY_ICON}</button>
-              </div>
+              ${headerHtml}
               <div class="item-input-row">
                 <div class="input-label">Input <button class="copy-btn" data-copy-text="${escapeAttr(typeof input === 'object' ? JSON.stringify(input, null, 2) : String(input))}" title="Copy input">${COPY_ICON}</button></div>
                 <div class="input-text">${renderMarkdownSafe(input)}</div>
@@ -9613,13 +9754,9 @@
                 <button class="expected-toggle" onclick="this.previousElementSibling.classList.toggle('collapsed'); this.textContent = this.previousElementSibling.classList.contains('collapsed') ? 'Show more \u25BC' : 'Show less \u25B2';">Show more \u25BC</button>
               </div>` : ''}
               ${itemMetadataHtml}
-              <div class="item-outputs-row" style="--run-count: ${state.runs.length}">
+              <div class="item-outputs-row">
                 ${outputCells}
               </div>
-              ${hasAnyMetricDetails ? `<div class="item-outputs-row run-metric-details-grid" style="--run-count: ${state.runs.length}" data-item="${safeId}">
-                <button class="metric-details-toggle" style="grid-column:1/-1;" onclick="toggleItemMetricDetails('${safeId}')"><span class="toggle-icon" id="toggle-icon-${safeId}">\u25B6</span> Metric Details</button>
-                ${perRunDetailsHtml}
-              </div>` : ''}
             </div>
           `;
 
@@ -9718,7 +9855,7 @@
         const body = overlay.querySelector('#item-comparison-modal-body');
         if (title) title.textContent = `Item Comparison · ${itemId}`;
         if (body) {
-          body.innerHTML = renderItemComparisonCard(itemId, rowData, { idSuffix: 'modal' });
+          body.innerHTML = renderItemComparisonCard(itemId, rowData, { idSuffix: 'modal', forceExpanded: true });
           wireMetricEditHandlers(body);
           wireRootCauseHandlers(body);
           wireSolutionHandlers(body);
@@ -10600,17 +10737,37 @@
         } catch (err) { console.error('Error saving solution:', err); }
       }
 
-      // Global function for toggling all metric details for an item
-      window.toggleItemMetricDetails = function(itemIndex) {
-        const grid = document.querySelector(`.run-metric-details-grid[data-item="${itemIndex}"]`);
-        const icon = document.getElementById(`toggle-icon-${itemIndex}`);
-        if (!grid) return;
-
-        const details = grid.querySelectorAll('.run-metric-details');
-        const isExpanded = details.length > 0 && details[0].style.display === 'block';
-        details.forEach(d => d.style.display = isExpanded ? 'none' : 'block');
-        if (icon) icon.textContent = isExpanded ? '▶' : '▼';
-      };
+      // Item expander + metric detail toggles: delegated once so the grid
+      // and the item modal both work without per-render wiring.
+      document.addEventListener('click', (e) => {
+        const det = e.target.closest('.det-toggle');
+        if (det) {
+          const body = document.getElementById(det.dataset.detTarget);
+          if (!body) return;
+          const open = !body.classList.toggle('hidden');
+          det.classList.toggle('open', open);
+          det.setAttribute('aria-expanded', open ? 'true' : 'false');
+          const caret = det.querySelector('.det-caret');
+          if (caret) caret.textContent = open ? '▾' : '▸';
+          return;
+        }
+        const header = e.target.closest('[data-item-expand]');
+        if (header) {
+          if (e.target.closest('.copy-btn')) return;
+          const id = header.dataset.itemExpand;
+          state.itemExpanded = state.itemExpanded || {};
+          if (state.itemExpanded[id]) delete state.itemExpanded[id];
+          else state.itemExpanded[id] = true;
+          renderItems();
+        }
+      });
+      document.addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        const header = e.target.closest?.('[data-item-expand]');
+        if (!header) return;
+        e.preventDefault();
+        header.click();
+      });
 
       window.sortMetaTable = function(button) {
         const table = button?.closest('table.meta-table');

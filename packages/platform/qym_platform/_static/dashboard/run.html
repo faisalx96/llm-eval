@@ -1395,10 +1395,6 @@
       line-height: 1;
     }
 
-    /* Score edits apply to the reduced score, so hide them while a card is
-       showing one pass through the compact output-header switcher. */
-    .item-card.pass-lensed .metric-edit-open { display: none; }
-
     .threshold-control {
       display: flex;
       align-items: center;
@@ -2391,6 +2387,113 @@
       padding-bottom: var(--space-sm);
       border-bottom: 1px solid var(--border-subtle);
     }
+    /* Item expander: the header is the toggle; collapsed cards are one
+       title line — the input text in a strong sans face, then the
+       aggregate pills. No output shows until the item expands. */
+    .item-header-expand { cursor: pointer; }
+    .item-header-expand:focus-visible {
+      outline: 2px solid var(--accent-primary);
+      outline-offset: 2px;
+      border-radius: 4px;
+    }
+    .item-card.item-collapsed .item-header {
+      border-bottom: none;
+      padding-bottom: 0;
+    }
+    .item-chevron {
+      color: var(--accent-primary);
+      font-size: var(--font-xs);
+      width: 12px;
+      flex: 0 0 auto;
+    }
+    .item-title {
+      font-family: var(--font-sans);
+      font-size: var(--font-md);
+      font-weight: 600;
+      color: var(--text-primary);
+      line-height: 1.45;
+      flex: 1 1 auto;
+      min-width: 0;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .item-agg-pills {
+      display: inline-flex;
+      gap: 6px;
+      flex: 0 0 auto;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+    .item-agg-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 2px 8px;
+      border-radius: 4px;
+      white-space: nowrap;
+      background: var(--bg-elevated);
+    }
+    .item-agg-pill.highlighted { background: var(--bg-hover); }
+    .item-pass-note {
+      flex: 0 0 auto;
+      padding: 1px 6px;
+      border-radius: 3px;
+      background: var(--bg-active);
+      color: var(--text-muted);
+      font-size: var(--font-xs);
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    /* Metric details: one closed toggle per metric; the body renders the
+       meta through the structured viewer (nested JSON keeps its indent). */
+    .metric-det-zone {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      border-top: 1px solid var(--border-subtle);
+      padding-top: var(--space-sm);
+      margin-top: var(--space-sm);
+    }
+    .metric-det { display: flex; flex-direction: column; }
+    .det-toggle {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      width: 100%;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: 4px;
+      padding: 4px 8px;
+      cursor: pointer;
+      font-family: var(--font-sans);
+      text-align: left;
+    }
+    .det-toggle:hover { background: var(--bg-hover); border-color: var(--accent-primary); }
+    .det-toggle.open {
+      border-bottom-left-radius: 0;
+      border-bottom-right-radius: 0;
+      border-color: var(--accent-primary);
+      background: var(--bg-elevated);
+    }
+    .det-caret { color: var(--accent-primary); font-size: var(--font-xs); }
+    .det-metric {
+      font-size: var(--font-sm);
+      color: var(--text-secondary);
+      font-weight: 600;
+      flex: 1;
+    }
+    .det-body {
+      border: 1px solid var(--accent-primary);
+      border-top: none;
+      border-bottom-left-radius: 4px;
+      border-bottom-right-radius: 4px;
+      padding: var(--space-sm);
+      background: var(--bg-surface);
+      overflow-x: auto;
+    }
+    .det-body.hidden { display: none; }
     .item-index {
       font-family: var(--font-mono);
       font-size: var(--font-md);
@@ -4413,127 +4516,63 @@
       .breakdown-grid { flex-direction: column; }
       .breakdown-grid .breakdown-card { width: 100%; }
     }
-    /* Per-item pass dots in the items table */
-    .pass-dots {
-      display: inline-flex;
-      gap: 3px;
-      vertical-align: middle;
-      margin-left: var(--space-sm);
-    }
-    .pass-dot {
-      width: 18px;
-      height: 18px;
-      border-radius: 4px;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      background: var(--bg-active);
-      color: var(--text-primary);
-      font-family: var(--font-mono);
-      font-size: var(--font-xs);
-      font-weight: 700;
-      font-variant-numeric: tabular-nums;
-    }
-    .pass-dot.pass { background: var(--score-5); }
-    .pass-dot.fail { background: var(--score-1); opacity: 0.65; }
-    .pass-dot-switch {
-      appearance: none;
-      padding: 0;
-      border: 0;
-      cursor: pointer;
-      transition: box-shadow 0.15s, transform 0.15s, opacity 0.15s;
-    }
-    .pass-dot-switch:hover { transform: scale(1.06); opacity: 1; }
-    .pass-dot-switch:focus-visible {
-      outline: 2px solid var(--accent-primary);
-      outline-offset: 2px;
-    }
-    .pass-dot-switch.active {
-      outline: none;
-      box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--warning) 65%, transparent), 0 0 4px color-mix(in srgb, var(--warning) 25%, transparent);
-      opacity: 1;
-      transform: none;
-    }
-    .pass-dot-switch.active:hover { transform: none; }
-    .pass-dot-summary {
-      width: auto;
-      min-width: 28px;
-      padding: 0 var(--space-xs);
-      background: var(--bg-elevated);
-      color: var(--text-muted);
-    }
-
-    /* ── Pass comparison: side-by-side / grouped pass columns (repeat runs) ── */
-    .pass-cmp-open {
-      appearance: none;
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      margin-left: var(--space-xs);
-      padding: 2px 9px;
-      border: 1px solid var(--border-default);
-      border-radius: 999px;
-      background: transparent;
-      color: var(--text-muted);
-      font-family: var(--font-sans);
-      font-size: var(--font-xs);
-      font-weight: 650;
-      cursor: pointer;
-      white-space: nowrap;
-      transition: color 0.15s, border-color 0.15s;
-    }
-    .pass-cmp-open:hover { color: var(--accent-primary); border-color: var(--accent-primary); }
+    /* ── Answer columns: the expanded item's side-by-side output view ── */
     .item-run-output.pass-cmp { background: transparent; }
     .pass-cmp-summary {
       font-size: var(--font-sm);
       font-weight: 600;
       color: var(--text-muted);
     }
-    .pass-cmp-modes {
-      display: inline-flex;
-      border: 1px solid var(--border-default);
-      border-radius: 6px;
-      overflow: hidden;
-    }
-    .pass-cmp-mode {
-      appearance: none;
-      border: 0;
-      background: transparent;
-      color: var(--text-muted);
-      font-family: var(--font-sans);
-      font-size: var(--font-sm);
-      font-weight: 600;
-      padding: 3px 10px;
-      cursor: pointer;
-    }
-    .pass-cmp-mode + .pass-cmp-mode { border-left: 1px solid var(--border-default); }
-    .pass-cmp-mode:hover { color: var(--text-primary); }
-    .pass-cmp-mode.active {
-      background: rgba(0, 212, 170, 0.12);
-      color: var(--accent-primary);
-    }
-    .pass-cmp-close {
-      appearance: none;
-      border: 1px solid var(--border-default);
-      border-radius: 6px;
-      background: transparent;
-      color: var(--text-muted);
-      font-family: var(--font-sans);
-      font-size: var(--font-sm);
-      font-weight: 600;
-      padding: 3px 9px;
-      margin-left: var(--space-xs);
-      cursor: pointer;
-    }
-    .pass-cmp-close:hover { color: var(--text-primary); border-color: var(--border-strong); }
+    /* Columns keep a fixed readable width; the block scrolls sideways.
+       Columns never squeeze to fit the container. */
     .pass-cmp-grid {
       display: grid;
-      grid-template-columns: repeat(var(--pass-cmp-cols, 2), minmax(250px, 1fr));
+      grid-auto-flow: column;
+      grid-auto-columns: minmax(300px, 340px);
+      justify-content: start;
       gap: var(--space-sm);
       align-items: start;
       overflow-x: auto;
-      padding-bottom: 2px;
+      padding-bottom: 6px;
     }
+    /* Variant strip: one chip per distinct output, toggles its column */
+    .variant-strip {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+      margin-bottom: var(--space-sm);
+    }
+    .variant-strip-label {
+      font-size: var(--font-sm);
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      font-weight: 600;
+    }
+    .variant-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 10px;
+      border-radius: 100px;
+      font-size: var(--font-xs);
+      font-weight: 500;
+      font-family: var(--font-sans);
+      border: 1px solid var(--border-subtle);
+      background: var(--bg-elevated);
+      color: var(--text-secondary);
+      cursor: pointer;
+      user-select: none;
+      transition: all 0.15s;
+    }
+    .variant-chip:hover { border-color: var(--border-default); color: var(--text-primary); }
+    .variant-chip.active {
+      background: var(--accent-primary);
+      border-color: var(--accent-primary);
+      color: var(--bg-void);
+    }
+    .variant-chip .chip-count { opacity: 0.7; }
     .pass-cmp-col {
       background: var(--bg-elevated);
       border: 1px solid var(--border-subtle);
@@ -4585,21 +4624,6 @@
       font-size: var(--font-sm);
       color: var(--text-muted);
       font-variant-numeric: tabular-nums;
-    }
-    .pass-cmp-chip {
-      font-family: var(--font-mono);
-      font-size: var(--font-xs);
-      font-weight: 650;
-      color: var(--accent-primary);
-      background: rgba(0, 212, 170, 0.1);
-      border: 1px solid rgba(0, 212, 170, 0.35);
-      border-radius: 999px;
-      padding: 1px 7px;
-    }
-    .pass-cmp-chip.fail {
-      color: var(--score-1);
-      background: rgba(239, 68, 68, 0.1);
-      border-color: rgba(239, 68, 68, 0.4);
     }
     .pass-cmp-vwrap { overflow-x: auto; }
     .pass-cmp-vtable { width: 100%; border-collapse: collapse; }
@@ -5423,22 +5447,6 @@
           ? '<div class="meta-table-truncated">Showing first ' + maxRows + ' of ' + table.rows.length + ' rows. ' + hiddenRows + ' rows are not loaded in this page.</div>'
           : '';
         return '<div class="meta-table-wrapper">' + tableHtml + '</div>' + truncatedHtml;
-      }
-
-      function formatMetaValue(val) {
-        if (val === undefined || val === null || val === '') return '';
-        if (typeof val === 'boolean') return escapeHtml(String(val));
-        if (typeof val === 'number') return escapeHtml(String(val));
-        if (typeof val === 'string') return escapeHtml(val);
-        var table = normalizeMetaTableValue(val);
-        if (table) return formatMetaTable(table);
-        if (Array.isArray(val)) {
-          var isFlatPrimitive = val.every(function(v) { return v === null || typeof v !== 'object'; });
-          if (isFlatPrimitive) return escapeHtml(val.map(function(v) { return String(v == null ? '' : v); }).join(', '));
-          return formatObjectAsHtml(val);
-        }
-        if (typeof val === 'object') return formatObjectAsHtml(val);
-        return escapeHtml(String(val));
       }
 
       function showToast(type, title, message) {
@@ -8578,13 +8586,16 @@
         return (!tied && best) ? best : null;
       }
 
-      function renderPassCompareBlock(baseRow, itemId, displayItemId, metric, threshold, rootCauseHtml) {
+      // One item, N answers — the expanded item's unified columns view.
+      // Identical outputs fold into one variant column, the strip picks
+      // which columns show, and the block scrolls horizontally at a fixed
+      // readable column width (columns never squeeze to fit).
+      function renderAnswerColumns(baseRow, itemId, displayItemId, metric, threshold) {
         const passAttempts = Array.isArray(baseRow.pass_attempts) ? baseRow.pass_attempts : [];
         const attempts = passAttempts
           .map((att, i) => att ? { ...att, pass_number: att.pass_number || i + 1 } : null)
           .filter(Boolean);
         if (attempts.length < 2) return '';
-        const mode = (state.itemPassCompare || {})[itemId] === 'grouped' ? 'grouped' : 'columns';
         const pendingCount = passAttempts.length - attempts.length;
         const bestPass = _passCompareBest(baseRow, metric);
         const metricIsNumeric = metric ? (state.metricTypes[metric] || 'score') === 'numeric' : true;
@@ -8617,63 +8628,96 @@
         };
         const outputTextHtml = (att) => '<div class="output-text' + (att.status === 'error' ? ' score-1' : '') + '">' + renderMarkdownSafe(att.output ?? '—') + '</div>';
 
-        let cols;
-        let summary;
-        if (mode === 'grouped') {
-          const groups = _passCompareGroups(attempts);
-          summary = attempts.length + ' passes · ' + (groups.length === 1 ? 'identical output' : groups.length + ' distinct outputs');
-          const headCells = '<th></th>' + state.allMetrics.map(n => '<th>' + escapeHtml(n) + '</th>').join('') + '<th>latency</th>';
-          cols = groups.map((group, gi) => {
-            const label = groups.length === 1
-              ? 'All ' + attempts.length + ' passes'
-              : 'Variant ' + (gi < 26 ? String.fromCharCode(65 + gi) : gi + 1) + ' · ' + group.length + '/' + attempts.length;
-            const chips = group.map(att => '<span class="pass-cmp-chip' + (passState(att) === 'fail' ? ' fail' : '') + '">pass ' + att.pass_number + '</span>').join('');
-            const isBestG = bestPass != null && group.some(att => att.pass_number === bestPass);
-            const allFailed = group.every(att => att.status === 'error');
-            const bodyRows = group.map(att => {
-              const cells = state.allMetrics.map(name => {
-                const v = scoreFor(name, att.pass_number);
-                if (v === null) return '<td class="num">—</td>';
-                const mType = state.metricTypes[name] || 'score';
-                const cls = window.QymMetrics.getMetricColorClass(v, mType);
-                return '<td class="num ' + cls + '">' + window.QymMetrics.formatMetricObservation(v, mType, state.metricSpecs?.[name]) + '</td>';
-              }).join('');
-              return '<tr><td class="pass-cmp-vpass">pass ' + att.pass_number + '</td>' + cells + '<td class="num">' + (att.latency_ms ? formatLatency(att.latency_ms) : '—') + '</td></tr>';
-            }).join('');
-            return '<div class="pass-cmp-col' + (isBestG ? ' best' : '') + (allFailed ? ' failed' : '') + '">' +
-              '<div class="pass-cmp-caption"><span class="pass-cmp-pname">' + label + '</span>' + chips + (isBestG ? '<span class="pass-cmp-best">★ Best</span>' : '') + '</div>' +
-              outputTextHtml(group[0]) +
-              '<div class="pass-cmp-vwrap"><table class="pass-cmp-vtable"><thead><tr>' + headCells + '</tr></thead><tbody>' + bodyRows + '</tbody></table></div>' +
-              (traceBtnFor(group[0]) ? '<div class="pass-cmp-actions">' + traceBtnFor(group[0]) + '</div>' : '') +
-            '</div>';
-          });
-        } else {
-          summary = attempts.length + ' passes';
-          cols = attempts.map(att => {
-            const st = passState(att);
-            const isBest = bestPass === att.pass_number;
-            const latency = att.latency_ms ? '<span class="pass-cmp-latency">' + formatLatency(att.latency_ms) + '</span>' : '';
-            return '<div class="pass-cmp-col' + (isBest ? ' best' : '') + (att.status === 'error' ? ' failed' : '') + '">' +
-              '<div class="pass-cmp-caption"><span class="pass-cmp-sdot ' + st + '"></span><span class="pass-cmp-pname">Pass ' + att.pass_number + '</span>' + (isBest ? '<span class="pass-cmp-best">★ Best</span>' : '') + latency + '</div>' +
-              outputTextHtml(att) +
-              '<div class="metric-scores-inline">' + pillsFor(att.pass_number) + '</div>' +
-              (traceBtnFor(att) ? '<div class="pass-cmp-actions">' + traceBtnFor(att) + '</div>' : '') +
-            '</div>';
-          });
-        }
+        const groups = _passCompareGroups(attempts);
+        const hidden = (state.itemHiddenVariants || {})[itemId] || new Set();
+        const passLabelFor = (group) => group.map(a => a.pass_number).sort((x, y) => x - y).join(' · ');
+
+        // Variant strip: one chip per distinct output; a chip toggles its column.
+        const stripHtml = groups.length > 1
+          ? '<div class="variant-strip"><span class="variant-strip-label">Showing</span>' +
+            groups.map((group, gi) => {
+              const on = !hidden.has(gi);
+              return '<button type="button" class="variant-chip' + (on ? ' active' : '') + '" data-variant-item="' + escapeAttr(itemId) + '" data-variant-idx="' + gi + '" aria-pressed="' + on + '">Pass ' + passLabelFor(group) + ' <span class="chip-count">' + group.length + '</span></button>';
+            }).join('') + '</div>'
+          : '';
+
+        const headCells = '<th></th>' + state.allMetrics.map(n => '<th>' + escapeHtml(n) + '</th>').join('') + '<th>latency</th>';
+        const cols = groups.map((group, gi) => {
+          if (hidden.has(gi)) return '';
+          const isBestG = bestPass != null && group.some(att => att.pass_number === bestPass);
+          const allFailed = group.every(att => att.status === 'error');
+          const first = group[0];
+          const single = group.length === 1;
+          const caption = single
+            ? '<div class="pass-cmp-caption"><span class="pass-cmp-sdot ' + passState(first) + '"></span><span class="pass-cmp-pname">Pass ' + first.pass_number + '</span>' + (isBestG ? '<span class="pass-cmp-best">★ Best</span>' : '') + (first.latency_ms ? '<span class="pass-cmp-latency">' + formatLatency(first.latency_ms) + '</span>' : '') + '</div>'
+            : '<div class="pass-cmp-caption"><span class="pass-cmp-pname">Pass ' + passLabelFor(group) + '</span><span class="pass-cmp-summary">identical output · ' + group.length + '/' + attempts.length + '</span>' + (isBestG ? '<span class="pass-cmp-best">★ Best</span>' : '') + '</div>';
+          // One pass → metric pills; several identical passes → the per-pass
+          // score table (judge noise can differ inside one output variant).
+          const scoresHtml = single
+            ? '<div class="metric-scores-inline">' + pillsFor(first.pass_number) + '</div>'
+            : '<div class="pass-cmp-vwrap"><table class="pass-cmp-vtable"><thead><tr>' + headCells + '</tr></thead><tbody>' +
+              group.map(att => {
+                const cells = state.allMetrics.map(name => {
+                  const v = scoreFor(name, att.pass_number);
+                  if (v === null) return '<td class="num">—</td>';
+                  const mType = state.metricTypes[name] || 'score';
+                  const cls = window.QymMetrics.getMetricColorClass(v, mType);
+                  return '<td class="num ' + cls + '">' + window.QymMetrics.formatMetricObservation(v, mType, state.metricSpecs?.[name]) + '</td>';
+                }).join('');
+                return '<tr><td class="pass-cmp-vpass">pass ' + att.pass_number + '</td>' + cells + '<td class="num">' + (att.latency_ms ? formatLatency(att.latency_ms) : '—') + '</td></tr>';
+              }).join('') + '</tbody></table></div>';
+          return '<div class="pass-cmp-col' + (isBestG ? ' best' : '') + (allFailed ? ' failed' : '') + '">' +
+            caption + outputTextHtml(first) + scoresHtml +
+            (traceBtnFor(first) ? '<div class="pass-cmp-actions">' + traceBtnFor(first) + '</div>' : '') +
+          '</div>';
+        }).filter(Boolean);
+
+        let summary = attempts.length + ' passes · ' + (groups.length === 1 ? 'identical output' : groups.length + ' distinct outputs');
         if (pendingCount > 0) summary += ' · ' + pendingCount + ' pending';
 
-        const modesHtml = '<span class="pass-cmp-modes">' +
-          '<button type="button" class="pass-cmp-mode' + (mode === 'columns' ? ' active' : '') + '" data-mode="columns" data-item-id="' + escapeAttr(itemId) + '">Side by side</button>' +
-          '<button type="button" class="pass-cmp-mode' + (mode === 'grouped' ? ' active' : '') + '" data-mode="grouped" data-item-id="' + escapeAttr(itemId) + '">Group identical</button>' +
-          '</span>' +
-          '<button type="button" class="pass-cmp-close" data-item-id="' + escapeAttr(itemId) + '" title="Back to single-pass view">✕</button>';
-
         return '<div class="item-run-output pass-cmp">' +
-          '<div class="output-header"><span class="output-status-cluster"><span class="run-label">OUTPUT · ALL PASSES</span><span class="pass-cmp-summary">' + summary + '</span></span><span class="output-actions">' + modesHtml + '</span></div>' +
-          '<div class="pass-cmp-grid" style="--pass-cmp-cols:' + cols.length + ';">' + cols.join('') + '</div>' +
-          rootCauseHtml +
+          '<div class="output-header"><span class="output-status-cluster"><span class="run-label">OUTPUT · ALL PASSES</span><span class="pass-cmp-summary">' + summary + '</span></span></div>' +
+          stripHtml +
+          '<div class="pass-cmp-grid">' + cols.join('') + '</div>' +
         '</div>';
+      }
+
+      // Task 5: metric meta behind one closed toggle per metric, rendered
+      // through the same structured viewer as input/output. Meta is stored
+      // per item today (no per-pass storage yet), so the blocks sit at the
+      // item level.
+      function _parseMetaDeep(val) {
+        if (typeof val !== 'string') return val;
+        const t = val.trim();
+        if ((t.startsWith('{') && t.endsWith('}')) || (t.startsWith('[') && t.endsWith(']'))) {
+          try { const p = JSON.parse(t); if (p !== null && typeof p === 'object') return p; } catch {}
+          const p = parsePythonDict(t);
+          if (p !== null) return p;
+        }
+        return val;
+      }
+      function renderMetricDetailBlocks(metricMeta, metricVals, safeId) {
+        if (!metricMeta || Object.keys(metricMeta).length === 0) return '';
+        const blocks = state.allMetrics.map((name, i) => {
+          const meta = metricMeta[name] || {};
+          const metaKeys = Object.keys(meta).filter(k =>
+            !['modified', 'original_score'].includes(k)
+            && state.visibleMetricMetaFields[k] !== false
+            && meta[k] !== undefined && meta[k] !== null && meta[k] !== '');
+          if (!metaKeys.length) return '';
+          const obj = {};
+          metaKeys.forEach(k => { obj[k] = _parseMetaDeep(meta[k]); });
+          const v = window.QymMetrics.parseScoreValue((metricVals || [])[i]);
+          let badge = '';
+          if (v !== null) {
+            const mType = state.metricTypes[name] || 'score';
+            const cls = window.QymMetrics.getMetricColorClass(v, mType);
+            badge = '<span class="metric-score-value ' + cls + '">' + window.QymMetrics.formatMetricObservation(v, mType, state.metricSpecs?.[name]) + '</span>';
+          }
+          const bid = 'det_' + safeId + '_' + i;
+          return '<div class="metric-det"><button type="button" class="det-toggle" data-det-target="' + bid + '" aria-expanded="false"><span class="det-caret">▸</span><span class="det-metric">' + escapeHtml(name) + '</span>' + badge + '</button><div class="det-body hidden" id="' + bid + '">' + formatObjectAsHtml(obj) + '</div></div>';
+        }).filter(Boolean).join('');
+        return blocks ? '<div class="metric-det-zone">' + blocks + '</div>' : '';
       }
 
       function renderItems(scrollToTop) {
@@ -8719,41 +8763,14 @@
 
         container.classList.remove('heatmap-mode');
         container.innerHTML = pageItems.map(({ row: baseRow }) => {
-          // Attempt lens: a card can be switched to one pass's slice \u2014
-          // that pass's output/latency/trace/status and scores.
           const passAttempts = Array.isArray(baseRow.pass_attempts) ? baseRow.pass_attempts : null;
-          // Pass comparison replaces the single-output block with all passes
-          // as columns; the lens is moot while it's on.
-          const passCompareMode = (!state.viewPass && passAttempts && passAttempts.filter(Boolean).length > 1)
-            ? ((state.itemPassCompare || {})[baseRow.item_id || String(baseRow.index)] || null)
-            : null;
-          const lensPass = (!passCompareMode && !state.viewPass && passAttempts)
-            ? ((state.itemPassLens || {})[baseRow.item_id || String(baseRow.index)] || null)
-            : null;
+          // Repeat runs show every answer side by side in the expanded item;
+          // pass-scoped pages (?pass=N) read as a single run.
+          const isRepeatItem = !state.viewPass && passAttempts && passAttempts.filter(Boolean).length > 1;
           const latestOutputPass = passAttempts
             ? passAttempts.reduce((latest, attempt, index) => attempt ? index + 1 : latest, null)
             : null;
-          let row = baseRow;
-          if (lensPass) {
-            const att = passAttempts[lensPass - 1];
-            const lensValues = state.allMetrics.map(name => {
-              const scores = (baseRow.pass_scores || {})[name];
-              return (Array.isArray(scores) && scores.length >= lensPass) ? scores[lensPass - 1] : null;
-            });
-            row = {
-              ...baseRow,
-              metric_values: lensValues,
-              ...(att ? {
-                status: att.status,
-                error: att.error || '',
-                output: att.output,
-                output_full: att.output,
-                latency_ms: att.latency_ms || 0,
-                trace_id: att.trace_id || '',
-                trace_url: att.trace_url || '',
-              } : {}),
-            };
-          }
+          const row = baseRow;
           const input = row.input_full || row.input || '\u2014';
           const expected = row.expected_full || row.expected || '';
           const output = row.output_full || row.output || '\u2014';
@@ -8766,8 +8783,8 @@
           const metricMeta = row.metric_meta || {};
           const itemId = row.item_id || String(row.index);
           const safeId = btoa(itemId).replace(/[+/=]/g, '_');
-          const shownOutputPass = lensPass || latestOutputPass;
-          const outputLabel = shownOutputPass ? 'OUTPUT · PASS ' + shownOutputPass : 'OUTPUT';
+          const isExpanded = !!(state.itemExpanded || {})[itemId];
+          const outputLabel = (!isRepeatItem && latestOutputPass) ? 'OUTPUT · PASS ' + latestOutputPass : 'OUTPUT';
 
           // Display item ID
           let displayItemId = itemId;
@@ -8831,24 +8848,6 @@
           }
           if (pfClass) {
             statusIndicator = '<div class="status-indicator"><div class="status-dot ' + pfClass + '"></div><span class="status-label ' + pfClass + '">' + (pfClass === 'pass' ? 'Pass' : 'Fail') + '</span></div>';
-          }
-
-          // Repeat runs: per-pass dot strip for the selected metric (not on
-          // pass-scoped pages, which read as a single run).
-          const rowPassScores = (!state.viewPass && row.pass_scores && metric) ? row.pass_scores[metric] : null;
-          if (Array.isArray(rowPassScores) && rowPassScores.length > 1) {
-            const dotTitle = 'Per-pass scores: ' + rowPassScores.map(v => (v == null ? '—' : v)).join(', ');
-            const summaryTitle = 'All-pass scores' + (latestOutputPass ? ' · output from latest available pass (Pass ' + latestOutputPass + ')' : '');
-            const summaryDot = '<button type="button" class="pass-dot pass-dot-switch pass-dot-summary' + (!lensPass ? ' active' : '') + '" data-pass="" aria-label="View all-pass summary" aria-pressed="' + (!lensPass) + '" title="' + escapeAttr(summaryTitle) + '">All</button>';
-            const dots = summaryDot + rowPassScores.map((v, index) => {
-              const passNumber = index + 1;
-              const activeClass = lensPass === passNumber ? ' active' : '';
-              const stateClass = v == null ? '' : (v >= threshold ? ' pass' : ' fail');
-              const passTitle = 'View pass ' + passNumber + (v == null ? '' : ' · score ' + v);
-              return '<button type="button" class="pass-dot pass-dot-switch' + stateClass + activeClass + '" data-pass="' + passNumber + '" aria-label="View pass ' + passNumber + '" aria-pressed="' + (lensPass === passNumber) + '" title="' + escapeAttr(passTitle) + '">' + passNumber + '</button>';
-            }).join('');
-            statusIndicator += '<span class="pass-dots" data-item-id="' + escapeAttr(itemId) + '" title="' + escapeAttr(dotTitle) + '">' + dots + '</span>';
-            statusIndicator += '<button type="button" class="pass-cmp-open" data-item-id="' + escapeAttr(itemId) + '" title="Compare all passes side by side">⇄ Side by side</button>';
           }
 
           // Root cause + Solution (side by side for failed items)
@@ -8951,25 +8950,8 @@
             '</div>';
           }
 
-          // Metric details
-          let metricDetailsHtml = '';
-          const hasMetricMeta = Object.keys(metricMeta).length > 0;
-          if (hasMetricMeta) {
-            const detailRows = state.allMetrics.map(name => {
-              const meta = metricMeta[name] || {};
-              const metaKeys = Object.keys(meta).filter(k => !['modified','original_score'].includes(k) && state.visibleMetricMetaFields[k] !== false);
-              if (!metaKeys.length) return '';
-              return metaKeys.map(key => {
-                const val = meta[key];
-                if (val === undefined || val === null || val === '') return '';
-                return '<div class="metric-detail-row"><span class="metric-detail-name">' + escapeHtml(name) + ' \u00B7 ' + formatFieldName(key) + '</span><span class="metric-detail-value">' + formatMetaValue(val) + '</span></div>';
-              }).join('');
-            }).join('');
-            if (detailRows) {
-              metricDetailsHtml = '<div class="run-metric-details" data-item="' + safeId + '">' + detailRows + '</div>';
-            }
-          }
-          const toggleHtml = metricDetailsHtml ? '<button class="metric-details-toggle" onclick="window._toggleDetails(\'' + safeId + '\')"><span class="toggle-icon" id="toggle-icon-' + safeId + '">\u25B6</span> Metric Details</button>' : '';
+          // Metric details: one closed toggle per metric, structured viewer
+          const metricDetailsHtml = renderMetricDetailBlocks(metricMeta, metricVals, safeId);
 
           // Item metadata badges
           let itemMetadataHtml = '';
@@ -9003,16 +8985,56 @@
             }
           }
 
+          // Expanded body: repeat runs show every answer side by side; the
+          // metric details, edits, and root cause sit at the item level.
           let outputBlockHtml = '';
-          if (passCompareMode) {
-            outputBlockHtml = renderPassCompareBlock(baseRow, itemId, displayItemId, metric, threshold, rootCauseHtml);
+          if (isRepeatItem) {
+            outputBlockHtml = renderAnswerColumns(baseRow, itemId, displayItemId, metric, threshold)
+              + _renderTraceChips(row.trace_stats, row.retry_count) + metricEditHtml + metricDetailsHtml + rootCauseHtml;
           }
           if (!outputBlockHtml) {
-            outputBlockHtml = '<div class="item-run-output"><div class="output-header"><span class="output-status-cluster"><span class="run-label">' + outputLabel + '</span>' + statusIndicator + durationPart + timePart + '</span><span class="output-actions">' + copyBtn + traceChip + langfuseChip + '</span></div><div class="output-text ' + (status === 'error' ? 'score-1' : '') + '">' + renderMarkdownSafe(output) + '</div><div class="metric-scores-inline">' + metricScoresHtml + '</div>' + _renderTraceChips(row.trace_stats, row.retry_count) + metricEditHtml + rootCauseHtml + toggleHtml + metricDetailsHtml + '</div>';
+            outputBlockHtml = '<div class="item-run-output"><div class="output-header"><span class="output-status-cluster"><span class="run-label">' + outputLabel + '</span>' + durationPart + timePart + '</span><span class="output-actions">' + copyBtn + traceChip + langfuseChip + '</span></div><div class="output-text ' + (status === 'error' ? 'score-1' : '') + '">' + renderMarkdownSafe(output) + '</div><div class="metric-scores-inline">' + metricScoresHtml + '</div>' + _renderTraceChips(row.trace_stats, row.retry_count) + metricEditHtml + metricDetailsHtml + rootCauseHtml + '</div>';
           }
 
-          return '<div class="item-card' + (lensPass ? ' pass-lensed' : '') + '">' +
-            '<div class="item-header"><span class="item-index" title="ID: ' + escapeHtml(itemId) + '">#' + (row.index + 1) + '</span><span style="font-size:var(--font-xs);color:var(--text-muted);">(' + escapeHtml(displayItemId) + ')</span><button class="copy-btn" data-item-id="' + escapeAttr(itemId) + '" title="Copy all fields">' + COPY_ICON + '</button></div>' +
+          // Collapsed header: the input itself is the title; aggregates live
+          // beside it as pills. No output shows until the item expands.
+          const titleText = (typeof input === 'object' ? JSON.stringify(input) : String(input)).replace(/\s+/g, ' ').trim();
+          const aggPills = state.allMetrics.map((name, i) => {
+            const v = window.QymMetrics.parseScoreValue(metricVals[i]);
+            if (v === null) return '';
+            const mType = state.metricTypes[name] || 'score';
+            const cls = window.QymMetrics.getMetricColorClass(v, mType);
+            const isReducedBoolean = mType === 'boolean' && Number(state.run?.samples || 1) > 1;
+            const display = isReducedBoolean
+              ? window.QymMetrics.formatMetricValue(v, 'score')
+              : window.QymMetrics.formatMetricObservation(v, mType, state.metricSpecs?.[name]);
+            // Repeat items carry no inline score row in the body, so the
+            // edit affordance lives here while the item is open.
+            const meta = metricMeta[name] || {};
+            const editBtn = (isExpanded && isRepeatItem)
+              ? '<button class="metric-edit-open" data-row-index="' + escapeAttr(String(row.index ?? 0)) + '" data-metric="' + escapeAttr(name) + '" title="Edit">✎</button>'
+                + (String(meta.modified || '').toLowerCase() === 'true' ? '<span class="metric-edit-badge">Edited</span>' : '')
+              : '';
+            return '<span class="item-agg-pill' + (name === metric ? ' highlighted' : '') + '"><span class="metric-score-name">' + escapeHtml(name) + '</span><span class="metric-score-value ' + cls + '">' + display + '</span>' + editBtn + '</span>';
+          }).join('');
+          const passNote = isRepeatItem
+            ? '<span class="item-pass-note">' + passAttempts.filter(Boolean).length + ' passes</span>'
+            : '';
+          const headerHtml = '<div class="item-header item-header-expand" data-item-expand="' + escapeAttr(itemId) + '" role="button" tabindex="0" aria-expanded="' + isExpanded + '">' +
+            '<span class="item-chevron">' + (isExpanded ? '\u25BE' : '\u25B8') + '</span>' +
+            '<span class="item-index" title="ID: ' + escapeHtml(itemId) + '">#' + (row.index + 1) + '</span>' +
+            '<span class="item-title" title="' + escapeAttr(displayItemId) + '">' + escapeHtml(titleText) + '</span>' +
+            '<span class="item-agg-pills">' + aggPills + '</span>' +
+            statusIndicator + passNote +
+            '<button class="copy-btn" data-item-id="' + escapeAttr(itemId) + '" title="Copy all fields">' + COPY_ICON + '</button>' +
+          '</div>';
+
+          if (!isExpanded) {
+            return '<div class="item-card item-collapsed">' + headerHtml + '</div>';
+          }
+
+          return '<div class="item-card">' +
+            headerHtml +
             '<div class="item-input-row"><div class="input-label">INPUT <button class="copy-btn" data-copy-text="' + escapeAttr(typeof input === 'object' ? JSON.stringify(input,null,2) : String(input)) + '" title="Copy input">' + COPY_ICON + '</button></div><div class="input-text">' + renderMarkdownSafe(input) + '</div></div>' +
             (expected ? '<div class="item-expected-row"><div class="expected-label">EXPECTED OUTPUT <button class="copy-btn" data-copy-text="' + escapeAttr(typeof expected === 'object' ? JSON.stringify(expected,null,2) : String(expected)) + '" title="Copy expected">' + COPY_ICON + '</button></div><div class="expected-text collapsed">' + renderMarkdownSafe(expected) + '</div><button class="expected-toggle" onclick="this.previousElementSibling.classList.toggle(\'collapsed\'); this.textContent = this.previousElementSibling.classList.contains(\'collapsed\') ? \'Show more \u25BC\' : \'Show less \u25B2\';">Show more \u25BC</button></div>' : '') +
             itemMetadataHtml +
@@ -9040,45 +9062,47 @@
         wireCopyHandlers();
         initExpectedToggles();
 
-        // Attempt switcher: re-render the grid with the chosen pass lens
-        // (renderItems preserves the scroll anchor).
-        container.querySelectorAll('.pass-dot-switch').forEach(control => {
-          control.addEventListener('click', () => {
-            const wrap = control.closest('[data-item-id]');
-            if (!wrap) return;
-            const lensItemId = wrap.dataset.itemId;
-            state.itemPassLens = state.itemPassLens || {};
-            const n = parseInt(control.dataset.pass || '', 10);
-            if (Number.isFinite(n) && n > 0) state.itemPassLens[lensItemId] = n;
-            else delete state.itemPassLens[lensItemId];
+        // Item expander: the header toggles the card open or closed.
+        container.querySelectorAll('[data-item-expand]').forEach(header => {
+          const toggle = () => {
+            const id = header.dataset.itemExpand;
+            state.itemExpanded = state.itemExpanded || {};
+            if (state.itemExpanded[id]) delete state.itemExpanded[id];
+            else state.itemExpanded[id] = true;
+            renderItems();
+          };
+          header.addEventListener('click', (e) => {
+            if (e.target.closest('.copy-btn') || e.target.closest('.metric-edit-open')) return;
+            toggle();
+          });
+          header.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); }
+          });
+        });
+
+        // Variant strip: a chip shows or hides its output column.
+        container.querySelectorAll('.variant-chip').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const id = btn.dataset.variantItem;
+            const gi = parseInt(btn.dataset.variantIdx, 10);
+            if (!Number.isFinite(gi)) return;
+            state.itemHiddenVariants = state.itemHiddenVariants || {};
+            const set = state.itemHiddenVariants[id] || (state.itemHiddenVariants[id] = new Set());
+            if (set.has(gi)) set.delete(gi); else set.add(gi);
             renderItems();
           });
         });
 
-        // Pass comparison: open defaults to grouped when passes repeat
-        // themselves, otherwise side-by-side columns.
-        container.querySelectorAll('.pass-cmp-open').forEach(btn => {
+        // Metric detail toggles: pure DOM show/hide, no re-render.
+        container.querySelectorAll('.det-toggle').forEach(btn => {
           btn.addEventListener('click', () => {
-            const id = btn.dataset.itemId;
-            const row = (state.snapshot.rows || []).find(r => (r.item_id || String(r.index)) === id);
-            const attempts = (Array.isArray(row?.pass_attempts) ? row.pass_attempts : []).filter(Boolean);
-            const distinct = new Set(attempts.map(a => _passCompareNorm(a.output))).size;
-            state.itemPassCompare = state.itemPassCompare || {};
-            state.itemPassCompare[id] = distinct < attempts.length ? 'grouped' : 'columns';
-            renderItems();
-          });
-        });
-        container.querySelectorAll('.pass-cmp-mode').forEach(btn => {
-          btn.addEventListener('click', () => {
-            state.itemPassCompare = state.itemPassCompare || {};
-            state.itemPassCompare[btn.dataset.itemId] = btn.dataset.mode === 'grouped' ? 'grouped' : 'columns';
-            renderItems();
-          });
-        });
-        container.querySelectorAll('.pass-cmp-close').forEach(btn => {
-          btn.addEventListener('click', () => {
-            if (state.itemPassCompare) delete state.itemPassCompare[btn.dataset.itemId];
-            renderItems();
+            const body = document.getElementById(btn.dataset.detTarget);
+            if (!body) return;
+            const open = !body.classList.toggle('hidden');
+            btn.classList.toggle('open', open);
+            btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+            const caret = btn.querySelector('.det-caret');
+            if (caret) caret.textContent = open ? '▾' : '▸';
           });
         });
       }
@@ -9770,15 +9794,6 @@
       }
 
       // ── Metric details toggle ──
-
-      window._toggleDetails = function(safeId) {
-        const details = document.querySelectorAll('.run-metric-details[data-item="' + safeId + '"]');
-        const icon = document.getElementById('toggle-icon-' + safeId);
-        if (!details.length) return;
-        const isExpanded = details[0].classList.contains('expanded');
-        details.forEach(d => { if (isExpanded) d.classList.remove('expanded'); else d.classList.add('expanded'); });
-        if (icon) icon.textContent = isExpanded ? '\u25B6' : '\u25BC';
-      };
 
       window.sortMetaTable = function(button) {
         const table = button?.closest('table.meta-table');
