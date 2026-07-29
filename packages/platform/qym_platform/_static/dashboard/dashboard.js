@@ -4033,7 +4033,10 @@
     panel.style.display = 'block';
     const countEl = el('compare-count');
     if (countEl) {
-      countEl.textContent = isCohortMode ? `${selected.size}/${cohortAnchor.length}` : selected.size;
+      // Cohort mode counts executions, not runs: a repeat run adds its k.
+      countEl.textContent = isCohortMode
+        ? `${cohortUnitCount(Array.from(selected))}/${cohortUnitCount(cohortAnchor)}`
+        : selected.size;
     }
 
     const chips = el('compare-chips');
@@ -4053,10 +4056,13 @@
     const headerLabel = panel.querySelector('.compare-header > span');
     const subtitleEl = el('compare-subtitle');
     const hasOverlap = isCohortMode && selectedRuns.some(run => cohortAnchor.includes(run.file_path));
+    // Cohort balance runs on executions: a repeat run contributes its k passes.
+    const anchorUnits = isCohortMode ? cohortUnitCount(cohortAnchor) : 0;
+    const selectedUnits = isCohortMode ? cohortUnitCount(Array.from(selected)) : 0;
 
     if (headerLabel) {
       headerLabel.textContent = isCohortMode
-        ? `⊕ COHORT B ${selected.size}/${cohortAnchor.length} RUNS`
+        ? `⊕ COHORT B ${selectedUnits}/${anchorUnits} EXECUTIONS`
         : `⊕ SELECTED ${selected.size} RUNS`;
     }
     if (subtitleEl) {
@@ -4068,20 +4074,23 @@
       } else if (hasOverlap) {
         subtitleEl.textContent = 'Cohort B cannot include runs already locked in Cohort A.';
         subtitleEl.classList.add('is-warning');
-      } else if (selected.size < cohortAnchor.length) {
-        subtitleEl.textContent = `Cohort A is locked. Select ${cohortAnchor.length - selected.size} more run${cohortAnchor.length - selected.size === 1 ? '' : 's'} for Cohort B.`;
-      } else if (selected.size === cohortAnchor.length) {
-        subtitleEl.textContent = 'Cohort B is ready. Click Open Cohort to compare the two groups.';
+      } else if (selectedUnits < anchorUnits) {
+        subtitleEl.textContent = `Cohort A holds ${anchorUnits} execution${anchorUnits === 1 ? '' : 's'}. Select ${anchorUnits - selectedUnits} more (a repeat run counts as its k passes).`;
+      } else if (selectedUnits === anchorUnits) {
+        subtitleEl.textContent = `Balanced: ${anchorUnits} vs ${anchorUnits} executions. Click Open Cohort to compare the two groups.`;
         subtitleEl.classList.add('is-ready');
+      } else {
+        subtitleEl.textContent = `Cohort B holds ${selectedUnits} executions but Cohort A holds ${anchorUnits}. Remove ${selectedUnits - anchorUnits} to balance the sides.`;
+        subtitleEl.classList.add('is-warning');
       }
     }
     if (compareBtn) compareBtn.style.display = isCohortMode ? 'none' : 'inline-block';
     if (cohortBtn) {
       cohortBtn.style.display = 'inline-block';
       cohortBtn.textContent = isCohortMode ? 'Open Cohort' : 'Cohort';
-      cohortBtn.disabled = isCohortMode ? (selected.size !== cohortAnchor.length || hasOverlap) : (selected.size < 1);
+      cohortBtn.disabled = isCohortMode ? (selectedUnits !== anchorUnits || hasOverlap) : (selected.size < 1);
       cohortBtn.title = isCohortMode
-        ? (hasOverlap ? 'Cohort B cannot reuse runs from Cohort A' : `Select exactly ${cohortAnchor.length} runs for Cohort B`)
+        ? (hasOverlap ? 'Cohort B cannot reuse runs from Cohort A' : `Select runs totalling ${anchorUnits} execution${anchorUnits === 1 ? '' : 's'} for Cohort B`)
         : 'Lock the current selection as Cohort A';
     }
     if (clearBtn) clearBtn.textContent = isCohortMode ? 'Cancel Cohort' : 'Clear';
@@ -5133,6 +5142,17 @@
     openUrl(apiUrl('compare?' + params), e);
   }
 
+  // Cohort unit rule: one unit = one execution. A single run contributes 1;
+  // a repeat run contributes its k passes. The two sides must hold an equal
+  // number of units, whatever mix of runs supplies them.
+  function cohortUnitCount(filePaths) {
+    return (filePaths || []).reduce((sum, filePath) => {
+      const run = state.flatRuns.find(candidate => candidate.file_path === filePath);
+      const samples = Number(run?.samples) || 1;
+      return sum + (samples > 1 ? samples : 1);
+    }, 0);
+  }
+
   function openCohortComparison(e) {
     const selectedFiles = Array.from(state.selectedRuns);
     if (!Array.isArray(state.cohortAnchorRuns) || state.cohortAnchorRuns.length === 0) {
@@ -5143,14 +5163,17 @@
       state.cohortAnchorRuns = selectedFiles;
       state.selectedRuns.clear();
       render();
-      showToast('success', 'Cohort A Locked', `Now select exactly ${selectedFiles.length} run${selectedFiles.length === 1 ? '' : 's'} for Cohort B, then click Open Cohort.`);
+      const units = cohortUnitCount(selectedFiles);
+      showToast('success', 'Cohort A Locked', `Cohort A holds ${units} execution${units === 1 ? '' : 's'}. Select runs totalling ${units} execution${units === 1 ? '' : 's'} for Cohort B, then click Open Cohort.`);
       return;
     }
 
     const left = state.cohortAnchorRuns;
     const right = selectedFiles;
-    if (right.length !== left.length) {
-      showToast('error', 'Cohort B Incomplete', `Cohort A has ${left.length} runs. Select exactly ${left.length} runs for Cohort B before opening the comparison.`);
+    const leftUnits = cohortUnitCount(left);
+    const rightUnits = cohortUnitCount(right);
+    if (rightUnits !== leftUnits) {
+      showToast('error', 'Cohorts Not Balanced', `Cohort A holds ${leftUnits} execution${leftUnits === 1 ? '' : 's'}; the current Cohort B selection holds ${rightUnits}. A repeat run counts as its k passes. Balance the two sides before opening the comparison.`);
       return;
     }
     if (right.some(file => left.includes(file))) {
