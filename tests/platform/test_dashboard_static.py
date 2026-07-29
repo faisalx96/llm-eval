@@ -108,7 +108,7 @@ def test_repeat_drawer_follows_mock_option_c() -> None:
     # platform's inline threshold slider (not a static trailing value) and
     # an item-weighted avg-latency stat
     assert "`% of items where at least one of the ${k} passes" in source
-    assert 'class="samples-summary-grid"' in source
+    assert 'class="samples-summary-grid qym-stat-strip"' in source
     assert 'class="threshold-slider-inline samples-threshold-slider"' in source
     assert 'class="samples-metric-select"' in source
     assert source.index('class="samples-metric-select"') < source.index(
@@ -123,7 +123,9 @@ def test_repeat_drawer_follows_mock_option_c() -> None:
     assert "max-width: 112px;" in metric_select_rule
     assert "font-size: var(--font-sm);" in metric_select_rule
     assert "line-height: 1;" in metric_select_rule
-    assert source.index("samples-threshold-slider") < source.index('class="samples-summary-grid"')
+    assert source.index("samples-threshold-slider") < source.index(
+        'class="samples-summary-grid qym-stat-strip"'
+    )
     assert ">Avg latency</span>" in source
     assert "${latencyStat}" in source
 
@@ -261,11 +263,12 @@ def test_repeat_run_analysis_uses_shared_visual_language() -> None:
     dashboard_js = DASHBOARD_JS.read_text(encoding="utf-8")
     repeat_analysis = source.split("async function renderSamplesAnalysis()", 1)[1].split("function wireTopActions", 1)[0]
 
-    assert 'class="model-stat-box"' in source
+    assert 'class="model-stat-box qym-stat-strip__item"' in source
+    assert 'class="samples-group-tiles qym-stat-strip"' in source
     assert 'class="samples-correct-chart"' in source
     assert "if (samplesCount <= 10)" in source
     assert "Array.from({ length: 11 }" in source
-    assert 'class="samples-metric-tabs" role="tablist"' in source
+    assert 'class="samples-metric-tabs qym-segmented" role="group"' in source
     assert "state.samplesMetric = nextMetric;" in source
     assert 'class="threshold-control samples-repeat-threshold"' in source
     assert "justify-content: flex-start;" in _rule(source, ".samples-metric-row {")
@@ -298,7 +301,7 @@ def test_repeat_run_analysis_uses_shared_visual_language() -> None:
     assert '<div class="samples-zone-title">Repeat Performance</div>' in repeat_analysis
     assert "data-samples-statistic" in repeat_analysis
     assert "{ key: 'compare', label: 'Compare'" in repeat_analysis
-    assert "class=\"samples-statistic-tabs\" role=\"tablist\"" in repeat_analysis
+    assert "class=\"samples-statistic-tabs qym-segmented\" role=\"group\"" in repeat_analysis
     assert "class=\"samples-statistic-btn" in repeat_analysis
     assert "samples-statistic-select" not in source
     assert "samplesStatistic: 'compare'" in source
@@ -572,8 +575,9 @@ def test_charts_grouped_view_uses_presets_for_version_model_splits() -> None:
     assert "chart-row-mode-control" in css
     assert "chart-group-axis-control" in css
     assert "chart-then-axis-control" in css
-    assert '<button class="chart-segment-btn ${groupMode === \'run\' ? \'active\' : \'\'}" data-mode="run">Runs</button>' in charts_block
-    assert '<button class="chart-segment-btn ${isGrouped ? \'active\' : \'\'}" data-mode="${isGrouped ? groupMode : \'model\'}">Grouped</button>' in charts_block
+    assert 'class="chart-segment-btn qym-segmented__option ${groupMode === \'run\' ? \'active\' : \'\'}"' in charts_block
+    assert 'class="chart-segment-btn qym-segmented__option ${isGrouped ? \'active\' : \'\'}"' in charts_block
+    assert 'aria-pressed="${groupMode === \'run\'}"' in charts_block
     assert '<span class="chart-control-label">Group</span>' in charts_block
     assert '<span class="chart-control-label">Then</span>' in charts_block
     assert "const thenModelDisabled = !isGrouped || primaryGroup === 'model';" in charts_block
@@ -654,12 +658,14 @@ def test_live_runs_sections_are_present_on_overview_and_admin() -> None:
     assert "<th>Run</th><th>User</th><th>Model</th><th>Score</th><th>Date</th>" not in overview
     assert "const reviewLimit = 12;" in overview
     assert "Live Runs" in admin
-    assert 'class="admin-tabs"' in admin
+    assert 'class="admin-tabs qym-tabs"' in admin
     assert 'data-admin-tab="runs"' in admin
     assert 'data-admin-tab="live"' not in admin
     assert 'data-admin-tab="by-project"' not in admin
-    assert 'border-bottom: 2px solid transparent' in admin
-    assert 'border-bottom-color: var(--accent-primary)' in admin
+    ui_components = (DASHBOARD_DIR / "ui_components.css").read_text(encoding="utf-8")
+    assert ".admin-tab-btn" in ui_components
+    assert "border-bottom: 2px solid transparent" in ui_components
+    assert "border-bottom-color: var(--accent-primary)" in ui_components
     assert 'data-admin-panel="runs"' in admin
     assert 'data-admin-panel="users"' in admin
     assert "api/runs/live?all_projects=true&limit=100" in admin
@@ -693,21 +699,192 @@ def test_run_html_export_inlines_versioned_static_assets() -> None:
 
     assert r'dashboard\.css(?:\?[^"]*)?' in source
     assert r'shell\.css(?:\?[^"]*)?' in source
+    assert r'ui_components\.css(?:\?[^"]*)?' in source
+    assert r'ui_components\.js(?:\?[^"]*)?' in source
     assert r'metrics\.js(?:\?[^"]*)?' in source
     assert r'trace_viewer\.js(?:\?[^"]*)?' in source
     assert r'auth\.js(?:\?[^"]*)?' in source
     assert r'shell\.js(?:\?[^"]*)?' in source
     assert r'playground\.js(?:\?[^"]*)?' in source
     assert "lambda _match: f\"<style>\\n{css_content}\\n</style>\"" in source
+    assert "ui_components_css_content" in source
+    assert "ui_components_js" in source
     assert "lambda _match: f\"<script>\\n{metrics_js}\\n</script>\"" in source
+
+
+def test_shared_ui_component_layer_loads_last_on_platform_pages() -> None:
+    """The canonical layer wins over legacy page-local declarations."""
+    for path in sorted(DASHBOARD_DIR.glob("*.html")):
+        source = path.read_text(encoding="utf-8")
+        head = source.split("</head>", 1)[0]
+        assert "ui_components.css" in source, f"{path.name} does not load shared UI components"
+        assert "ui_components.js" in source, f"{path.name} does not load shared UI behavior"
+        assert head.index("ui_components.css") > head.rfind(
+            "</style>"
+        ), f"{path.name} must load shared UI components after page-local styles"
+
+
+def test_multiselects_share_search_actions_options_and_only_action() -> None:
+    dashboard = DASHBOARD_JS.read_text(encoding="utf-8")
+    generic = dashboard.split("function buildMultiSelect(", 1)[1].split(
+        "function syncMultiSelect", 1
+    )[0]
+    assert generic.index("qym-dropdown__search") < generic.index(
+        "qym-dropdown__actions"
+    ) < generic.index("qym-dropdown__option")
+    assert "qym-dropdown__only" in generic
+    assert "const option = onlyBtn.closest('.multi-select-option');" in generic
+    assert generic.index("stateSet.clear();", generic.index("qym-dropdown__only")) < generic.index(
+        "stateSet.add(selectedValue);"
+    )
+
+    reviews = (DASHBOARD_DIR / "reviews.html").read_text(encoding="utf-8")
+    reviews_builder = reviews.split("function buildMultiselectOptions(key, values)", 1)[
+        1
+    ].split("function setupMultiselectToggle", 1)[0]
+    run_builder = (
+        (DASHBOARD_DIR / "run.html")
+        .read_text(encoding="utf-8")
+        .split("function buildMultiselectOptions(category, values)", 1)[1]
+        .split("function getCatFilter", 1)[0]
+    )
+    compare_builder = (
+        (DASHBOARD_DIR / "compare.html")
+        .read_text(encoding="utf-8")
+        .split("function buildMultiselectOptions(category, values)", 1)[1]
+        .split("function getCatFilter", 1)[0]
+    )
+    for source in (reviews_builder, run_builder, compare_builder):
+        assert "qym-dropdown__only" in source
+        assert source.index("qym-dropdown__search") < source.index(
+            "qym-dropdown__actions"
+        )
+    assert reviews_builder.index("qym-dropdown__actions") < reviews_builder.index(
+        "html += mergedValues"
+    )
+    assert run_builder.index("qym-dropdown__actions") < run_builder.index(
+        "html += extraOptions"
+    )
+    assert compare_builder.index("qym-dropdown__actions") < compare_builder.index(
+        "html += extraOptions"
+    )
+    assert "const label = opt.dataset.searchLabel || opt.dataset.value || '';" in generic
+    assert "showSearch: true, searchPlaceholder: 'Search statuses...'" in dashboard
+
+    metric_visibility = dashboard.split("function populateMetricVisibility(", 1)[
+        1
+    ].split("function syncMetricVisibilityDropdownState", 1)[0]
+    model_stats = dashboard.split("function populateModelsStatVisibility(", 1)[
+        1
+    ].split("// ════════════════════════════════════════════════════\n  // DATA PROCESSING", 1)[0]
+    for source in (metric_visibility, model_stats):
+        assert source.index("qym-dropdown__search") < source.index(
+            "qym-dropdown__actions"
+        ) < source.index("qym-dropdown__option")
+
+    assert "if (category === 'domain') state.domainExclusive.clear();" in run_builder
+    assert "if (category === 'domain') state.domainExclusive.clear();" in compare_builder
+
+
+def test_switchers_use_pressed_state_and_refresh_visual_selection() -> None:
+    dashboard = DASHBOARD_JS.read_text(encoding="utf-8")
+    run = (DASHBOARD_DIR / "run.html").read_text(encoding="utf-8")
+    compare = (DASHBOARD_DIR / "compare.html").read_text(encoding="utf-8")
+
+    assert 'class="compare-mode-tabs qym-segmented" id="compare-mode-tabs" role="group"' in compare
+    assert 'class="metric-tabs qym-segmented" id="overview-metric-tabs" role="group"' in compare
+    compare_mode = compare.split("function renderCompareModeTabs()", 1)[1].split(
+        "function renderCompareCohortBanner", 1
+    )[0]
+    assert 'aria-pressed="${state.activeCompareTab === tab.key}"' in compare_mode
+    assert compare_mode.index("renderCompareModeTabs();") < compare_mode.index(
+        "applyCompareMode();"
+    )
+    assert 'aria-pressed="${metric === state.selectedOverviewMetric}"' in compare
+    assert 'class="samples-metric-tabs qym-segmented" role="group"' in run
+    assert 'class="samples-statistic-tabs qym-segmented" role="group"' in run
+    assert "e.target.closest('input, select, textarea, button, a, [contenteditable=\"true\"]')" in dashboard
+
+
+def test_operational_statistics_use_connected_strip_contract() -> None:
+    dashboard = DASHBOARD_JS.read_text(encoding="utf-8")
+    compare = (DASHBOARD_DIR / "compare.html").read_text(encoding="utf-8")
+    datasets = (DASHBOARD_DIR / "datasets.html").read_text(encoding="utf-8")
+    run = (DASHBOARD_DIR / "run.html").read_text(encoding="utf-8")
+
+    for contract in (
+        "model-stats-grid qym-stat-strip",
+        "model-stat-item qym-stat-strip__item",
+        "samples-summary-grid qym-stat-strip",
+        "samples-summary-stat qym-stat-strip__item",
+    ):
+        assert contract in dashboard
+
+    for contract in (
+        "stats-row qym-stat-strip",
+        "stat-box qym-stat-strip__item",
+        "stat-title qym-stat-strip__label",
+        "stat-main qym-stat-strip__value",
+    ):
+        assert contract in compare
+
+    for contract in (
+        "dsx-run-aggregate qym-stat-strip",
+        "tile qym-stat-strip__item",
+        "label qym-stat-strip__label",
+        "value qym-stat-strip__value",
+    ):
+        assert contract in datasets
+
+    for contract in (
+        "metric-numeric-stats qym-stat-strip",
+        "metric-num-stat qym-stat-strip__item",
+        "trace-pill qym-stat-strip__item",
+        "trace-pill-label qym-stat-strip__label",
+        "trace-pill-val qym-stat-strip__value",
+    ):
+        assert contract in run
+
+
+def test_rerendered_controls_restore_keyboard_focus() -> None:
+    dashboard = DASHBOARD_JS.read_text(encoding="utf-8")
+    compare = (DASHBOARD_DIR / "compare.html").read_text(encoding="utf-8")
+    reviews = (DASHBOARD_DIR / "reviews.html").read_text(encoding="utf-8")
+    run = (DASHBOARD_DIR / "run.html").read_text(encoding="utf-8")
+
+    assert "const restoreFocus = (kind, value)" in dashboard
+    assert "restoreMetricVisibilityFocus('checkbox', metric);" in dashboard
+    assert "restoreModelsStatVisibilityFocus('checkbox', statKey);" in dashboard
+    assert "replacement?.focus({ preventScroll: true });" in dashboard
+    assert 'container.querySelector(`[data-compare-tab="${nextTab}"]`)?.focus' in compare
+    assert "restoreMultiselectFocus('checkbox', selectedValue)" in reviews
+    assert "await renderSamplesAnalysis();" in run
+    assert "replacement?.focus({ preventScroll: true });" in run
+
+
+def test_shared_help_markers_are_keyboard_and_touch_operable() -> None:
+    behavior = (DASHBOARD_DIR / "ui_components.js").read_text(encoding="utf-8")
+    run = (DASHBOARD_DIR / "run.html").read_text(encoding="utf-8")
+    compare = (DASHBOARD_DIR / "compare.html").read_text(encoding="utf-8")
+
+    for source in (DASHBOARD_JS.read_text(encoding="utf-8"), run, compare):
+        assert 'class="stat-info-icon qym-help-marker' in source
+        assert 'role="tooltip"' in source
+        assert 'aria-expanded="false"' in source
+    assert "marker.classList.toggle('is-open', !wasOpen);" in behavior
+    assert "event.key === 'Escape'" in behavior
+    assert "marker.focus({ preventScroll: true });" in behavior
+    assert "marker.setAttribute('aria-describedby', tooltip.id);" in behavior
+    assert "directTabs(tablist)" in behavior
+    assert "'ArrowLeft', 'ArrowRight', 'Home', 'End'" in behavior
 
 
 def test_compare_html_export_is_self_contained_and_export_safe() -> None:
     source = (DASHBOARD_DIR / "compare.html").read_text(encoding="utf-8")
 
     assert "async function inlineCompareExportAssets(html)" in source
-    assert "(?:dashboard|shell)\\.css" in source
-    assert "(?:metrics|trace_viewer)\\.js" in source
+    assert "(?:dashboard|shell|ui_components)\\.css" in source
+    assert "(?:metrics|trace_viewer|ui_components)\\.js" in source
     assert "(?:auth|shell|playground)\\.js" in source
     assert "html.replace(match[0], () => '<style>" in source
     assert "html.replace(match[0], () => '<script>" in source
@@ -779,7 +956,7 @@ def test_datasets_runs_tab_is_flush_without_redundant_heading() -> None:
     assert "className: 'dsx-table-wrap flush'" in runs_tab_block
     assert ".dsx-table-wrap.flush { border-top: 0; }" in source
     assert "const status = String(r.status || '—').toUpperCase();" in runs_tab_block
-    assert "className: 'status-badge status-' + status" in runs_tab_block
+    assert "className: 'status-badge qym-badge status-' + status" in runs_tab_block
     assert "className: 'dsx-pill ' + (r.status === 'completed'" not in runs_tab_block
 
 

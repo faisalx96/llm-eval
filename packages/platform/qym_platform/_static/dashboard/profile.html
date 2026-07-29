@@ -169,6 +169,8 @@
       }
     }
   </style>
+  <link rel="stylesheet" href="/static/ui_components.css">
+  <script defer src="/static/ui_components.js"></script>
 </head>
 <body>
   <main class="page">
@@ -262,7 +264,7 @@
               <span>${escapeHtml(project.slug)}</span>
             </div>
             <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-              <span class="role-pill">${escapeHtml(project.role || 'MEMBER')}</span>
+              <span class="role-pill qym-badge">${escapeHtml(project.role || 'MEMBER')}</span>
               <a class="btn btn-secondary" href="${projectUrl(project.slug)}">Open</a>
               <a class="btn btn-secondary" href="${projectUrl(project.slug, 'settings')}">Settings</a>
             </div>

@@ -1,0 +1,1297 @@
+/* qym shared UI primitives
+   Loaded after page-local styles so component meaning, rather than route,
+   determines geometry and interaction. See docs/DESIGN_LANGUAGE.md. */
+
+/* 1. Selectors and inputs — approved option B: one aligned 24px density. */
+:is(
+  .qym-control,
+  .qym-input,
+  .qym-select,
+  .qym-search,
+  .filter-select,
+  .multi-select-btn,
+  .toolbar-select,
+  .form-select,
+  .form-input,
+  .model-search-input,
+  .filter-input-k,
+  .dsx-search-wrap,
+  .dsx-version-pill,
+  .reviews-search,
+  .projects-search input,
+  .fp-search,
+  .fp-pass-rate-input,
+  .sweep-filter-search,
+  .samples-metric-select,
+  .metric-edit-input,
+  .pg-mapping-select,
+  .pg-mapping-key-select,
+  .pg-add-input,
+  .tv-search,
+  .shell-form-input:not(textarea),
+  .popover-search input
+) {
+  min-height: var(--control-height);
+  height: var(--control-height);
+  border: 1px solid var(--border-default);
+  border-radius: var(--control-radius);
+  background-color: var(--bg-elevated);
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: var(--font-sm);
+  line-height: 1.2;
+  padding-top: 0;
+  padding-bottom: 0;
+  vertical-align: middle;
+  transition: border-color 0.15s, background-color 0.15s, box-shadow 0.15s;
+}
+
+:is(
+  .qym-control,
+  .qym-input,
+  .qym-select,
+  .qym-search,
+  .filter-select,
+  .multi-select-btn,
+  .toolbar-select,
+  .form-select,
+  .form-input,
+  .model-search-input,
+  .filter-input-k,
+  .dsx-search-wrap,
+  .dsx-version-pill,
+  .reviews-search,
+  .projects-search input,
+  .fp-search,
+  .fp-pass-rate-input,
+  .sweep-filter-search,
+  .samples-metric-select,
+  .metric-edit-input,
+  .pg-mapping-select,
+  .pg-mapping-key-select,
+  .pg-add-input,
+  .tv-search,
+  .shell-form-input:not(textarea),
+  .popover-search input
+):hover {
+  border-color: var(--border-strong);
+  background-color: var(--bg-hover);
+}
+
+:is(
+  .qym-control,
+  .qym-input,
+  .qym-select,
+  .qym-search,
+  .filter-select,
+  .multi-select-btn,
+  .toolbar-select,
+  .form-select,
+  .form-input,
+  .model-search-input,
+  .filter-input-k,
+  .dsx-search-wrap,
+  .dsx-version-pill,
+  .reviews-search,
+  .projects-search input,
+  .fp-search,
+  .fp-pass-rate-input,
+  .sweep-filter-search,
+  .samples-metric-select,
+  .metric-edit-input,
+  .pg-mapping-select,
+  .pg-mapping-key-select,
+  .pg-add-input,
+  .tv-search,
+  .shell-form-input:not(textarea),
+  .popover-search input
+):focus,
+:is(.dsx-search-wrap, .reviews-search, .fp-search, .qym-control-wrap):focus-within {
+  outline: none;
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 2px rgba(0, 212, 170, 0.15);
+}
+
+:is(
+  .qym-select,
+  select.filter-select,
+  select.toolbar-select,
+  select.form-select,
+  select.samples-metric-select,
+  select.pg-mapping-select,
+  select.pg-mapping-key-select
+) {
+  appearance: none;
+  padding-left: var(--space-sm);
+  padding-right: 28px;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--text-muted) 50%),
+    linear-gradient(135deg, var(--text-muted) 50%, transparent 50%);
+  background-position:
+    calc(100% - 14px) 50%,
+    calc(100% - 10px) 50%;
+  background-repeat: no-repeat;
+  background-size: 4px 4px, 4px 4px;
+}
+
+:is(
+  .qym-input,
+  .qym-search,
+  .form-input,
+  .projects-search input,
+  .sweep-filter-search,
+  .metric-edit-input,
+  .pg-add-input,
+  .tv-search,
+  .shell-form-input:not(textarea),
+  .popover-search input
+) {
+  padding-left: var(--space-sm);
+  padding-right: var(--space-sm);
+}
+
+/* Page-local descendant selectors predate the shared layer and are more
+   specific. Reassert only the compact geometry they must not fork. */
+:is(
+  .add-bar .form-input,
+  .data-table .form-input,
+  .form-group .form-input,
+  .edit-user-body .form-input,
+  .pg-add-detail-row .pg-add-input,
+  .root-cause-dropdown .rc-custom-input > input.qym-control
+) {
+  border-radius: var(--control-radius);
+  font-size: var(--font-sm);
+  line-height: 1.2;
+  padding: 0 var(--space-sm);
+}
+
+:is(
+  .add-bar .form-select,
+  .data-table .form-select,
+  .form-group .form-select,
+  .edit-user-body .form-select
+) {
+  border-radius: var(--control-radius);
+  font-size: var(--font-sm);
+  line-height: 1.2;
+  padding: 0 28px 0 var(--space-sm);
+}
+
+.dsx-search-wrap input,
+.fp-search input,
+.reviews-search input {
+  height: 100%;
+  padding-top: 0;
+  padding-bottom: 0;
+  color: inherit;
+  font-family: var(--font-sans);
+  font-size: var(--font-sm);
+}
+
+/* Compact rows keep their action companions level with the 24px field. */
+:is(
+  .add-bar > .btn,
+  .bootstrap-form > .btn,
+  .pg-add-btn,
+  .qym-inline-action,
+  .tv-header-btn,
+  .tv-close
+) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--control-height);
+  height: var(--control-height);
+  border-radius: var(--control-radius);
+  font-family: var(--font-sans);
+  font-size: var(--font-sm);
+  line-height: 1.2;
+  padding-top: 0;
+  padding-bottom: 0;
+  box-sizing: border-box;
+}
+
+.dsx-hero-actions {
+  --dsx-action-h: var(--control-height);
+}
+
+.tv-search-wrap > input.tv-search {
+  padding-left: 26px;
+}
+
+.docs-search > input.qym-search {
+  padding-left: 28px;
+}
+
+.root-cause-dropdown .rc-custom-input > button.qym-inline-action {
+  border-radius: var(--control-radius);
+  font-family: var(--font-sans);
+  font-size: var(--font-sm);
+  line-height: 1.2;
+  padding: 0 var(--space-sm);
+}
+
+.pg-mapping-label,
+.pg-mapping-arrow {
+  display: flex;
+  align-items: center;
+  min-height: var(--control-height);
+  padding-top: 0;
+}
+
+/* 2. Dropdown anatomy — search, actions, consistent options, explicit Only. */
+:is(.qym-dropdown, .multi-select-dropdown) {
+  position: absolute;
+  z-index: 100;
+  display: none;
+  margin-top: var(--space-xs);
+  padding: 0;
+  min-width: 220px;
+  max-height: 320px;
+  overflow-y: auto;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--dropdown-radius);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.38);
+}
+
+:is(.qym-dropdown, .multi-select-dropdown).open {
+  display: block;
+}
+
+:is(.qym-dropdown__search, .model-search-box) {
+  padding: var(--space-sm);
+  background: var(--bg-elevated);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+:is(.qym-dropdown__actions, .ms-actions) {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  gap: var(--space-sm);
+  min-height: var(--control-height);
+  padding: var(--space-xs) var(--space-sm);
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+:is(.qym-dropdown__action, .ms-action-btn) {
+  min-height: 0;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: var(--control-radius);
+  color: var(--accent-primary);
+  font-family: var(--font-sans);
+  font-size: var(--font-sm);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+:is(.qym-dropdown__option, .multi-select-option) {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-height: var(--dropdown-option-height);
+  padding: 0 var(--space-sm);
+  gap: var(--space-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: var(--font-sm);
+  border-radius: 0;
+  cursor: pointer;
+}
+
+:is(.qym-dropdown__option, .multi-select-option):has(.qym-dropdown__only, .ms-only-btn) {
+  padding-right: 52px;
+}
+
+:is(.qym-dropdown__option, .multi-select-option):hover,
+:is(.qym-dropdown__option, .multi-select-option):focus-within {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+:is(.qym-dropdown__option, .multi-select-option).is-empty-option {
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+:is(.qym-dropdown__only, .ms-only-btn) {
+  position: absolute;
+  right: var(--space-sm);
+  top: 50%;
+  transform: translateY(-50%);
+  opacity: 0;
+  border: 0;
+  background: transparent;
+  color: var(--accent-primary);
+  font-family: var(--font-sans);
+  font-size: var(--font-sm);
+  font-weight: 650;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+:is(.qym-dropdown__option, .multi-select-option):hover :is(.qym-dropdown__only, .ms-only-btn),
+:is(.qym-dropdown__option, .multi-select-option):focus-within :is(.qym-dropdown__only, .ms-only-btn),
+:is(.qym-dropdown__only, .ms-only-btn):focus-visible {
+  opacity: 1;
+}
+
+.ms-option-main {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: var(--dropdown-option-height);
+  cursor: pointer;
+}
+
+.ms-option-main .option-count {
+  margin-left: auto;
+}
+
+@media (hover: none) {
+  :is(.qym-dropdown__only, .ms-only-btn) {
+    opacity: 1;
+  }
+}
+
+/* 3. Section navigation — approved option A: underline. */
+:is(
+  .qym-tabs,
+  .admin-tabs,
+  .settings-tabs,
+  .dsx-tabs,
+  .dsx-item-tabs,
+  .dsx-drawer-tabs,
+  .dsx-compare-tabs,
+  .chart-dataset-tabs,
+  .tv-tabs
+) {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-lg);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+:is(
+  .qym-tabs__tab,
+  .admin-tab-btn,
+  .settings-tab,
+  .dsx-tab,
+  .dsx-item-tab,
+  .dsx-drawer-tab,
+  .chart-dataset-tab,
+  .tv-tab
+) {
+  min-height: var(--tab-height);
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  color: var(--text-muted);
+  font-family: var(--font-sans);
+  font-size: var(--font-base);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+:is(
+  .qym-tabs__tab,
+  .admin-tab-btn,
+  .settings-tab,
+  .dsx-tab,
+  .dsx-item-tab,
+  .dsx-drawer-tab,
+  .chart-dataset-tab,
+  .tv-tab
+):hover {
+  color: var(--text-primary);
+}
+
+:is(
+  .qym-tabs__tab,
+  .admin-tab-btn,
+  .settings-tab,
+  .dsx-tab,
+  .dsx-item-tab,
+  .dsx-drawer-tab,
+  .chart-dataset-tab,
+  .tv-tab
+).active,
+:is(
+  .qym-tabs__tab,
+  .admin-tab-btn,
+  .settings-tab,
+  .dsx-tab,
+  .dsx-item-tab,
+  .dsx-drawer-tab,
+  .chart-dataset-tab,
+  .tv-tab
+)[aria-selected="true"] {
+  color: var(--accent-primary);
+  border-bottom-color: var(--accent-primary);
+  background: transparent;
+  font-weight: 600;
+}
+
+/* 4. In-place switching — approved option A with Qym-green selection. */
+:is(
+  .qym-segmented,
+  .time-filter,
+  .quick-filters,
+  .chart-segment-control,
+  .view-toggle,
+  .samples-metric-tabs,
+  .samples-statistic-tabs,
+  .samples-view-toggle,
+  .compare-mode-tabs,
+  .metric-tabs,
+  .category-compare-tabs
+) {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-default);
+  border-radius: 7px;
+}
+
+:is(
+  .qym-segmented__option,
+  .filter-btn,
+  .chart-segment-btn,
+  .view-toggle-btn,
+  .samples-metric-tab,
+  .samples-statistic-btn,
+  .samples-view-btn,
+  .compare-mode-tab,
+  .metric-tab,
+  .category-compare-tab
+) {
+  min-height: var(--segment-height);
+  padding: 0 12px;
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+  color: var(--text-muted);
+  font-family: var(--font-sans);
+  font-size: var(--font-sm);
+  font-weight: 600;
+  box-shadow: none;
+  cursor: pointer;
+}
+
+:is(
+  .qym-segmented__option,
+  .filter-btn,
+  .chart-segment-btn,
+  .view-toggle-btn,
+  .samples-metric-tab,
+  .samples-statistic-btn,
+  .samples-view-btn,
+  .compare-mode-tab,
+  .metric-tab,
+  .category-compare-tab
+):hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+:is(
+  .qym-segmented__option,
+  .filter-btn,
+  .chart-segment-btn,
+  .view-toggle-btn,
+  .samples-metric-tab,
+  .samples-statistic-btn,
+  .samples-view-btn,
+  .compare-mode-tab,
+  .metric-tab,
+  .category-compare-tab
+).active,
+:is(
+  .qym-segmented__option,
+  .filter-btn,
+  .chart-segment-btn,
+  .view-toggle-btn,
+  .samples-metric-tab,
+  .samples-statistic-btn,
+  .samples-view-btn,
+  .compare-mode-tab,
+  .metric-tab,
+  .category-compare-tab
+)[aria-selected="true"] {
+  color: var(--bg-void);
+  background: var(--accent-primary);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.28);
+  font-weight: 600;
+}
+
+:is(
+  .qym-segmented__option,
+  .filter-btn,
+  .chart-segment-btn,
+  .view-toggle-btn,
+  .samples-metric-tab,
+  .samples-statistic-btn,
+  .samples-view-btn,
+  .compare-mode-tab,
+  .metric-tab,
+  .category-compare-tab
+)[aria-pressed="true"] {
+  color: var(--bg-void);
+  background: var(--accent-primary);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.28);
+  font-weight: 600;
+}
+
+.samples-view-btn + .samples-view-btn {
+  border-left: 0;
+}
+
+:is(.qym-tabs__tab, .qym-segmented__option, .qym-dropdown__action):disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* 5. Passive state — approved option A: tinted outline. */
+:is(
+  .qym-badge,
+  .status-badge,
+  .status-pill,
+  .role-badge,
+  .role-pill,
+  .dsx-pill,
+  .card-status-badge,
+  .review-badge,
+  .diff-source-tag,
+  .pg-status-badge,
+  .sweep-verdict-badge,
+  .version-badge,
+  .rc-status-pill,
+  .meta-badge,
+  .hero-pass-pill,
+  .hero-samples-pill
+) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--badge-height);
+  padding: 0 var(--space-sm);
+  border: 1px solid var(--border-default);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: var(--font-xs);
+  font-weight: 650;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  white-space: nowrap;
+}
+
+:is(
+  .qym-badge,
+  .status-badge,
+  .status-pill,
+  .role-badge,
+  .role-pill,
+  .dsx-pill,
+  .card-status-badge,
+  .rc-status-pill
+):is(
+  .status-COMPLETED,
+  .status-APPROVED,
+  .completed,
+  .approved,
+  .success,
+  .qym-badge--success,
+  .production,
+  .improved
+) {
+  color: var(--success);
+  border-color: rgba(16, 185, 129, 0.35);
+  background: rgba(16, 185, 129, 0.09);
+}
+
+:is(
+  .qym-badge,
+  .status-badge,
+  .status-pill,
+  .role-badge,
+  .role-pill,
+  .dsx-pill,
+  .card-status-badge,
+  .rc-status-pill
+):is(.status-RUNNING, .running, .published, .info, .qym-badge--info) {
+  color: var(--accent-secondary);
+  border-color: rgba(0, 168, 255, 0.35);
+  background: rgba(0, 168, 255, 0.09);
+}
+
+:is(
+  .qym-badge,
+  .status-badge,
+  .status-pill,
+  .role-badge,
+  .role-pill,
+  .dsx-pill,
+  .card-status-badge,
+  .rc-status-pill
+):is(
+  .status-FAILED,
+  .status-REJECTED,
+  .failed,
+  .rejected,
+  .error,
+  .danger,
+  .qym-badge--danger,
+  .regressed
+) {
+  color: var(--error);
+  border-color: rgba(239, 68, 68, 0.35);
+  background: rgba(239, 68, 68, 0.09);
+}
+
+:is(
+  .qym-badge,
+  .status-badge,
+  .status-pill,
+  .role-badge,
+  .role-pill,
+  .dsx-pill,
+  .card-status-badge,
+  .rc-status-pill
+):is(.status-STOPPED, .stopped, .warning, .draft, .qym-badge--warning) {
+  color: var(--warning);
+  border-color: rgba(245, 158, 11, 0.35);
+  background: rgba(245, 158, 11, 0.09);
+}
+
+:is(.role-badge, .role-pill):is(.admin, .manager, .default) {
+  color: var(--accent-primary);
+  border-color: rgba(0, 212, 170, 0.35);
+  background: rgba(0, 212, 170, 0.09);
+}
+
+.role-pill,
+.diff-source-tag.human {
+  color: var(--accent-primary);
+  border-color: rgba(0, 212, 170, 0.35);
+  background: rgba(0, 212, 170, 0.09);
+}
+
+.diff-source-tag.ai {
+  color: var(--accent-tertiary-soft);
+  border-color: rgba(168, 85, 247, 0.35);
+  background: rgba(168, 85, 247, 0.09);
+}
+
+.review-badge,
+.card-status-badge.pending {
+  color: var(--warning);
+  border-color: rgba(245, 158, 11, 0.35);
+  background: rgba(245, 158, 11, 0.09);
+}
+
+.pg-status-badge.pg-status-passed {
+  color: var(--success);
+  border-color: rgba(16, 185, 129, 0.35);
+  background: rgba(16, 185, 129, 0.09);
+}
+
+.pg-status-badge:is(.pg-status-failed, .pg-status-error) {
+  color: var(--error);
+  border-color: rgba(239, 68, 68, 0.35);
+  background: rgba(239, 68, 68, 0.09);
+}
+
+.pg-status-badge.pg-status-none {
+  color: var(--text-muted);
+  border-color: var(--border-default);
+  background: var(--bg-elevated);
+}
+
+.sweep-verdict-badge.qym-badge--success {
+  color: var(--success);
+  border-color: rgba(16, 185, 129, 0.35);
+  background: rgba(16, 185, 129, 0.09);
+}
+
+.sweep-verdict-badge.qym-badge--danger {
+  color: var(--error);
+  border-color: rgba(239, 68, 68, 0.35);
+  background: rgba(239, 68, 68, 0.09);
+}
+
+.version-badge,
+.sweep-verdict-badge.qym-badge--neutral {
+  color: var(--text-muted);
+  border-color: var(--border-default);
+  background: var(--bg-elevated);
+}
+
+.hero-status.qym-badge .hero-status-dot,
+.compare-run-status.qym-badge .compare-run-status-dot {
+  width: 6px;
+  height: 6px;
+  background: currentColor;
+  box-shadow: none;
+}
+
+.dsx-version-pill .dsx-pill.qym-badge {
+  min-height: var(--badge-height);
+  height: var(--badge-height);
+  padding: 0 var(--space-sm);
+  font-size: var(--font-xs);
+  font-weight: 650;
+}
+
+:is(.role-badge, .role-pill):is(.member, .neutral),
+:is(.status-badge, .status-pill):is(.status-PENDING, .status-SUBMITTED, .pending, .submitted),
+.qym-badge.qym-badge--neutral {
+  color: var(--text-muted);
+  border-color: var(--border-default);
+  background: var(--bg-elevated);
+}
+
+/* 6. Interactive filters — approved option A: rounded outline. */
+:is(
+  .qym-chip,
+  .filter-chip,
+  .category-chip,
+  .compare-chip
+) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-xs);
+  min-height: var(--chip-height);
+  padding: 0 10px;
+  border: 1px solid var(--border-default);
+  border-radius: 999px;
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: var(--font-sm);
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+}
+
+:is(
+  .qym-chip,
+  .filter-chip,
+  .category-chip,
+  .compare-chip
+):hover {
+  border-color: var(--border-strong);
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+:is(
+  .qym-chip,
+  .filter-chip,
+  .category-chip,
+  .compare-chip
+).active,
+:is(.category-chip.selected, .qym-chip[aria-pressed="true"]) {
+  border-color: rgba(0, 212, 170, 0.5);
+  background: rgba(0, 212, 170, 0.1);
+  color: var(--accent-primary);
+  font-weight: 600;
+}
+
+:is(.qym-chip__count, .chip-count),
+.category-chip .qym-chip__count {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+:is(.qym-chip__remove, .compare-chip .remove) {
+  color: var(--text-muted);
+  font-family: var(--font-sans);
+}
+
+/* 7. Connected statistics — approved option B.
+   Labels intentionally use the card-title role per the user's direction. */
+:is(
+  .qym-stat-strip,
+  .overview-stats,
+  .admin-stats,
+  .reviews-stats,
+  .trash-summary,
+  .dsx-compare-summary,
+  .overview-summary-strip,
+  .compare-run-summary-strip,
+  .sweep-stat-grid,
+  .trace-pills-row
+) {
+  display: flex;
+  align-items: stretch;
+  gap: 1px;
+  padding: 0;
+  overflow: hidden;
+  background: var(--border-subtle);
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+}
+
+:is(
+  .qym-stat-strip__item,
+  .overview-stats > .stat-card,
+  .admin-stats > .stat-card,
+  .reviews-stats > .stat-card,
+  .trash-summary > .summary-card,
+  .dsx-compare-summary > .stat,
+  .overview-summary-strip > .overview-summary-pill,
+  .compare-run-summary-strip > .compare-run-summary-pill,
+  .sweep-stat-grid > .sweep-stat-card,
+  .trace-pills-row > .trace-pill
+) {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: var(--stat-strip-min-height);
+  margin: 0;
+  padding: 14px 16px;
+  background: var(--bg-surface);
+  border: 0;
+  border-radius: 0;
+}
+
+:is(
+  .overview-stats > .stat-card,
+  .admin-stats > .stat-card,
+  .reviews-stats > .stat-card,
+  .trash-summary > .summary-card,
+  .dsx-compare-summary > .stat,
+  .overview-summary-strip > .overview-summary-pill,
+  .compare-run-summary-strip > .compare-run-summary-pill
+):last-child {
+  border-right: 0;
+}
+
+.qym-stat-strip__item:last-child {
+  border-right: 0;
+}
+
+:is(
+  .qym-stat-strip__label,
+  .stat-card-label,
+  .stat-lbl,
+  .summary-label,
+  .overview-summary-label,
+  .compare-run-summary-label,
+  .sweep-stat-label,
+  .trace-pill-label
+) {
+  color: var(--text-muted);
+  font-family: var(--font-sans);
+  font-size: var(--font-md);
+  font-weight: 650;
+  line-height: 1.25;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+:is(
+  .qym-stat-strip__value,
+  .stat-card-value,
+  .stat-num,
+  .summary-value,
+  .overview-summary-value,
+  .compare-run-summary-value,
+  .sweep-stat-values,
+  .trace-pill-val
+) {
+  margin-top: var(--space-sm);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: var(--font-xl);
+  font-weight: 700;
+  line-height: 1.15;
+  font-variant-numeric: tabular-nums;
+}
+
+.reviews-stats > .stat-card {
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.reviews-stats > .stat-card > .qym-stat-strip__value {
+  font-size: var(--font-xl);
+}
+
+.reviews-stats .stat-lbl {
+  color: var(--text-muted);
+  font-family: var(--font-sans);
+  font-size: var(--font-md);
+  font-weight: 650;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+:is(.overview-summary-text, .compare-run-summary-text) {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0;
+}
+
+.dsx-compare-summary > .stat {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0;
+}
+
+.dsx-compare-summary > .stat > .qym-stat-strip__value {
+  margin-top: var(--space-sm);
+  font-family: var(--font-mono);
+  font-size: var(--font-xl);
+}
+
+.sweep-stat-label.qym-stat-strip__label {
+  margin-bottom: 0;
+}
+
+.sweep-stat-values.qym-stat-strip__value {
+  margin-bottom: 10px;
+}
+
+.samples-group-tiles.qym-stat-strip > .model-stat-box.qym-stat-strip__item {
+  min-height: var(--stat-strip-min-height);
+  padding: 14px 16px;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  transition: background-color 0.15s;
+}
+
+.samples-group-tiles.qym-stat-strip > .model-stat-box.qym-stat-strip__item:hover {
+  border-color: transparent;
+  background: var(--bg-hover);
+  box-shadow: none;
+}
+
+.samples-group-tiles .stat-title.qym-stat-strip__label {
+  min-height: 0;
+  margin-bottom: 0;
+  font-size: var(--font-md);
+  font-weight: 650;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.samples-group-tiles .stat-main.qym-stat-strip__value {
+  margin-top: var(--space-sm);
+  font-size: var(--font-xl);
+  font-weight: 700;
+}
+
+.trace-pills-row.qym-stat-strip {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.trace-pills-row.qym-stat-strip > .trace-pill {
+  min-height: var(--stat-strip-min-height);
+  padding: 14px 16px;
+  border: 0;
+  border-radius: 0;
+  background: var(--bg-surface);
+}
+
+.model-stats-grid.qym-stat-strip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  margin-bottom: 10px;
+}
+
+.model-stats-grid.qym-stat-strip > .model-stat-item.qym-stat-strip__item {
+  min-height: var(--stat-strip-min-height);
+  padding: 14px 12px;
+  background: var(--bg-surface);
+  border: 0;
+  border-radius: 0;
+}
+
+.model-stats-grid.qym-stat-strip > .model-stat-item:last-child:nth-child(3n + 1) {
+  grid-column: 1 / -1;
+}
+
+.model-stats-grid .model-stat-item .stat-label.qym-stat-strip__label {
+  min-height: 0;
+  margin-bottom: 0;
+  color: var(--text-muted);
+  font-family: var(--font-sans);
+  font-size: var(--font-md);
+  font-weight: 650;
+  line-height: 1.25;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.model-stats-grid .model-stat-item .stat-value.qym-stat-strip__value {
+  margin-top: var(--space-sm);
+  font-family: var(--font-mono);
+  font-size: var(--font-xl);
+  font-weight: 700;
+  line-height: 1.15;
+}
+
+.stats-row.qym-stat-strip > .stat-box.qym-stat-strip__item {
+  min-width: 112px;
+}
+
+.stats-row .stat-box .stat-title.qym-stat-strip__label,
+.samples-summary-grid .samples-summary-stat .samples-summary-label.qym-stat-strip__label,
+.metric-numeric-stats .metric-num-stat .metric-num-stat-label.qym-stat-strip__label {
+  min-height: 0;
+  margin-bottom: 0;
+  color: var(--text-muted);
+  font-family: var(--font-sans);
+  font-size: var(--font-md);
+  font-weight: 650;
+  line-height: 1.25;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.stats-row .stat-box .stat-main.qym-stat-strip__value,
+.samples-summary-grid .samples-summary-stat .samples-summary-value.qym-stat-strip__value,
+.metric-numeric-stats .metric-num-stat .metric-num-stat-value.qym-stat-strip__value {
+  margin-top: var(--space-sm);
+  font-family: var(--font-mono);
+  font-size: var(--font-xl);
+  font-weight: 700;
+  line-height: 1.15;
+}
+
+.samples-summary-grid.qym-stat-strip {
+  flex: 1 1 640px;
+}
+
+.samples-summary-grid.qym-stat-strip > .samples-summary-stat.qym-stat-strip__item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 96px;
+  white-space: normal;
+}
+
+.metric-numeric-stats.qym-stat-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  border: 0;
+  border-top: 1px solid var(--border-default);
+  border-radius: 0;
+}
+
+.metric-numeric-stats.qym-stat-strip > .metric-num-stat.qym-stat-strip__item {
+  min-height: var(--stat-strip-min-height);
+  padding: 14px 8px;
+  border: 0;
+  border-radius: 0;
+}
+
+.dsx-run-aggregate.qym-stat-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(98px, 1fr));
+  gap: 1px;
+}
+
+.dsx-run-aggregate.qym-stat-strip > .tile.qym-stat-strip__item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-height: var(--stat-strip-min-height);
+  padding: 14px 12px;
+  border: 0;
+  border-radius: 0;
+}
+
+.dsx-run-aggregate .tile .label.qym-stat-strip__label {
+  margin-top: 0;
+  font-family: var(--font-sans);
+  font-size: var(--font-md);
+  font-weight: 650;
+  line-height: 1.25;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.dsx-run-aggregate .tile .value.qym-stat-strip__value {
+  margin-top: var(--space-sm);
+  font-family: var(--font-mono);
+  font-size: var(--font-xl);
+  font-weight: 700;
+  line-height: 1.15;
+}
+
+.trace-pills-row .trace-pill-label {
+  font-size: var(--font-md);
+  font-weight: 650;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.trace-pills-row .trace-pill-val {
+  margin-top: var(--space-sm);
+  font-size: var(--font-xl);
+  font-weight: 700;
+}
+
+/* 8. Explanation/confidence affordance — approved option A. */
+:is(.qym-help-marker, .stat-info-icon) {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--info-marker-size);
+  height: var(--info-marker-size);
+  flex: 0 0 var(--info-marker-size);
+  border: 1px solid rgba(0, 212, 170, 0.55);
+  border-radius: 50%;
+  background: rgba(0, 212, 170, 0.1);
+  color: var(--accent-primary);
+  font-family: var(--font-sans);
+  font-size: var(--font-xs);
+  font-style: normal;
+  font-weight: 700;
+  text-transform: lowercase;
+  cursor: help;
+  padding: 0;
+}
+
+:is(.qym-help-marker, .stat-info-icon):hover,
+:is(.qym-help-marker, .stat-info-icon):focus-visible {
+  background: var(--accent-primary);
+  color: var(--bg-void);
+  transform: none;
+  outline: none;
+}
+
+:is(.qym-help-tooltip, .stat-info-tooltip) {
+  position: absolute;
+  z-index: 120;
+  left: 50%;
+  bottom: calc(100% + var(--space-sm));
+  display: none;
+  transform: translateX(-50%);
+  width: var(--help-tooltip-width);
+  padding: var(--space-sm) 10px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--control-radius);
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: var(--font-sm);
+  font-weight: 400;
+  font-style: normal;
+  line-height: 1.5;
+  text-align: left;
+  text-transform: none;
+  letter-spacing: normal;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.qym-help-tooltip-portal {
+  position: fixed;
+  z-index: 10000;
+  bottom: auto;
+  display: none;
+  max-width: calc(100vw - 16px);
+  pointer-events: none;
+}
+
+.qym-help-tooltip-portal.is-open {
+  display: block !important;
+}
+
+.stat-info-icon.est-info-icon.qym-help-marker {
+  margin-left: var(--space-xs);
+  border: 1px solid rgba(0, 212, 170, 0.55);
+  background: rgba(0, 212, 170, 0.1);
+  color: var(--accent-primary);
+  font-style: normal;
+  vertical-align: 1px;
+}
+
+:is(.qym-help-marker, .stat-info-icon):not(.qym-help-marker--portal):hover :is(.qym-help-tooltip, .stat-info-tooltip),
+:is(.qym-help-marker, .stat-info-icon):not(.qym-help-marker--portal):focus-visible :is(.qym-help-tooltip, .stat-info-tooltip),
+:is(.qym-help-marker, .stat-info-icon):not(.qym-help-marker--portal).is-open :is(.qym-help-tooltip, .stat-info-tooltip),
+.stat-info-icon.est-info-icon:not(.qym-help-marker--portal):hover .stat-info-tooltip,
+.stat-info-icon.est-info-icon:not(.qym-help-marker--portal):focus-visible .stat-info-tooltip {
+  display: block !important;
+}
+
+.qym-help-marker--portal > :is(.qym-help-tooltip, .stat-info-tooltip) {
+  display: none !important;
+}
+
+@media (max-width: 900px) {
+  :is(
+    .qym-stat-strip,
+    .overview-stats,
+    .admin-stats,
+    .reviews-stats,
+    .trash-summary,
+    .dsx-compare-summary,
+    .overview-summary-strip,
+    .compare-run-summary-strip,
+    .sweep-stat-grid,
+    .trace-pills-row
+  ) {
+    flex-wrap: wrap;
+  }
+
+  :is(
+    .qym-stat-strip__item,
+    .overview-stats > .stat-card,
+    .admin-stats > .stat-card,
+    .reviews-stats > .stat-card,
+    .trash-summary > .summary-card,
+    .dsx-compare-summary > .stat,
+    .overview-summary-strip > .overview-summary-pill,
+    .compare-run-summary-strip > .compare-run-summary-pill,
+    .sweep-stat-grid > .sweep-stat-card,
+    .trace-pills-row > .trace-pill
+  ) {
+    flex-basis: calc(50% - 0.5px);
+  }
+
+  :is(
+    .qym-stat-strip__item,
+    .overview-stats > .stat-card,
+    .admin-stats > .stat-card,
+    .reviews-stats > .stat-card,
+    .trash-summary > .summary-card,
+    .dsx-compare-summary > .stat,
+    .overview-summary-strip > .overview-summary-pill,
+    .compare-run-summary-strip > .compare-run-summary-pill,
+    .sweep-stat-grid > .sweep-stat-card,
+    .trace-pills-row > .trace-pill
+  ):last-child:nth-child(odd) {
+    flex-basis: 100%;
+  }
+}
+
+@media (max-width: 640px) {
+  .trace-pills-row.qym-stat-strip {
+    grid-template-columns: 1fr;
+  }
+}

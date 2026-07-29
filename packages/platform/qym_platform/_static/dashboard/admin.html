@@ -104,6 +104,8 @@
     .edit-user-error { color: var(--error); font-size: var(--font-sm); min-height: 16px; }
     .self-warning { background: var(--bg-elevated); border: 1px solid var(--border-default); border-radius: 6px; padding: var(--space-sm) var(--space-md); font-size: var(--font-sm); color: var(--text-muted); }
   </style>
+  <link rel="stylesheet" href="/static/ui_components.css">
+  <script defer src="/static/ui_components.js"></script>
 </head>
 <body>
   <main class="admin-page">
@@ -112,19 +114,19 @@
       <p>Platform-wide user and project management.</p>
     </div>
 
-    <div class="admin-stats">
-      <div class="stat-card"><div class="stat-card-label">Total Users</div><div class="stat-card-value" id="stat-users">—</div></div>
-      <div class="stat-card"><div class="stat-card-label">Projects</div><div class="stat-card-value" id="stat-projects">—</div></div>
-      <div class="stat-card"><div class="stat-card-label">Total Runs</div><div class="stat-card-value" id="stat-runs">—</div></div>
+    <div class="admin-stats qym-stat-strip">
+      <div class="stat-card qym-stat-strip__item"><div class="stat-card-label qym-stat-strip__label">Total Users</div><div class="stat-card-value qym-stat-strip__value" id="stat-users">—</div></div>
+      <div class="stat-card qym-stat-strip__item"><div class="stat-card-label qym-stat-strip__label">Projects</div><div class="stat-card-value qym-stat-strip__value" id="stat-projects">—</div></div>
+      <div class="stat-card qym-stat-strip__item"><div class="stat-card-label qym-stat-strip__label">Total Runs</div><div class="stat-card-value qym-stat-strip__value" id="stat-runs">—</div></div>
     </div>
 
-    <div class="admin-tabs" role="tablist" aria-label="Admin sections">
-      <button class="admin-tab-btn active" type="button" role="tab" aria-selected="true" data-admin-tab="runs">Runs</button>
-      <button class="admin-tab-btn" type="button" role="tab" aria-selected="false" data-admin-tab="projects">Projects</button>
-      <button class="admin-tab-btn" type="button" role="tab" aria-selected="false" data-admin-tab="users">Users</button>
+    <div class="admin-tabs qym-tabs" role="tablist" aria-label="Admin sections">
+      <button class="admin-tab-btn qym-tabs__tab active" id="admin-tab-runs" type="button" role="tab" aria-selected="true" aria-controls="admin-panel-runs" data-admin-tab="runs">Runs</button>
+      <button class="admin-tab-btn qym-tabs__tab" id="admin-tab-projects" type="button" role="tab" aria-selected="false" aria-controls="admin-panel-projects" data-admin-tab="projects">Projects</button>
+      <button class="admin-tab-btn qym-tabs__tab" id="admin-tab-users" type="button" role="tab" aria-selected="false" aria-controls="admin-panel-users" data-admin-tab="users">Users</button>
     </div>
 
-    <section class="admin-tab-panel active" data-admin-panel="runs">
+    <section class="admin-tab-panel active" id="admin-panel-runs" role="tabpanel" aria-labelledby="admin-tab-runs" data-admin-panel="runs">
       <div class="card">
         <div class="card-header">
           <div><div class="card-title">Live Runs</div><div class="card-subtitle" id="live-runs-count-label">Running across all qym projects</div></div>
@@ -159,7 +161,7 @@
       </div>
     </section>
 
-    <section class="admin-tab-panel" data-admin-panel="projects">
+    <section class="admin-tab-panel" id="admin-panel-projects" role="tabpanel" aria-labelledby="admin-tab-projects" data-admin-panel="projects" hidden>
       <div class="card">
         <div class="card-header">
           <div><div class="card-title">Projects</div><div class="card-subtitle" id="project-count-label">All platform projects</div></div>
@@ -175,14 +177,14 @@
       </div>
     </section>
 
-    <section class="admin-tab-panel" data-admin-panel="users">
+    <section class="admin-tab-panel" id="admin-panel-users" role="tabpanel" aria-labelledby="admin-tab-users" data-admin-panel="users" hidden>
       <div class="card">
         <div class="card-header"><div><div class="card-title">Users</div><div class="card-subtitle" id="user-count-label">All platform users</div></div></div>
         <div class="add-bar">
           <input class="form-input" id="new-user-email" placeholder="name@example.com" />
           <input class="form-input" id="new-user-name" placeholder="Display name" />
           <select class="form-select" id="new-user-role"><option value="MEMBER">Member</option><option value="ADMIN">Admin</option></select>
-          <button class="btn btn-primary" id="create-user-btn" type="button" style="padding:var(--space-sm) var(--space-md);font-size:var(--font-sm)">Create User</button>
+          <button class="btn btn-primary" id="create-user-btn" type="button" style="padding:0 var(--space-md);font-size:var(--font-sm)">Create User</button>
         </div>
         <div class="message" id="user-message"></div>
         <div class="card-body">
@@ -302,7 +304,7 @@
 
       function statusPill(status) {
         const value = String(status || '—').toUpperCase();
-        return `<span class="status-pill status-${escapeHtml(value)}">${escapeHtml(value)}</span>`;
+        return `<span class="status-pill qym-badge status-${escapeHtml(value)}">${escapeHtml(value)}</span>`;
       }
 
       function runUrl(run) {
@@ -332,7 +334,9 @@
           btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
         });
         document.querySelectorAll('[data-admin-panel]').forEach(panel => {
-          panel.classList.toggle('active', panel.dataset.adminPanel === selected);
+          const isActive = panel.dataset.adminPanel === selected;
+          panel.classList.toggle('active', isActive);
+          panel.hidden = !isActive;
         });
         try { window.sessionStorage.setItem('qym:admin-tab', selected); } catch (err) {}
       }
@@ -462,7 +466,7 @@
           <tr>
             <td style="font-weight:500;color:var(--text-primary)">${escapeHtml(u.display_name || u.email)}</td>
             <td><span class="row-meta">${escapeHtml(u.email)}</span></td>
-            <td><span class="role-badge ${u.role === 'ADMIN' ? 'admin' : 'member'}">${escapeHtml(u.role)}</span></td>
+            <td><span class="role-badge qym-badge ${u.role === 'ADMIN' ? 'admin' : 'member'}">${escapeHtml(u.role)}</span></td>
             <td>${u.is_active ? '<span style="color:var(--success)">Active</span>' : '<span style="color:var(--error)">Disabled</span>'}</td>
             <td><div class="row-actions">
               <button class="btn btn-secondary" style="padding:4px 10px;font-size:var(--font-sm)" data-user-edit="${escapeHtml(u.id)}">Edit</button>

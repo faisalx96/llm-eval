@@ -730,11 +730,26 @@
     if (!btn || !dropdown) return;
 
     const searchValue = dropdown.querySelector('.model-search-input')?.value || '';
+    const restoreFocus = (kind, value) => {
+      window.setTimeout(() => {
+        const nextDropdown = el(dropdownId);
+        if (!nextDropdown) return;
+        if (kind === 'action') {
+          nextDropdown.querySelector(`.ms-action-btn[data-action="${value}"]`)?.focus({ preventScroll: true });
+          return;
+        }
+        const nextOption = Array.from(nextDropdown.querySelectorAll('.multi-select-option')).find(candidate =>
+          candidate.dataset.value === value
+        );
+        nextOption?.querySelector(kind === 'only' ? '.ms-only-btn' : 'input[type="checkbox"]')?.focus({ preventScroll: true });
+      }, 0);
+    };
 
-    let html = '<div class="ms-actions"><button class="ms-action-btn" data-action="all">Select All</button><button class="ms-action-btn" data-action="none">None</button></div>';
+    let html = '';
     if (showSearch) {
-      html += `<div class="model-search-box"><input type="text" class="model-search-input" placeholder="${searchPlaceholder || 'Search...'}" value="${escapeHtml(searchValue)}" /></div>`;
+      html += `<div class="model-search-box qym-dropdown__search"><input type="text" class="model-search-input qym-control qym-search" placeholder="${searchPlaceholder || 'Search...'}" value="${escapeHtml(searchValue)}" /></div>`;
     }
+    html += '<div class="ms-actions qym-dropdown__actions"><button class="ms-action-btn qym-dropdown__action" data-action="all">Select All</button><button class="ms-action-btn qym-dropdown__action" data-action="none">None</button></div>';
     html += values.map((v, idx) => {
       const checked = stateSet.size === 0 || stateSet.has(v) ? 'checked' : '';
       const label = getFilterOptionLabel(v, labelFn);
@@ -743,7 +758,7 @@
       const emptyClass = v === EMPTY_FILTER_VALUE ? ' is-empty-option' : '';
       const hidden = showSearch && searchValue && !label.toLowerCase().includes(searchValue.toLowerCase()) ? ' style="display:none"' : '';
       const labelHtml = htmlLabelFn ? htmlLabelFn(v, label) : escapeHtml(label);
-      return `<div class="multi-select-option${emptyClass}" data-value="${escapeHtml(v)}" title="${escapeHtml(label)}"${hidden}>${colorDot}<input type="checkbox" ${checked} /><span>${labelHtml}</span></div>`;
+      return `<div class="multi-select-option qym-dropdown__option${emptyClass}" data-value="${escapeHtml(v)}" data-search-label="${escapeHtml(label)}" title="${escapeHtml(label)}"${hidden}>${colorDot}<input type="checkbox" aria-label="${escapeHtml(label)}" ${checked} /><span>${labelHtml}</span><button type="button" class="ms-only-btn qym-dropdown__only" aria-label="Show only ${escapeHtml(label)}" title="Show only this option">Only</button></div>`;
     }).join('');
     dropdown.innerHTML = html;
 
@@ -754,8 +769,8 @@
         searchInput.addEventListener('input', (e) => {
           const q = e.target.value.toLowerCase();
           dropdown.querySelectorAll('.multi-select-option').forEach(opt => {
-            const text = opt.textContent || opt.dataset.value || '';
-            opt.style.display = text.toLowerCase().includes(q) ? '' : 'none';
+            const label = opt.dataset.searchLabel || opt.dataset.value || '';
+            opt.style.display = label.toLowerCase().includes(q) ? '' : 'none';
           });
         });
         searchInput.addEventListener('click', (e) => e.stopPropagation());
@@ -768,7 +783,8 @@
       ab.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
-        if (ab.dataset.action === 'all') {
+        const action = ab.dataset.action;
+        if (action === 'all') {
           stateSet.clear();
         } else {
           stateSet.clear();
@@ -777,6 +793,25 @@
         syncMultiSelect({ btnId, dropdownId, stateSet, values, defaultLabel, labelFn });
         if (onchange) onchange();
         render();
+        restoreFocus('action', action);
+      });
+    });
+
+    // "Only" is explicit and discoverable; it replaces a hidden double-click
+    // gesture while keeping the multi-select open to further refinement.
+    dropdown.querySelectorAll('.ms-only-btn').forEach(onlyBtn => {
+      onlyBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const option = onlyBtn.closest('.multi-select-option');
+        if (!option) return;
+        const selectedValue = option.dataset.value;
+        stateSet.clear();
+        stateSet.add(selectedValue);
+        syncMultiSelect({ btnId, dropdownId, stateSet, values, defaultLabel, labelFn, htmlLabelFn });
+        if (onchange) onchange();
+        render();
+        restoreFocus('only', selectedValue);
       });
     });
 
@@ -804,6 +839,7 @@
         syncMultiSelect({ btnId, dropdownId, stateSet, values, defaultLabel, labelFn, htmlLabelFn });
         if (onchange) onchange();
         render();
+        restoreFocus('checkbox', value);
       });
     });
 
@@ -936,6 +972,19 @@
       ...systemColumns.map(col => col.key),
       ...traceMetrics.map(tm => tm.key),
     ];
+    const restoreMetricVisibilityFocus = (kind, value) => {
+      window.setTimeout(() => {
+        const nextDropdown = el('metric-visibility-dropdown');
+        if (!nextDropdown) return;
+        if (kind === 'action') {
+          nextDropdown.querySelector(value === 'all' ? '#mv-select-all' : '#mv-select-none')?.focus({ preventScroll: true });
+          return;
+        }
+        Array.from(nextDropdown.querySelectorAll('input[data-mv-metric]')).find(candidate =>
+          candidate.dataset.mvMetric === value
+        )?.focus({ preventScroll: true });
+      }, 0);
+    };
 
     wrapper.style.display = '';
 
@@ -955,36 +1004,36 @@
     const allVisible = visibleMetrics.size === metricOptions.length;
     const searchValue = dropdown.querySelector('.model-search-input')?.value || '';
     dropdown.innerHTML =
-      '<div class="ms-actions">' +
-        '<button class="ms-action-btn" id="mv-select-all">All</button>' +
-        '<button class="ms-action-btn" id="mv-select-none">None</button>' +
+      '<div class="model-search-box qym-dropdown__search"><input type="text" class="model-search-input qym-control qym-search" placeholder="Search columns..." value="' + escapeHtml(searchValue) + '" /></div>' +
+      '<div class="ms-actions qym-dropdown__actions">' +
+        '<button class="ms-action-btn qym-dropdown__action" id="mv-select-all">All</button>' +
+        '<button class="ms-action-btn qym-dropdown__action" id="mv-select-none">None</button>' +
       '</div>' +
-      '<div class="model-search-box"><input type="text" class="model-search-input" placeholder="Search columns..." value="' + escapeHtml(searchValue) + '" /></div>' +
       availableMetrics.map(m => {
         const checked = allVisible || visibleMetrics.has(m) ? 'checked' : '';
         const hidden = searchValue && !getMetricDisplayName(m).toLowerCase().includes(searchValue.toLowerCase()) ? ' style="display:none"' : '';
-        return `<div class="multi-select-option"${hidden}><input type="checkbox" ${checked} data-mv-metric="${escapeHtml(m)}" /><span>${escapeHtml(m)}</span></div>`;
+        return `<label class="multi-select-option qym-dropdown__option"${hidden}><input type="checkbox" ${checked} data-mv-metric="${escapeHtml(m)}" /><span>${escapeHtml(m)}</span></label>`;
       }).join('') +
       (groupColumns.length > 0 ?
         '<div class="mv-trace-separator"></div><div class="mv-trace-label">Grouped Run Columns</div>' +
         groupColumns.map(col => {
           const checked = allVisible || visibleMetrics.has(col.key) ? 'checked' : '';
           const hidden = searchValue && !col.label.toLowerCase().includes(searchValue.toLowerCase()) ? ' style="display:none"' : '';
-          return `<div class="multi-select-option"${hidden}><input type="checkbox" ${checked} data-mv-metric="${escapeHtml(col.key)}" /><span>${escapeHtml(col.label)}</span></div>`;
+          return `<label class="multi-select-option qym-dropdown__option"${hidden}><input type="checkbox" ${checked} data-mv-metric="${escapeHtml(col.key)}" /><span>${escapeHtml(col.label)}</span></label>`;
         }).join('') : '') +
       (systemColumns.length > 0 ?
         '<div class="mv-trace-separator"></div><div class="mv-trace-label">⚡ System Columns</div>' +
         systemColumns.map(col => {
           const checked = allVisible || visibleMetrics.has(col.key) ? 'checked' : '';
           const hidden = searchValue && !col.label.toLowerCase().includes(searchValue.toLowerCase()) ? ' style="display:none"' : '';
-          return `<div class="multi-select-option"${hidden}><input type="checkbox" ${checked} data-mv-metric="${escapeHtml(col.key)}" /><span>${escapeHtml(col.label)}</span></div>`;
+          return `<label class="multi-select-option qym-dropdown__option"${hidden}><input type="checkbox" ${checked} data-mv-metric="${escapeHtml(col.key)}" /><span>${escapeHtml(col.label)}</span></label>`;
         }).join('') : '') +
       (traceMetrics.length > 0 ?
         '<div class="mv-trace-separator"></div><div class="mv-trace-label">⚡ Trace Stats</div>' +
         traceMetrics.map(tm => {
           const checked = allVisible || visibleMetrics.has(tm.key) ? 'checked' : '';
           const hidden = searchValue && !tm.label.toLowerCase().includes(searchValue.toLowerCase()) ? ' style="display:none"' : '';
-          return `<div class="multi-select-option"${hidden}><input type="checkbox" ${checked} data-mv-metric="${escapeHtml(tm.key)}" /><span>${escapeHtml(tm.label)}</span></div>`;
+          return `<label class="multi-select-option qym-dropdown__option"${hidden}><input type="checkbox" ${checked} data-mv-metric="${escapeHtml(tm.key)}" /><span>${escapeHtml(tm.label)}</span></label>`;
         }).join('') : '');
 
     // Update button text
@@ -1008,17 +1057,9 @@
 
     dropdown.querySelectorAll('input[type="checkbox"]').forEach(cb => {
       cb.addEventListener('change', () => {
+        const metric = cb.dataset.mvMetric;
         applyMetricVisibilityFromCheckboxes(metricOptions);
-      });
-    });
-
-    dropdown.querySelectorAll('.multi-select-option').forEach(opt => {
-      const metricCb = opt.querySelector('input[data-mv-metric]');
-      if (!metricCb) return;
-      opt.addEventListener('click', (e) => {
-        e.stopPropagation();
-        metricCb.checked = !metricCb.checked;
-        applyMetricVisibilityFromCheckboxes(metricOptions);
+        restoreMetricVisibilityFocus('checkbox', metric);
       });
     });
 
@@ -1031,6 +1072,7 @@
       saveMetricVisibility();
       syncMetricVisibilityDropdownState(metricOptions);
       render();
+      restoreMetricVisibilityFocus('action', 'all');
     });
     if (selNone) selNone.addEventListener('click', (e) => {
       e.preventDefault();
@@ -1039,6 +1081,7 @@
       saveMetricVisibility();
       syncMetricVisibilityDropdownState(metricOptions);
       render();
+      restoreMetricVisibilityFocus('action', 'none');
     });
   }
 
@@ -1234,6 +1277,19 @@
     if (!wrapper || !dropdown) return;
 
     const options = getModelsViewStatOptions(runs);
+    const restoreModelsStatVisibilityFocus = (kind, value) => {
+      window.setTimeout(() => {
+        const nextDropdown = el('models-stat-visibility-dropdown');
+        if (!nextDropdown) return;
+        if (kind === 'action') {
+          nextDropdown.querySelector(value === 'all' ? '#models-stat-select-all' : '#models-stat-select-none')?.focus({ preventScroll: true });
+          return;
+        }
+        Array.from(nextDropdown.querySelectorAll('input[data-model-stat-key]')).find(candidate =>
+          candidate.dataset.modelStatKey === value
+        )?.focus({ preventScroll: true });
+      }, 0);
+    };
     if (options.length === 0) {
       wrapper.style.display = 'none';
       dropdown.classList.remove('open');
@@ -1247,15 +1303,15 @@
     const searchValue = dropdown.querySelector('.model-search-input')?.value || '';
 
     dropdown.innerHTML =
-      '<div class="ms-actions">' +
-        '<button class="ms-action-btn" id="models-stat-select-all">All</button>' +
-        '<button class="ms-action-btn" id="models-stat-select-none">None</button>' +
+      '<div class="model-search-box qym-dropdown__search"><input type="text" class="model-search-input qym-control qym-search" placeholder="Search shown metrics..." value="' + escapeHtml(searchValue) + '" /></div>' +
+      '<div class="ms-actions qym-dropdown__actions">' +
+        '<button class="ms-action-btn qym-dropdown__action" id="models-stat-select-all">All</button>' +
+        '<button class="ms-action-btn qym-dropdown__action" id="models-stat-select-none">None</button>' +
       '</div>' +
-      '<div class="model-search-box"><input type="text" class="model-search-input" placeholder="Search shown metrics..." value="' + escapeHtml(searchValue) + '" /></div>' +
       options.map((option) => {
         const checked = allVisible || visibleKeys.has(option.key) ? 'checked' : '';
         const hidden = searchValue && !option.label.toLowerCase().includes(searchValue.toLowerCase()) ? ' style="display:none"' : '';
-        return `<div class="multi-select-option"${hidden}><input type="checkbox" ${checked} data-model-stat-key="${escapeHtml(option.key)}" /><span>${escapeHtml(option.label)}</span></div>`;
+        return `<label class="multi-select-option qym-dropdown__option"${hidden}><input type="checkbox" ${checked} data-model-stat-key="${escapeHtml(option.key)}" /><span>${escapeHtml(option.label)}</span></label>`;
       }).join('');
 
     updateModelsStatVisibilityBtn(options);
@@ -1278,17 +1334,9 @@
 
     dropdown.querySelectorAll('input[data-model-stat-key]').forEach(cb => {
       cb.addEventListener('change', () => {
+        const statKey = cb.dataset.modelStatKey;
         applyModelsStatVisibilityFromCheckboxes(options);
-      });
-    });
-
-    dropdown.querySelectorAll('.multi-select-option').forEach(opt => {
-      const statCb = opt.querySelector('input[data-model-stat-key]');
-      if (!statCb) return;
-      opt.addEventListener('click', (e) => {
-        e.stopPropagation();
-        statCb.checked = !statCb.checked;
-        applyModelsStatVisibilityFromCheckboxes(options);
+        restoreModelsStatVisibilityFocus('checkbox', statKey);
       });
     });
 
@@ -1300,6 +1348,7 @@
       setVisibleModelsViewStatsForAvailable(options, new Set(options.map(option => option.key)));
       syncModelsStatVisibilityDropdownState(options);
       renderModelsView();
+      restoreModelsStatVisibilityFocus('action', 'all');
     });
     if (selectNoneBtn) selectNoneBtn.addEventListener('click', (e) => {
       e.preventDefault();
@@ -1307,6 +1356,7 @@
       setVisibleModelsViewStatsForAvailable(options, new Set());
       syncModelsStatVisibilityDropdownState(options);
       renderModelsView();
+      restoreModelsStatVisibilityFocus('action', 'none');
     });
   }
 
@@ -1892,7 +1942,7 @@
 
     // Render chart cards - one per task, with dataset tabs
     const gridEl = el('charts-grid');
-    gridEl.innerHTML = (chartData.tasks || []).map(taskGroup => {
+    gridEl.innerHTML = (chartData.tasks || []).map((taskGroup, taskIndex) => {
       const taskName = taskGroup.task;
       const datasets = taskGroup.datasets;
       const totalTaskRuns = datasets.reduce((s, d) => s + d.totalRuns, 0);
@@ -1903,14 +1953,18 @@
       const activeDataset = state.chartDatasetTab[taskName] || datasets[0]?.dataset || '';
       const combo = datasets.find(d => d.dataset === activeDataset) || datasets[0];
       if (!combo) return '';
+      const chartTabsetId = `chart-datasets-${taskIndex}`;
+      const chartPanelId = `chart-dataset-panel-${taskIndex}`;
+      const activeDatasetIndex = Math.max(0, datasets.findIndex(d => d.dataset === combo.dataset));
+      const activeDatasetTabId = `${chartTabsetId}-tab-${activeDatasetIndex}`;
 
       // Dataset tabs HTML
       const datasetTabsHtml = `
-        <div class="chart-dataset-tabs">
-          ${datasets.map(d => `
-            <div class="chart-dataset-tab ${d.dataset === combo.dataset ? 'active' : ''}" data-task="${taskName}" data-dataset="${d.dataset}">
+        <div class="chart-dataset-tabs qym-tabs" id="${chartTabsetId}" role="tablist" aria-label="Datasets for ${taskName}">
+          ${datasets.map((d, datasetIndex) => `
+            <button type="button" role="tab" id="${chartTabsetId}-tab-${datasetIndex}" aria-controls="${chartPanelId}" class="chart-dataset-tab qym-tabs__tab ${d.dataset === combo.dataset ? 'active' : ''}" data-task="${taskName}" data-dataset="${d.dataset}" aria-selected="${d.dataset === combo.dataset}">
               ${d.dataset} <span class="tab-count">${d.totalRuns}</span>
-            </div>
+            </button>
           `).join('')}
         </div>
       `;
@@ -1976,7 +2030,7 @@
             </div>
             <div class="chart-card">
               ${datasetTabsHtml}
-              <div class="chart-card-body">
+              <div class="chart-card-body" id="${chartPanelId}" role="tabpanel" aria-labelledby="${activeDatasetTabId}">
                 <div class="chart-no-data">No metrics recorded</div>
               </div>
             </div>
@@ -2605,20 +2659,20 @@
         <div class="chart-table-toolbar">
           <div class="chart-group-controls">
             <span class="chart-control-label">Rows</span>
-            <span class="chart-segment-control chart-row-mode-control" data-card="${cardId}">
-              <button class="chart-segment-btn ${groupMode === 'run' ? 'active' : ''}" data-mode="run">Runs</button>
-              <button class="chart-segment-btn ${isGrouped ? 'active' : ''}" data-mode="${isGrouped ? groupMode : 'model'}">Grouped</button>
+            <span class="chart-segment-control qym-segmented chart-row-mode-control" data-card="${cardId}" role="group" aria-label="Chart row mode">
+              <button class="chart-segment-btn qym-segmented__option ${groupMode === 'run' ? 'active' : ''}" data-mode="run" aria-pressed="${groupMode === 'run'}">Runs</button>
+              <button class="chart-segment-btn qym-segmented__option ${isGrouped ? 'active' : ''}" data-mode="${isGrouped ? groupMode : 'model'}" aria-pressed="${isGrouped}">Grouped</button>
             </span>
             ${isGrouped ? `
               <span class="chart-control-label">Group</span>
-              <span class="chart-segment-control chart-group-axis-control" data-card="${cardId}">
-                <button class="chart-segment-btn ${primaryGroup === 'model' ? 'active' : ''}" data-mode="model">Model</button>
-                <button class="chart-segment-btn ${primaryGroup === 'version' ? 'active' : ''}" data-mode="version" ${groupVersionDisabled ? 'disabled title="No version data available"' : ''}>Version</button>
+              <span class="chart-segment-control qym-segmented chart-group-axis-control" data-card="${cardId}" role="group" aria-label="Primary grouping">
+                <button class="chart-segment-btn qym-segmented__option ${primaryGroup === 'model' ? 'active' : ''}" data-mode="model" aria-pressed="${primaryGroup === 'model'}">Model</button>
+                <button class="chart-segment-btn qym-segmented__option ${primaryGroup === 'version' ? 'active' : ''}" data-mode="version" aria-pressed="${primaryGroup === 'version'}" ${groupVersionDisabled ? 'disabled title="No version data available"' : ''}>Version</button>
               </span>
               <span class="chart-control-label">Then</span>
-              <span class="chart-segment-control chart-then-axis-control" data-card="${cardId}">
-                <button class="chart-segment-btn ${secondaryGroup === 'model' ? 'active' : ''}" data-mode="version-model" ${thenModelAttrs}>Model</button>
-                <button class="chart-segment-btn ${secondaryGroup === 'version' ? 'active' : ''}" data-mode="model-version" ${thenVersionAttrs}>Version</button>
+              <span class="chart-segment-control qym-segmented chart-then-axis-control" data-card="${cardId}" role="group" aria-label="Secondary grouping">
+                <button class="chart-segment-btn qym-segmented__option ${secondaryGroup === 'model' ? 'active' : ''}" data-mode="version-model" aria-pressed="${secondaryGroup === 'model'}" ${thenModelAttrs}>Model</button>
+                <button class="chart-segment-btn qym-segmented__option ${secondaryGroup === 'version' ? 'active' : ''}" data-mode="model-version" aria-pressed="${secondaryGroup === 'version'}" ${thenVersionAttrs}>Version</button>
               </span>
               <span class="chart-group-summary">${groupedSummary}</span>
             ` : ''}
@@ -2667,7 +2721,7 @@
             </div>
           <div class="chart-card">
             ${datasetTabsHtml}
-            <div class="chart-card-body">
+            <div class="chart-card-body" id="${chartPanelId}" role="tabpanel" aria-labelledby="${activeDatasetTabId}">
               ${metricChartsHtml}
             </div>
           </div>
@@ -2718,9 +2772,13 @@
     // Wire up segmented control (Run / Version / Model)
     gridEl.querySelectorAll('.chart-segment-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {
-        const cardId = e.target.closest('.chart-segment-control')?.dataset.card;
-        const mode = e.target.dataset.mode;
-        if (!cardId || !mode || e.target.disabled) return;
+        const control = e.currentTarget.closest('.chart-segment-control');
+        const cardId = control?.dataset.card;
+        const mode = e.currentTarget.dataset.mode;
+        const controlKind = ['chart-row-mode-control', 'chart-group-axis-control', 'chart-then-axis-control'].find(className =>
+          control?.classList.contains(className)
+        );
+        if (!cardId || !mode || e.currentTarget.disabled) return;
         if (!state.chartGroupMode) state.chartGroupMode = {};
         state.chartGroupMode[cardId] = mode;
         if (mode !== 'run') {
@@ -2730,6 +2788,13 @@
         const metricSourceRuns = state.filteredRuns.length > 0 ? state.filteredRuns : state.flatRuns;
         populateMetricVisibility(getAvailableMetricsForRuns(metricSourceRuns), metricSourceRuns);
         renderChartsView();
+        const replacementControl = Array.from(document.querySelectorAll('.chart-segment-control')).find(candidate =>
+          candidate.dataset.card === cardId && (!controlKind || candidate.classList.contains(controlKind))
+        );
+        const replacement = replacementControl && Array.from(replacementControl.querySelectorAll('.chart-segment-btn')).find(candidate =>
+          candidate.dataset.mode === mode || (controlKind === 'chart-row-mode-control' && mode !== 'run' && candidate.textContent.trim() === 'Grouped')
+        );
+        replacement?.focus({ preventScroll: true });
       });
     });
 
@@ -2777,6 +2842,10 @@
         if (taskName && dataset) {
           state.chartDatasetTab[taskName] = dataset;
           renderChartsView();
+          const replacement = Array.from(document.querySelectorAll('.chart-dataset-tab')).find(candidate =>
+            candidate.dataset.task === taskName && candidate.dataset.dataset === dataset
+          );
+          if (replacement) replacement.focus({ preventScroll: true });
         }
       });
     });
@@ -3051,8 +3120,9 @@
         // report_k needs headroom: pass@k estimated from barely k passes is
         // high-noise, so nudge toward samples >= 2k.
         const lowSamples = run.report_k && run.samples < 2 * run.report_k;
+        const noiseCopy = `pass@${run.report_k} estimated from only ${run.samples} passes is high-noise; ${2 * run.report_k}+ recommended.`;
         const noiseHtml = lowSamples
-          ? `<span class="metric-noise-warn" title="pass@${run.report_k} estimated from only ${run.samples} passes is high-noise; ${2 * run.report_k}+ recommended.">⚠</span>`
+          ? `<button type="button" class="metric-noise-warn qym-help-marker" aria-label="Explain high-noise estimate" aria-expanded="false">i<span class="qym-help-tooltip" role="tooltip">${escapeHtml(noiseCopy)}</span></button>`
           : '';
         return `<td class="col-metric-value"><span class="metric-score ${metricClass}">${display}</span>${noiseHtml}</td>`;
       }).join('');
@@ -3100,7 +3170,7 @@
             </label>
           </td>
           <td class="col-status">
-            ${status ? `<span class="status-badge status-${status}" title="${escapeHtml(statusTooltip)}">${status}${passText}${progressPctText ? ` • ${progressPctText}` : ''}${progressText ? ` • ${progressText}` : ''}</span>` : ''}${(run.error_count > 0 && status !== 'RUNNING' && status !== 'PENDING') ? `<span class="status-errors" title="${run.error_count} item${run.error_count === 1 ? '' : 's'} errored">${run.error_count}⚠</span>` : ''}${(run.total_retries > 0 && status !== 'RUNNING' && status !== 'PENDING') ? `<span class="status-retries" title="${run.total_retries} total retr${run.total_retries === 1 ? 'y' : 'ies'} across all items">${run.total_retries}↻</span>` : ''}
+            ${status ? `<span class="status-badge qym-badge status-${status}" title="${escapeHtml(statusTooltip)}">${status}${passText}${progressPctText ? ` • ${progressPctText}` : ''}${progressText ? ` • ${progressText}` : ''}</span>` : ''}${(run.error_count > 0 && status !== 'RUNNING' && status !== 'PENDING') ? `<span class="status-errors" title="${run.error_count} item${run.error_count === 1 ? '' : 's'} errored">${run.error_count}⚠</span>` : ''}${(run.total_retries > 0 && status !== 'RUNNING' && status !== 'PENDING') ? `<span class="status-retries" title="${run.total_retries} total retr${run.total_retries === 1 ? 'y' : 'ies'} across all items">${run.total_retries}↻</span>` : ''}
           </td>
           <td class="col-run">
             <div class="run-cell-content">
@@ -3130,7 +3200,7 @@
             <span class="tag" title="${run.dataset_name}">${truncateText(run.dataset_name, 25)}${window.QymShell ? QymShell.datasetVersionInline(run.dataset_version) + QymShell.datasetAliasTags(run.dataset_aliases) : ''}</span>
           </td>
           <td class="col-version">
-            ${run.git_commit ? `<span class="version-badge" title="${run.git_branch ? run.git_branch + '/' : ''}${run.git_commit}">${run.git_branch ? run.git_branch + '/' : ''}${run.git_commit}</span>` : '<span style="color:var(--text-muted)">—</span>'}
+            ${run.git_commit ? `<span class="version-badge qym-badge qym-badge--neutral" title="${run.git_branch ? run.git_branch + '/' : ''}${run.git_commit}">${run.git_branch ? run.git_branch + '/' : ''}${run.git_commit}</span>` : '<span style="color:var(--text-muted)">—</span>'}
           </td>
           ${metricCells}${visibleTraceMetrics.length > 0 ? '<td class="col-trace-separator"></td>' : ''}
           ${visibleSystemColumns.has('latency') ? `<td class="col-latency">
@@ -3437,7 +3507,7 @@
         const tip = escapeHtml(
           `${name} estimated from all ${k} passes`
         );
-        return `Pass<span class="est-atk">${sym}${kRep}</span><span class="stat-info-icon est-info-icon">i<span class="stat-info-tooltip">${tip}</span></span>`;
+        return `Pass<span class="est-atk">${sym}${kRep}</span><button type="button" class="stat-info-icon qym-help-marker est-info-icon" aria-label="Explain this estimate" aria-expanded="false">i<span class="stat-info-tooltip qym-help-tooltip" role="tooltip">${tip}</span></button>`;
       };
       const passAtLabel = estLabel('@', reportK);
       const passHatLabel = estLabel('^', reportK);
@@ -3462,9 +3532,9 @@
         const isNum = typeof v === 'number';
         const cls = isNum ? window.QymMetrics.getMetricColorClass(v, 'score') : '';
         const text = isNum ? window.QymMetrics.formatMetricValue(v, 'score') : pendingText('—');
-        return `<span class="samples-summary-stat" title="${escapeHtml(tooltip)}">` +
-          `<span class="samples-summary-label">${label}</span>` +
-          `<strong class="samples-summary-value metric-score ${cls}">${text}</strong></span>`;
+        return `<span class="samples-summary-stat qym-stat-strip__item" title="${escapeHtml(tooltip)}">` +
+          `<span class="samples-summary-label qym-stat-strip__label">${label}</span>` +
+          `<strong class="samples-summary-value qym-stat-strip__value metric-score ${cls}">${text}</strong></span>`;
       };
       // Group avg latency: item-weighted mean over the passes that have one.
       const latPasses = allPasses.filter(p => typeof p.avg_latency_ms === 'number');
@@ -3473,9 +3543,9 @@
       const groupAvgLatency = latPasses.length
         ? latPasses.reduce((sum, p, i) => sum + p.avg_latency_ms * latWeights[i], 0) / latTotal
         : null;
-      const latencyStat = `<span class="samples-summary-stat" title="Mean item latency across all completed passes.">` +
-        `<span class="samples-summary-label">Avg latency</span>` +
-        `<strong class="samples-summary-value">${groupAvgLatency !== null ? formatLatency(groupAvgLatency) : pendingText('—')}</strong></span>`;
+      const latencyStat = `<span class="samples-summary-stat qym-stat-strip__item" title="Mean item latency across all completed passes.">` +
+        `<span class="samples-summary-label qym-stat-strip__label">Avg latency</span>` +
+        `<strong class="samples-summary-value qym-stat-strip__value">${groupAvgLatency !== null ? formatLatency(groupAvgLatency) : pendingText('—')}</strong></span>`;
 
       // Pass rows in the parent table's own grid. Inherited context (task,
       // model, dataset, version, owner) is cloned from the parent row and
@@ -3582,7 +3652,7 @@
             ? `<label class="custom-checkbox"><input type="checkbox" class="pass-checkbox" data-pass-ref="${escapeHtml(passRef)}" ${passSelected ? 'checked' : ''} /><span class="checkmark"></span></label>`
             : ''}</td>
           <td class="col-status">${badgeClass
-            ? `<span class="status-badge status-${badgeClass}">${statusLabel}</span>`
+            ? `<span class="status-badge qym-badge status-${badgeClass}">${statusLabel}</span>`
             : `<span class="pass-member-status">${statusLabel}</span>`}${errors
             ? `<span class="status-errors" title="${errors} item${errors === 1 ? '' : 's'} errored in this pass">${errors}⚠</span>`
             : ''}</td>
@@ -3621,7 +3691,7 @@
                   min="0" max="100" step="5" value="${thrPct}" aria-label="Pass threshold">
                 <span class="threshold-value">${thrPct}%</span>
               </span>
-              <div class="samples-summary-grid">
+              <div class="samples-summary-grid qym-stat-strip">
               ${stat(passAtLabel, group.pass_at_k, reportK
                 ? `Estimated chance that at least one of ${reportK} attempts scores ≥${thrPct}% — the unbiased pass@${reportK} computed from all ${k} stored passes.`
                 : `% of items where at least one of the ${k} passes scored ≥${thrPct}%.`)}
@@ -4126,12 +4196,12 @@
     const anchorRefs = isCohortMode ? cohortAnchor : [];
     chips.innerHTML = [
       ...anchorRefs.map(ref => `
-        <span class="compare-chip is-cohort-a">
+        <span class="compare-chip qym-chip is-cohort-a">
           <span title="${escapeHtml(ref)}">${escapeHtml(getCohortRunDisplayName(ref) || ref)}</span>
         </span>
       `),
       ...Array.from(selected).map(ref => `
-        <span class="compare-chip${isCohortMode ? ' is-cohort-b' : ''}">
+        <span class="compare-chip qym-chip${isCohortMode ? ' is-cohort-b' : ''}">
           <span title="${escapeHtml(ref)}">${escapeHtml(getCohortRunDisplayName(ref) || ref)}</span>
           <span class="remove" data-file="${encodeURIComponent(ref)}">×</span>
         </span>
@@ -4288,6 +4358,14 @@
     }
   }
 
+  function setQuickFilterSelection(filter) {
+    $$('.filter-btn').forEach(btn => {
+      const active = btn.dataset.filter === filter;
+      btn.classList.toggle('active', active);
+      btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+  }
+
   function clearAllFilters() {
     state.filterTasks.clear();
     state.filterModels.clear();
@@ -4296,7 +4374,7 @@
     state.filterDatasets.clear();
     state.filterUsers.clear();
     state.quickFilter = 'all';
-    $$('.filter-btn').forEach(b => b.classList.toggle('active', b.dataset.filter === 'all'));
+    setQuickFilterSelection('all');
     populateFilterDropdowns();
     render();
   }
@@ -4727,14 +4805,14 @@
 
       // Helper to create info icon with tooltip (same as compare view)
       function infoIcon(tooltip) {
-        return `<span class="stat-info-icon">i<span class="stat-info-tooltip">${tooltip}</span></span>`;
+        return `<button type="button" class="stat-info-icon qym-help-marker" aria-label="More information" aria-expanded="false">i<span class="stat-info-tooltip qym-help-tooltip" role="tooltip">${tooltip}</span></button>`;
       }
 
       function renderModelStatTile(title, value, valueClass = '', tooltip = '') {
         return `
-          <div class="model-stat-item">
-            <div class="stat-label">${title}${tooltip ? ` ${infoIcon(tooltip)}` : ''}</div>
-            <div class="stat-value ${valueClass}">${value}</div>
+          <div class="model-stat-item qym-stat-strip__item">
+            <div class="stat-label qym-stat-strip__label">${title}${tooltip ? ` ${infoIcon(tooltip)}` : ''}</div>
+            <div class="stat-value qym-stat-strip__value ${valueClass}">${value}</div>
           </div>
         `;
       }
@@ -4779,7 +4857,7 @@
 
       const showDistribution = !isNumeric && visibleStatKeys.has('correctDistribution');
       const statsGridHtml = statTiles.length > 0
-        ? `<div class="model-stats-grid">${statTiles.join('')}</div>`
+        ? `<div class="model-stats-grid qym-stat-strip">${statTiles.join('')}</div>`
         : '<div class="model-stats-empty">No summary metrics selected.</div>';
 
       return `
@@ -5747,7 +5825,7 @@
                       <span class="project-hub-card-main">
                         <span class="project-hub-card-name">${escapeHtml(project.name)}</span>
                         <span class="project-hub-card-meta">
-                          <span class="project-hub-pill">${escapeHtml(project.role || '')}</span>
+                          <span class="project-hub-pill qym-badge role-badge ${escapeHtml(String(project.role || 'member').toLowerCase())}">${escapeHtml(project.role || '')}</span>
                           <span>${escapeHtml(project.slug || '')}</span>
                         </span>
                       </span>
@@ -6175,7 +6253,7 @@
       btnId: 'filter-status-btn', dropdownId: 'filter-status-dropdown',
       stateSet: state.filterStatuses, values: statusValues,
       labelFn: (s) => isEmptyFilterValue(s) ? 'Empty / Missing' : s.charAt(0) + s.slice(1).toLowerCase(), defaultLabel: 'All Status',
-      showSearch: false,
+      showSearch: true, searchPlaceholder: 'Search statuses...',
     });
 
     // User multi-select
@@ -6248,9 +6326,8 @@
   // Quick filters
   $$('.filter-btn').forEach(btn => {
     btn.addEventListener('click', () => {
-      $$('.filter-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
       state.quickFilter = btn.dataset.filter;
+      setQuickFilterSelection(state.quickFilter);
       state.focusedIndex = -1;
       render();
     });
@@ -6333,8 +6410,8 @@
 
   // Keyboard navigation
   document.addEventListener('keydown', (e) => {
-    // Ignore if focused on input
-    if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') {
+    // Keyboard shortcuts must not take over native interactive controls.
+    if (e.target.closest('input, select, textarea, button, a, [contenteditable="true"]')) {
       if (e.key === 'Escape') {
         e.target.blur();
       }
@@ -6399,7 +6476,7 @@
         if (idx >= 0 && idx < filters.length) {
           e.preventDefault();
           state.quickFilter = filters[idx];
-          $$('.filter-btn').forEach((b, i) => b.classList.toggle('active', i === idx));
+          setQuickFilterSelection(state.quickFilter);
           render();
         }
         break;
@@ -6606,7 +6683,7 @@
         if (parsed.filterUsers) state.filterUsers = new Set(parsed.filterUsers);
         if (parsed.quickFilter) {
           state.quickFilter = parsed.quickFilter;
-          $$('.filter-btn').forEach(b => b.classList.toggle('active', b.dataset.filter === state.quickFilter));
+          setQuickFilterSelection(state.quickFilter);
         }
         applyChartFirstColWidth(parsed.chartFirstColWidth || CHART_FIRST_COL_DEFAULT_WIDTH);
       } catch (e) {
@@ -6696,42 +6773,3 @@
   updateRunsRefreshCadence();
 
 })();
-
-      // Estimator help tooltip: the runs-list strip and sweep cards clip
-      // overflow (and shell ancestors trap position:fixed), so the tooltip
-      // renders in a body-level portal that nothing can clip.
-      (function initEstimatorTooltipPortal() {
-        let portal = null;
-        document.addEventListener('mouseover', (event) => {
-          const icon = event.target && event.target.closest
-            ? event.target.closest('.est-info-icon')
-            : null;
-          if (!icon) {
-            if (portal && (!event.target.closest || !event.target.closest('.est-tooltip-portal'))) {
-              portal.style.display = 'none';
-            }
-            return;
-          }
-          const source = icon.querySelector('.stat-info-tooltip');
-          if (!source) return;
-          if (!portal) {
-            portal = document.createElement('div');
-            portal.className = 'stat-info-tooltip est-tooltip-portal';
-            document.body.appendChild(portal);
-          }
-          portal.textContent = source.textContent;
-          const rect = icon.getBoundingClientRect();
-          portal.style.display = 'block';
-          portal.style.position = 'fixed';
-          const half = 110; // tooltip is 220px wide
-          const viewportWidth = document.documentElement.clientWidth || window.innerWidth;
-          const center = rect.left + rect.width / 2;
-          const left = viewportWidth > 2 * (half + 8)
-            ? Math.max(half + 8, Math.min(viewportWidth - half - 8, center))
-            : center;
-          portal.style.left = Math.round(left) + 'px';
-          portal.style.top = Math.round(rect.top - 8) + 'px';
-          portal.style.bottom = 'auto';
-          portal.style.transform = 'translate(-50%, -100%)';
-        });
-      })();

@@ -105,6 +105,67 @@ removed on purpose; one token name means one value everywhere.
 
 ## 3. Component recipes (copy these, don't invent)
 
+The eight shared control primitives live in
+[`ui_components.css`](../packages/platform/qym_platform/_static/dashboard/ui_components.css),
+with shared keyboard/touch behavior in
+[`ui_components.js`](../packages/platform/qym_platform/_static/dashboard/ui_components.js).
+Load the stylesheet after page-local styles and load the script with `defer`.
+New markup uses the canonical `qym-*` classes; the legacy selectors listed
+beside them are migration aliases only.
+
+### Control
+`.qym-control` is the single aligned-density input recipe: 24px high, 5px
+radius, `--font-sm`, and `--font-sans`. The 24px height keeps control text
+visually level with adjacent 11px toolbar labels. Add `.qym-input`,
+`.qym-select`, or `.qym-search` to describe behavior, not density. There are no
+compact or roomy variants. Compact inline action buttons beside these controls
+use `.qym-inline-action` and the same height. Textareas, range inputs, the 42px
+authentication fields, and composite controls such as the playground connection
+picker remain separate recipes and must not inherit `--control-height`.
+
+### Multiselect dropdown
+Use `.qym-dropdown` with content in this fixed order:
+
+1. `.qym-dropdown__search`
+2. `.qym-dropdown__actions` containing Select All and None/Clear
+3. 32px `.qym-dropdown__option` rows
+
+Each option may expose `.qym-dropdown__only`, an explicit “Only” action that
+clears the prior selection and keeps that option. Do not hide this capability
+behind double-click.
+
+### Tabs and switchers
+Section navigation uses `.qym-tabs` + `.qym-tabs__tab`: underline-only active
+state, `role="tablist"`/`role="tab"`, and synchronized `aria-selected`. Shared
+behavior provides roving focus and Left/Right/Home/End navigation.
+In-place view, metric, repeat, and time switching uses `.qym-segmented` +
+`.qym-segmented__option`; the selected option has a Qym-green background.
+
+### Badges and chips
+Passive status, outcome, and role labels use `.qym-badge`: 20px tall, fully
+rounded, tinted outline, sans 10px/650. Semantic tones are success
+(completed/approved/improved), info (running), danger
+(failed/rejected/regressed), warning (draft/stopped), and neutral
+(roles/metadata/within-noise).
+
+Interactive filters use `.qym-chip`: 26px tall, rounded outline, sans 11px/600.
+Counts remain mono. Buttons remain real buttons; passive metadata must not use
+the chip recipe.
+
+### Connected statistics
+Primary summary bands use `.qym-stat-strip` with `.qym-stat-strip__item`,
+`__label`, and `__value`. The strip owns the outer border; equal cells have
+dividers and no individual card borders. Labels are 13px/650 with extra vertical
+space before 18px/700 mono values. Tiny card-footer metadata is not a stat strip.
+
+### Explanations
+Use the focusable `.qym-help-marker` with a nested `.qym-help-tooltip`
+(`role="tooltip"`). The same 12px marker is used for estimator definitions,
+uncertainty, and confidence explanations. Hover/focus opens it; click/touch pins
+one marker; outside-click and Escape close it. Shared behavior assigns tooltip
+IDs and `aria-describedby`, including for dynamically rendered markers and
+standalone exports.
+
 ### Data table
 Use the shared `QymDataTable` component (`qym_table.js` + `.qdt-table` in
 `dashboard.css`) for new tables. Its styles are the reference implementation:

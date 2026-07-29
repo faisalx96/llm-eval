@@ -701,10 +701,10 @@
 
   function renderDocMetaChips(doc) {
     const chips = summarizeDocMeta(doc.metadata).map(([key, value]) =>
-      `<span class="tv-chip tv-doc-chip"><span class="tv-doc-chip-k">${esc(key)}</span><span class="tv-doc-chip-v">${esc(String(value))}</span></span>`
+      `<span class="tv-chip tv-doc-chip qym-badge qym-badge--neutral"><span class="tv-doc-chip-k">${esc(key)}</span><span class="tv-doc-chip-v">${esc(String(value))}</span></span>`
     );
     const score = formatDocScore(doc.score);
-    if (score) chips.unshift(`<span class="tv-chip tv-doc-chip tv-doc-chip-score">Score ${esc(score)}</span>`);
+    if (score) chips.unshift(`<span class="tv-chip tv-doc-chip tv-doc-chip-score qym-badge qym-badge--neutral">Score ${esc(score)}</span>`);
     return chips.join("");
   }
 
@@ -716,7 +716,7 @@
 
     let html = `<div class="tv-docs-shell">`;
     html += `<div class="tv-docs-head">`;
-    html += `<div class="tv-docs-title-wrap"><div class="tv-docs-title">Retrieved Documents</div><div class="tv-docs-meta"><div class="tv-docs-sub">Context returned by this retriever span</div><span class="tv-chip tv-docs-count">${docs.length} retrieved</span></div></div>`;
+    html += `<div class="tv-docs-title-wrap"><div class="tv-docs-title">Retrieved Documents</div><div class="tv-docs-meta"><div class="tv-docs-sub">Context returned by this retriever span</div><span class="tv-chip tv-docs-count qym-badge qym-badge--neutral">${docs.length} retrieved</span></div></div>`;
     html += actionGroup([
       copyBtn(() => JSON.stringify(docs.map(d => d.raw), null, 2), "Copy documents"),
       expandBtn({
@@ -1175,8 +1175,8 @@
           const isFailed = !att.is_last_attempt;
           const errReason = !att.is_last_attempt && att.error ? att.error : "";
           const badge = att.is_last_attempt
-            ? `<span class="tv-attempt-badge">latest</span>`
-            : `<span class="tv-attempt-badge failed">failed</span>`;
+            ? `<span class="tv-attempt-badge qym-badge qym-badge--neutral">latest</span>`
+            : `<span class="tv-attempt-badge qym-badge qym-badge--danger failed">failed</span>`;
           const tooltip = errReason ? ` title="${esc(errReason)}"` : "";
           return (
             `<button type="button" class="tv-attempt-btn ${isActive ? "active" : ""} ${isFailed ? "failed" : ""}" data-attempt="${esc(att.attempt_number)}"${tooltip}>` +
@@ -1194,24 +1194,24 @@
     const rootSpan = tree?.roots?.[0];
     const scores = rootSpan ? extractScores(rootSpan) : [];
 
-    let chips = `<span class="tv-chip">${sum.span_count||0} spans</span>`;
-    chips += `<span class="tv-chip">${esc(fmtDur(sum.duration_ms))}</span>`;
-    if (stats.totalTokens > 0) chips += `<span class="tv-chip tv-chip-tokens">${fmtTokens(stats.totalTokens)} tokens</span>`;
+    let chips = `<span class="tv-chip qym-badge qym-badge--neutral">${sum.span_count||0} spans</span>`;
+    chips += `<span class="tv-chip qym-badge qym-badge--neutral">${esc(fmtDur(sum.duration_ms))}</span>`;
+    if (stats.totalTokens > 0) chips += `<span class="tv-chip tv-chip-tokens qym-badge qym-badge--info">${fmtTokens(stats.totalTokens)} tokens</span>`;
     const costStr = fmtCost(stats.totalCost);
-    if (costStr) chips += `<span class="tv-chip">${costStr}</span>`;
+    if (costStr) chips += `<span class="tv-chip qym-badge qym-badge--neutral">${costStr}</span>`;
     // Count only spans with an actual exception event (not just inherited ERROR status)
     const realErrorCount = tree ? tree.nodes.filter(n =>
       statusCls(n.status) === "error" && (Array.isArray(n.events) ? n.events : []).some(ev => ev.name === "exception")
     ).length : (sum.error_count || 0);
     const displayErrorCount = realErrorCount || (sum.error_count ? 1 : 0);
-    if (displayErrorCount) chips += `<span class="tv-chip tv-chip-error">${displayErrorCount} error${displayErrorCount>1?"s":""}</span>`;
+    if (displayErrorCount) chips += `<span class="tv-chip tv-chip-error qym-badge qym-badge--danger">${displayErrorCount} error${displayErrorCount>1?"s":""}</span>`;
     scores.forEach(sc => {
       const v = typeof sc.value === "number" ? sc.value.toFixed(2) : sc.value;
       const tone = metricToneClass(sc.value);
-      chips += `<span class="tv-chip tv-chip-score ${tone}">${esc(sc.name)}: ${esc(v)}</span>`;
+      chips += `<span class="tv-chip tv-chip-score qym-badge ${tone === "pass" ? "qym-badge--success" : tone === "fail" ? "qym-badge--danger" : "qym-badge--neutral"} ${tone}">${esc(sc.name)}: ${esc(v)}</span>`;
     });
     const traceId = attempt ? (attempt.trace_id || "") : (item.trace_id || "");
-    if (traceId) chips += `<button type="button" class="tv-chip tv-chip-copy" data-trace-copy="${esc(traceId)}" title="Copy Trace ID">ID</button>`;
+    if (traceId) chips += `<button type="button" class="tv-chip tv-chip-copy qym-chip" data-trace-copy="${esc(traceId)}" title="Copy Trace ID">ID</button>`;
 
     S.el.meta.innerHTML = chips;
 
@@ -1441,7 +1441,7 @@
     const costStr = fmtCost(cost);
     if (costStr) header += `<span class="tv-dot"></span><span>${costStr}</span>`;
     header += `</div></div>`;
-    if (stCls !== "unset") header += `<span class="tv-chip tv-chip-status-${stCls}">${esc(String(span.status).toUpperCase())}</span>`;
+    if (stCls !== "unset") header += `<span class="tv-chip tv-chip-status-${stCls} qym-badge ${stCls === "error" ? "qym-badge--danger" : "qym-badge--success"}">${esc(String(span.status).toUpperCase())}</span>`;
     header += `</div>`;
 
     // Error detail block
@@ -1460,14 +1460,14 @@
     }
 
     // Tabs + view mode toggle
-    let tabBar = `<div class="tv-tabs">`;
+    let tabBar = `<div class="tv-tabs qym-tabs" role="tablist" aria-label="Trace detail sections">`;
     tabs.forEach(t => {
-      tabBar += `<button type="button" class="tv-tab ${S.activeTab===t.id?"active":""}" data-tab="${t.id}">${esc(t.label)}</button>`;
+      tabBar += `<button type="button" role="tab" id="tv-detail-tab-${t.id}" aria-controls="tv-detail-panel" class="tv-tab qym-tabs__tab ${S.activeTab===t.id?"active":""}" data-tab="${t.id}" aria-selected="${S.activeTab===t.id}">${esc(t.label)}</button>`;
     });
     tabBar += `</div>`;
 
     // Tab content
-    let content = `<div class="tv-tab-content">`;
+    let content = `<div class="tv-tab-content" id="tv-detail-panel" role="tabpanel" aria-labelledby="tv-detail-tab-${S.activeTab}">`;
     if (S.activeTab === "messages") content += renderMessages(inputMsgs.concat(outputMsgs), reasoning);
     else if (S.activeTab === "response") content += renderResponse(span);
     else if (S.activeTab === "tool-io") content += renderToolIO(span);
@@ -2324,7 +2324,7 @@
 
     // Loading state
     S.el.title.textContent = meta.itemLabel || "Trace";
-    S.el.meta.innerHTML = `<span class="tv-chip">Loading...</span>`;
+    S.el.meta.innerHTML = `<span class="tv-chip qym-badge qym-badge--neutral">Loading...</span>`;
     S.el.list.innerHTML = `<div class="tv-loading">Loading trace...</div>`;
     S.el.detail.innerHTML = "";
     updateTreeToggleButton();
@@ -2466,6 +2466,7 @@
       e.preventDefault();
       S.activeTab = e.target.closest("[data-tab]").getAttribute("data-tab");
       renderDetail();
+      S.el.detail.querySelector(`#tv-detail-tab-${S.activeTab}`)?.focus({ preventScroll: true });
       return;
     }
     if (e.target.closest("[data-span]")) {

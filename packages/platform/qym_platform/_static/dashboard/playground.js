@@ -972,7 +972,7 @@ window.QymPlayground = (function () {
       html += '<div class="pg-item-top">';
       html += '<span class="pg-item-idx">#' + (r.index != null ? r.index : i) + '</span>';
       if (scoreNum != null) html += '<span class="pg-item-score pg-status-' + status + '">' + scoreStr + '</span>';
-      html += '<span class="pg-status-badge pg-status-' + status + '">' + (status === 'none' ? 'no score' : status) + '</span>';
+      html += '<span class="pg-status-badge qym-badge pg-status-' + status + '">' + (status === 'none' ? 'no score' : status) + '</span>';
       html += '</div>';
 
       // Root cause row (matching item-by-item style)

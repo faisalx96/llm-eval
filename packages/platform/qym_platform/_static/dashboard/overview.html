@@ -51,6 +51,8 @@
     .row-meta { color: var(--text-muted); font-size: var(--font-sm); margin-top: 2px; }
     .overview-status { font-size: var(--font-xs); padding: 2px 6px; }
   </style>
+  <link rel="stylesheet" href="/static/ui_components.css">
+  <script defer src="/static/ui_components.js"></script>
 </head>
 <body>
   <main class="overview">
@@ -59,11 +61,11 @@
       <p id="overview-subtitle">Project overview and recent activity.</p>
     </div>
 
-    <div class="overview-stats" id="overview-stats">
-      <div class="stat-card"><div class="stat-card-label">Total Runs</div><div class="stat-card-value" id="ov-runs">—</div><div class="stat-card-sub" id="ov-runs-sub"></div></div>
-      <div class="stat-card"><div class="stat-card-label">Avg Success</div><div class="stat-card-value" id="ov-success">—</div><div class="stat-card-sub" id="ov-success-sub"></div></div>
-      <div class="stat-card"><div class="stat-card-label">Models</div><div class="stat-card-value" id="ov-models">—</div><div class="stat-card-sub" id="ov-models-sub"></div></div>
-      <div class="stat-card"><div class="stat-card-label">Items Evaluated</div><div class="stat-card-value" id="ov-items">—</div><div class="stat-card-sub" id="ov-items-sub"></div></div>
+    <div class="overview-stats qym-stat-strip" id="overview-stats">
+      <div class="stat-card qym-stat-strip__item"><div class="stat-card-label qym-stat-strip__label">Total Runs</div><div class="stat-card-value qym-stat-strip__value" id="ov-runs">—</div><div class="stat-card-sub" id="ov-runs-sub"></div></div>
+      <div class="stat-card qym-stat-strip__item"><div class="stat-card-label qym-stat-strip__label">Avg Success</div><div class="stat-card-value qym-stat-strip__value" id="ov-success">—</div><div class="stat-card-sub" id="ov-success-sub"></div></div>
+      <div class="stat-card qym-stat-strip__item"><div class="stat-card-label qym-stat-strip__label">Models</div><div class="stat-card-value qym-stat-strip__value" id="ov-models">—</div><div class="stat-card-sub" id="ov-models-sub"></div></div>
+      <div class="stat-card qym-stat-strip__item"><div class="stat-card-label qym-stat-strip__label">Items Evaluated</div><div class="stat-card-value qym-stat-strip__value" id="ov-items">—</div><div class="stat-card-sub" id="ov-items-sub"></div></div>
     </div>
 
     <div class="overview-card live-card">
@@ -208,7 +210,7 @@
       function statusBadge(status) {
         const clean = String(status || '').toUpperCase();
         if (!clean) return '—';
-        return '<span class="status-badge overview-status status-' + esc(clean) + '">' + esc(clean) + '</span>';
+        return '<span class="status-badge qym-badge overview-status status-' + esc(clean) + '">' + esc(clean) + '</span>';
       }
 
       function renderRunRows(runs, slug, options) {
@@ -362,7 +364,7 @@
               body.innerHTML = items.map(c => {
                 return '<div class="review-item">'
                   + '<div><span class="review-id">#' + esc(String(c.id || '')) + '</span><span class="review-cause">' + esc(c.ai_root_cause || c.human_root_cause || '—') + '</span></div>'
-                  + '<span class="review-badge">Pending</span>'
+                  + '<span class="review-badge qym-badge qym-badge--warning">Pending</span>'
                   + '</div>';
               }).join('')
               + (total > reviewLimit ? '<div class="review-item" style="justify-content:center;color:var(--text-muted);font-size:var(--font-base);">+ ' + (total - reviewLimit) + ' more pending</div>' : '');

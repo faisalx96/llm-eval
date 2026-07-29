@@ -460,19 +460,7 @@
     .sweep-verdict-badge {
       flex: none;
       margin-top: 1px;
-      padding: 4px 9px;
-      border-radius: 999px;
-      border: 1px solid #94a3b8;
-      color: #94a3b8;
-      font-size: var(--font-xs);
-      font-weight: 650;
-      font-family: var(--font-mono);
-      letter-spacing: 0.08em;
-      white-space: nowrap;
     }
-
-    .sweep-verdict.positive .sweep-verdict-badge { color: #34d399; border-color: #34d399; }
-    .sweep-verdict.negative .sweep-verdict-badge { color: #f87171; border-color: #f87171; }
 
     .sweep-verdict-title {
       font-size: var(--font-md);
@@ -1500,19 +1488,11 @@
       color: var(--text-primary);
     }
     .category-chip.selected {
-      background: var(--accent-primary);
-      border-color: var(--accent-primary);
-      color: var(--bg-void);
-      font-weight: 500;
-    }
-    .category-chip.selected,
-    .category-chip.selected .chip-count {
-      color: var(--bg-void) !important;
+      font-weight: 600;
     }
     .category-chip .chip-count {
       font-size: var(--font-xs);
       opacity: 0.7;
-      font-family: var(--font-sans);
       font-weight: 500;
     }
     .category-chip.selected .chip-count {
@@ -4426,6 +4406,8 @@
         box-shadow: none;
     }
   </style>
+  <link rel="stylesheet" href="./static/ui_components.css">
+  <script defer src="./static/ui_components.js"></script>
 </head>
 <body>
   <main class="compare-container">
@@ -4451,7 +4433,7 @@
         </div>
       </div>
 
-      <div class="compare-mode-tabs" id="compare-mode-tabs"></div>
+      <div class="compare-mode-tabs qym-segmented" id="compare-mode-tabs" role="group" aria-label="Comparison view"></div>
 
       <div class="compare-cohort-banner" id="compare-cohort-banner"></div>
 
@@ -4473,7 +4455,7 @@
           <h3 class="section-title">Comparison Overview</h3>
           <div class="compare-shared-controls" id="compare-shared-controls">
             <div class="metric-tabs-row">
-              <div class="metric-tabs" id="overview-metric-tabs"></div>
+              <div class="metric-tabs qym-segmented" id="overview-metric-tabs" role="group" aria-label="Overview metric"></div>
               <div class="threshold-control" id="threshold-control" style="display: none;">
                 <span class="threshold-label">Pass if ≥</span>
                 <input type="range" id="threshold-slider" class="threshold-slider" min="0" max="100" step="5" value="80">
@@ -4574,15 +4556,15 @@
                 </select>
               </div>
               <div class="fp-gear-wrapper" id="fp-meta-fields" style="display:none;">
-                <div class="metadata-fields-selector" style="position:relative;">
-                  <button class="fp-gear-btn metadata-fields-btn" id="metadata-fields-btn" title="Choose which item metadata fields to display">&#9881; Item</button>
-                  <div class="metadata-fields-dropdown" id="metadata-fields-dropdown"></div>
+                <div class="metadata-fields-selector multi-select-wrapper" style="position:relative;">
+                  <button type="button" class="fp-gear-btn metadata-fields-btn multi-select-btn qym-control" id="metadata-fields-btn" title="Choose which item metadata fields to display">&#9881; Item</button>
+                  <div class="metadata-fields-dropdown qym-dropdown" id="metadata-fields-dropdown"></div>
                 </div>
               </div>
               <div class="fp-gear-wrapper" id="fp-metric-meta-fields" style="display:none;">
-                <div class="metadata-fields-selector" style="position:relative;">
-                  <button class="fp-gear-btn metadata-fields-btn" id="metric-meta-fields-btn" title="Choose which metric metadata fields to display">&#9881; Metric</button>
-                  <div class="metadata-fields-dropdown" id="metric-meta-fields-dropdown"></div>
+                <div class="metadata-fields-selector multi-select-wrapper" style="position:relative;">
+                  <button type="button" class="fp-gear-btn metadata-fields-btn multi-select-btn qym-control" id="metric-meta-fields-btn" title="Choose which metric metadata fields to display">&#9881; Metric</button>
+                  <div class="metadata-fields-dropdown qym-dropdown" id="metric-meta-fields-dropdown"></div>
                 </div>
               </div>
               <div class="fp-actions-spacer"></div>
@@ -5193,15 +5175,18 @@
         ];
 
         container.innerHTML = tabs.map(tab => `
-          <button class="compare-mode-tab ${state.activeCompareTab === tab.key ? 'active' : ''}" data-compare-tab="${tab.key}">
+          <button type="button" class="compare-mode-tab qym-segmented__option ${state.activeCompareTab === tab.key ? 'active' : ''}" data-compare-tab="${tab.key}" aria-pressed="${state.activeCompareTab === tab.key}">
             ${escapeHtml(tab.label)}
           </button>
         `).join('');
 
         container.querySelectorAll('[data-compare-tab]').forEach(btn => {
           btn.addEventListener('click', () => {
-            state.activeCompareTab = btn.dataset.compareTab || 'compare';
+            const nextTab = btn.dataset.compareTab || 'compare';
+            state.activeCompareTab = nextTab;
+            renderCompareModeTabs();
             applyCompareMode();
+            container.querySelector(`[data-compare-tab="${nextTab}"]`)?.focus({ preventScroll: true });
           });
         });
       }
@@ -5295,7 +5280,7 @@
         const band = (noise.halfWidth * 100).toFixed(1);
         const pv = noise.pValue !== null && noise.pValue !== undefined ? noise.pValue.toFixed(3) : '—';
         const tip = `Δ ${prefix}${(rounded * 100).toFixed(1)}% · noise band ±${band}% (95%) · p=${pv}`;
-        return `<span title="${escapeAttr(tip)}">${pill}<span class="sweep-stat-noise">noise ±${band}</span></span>`;
+        return `<span>${pill}<span class="sweep-stat-noise">noise ±${band}</span><button type="button" class="qym-help-marker" aria-label="Explain statistical noise" aria-expanded="false">i<span class="qym-help-tooltip" role="tooltip">${escapeHtml(tip)}</span></button></span>`;
       }
 
       // ── noise statistics (mirrors qym.core.reducers.noise_report) ──
@@ -5600,55 +5585,15 @@
       function estimatorLabelHtml(base, sym, reportK, k) {
         if (!reportK || reportK === k) return escapeHtml(`${base}${sym}${k}`);
         const tip = escapeAttr(estimatorTip(sym, reportK, k));
-        return `${escapeHtml(base)}<span class="est-atk">${escapeHtml(sym)}${reportK}</span><span class="stat-info-icon est-info-icon">i<span class="stat-info-tooltip">${tip}</span></span>`;
+        return `${escapeHtml(base)}<span class="est-atk">${escapeHtml(sym)}${reportK}</span><button type="button" class="stat-info-icon qym-help-marker est-info-icon" aria-label="Explain this estimate" aria-expanded="false">i<span class="stat-info-tooltip qym-help-tooltip" role="tooltip">${tip}</span></button>`;
       }
-
-
-      // Estimator help tooltip: the runs-list strip and sweep cards clip
-      // overflow (and shell ancestors trap position:fixed), so the tooltip
-      // renders in a body-level portal that nothing can clip.
-      (function initEstimatorTooltipPortal() {
-        let portal = null;
-        document.addEventListener('mouseover', (event) => {
-          const icon = event.target && event.target.closest
-            ? event.target.closest('.est-info-icon')
-            : null;
-          if (!icon) {
-            if (portal && (!event.target.closest || !event.target.closest('.est-tooltip-portal'))) {
-              portal.style.display = 'none';
-            }
-            return;
-          }
-          const source = icon.querySelector('.stat-info-tooltip');
-          if (!source) return;
-          if (!portal) {
-            portal = document.createElement('div');
-            portal.className = 'stat-info-tooltip est-tooltip-portal';
-            document.body.appendChild(portal);
-          }
-          portal.textContent = source.textContent;
-          const rect = icon.getBoundingClientRect();
-          portal.style.display = 'block';
-          portal.style.position = 'fixed';
-          const half = 110; // tooltip is 220px wide
-          const viewportWidth = document.documentElement.clientWidth || window.innerWidth;
-          const center = rect.left + rect.width / 2;
-          const left = viewportWidth > 2 * (half + 8)
-            ? Math.max(half + 8, Math.min(viewportWidth - half - 8, center))
-            : center;
-          portal.style.left = Math.round(left) + 'px';
-          portal.style.top = Math.round(rect.top - 8) + 'px';
-          portal.style.bottom = 'auto';
-          portal.style.transform = 'translate(-50%, -100%)';
-        });
-      })();
 
       function renderSweepStatCard(labelHtml, fromValue, toValue, deltaValue, noise) {
         const deltaClass = getNoiseDeltaClass(deltaValue, noise);
         return `
-          <div class="sweep-stat-card ${deltaClass}">
-            <div class="sweep-stat-label">${labelHtml}</div>
-            <div class="sweep-stat-values">
+          <div class="sweep-stat-card qym-stat-strip__item ${deltaClass}">
+            <div class="sweep-stat-label qym-stat-strip__label">${labelHtml}</div>
+            <div class="sweep-stat-values qym-stat-strip__value">
               <span class="sweep-stat-from">${formatSweepMetricValue(fromValue)}</span>
               <span class="sweep-stat-arrow">→</span>
               <span class="sweep-stat-to">${formatSweepMetricValue(toValue)}</span>
@@ -5682,7 +5627,7 @@
         }
         return `
           <div class="sweep-verdict ${cls}">
-            <span class="sweep-verdict-badge">${badge}</span>
+            <span class="sweep-verdict-badge qym-badge ${cls === 'positive' ? 'qym-badge--success' : (cls === 'negative' ? 'qym-badge--danger' : 'qym-badge--neutral')}">${badge}</span>
             <div>
               <div class="sweep-verdict-title">${escapeHtml(headline)}</div>
               <div class="sweep-verdict-sub">noise ±${band}% at 95% · ${pv} · ${entry.items} paired items · primary metric — other metrics below are context</div>
@@ -6251,19 +6196,25 @@
                   ${state.sweepMetadataKey === 'all' ? 'disabled' : ''}
                 >${escapeHtml(metadataValueButtonLabel)}</button>
                 <div class="multi-select-dropdown" id="sweep-metadata-values-dropdown">
-                  <div class="ms-actions">
-                    <button type="button" class="ms-action-btn" id="sweep-metadata-values-all">All</button>
-                    <button type="button" class="ms-action-btn" id="sweep-metadata-values-clear">Clear</button>
+                  <div class="model-search-box qym-dropdown__search">
+                    <input type="search" class="model-search-input qym-control qym-search" id="sweep-metadata-values-search" placeholder="Search values...">
+                  </div>
+                  <div class="ms-actions qym-dropdown__actions">
+                    <button type="button" class="ms-action-btn qym-dropdown__action" id="sweep-metadata-values-all">All</button>
+                    <button type="button" class="ms-action-btn qym-dropdown__action" id="sweep-metadata-values-clear">Clear</button>
                   </div>
                   ${metadataValues.map((value) => `
-                    <label class="multi-select-option" data-value="${escapeAttr(value)}">
-                      <input type="checkbox" value="${escapeAttr(value)}"${
-                        state.sweepMetadataMode === 'exclude'
-                          ? (Array.isArray(state.sweepMetadataValues) && state.sweepMetadataValues.includes(value) ? '' : ' checked')
-                          : (state.sweepMetadataValues === null || (Array.isArray(state.sweepMetadataValues) && state.sweepMetadataValues.includes(value)) ? ' checked' : '')
-                      }>
-                      <span>${escapeHtml(value)}</span>
-                    </label>
+                    <div class="multi-select-option qym-dropdown__option" data-value="${escapeAttr(value)}">
+                      <label class="ms-option-main">
+                        <input type="checkbox" value="${escapeAttr(value)}"${
+                          state.sweepMetadataMode === 'exclude'
+                            ? (Array.isArray(state.sweepMetadataValues) && state.sweepMetadataValues.includes(value) ? '' : ' checked')
+                            : (state.sweepMetadataValues === null || (Array.isArray(state.sweepMetadataValues) && state.sweepMetadataValues.includes(value)) ? ' checked' : '')
+                        }>
+                        <span>${escapeHtml(value)}</span>
+                      </label>
+                      <button type="button" class="ms-only-btn qym-dropdown__only" aria-label="Show only ${escapeAttr(value)}" title="Show only this option">Only</button>
+                    </div>
                   `).join('')}
                 </div>
               </div>
@@ -6285,7 +6236,7 @@
           ${presentation.items.length ? `
           <div>
             <div class="sweep-section-title">Cohort Metrics</div>
-            <div class="sweep-stat-grid">${statCards}</div>
+            <div class="sweep-stat-grid qym-stat-strip">${statCards}</div>
           </div>
 
           ${metadataBreakdownHtml}
@@ -6378,6 +6329,12 @@
           searchInput.addEventListener('input', (e) => {
             state.sweepSearchQuery = e.target.value || '';
             renderSweepView();
+            window.setTimeout(() => {
+              const replacement = el('sweep-search-input');
+              if (!replacement) return;
+              replacement.focus({ preventScroll: true });
+              replacement.setSelectionRange(replacement.value.length, replacement.value.length);
+            }, 0);
           });
         }
 
@@ -6400,6 +6357,16 @@
             metadataValuesDropdown.classList.toggle('open');
           });
 
+          const metadataValuesSearch = el('sweep-metadata-values-search');
+          if (metadataValuesSearch) {
+            metadataValuesSearch.addEventListener('input', () => {
+              const query = metadataValuesSearch.value.trim().toLowerCase();
+              metadataValuesDropdown.querySelectorAll('.multi-select-option').forEach(option => {
+                option.style.display = !query || (option.dataset.value || '').toLowerCase().includes(query) ? '' : 'none';
+              });
+            });
+          }
+
           metadataValuesDropdown.querySelectorAll('input[type="checkbox"]').forEach((checkbox) => {
             checkbox.addEventListener('change', () => {
               const checked = Array.from(metadataValuesDropdown.querySelectorAll('input[type="checkbox"]:checked'))
@@ -6421,6 +6388,21 @@
                 state.sweepMetadataValues = normalizeSweepMetadataValues(checked, metadataValues);
               }
               renderSweepView();
+              window.setTimeout(() => el('sweep-metadata-values-btn')?.focus({ preventScroll: true }), 0);
+            });
+          });
+
+          metadataValuesDropdown.querySelectorAll('.ms-only-btn').forEach((onlyBtn) => {
+            onlyBtn.addEventListener('click', (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              const option = onlyBtn.closest('.multi-select-option');
+              if (!option) return;
+              state.sweepMetadataMode = 'include';
+              state.sweepMetadataValues = [option.dataset.value];
+              state.sweepMetadataExclusiveValues = new Set();
+              renderSweepView();
+              window.setTimeout(() => el('sweep-metadata-values-btn')?.focus({ preventScroll: true }), 0);
             });
           });
 
@@ -6432,6 +6414,7 @@
               state.sweepMetadataValues = null;
               state.sweepMetadataExclusiveValues = new Set();
               renderSweepView();
+              window.setTimeout(() => el('sweep-metadata-values-btn')?.focus({ preventScroll: true }), 0);
             });
           }
 
@@ -6443,6 +6426,7 @@
               state.sweepMetadataValues = [];
               state.sweepMetadataExclusiveValues = new Set();
               renderSweepView();
+              window.setTimeout(() => el('sweep-metadata-values-btn')?.focus({ preventScroll: true }), 0);
             });
           }
 
@@ -7154,14 +7138,18 @@
           } else {
             tabsContainer.style.display = '';
             tabsContainer.innerHTML = state.allMetrics.map(metric =>
-              `<button class="metric-tab ${metric === state.selectedOverviewMetric ? 'active' : ''}" data-metric="${metric}">${metric}</button>`
+              `<button type="button" class="metric-tab qym-segmented__option ${metric === state.selectedOverviewMetric ? 'active' : ''}" data-metric="${metric}" aria-pressed="${metric === state.selectedOverviewMetric}">${metric}</button>`
             ).join('');
 
             tabsContainer.querySelectorAll('.metric-tab').forEach(tab => {
               tab.addEventListener('click', () => {
                 state.selectedOverviewMetric = tab.dataset.metric;
-                tabsContainer.querySelectorAll('.metric-tab').forEach(t => t.classList.remove('active'));
+                tabsContainer.querySelectorAll('.metric-tab').forEach(t => {
+                  t.classList.remove('active');
+                  t.setAttribute('aria-pressed', 'false');
+                });
                 tab.classList.add('active');
+                tab.setAttribute('aria-pressed', 'true');
                 updateThresholdControl();
                 renderComparisonStats();
                 renderMetadataBreakdown();
@@ -7828,7 +7816,7 @@
         for (const { key, count } of chipKeys) {
           const selected = state.selectedCategories.has(key);
           const displayName = key;
-          html += `<button class="category-chip${selected ? ' selected' : ''}" data-chip-key="${escapeAttr(key)}">${escapeHtml(displayName)} <span class="chip-count">${count}</span></button>`;
+          html += `<button class="category-chip qym-chip${selected ? ' selected' : ''}" data-chip-key="${escapeAttr(key)}" aria-pressed="${selected}">${escapeHtml(displayName)} <span class="chip-count qym-chip__count">${count}</span></button>`;
         }
         html += '</div>';
 
@@ -8040,7 +8028,7 @@
 
       // Helper to create info icon with tooltip
       function infoIcon(tooltip) {
-        return `<span class="stat-info-icon">i<span class="stat-info-tooltip">${tooltip}</span></span>`;
+        return `<button type="button" class="stat-info-icon qym-help-marker" aria-label="More information" aria-expanded="false">i<span class="stat-info-tooltip qym-help-tooltip" role="tooltip">${tooltip}</span></button>`;
       }
 
       // Helper to get color class based on percentage (0-1) - matches getSuccessClass thresholds
@@ -8139,81 +8127,81 @@
 
         const fmtN = window.QymMetrics.formatNumericValue;
         const statsRowHtml = isNumeric ? `
-          <div class="stats-row">
-            <div class="stat-box">
-              <div class="stat-title">Min ${infoIcon('The lowest individual value across all items and runs.')}</div>
-              <div class="stat-main">${fmtN(stats.allScoresMin)}</div>
+          <div class="stats-row qym-stat-strip">
+            <div class="stat-box qym-stat-strip__item">
+              <div class="stat-title qym-stat-strip__label">Min ${infoIcon('The lowest individual value across all items and runs.')}</div>
+              <div class="stat-main qym-stat-strip__value">${fmtN(stats.allScoresMin)}</div>
             </div>
 
-            <div class="stat-box">
-              <div class="stat-title">Avg ${infoIcon(tooltips.avgScore)}</div>
-              <div class="stat-main">${avgScoreDisplay}</div>
+            <div class="stat-box qym-stat-strip__item">
+              <div class="stat-title qym-stat-strip__label">Avg ${infoIcon(tooltips.avgScore)}</div>
+              <div class="stat-main qym-stat-strip__value">${avgScoreDisplay}</div>
             </div>
 
-            <div class="stat-box">
-              <div class="stat-title">Max ${infoIcon('The highest individual value across all items and runs.')}</div>
-              <div class="stat-main">${fmtN(stats.allScoresMax)}</div>
+            <div class="stat-box qym-stat-strip__item">
+              <div class="stat-title qym-stat-strip__label">Max ${infoIcon('The highest individual value across all items and runs.')}</div>
+              <div class="stat-main qym-stat-strip__value">${fmtN(stats.allScoresMax)}</div>
             </div>
 
-            <div class="stat-box">
-              <div class="stat-title">Total ${infoIcon('Sum of all values across all items and runs.')}</div>
-              <div class="stat-main" style="color:var(--accent-primary)">${fmtN(stats.allScoresTotal)}</div>
+            <div class="stat-box qym-stat-strip__item">
+              <div class="stat-title qym-stat-strip__label">Total ${infoIcon('Sum of all values across all items and runs.')}</div>
+              <div class="stat-main qym-stat-strip__value" style="color:var(--accent-primary)">${fmtN(stats.allScoresTotal)}</div>
             </div>
 
-            <div class="stat-box">
-              <div class="stat-title">Avg Latency ${infoIcon(tooltips.avgLatency)}</div>
-              <div class="stat-main">${formatLatency(stats.overallAvgLatency)}</div>
+            <div class="stat-box qym-stat-strip__item">
+              <div class="stat-title qym-stat-strip__label">Avg Latency ${infoIcon(tooltips.avgLatency)}</div>
+              <div class="stat-main qym-stat-strip__value">${formatLatency(stats.overallAvgLatency)}</div>
             </div>
 
-            <div class="stat-box">
-              <div class="stat-title">Errors ${infoIcon(tooltips.failedCount)}</div>
-              <div class="stat-main ${stats.failedCount > 0 ? 'score-1' : ''}">${stats.failedCount}</div>
+            <div class="stat-box qym-stat-strip__item">
+              <div class="stat-title qym-stat-strip__label">Errors ${infoIcon(tooltips.failedCount)}</div>
+              <div class="stat-main qym-stat-strip__value ${stats.failedCount > 0 ? 'score-1' : ''}">${stats.failedCount}</div>
             </div>
           </div>
         ` : `
-          <div class="stats-row">
-            <div class="stat-box">
-              <div class="stat-title">Pass@${K} ${infoIcon(tooltips.passAtK)}</div>
-              <div class="stat-main ${scoreColorClass(stats.passAtK / stats.totalCompared)}">${formatPercent(stats.passAtK / stats.totalCompared)}</div>
+          <div class="stats-row qym-stat-strip">
+            <div class="stat-box qym-stat-strip__item">
+              <div class="stat-title qym-stat-strip__label">Pass@${K} ${infoIcon(tooltips.passAtK)}</div>
+              <div class="stat-main qym-stat-strip__value ${scoreColorClass(stats.passAtK / stats.totalCompared)}">${formatPercent(stats.passAtK / stats.totalCompared)}</div>
             </div>
 
-            <div class="stat-box">
-              <div class="stat-title">Pass^${K} ${infoIcon(tooltips.passHatK)}</div>
-              <div class="stat-main ${scoreColorClass(stats.passHatK / stats.totalCompared)}">${formatPercent(stats.passHatK / stats.totalCompared)}</div>
+            <div class="stat-box qym-stat-strip__item">
+              <div class="stat-title qym-stat-strip__label">Pass^${K} ${infoIcon(tooltips.passHatK)}</div>
+              <div class="stat-main qym-stat-strip__value ${scoreColorClass(stats.passHatK / stats.totalCompared)}">${formatPercent(stats.passHatK / stats.totalCompared)}</div>
             </div>
 
-            <div class="stat-box">
-              <div class="stat-title">Max@${K} ${infoIcon(tooltips.maxAtK)}</div>
-              <div class="stat-main ${scoreColorClass(stats.maxAtK / stats.totalCompared)}">${formatPercent(stats.maxAtK / stats.totalCompared)}</div>
+            <div class="stat-box qym-stat-strip__item">
+              <div class="stat-title qym-stat-strip__label">Max@${K} ${infoIcon(tooltips.maxAtK)}</div>
+              <div class="stat-main qym-stat-strip__value ${scoreColorClass(stats.maxAtK / stats.totalCompared)}">${formatPercent(stats.maxAtK / stats.totalCompared)}</div>
             </div>
 
-            <div class="stat-box">
-              <div class="stat-title">Consistency ${infoIcon(tooltips.consistency)}</div>
+            <div class="stat-box qym-stat-strip__item">
+              <div class="stat-title qym-stat-strip__label">Consistency ${infoIcon(tooltips.consistency)}</div>
               ${stats.itemsWithMultipleRuns > 0
-                ? `<div class="stat-main ${scoreColorClass(stats.totalConsistencySum / stats.itemsWithMultipleRuns)}">${formatPercent(stats.totalConsistencySum / stats.itemsWithMultipleRuns)}</div>`
-                : `<div class="stat-main">NA</div>`}
+                ? `<div class="stat-main qym-stat-strip__value ${scoreColorClass(stats.totalConsistencySum / stats.itemsWithMultipleRuns)}">${formatPercent(stats.totalConsistencySum / stats.itemsWithMultipleRuns)}</div>`
+                : `<div class="stat-main qym-stat-strip__value">NA</div>`}
             </div>
 
-            <div class="stat-box">
-              <div class="stat-title">Reliability ${infoIcon(tooltips.reliability)}</div>
+            <div class="stat-box qym-stat-strip__item">
+              <div class="stat-title qym-stat-strip__label">Reliability ${infoIcon(tooltips.reliability)}</div>
               ${stats.itemsWithAtLeastOnePass > 0
-                ? `<div class="stat-main ${scoreColorClass(stats.totalReliabilitySum / stats.itemsWithAtLeastOnePass)}">${formatPercent(stats.totalReliabilitySum / stats.itemsWithAtLeastOnePass)}</div>`
-                : `<div class="stat-main">NA</div>`}
+                ? `<div class="stat-main qym-stat-strip__value ${scoreColorClass(stats.totalReliabilitySum / stats.itemsWithAtLeastOnePass)}">${formatPercent(stats.totalReliabilitySum / stats.itemsWithAtLeastOnePass)}</div>`
+                : `<div class="stat-main qym-stat-strip__value">NA</div>`}
             </div>
 
-            <div class="stat-box">
-              <div class="stat-title">Avg Score ${infoIcon(tooltips.avgScore)}</div>
-              <div class="stat-main ${scoreColorClass(stats.overallAvgScore)}">${formatPercent(stats.overallAvgScore)}</div>
+            <div class="stat-box qym-stat-strip__item">
+              <div class="stat-title qym-stat-strip__label">Avg Score ${infoIcon(tooltips.avgScore)}</div>
+              <div class="stat-main qym-stat-strip__value ${scoreColorClass(stats.overallAvgScore)}">${formatPercent(stats.overallAvgScore)}</div>
             </div>
 
-            <div class="stat-box">
-              <div class="stat-title">Avg Latency ${infoIcon(tooltips.avgLatency)}</div>
-              <div class="stat-main">${formatLatency(stats.overallAvgLatency)}</div>
+            <div class="stat-box qym-stat-strip__item">
+              <div class="stat-title qym-stat-strip__label">Avg Latency ${infoIcon(tooltips.avgLatency)}</div>
+              <div class="stat-main qym-stat-strip__value">${formatLatency(stats.overallAvgLatency)}</div>
             </div>
 
-            <div class="stat-box">
-              <div class="stat-title">Errors ${infoIcon(tooltips.failedCount)}</div>
-              <div class="stat-main ${stats.failedCount > 0 ? 'score-1' : ''}">${stats.failedCount}</div>
+            <div class="stat-box qym-stat-strip__item">
+              <div class="stat-title qym-stat-strip__label">Errors ${infoIcon(tooltips.failedCount)}</div>
+              <div class="stat-main qym-stat-strip__value ${stats.failedCount > 0 ? 'score-1' : ''}">${stats.failedCount}</div>
             </div>
           </div>
         `;
@@ -8306,11 +8294,11 @@
           const langfuseUrl = buildCompareLangfuseProjectUrl(info);
           const stats = run.snapshot?.stats || {};
           const summaryItem = (kind, label, valueHtml, iconHtml) => `
-            <div class="compare-run-summary-pill ${kind}">
+            <div class="compare-run-summary-pill qym-stat-strip__item ${kind}">
               <span class="compare-run-summary-icon">${iconHtml}</span>
               <span class="compare-run-summary-text">
-                <span class="compare-run-summary-value">${valueHtml}</span>
-                <span class="compare-run-summary-label">${label}</span>
+                <span class="compare-run-summary-label qym-stat-strip__label">${label}</span>
+                <span class="compare-run-summary-value qym-stat-strip__value">${valueHtml}</span>
               </span>
             </div>`;
 
@@ -8338,7 +8326,7 @@
             metaItem('Version', versionText, { mono: true, nowrap: true }),
           ].filter(Boolean).join('');
           const summaryHtml =
-            '<div class="compare-run-summary-strip">' +
+            '<div class="compare-run-summary-strip qym-stat-strip">' +
               summaryItem('total', 'Items', String(stats.total || 0), '<svg viewBox="0 0 24 24"><path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h10"/></svg>') +
               summaryItem('completed', 'Completed', String(stats.completed || 0), '<svg viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></svg>') +
               summaryItem('errors', 'Errors', String(stats.failed || 0), '<svg viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>') +
@@ -8369,7 +8357,7 @@
                   </div>
                 </div>
                 <div class="compare-run-actions">
-                  <div class="compare-run-status ${statusClass}">
+                  <div class="compare-run-status qym-badge ${statusClass}">
                     <span class="compare-run-status-dot"></span>${statusText}
                   </div>
                   ${langfuseUrl ? `<a href="${escapeAttr(langfuseUrl)}" target="_blank" rel="noopener" class="compare-run-link langfuse">Langfuse &#8599;</a>` : ''}
@@ -9624,7 +9612,7 @@
               }
             }
             const statusIndicator = pfClass
-              ? `<div class="status-indicator"><div class="status-dot ${pfClass}"></div><span class="status-label ${pfClass}">${pfClass === 'pass' ? 'Pass' : 'Fail'}</span></div>`
+              ? `<div class="status-indicator qym-badge ${pfClass === 'pass' ? 'qym-badge--success' : 'qym-badge--danger'}"><div class="status-dot ${pfClass}"></div><span class="status-label ${pfClass}">${pfClass === 'pass' ? 'Pass' : 'Fail'}</span></div>`
               : '';
 
             // Root cause + Solution badges + feedback (only for failed items)
@@ -9658,12 +9646,12 @@
               let rcCategoryBadge = '';
               if (rowRc) {
                 const aiClass = isAi ? ' ai-suggested' : '';
-                let confidenceDot = '';
-                const aiIcon = isAi ? '<span class="ai-indicator" title="AI suggested">\uD83E\uDD16</span>' : '';
-                if (isAi && rowRcConfidence != null) {
-                  const confColor = rowRcConfidence >= 0.8 ? '#22c55e' : rowRcConfidence >= 0.5 ? '#eab308' : '#ef4444';
-                  confidenceDot = `<span class="confidence-dot" style="background:${confColor};" title="Confidence: ${Math.round(rowRcConfidence * 100)}%"></span>`;
-                }
+              let confidenceDot = '';
+              const aiIcon = isAi ? '<span class="ai-indicator" title="AI suggested">\uD83E\uDD16</span>' : '';
+              if (isAi && rowRcConfidence != null) {
+                  const confidencePct = Math.round(rowRcConfidence * 100);
+                  confidenceDot = `<button type="button" class="qym-help-marker" aria-label="AI confidence ${confidencePct}%" aria-expanded="false">i<span class="qym-help-tooltip" role="tooltip">AI confidence: ${confidencePct}%</span></button>`;
+              }
                 rcCategoryBadge = `<span class="meta-badge badge-root-cause${aiClass}" data-rc-item="${escapeAttr(itemId)}" data-rc-run-idx="${runIdx}" style="border-color: ${rcColor}40; color: ${rcColor}; background: ${rcColor}15;max-width:100%;box-sizing:border-box;display:inline-flex;" title="Category: ${escapeAttr(rowRc)}. Click to change.">${aiIcon}${escapeHtml(rowRc)}${confidenceDot}</span>`;
               } else if (!itemPassed) {
                 rcCategoryBadge = `<button class="root-cause-assign-btn rc-category-assign" data-rc-item="${escapeAttr(itemId)}" data-rc-run-idx="${runIdx}" title="Assign root cause category"><span class="badge-icon">+</span>Category</button>`;
@@ -9698,7 +9686,7 @@
 
               const detailGroup = rcDetailBadge ? `<div class="rc-badge-group" style="max-width:100%;"><span class="rc-sol-label rc-label">\u26A0 ROOT CAUSE</span>${rcDetailBadge}</div>` : '';
               const catGroup = rcCategoryBadge ? `<div class="rc-badge-group" style="max-width:100%;"><span class="rc-sol-label rc-label">\uD83D\uDCC2 CATEGORY</span>${rcCategoryBadge}</div>` : '';
-              const reviewStatusHtml = reviewStatus === 'approved' ? '<div class="rc-status-pill approved">Approved</div>' : '';
+              const reviewStatusHtml = reviewStatus === 'approved' ? '<div class="rc-status-pill qym-badge approved">Approved</div>' : '';
               const solSep = solBadgeHtml ? '<div class="rc-badges-sep"></div>' : '';
               rootCauseHtml = `<div class="rc-sol-row">${reviewStatusHtml}<div class="rc-badges-row">${detailGroup}${catGroup}${solSep}${solBadgeHtml}</div>${feedbackHtml}</div>`;
             }
@@ -10439,7 +10427,7 @@
         }
 
         html += '<div class="rc-divider"></div>';
-        html += `<div class="rc-custom-input"><input type="text" placeholder="Custom cause..." /><button>Add</button></div>`;
+        html += `<div class="rc-custom-input"><input class="qym-control qym-input" type="text" placeholder="Custom cause..." /><button class="qym-inline-action">Add</button></div>`;
 
         dropdown.innerHTML = html;
 
@@ -10586,7 +10574,7 @@
           }
         }
         html += '<div class="rc-divider"></div>';
-        html += '<div class="rc-custom-input"><input type="text" placeholder="Describe the specific issue..." value="' + escapeAttr(currentDetail) + '" /><button>Save</button></div>';
+        html += '<div class="rc-custom-input"><input class="qym-control qym-input" type="text" placeholder="Describe the specific issue..." value="' + escapeAttr(currentDetail) + '" /><button class="qym-inline-action">Save</button></div>';
         dropdown.innerHTML = html;
 
         document.body.appendChild(dropdown);
@@ -10727,7 +10715,7 @@
           html += '<div class="rc-option ' + (opt === currentSol ? 'active' : '') + '" data-sol-value="' + escapeAttr(opt) + '"><span class="rc-dot" style="background:' + color + ';"></span> ' + escapeHtml(opt) + '</div>';
         }
         html += '<div class="rc-divider"></div>';
-        html += '<div class="rc-custom-input"><input type="text" placeholder="Custom solution..." /><button>Add</button></div>';
+        html += '<div class="rc-custom-input"><input class="qym-control qym-input" type="text" placeholder="Custom solution..." /><button class="qym-inline-action">Add</button></div>';
         dropdown.innerHTML = html;
 
         document.body.appendChild(dropdown);
@@ -11366,6 +11354,7 @@
       function buildMultiselectOptions(category, values) {
         const dropdown = el(category + '-ms-dropdown');
         if (!dropdown) return;
+        const searchValue = dropdown.querySelector('[data-ms-search]')?.value || '';
 
         // Count unique items per value (from first run to avoid double-counting)
         const itemCounts = {};
@@ -11407,27 +11396,49 @@
               if (anyMissingRc) noRcCount++;
             }
           }
-          extraOptions = `<label class="multi-select-option" data-value="__none__">
-            <input type="checkbox" data-cat="${escapeAttr(category)}" data-val="__none__" />
-            <span style="font-style:italic;">(No Root Cause)</span>
-            <span class="option-count">${noRcCount}</span>
-          </label>
-          <div style="height:1px;background:var(--border-subtle);margin:2px 0;"></div>`;
+          const noRcHidden = searchValue && !'(no root cause)'.includes(searchValue.toLowerCase()) ? ' style="display:none"' : '';
+          extraOptions = `<div class="multi-select-option qym-dropdown__option is-empty-option" data-value="__none__"${noRcHidden}>
+            <label class="ms-option-main">
+              <input type="checkbox" data-cat="${escapeAttr(category)}" data-val="__none__" />
+              <span style="font-style:italic;">(No Root Cause)</span>
+              <span class="option-count">${noRcCount}</span>
+            </label>
+            <button type="button" class="ms-only-btn qym-dropdown__only" aria-label="Show only items without a root cause" title="Show only this option">Only</button>
+          </div>`;
         }
 
-        let html = `<div class="ms-actions">
-          <button class="ms-action-btn" data-action="all" data-cat="${escapeAttr(category)}">Select All</button>
-          <button class="ms-action-btn" data-action="none" data-cat="${escapeAttr(category)}">None</button>
+        let html = `<div class="model-search-box qym-dropdown__search">
+          <input type="search" class="model-search-input qym-control qym-search" data-ms-search placeholder="Search options..." value="${escapeAttr(searchValue)}" />
+        </div>
+        <div class="ms-actions qym-dropdown__actions">
+          <button class="ms-action-btn qym-dropdown__action" data-action="all" data-cat="${escapeAttr(category)}">Select All</button>
+          <button class="ms-action-btn qym-dropdown__action" data-action="none" data-cat="${escapeAttr(category)}">None</button>
         </div>`;
-        html += extraOptions + values.map(v =>
-          `<label class="multi-select-option" data-value="${escapeAttr(v)}">
-            <input type="checkbox" data-cat="${escapeAttr(category)}" data-val="${escapeAttr(v)}" />
-            <span>${escapeHtml(getCatOptionLabel(category, v))}</span>
-            <span class="option-count">${itemCounts[v] || 0}</span>
-          </label>`
-        ).join('');
+        html += extraOptions + values.map(v => {
+          const label = getCatOptionLabel(category, v);
+          const hidden = searchValue && !label.toLowerCase().includes(searchValue.toLowerCase()) ? ' style="display:none"' : '';
+          return `<div class="multi-select-option qym-dropdown__option" data-value="${escapeAttr(v)}"${hidden}>
+            <label class="ms-option-main">
+              <input type="checkbox" data-cat="${escapeAttr(category)}" data-val="${escapeAttr(v)}" />
+              <span>${escapeHtml(label)}</span>
+              <span class="option-count">${itemCounts[v] || 0}</span>
+            </label>
+            <button type="button" class="ms-only-btn qym-dropdown__only" aria-label="Show only ${escapeAttr(label)}" title="Show only this option">Only</button>
+          </div>`;
+        }).join('');
 
         dropdown.innerHTML = html;
+
+        const searchInput = dropdown.querySelector('[data-ms-search]');
+        if (searchInput) {
+          searchInput.addEventListener('input', () => {
+            const query = searchInput.value.trim().toLowerCase();
+            dropdown.querySelectorAll('.multi-select-option').forEach(option => {
+              const label = getCatOptionLabel(category, option.dataset.value || '');
+              option.style.display = !query || label.toLowerCase().includes(query) ? '' : 'none';
+            });
+          });
+        }
 
         // Wire up option clicks
         dropdown.querySelectorAll('.multi-select-option input[type="checkbox"]').forEach(cb => {
@@ -11472,6 +11483,20 @@
               }
               if (filterArr.length === 0) setCatFilter(category, null);
             }
+            syncMultiselectUI(category);
+            state.page = 1;
+            renderItems();
+          });
+        });
+
+        dropdown.querySelectorAll('.ms-only-btn').forEach(btn => {
+          btn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const option = btn.closest('.multi-select-option');
+            if (!option) return;
+            if (category === 'domain') state.domainExclusive.clear();
+            setCatFilter(category, [option.dataset.value], 'include');
             syncMultiselectUI(category);
             state.page = 1;
             renderItems();
@@ -11669,39 +11694,87 @@
         if (mmDd && !mmDd.contains(e.target) && e.target !== mmBtn) mmDd.classList.remove('open');
       });
 
-      function populateMetadataFieldsDropdown() {
-        const dropdown = el('metadata-fields-dropdown');
-        if (!dropdown || state.allMetadataKeys.length === 0) {
-          if (dropdown) dropdown.innerHTML = '<div style="padding:4px;color:var(--text-muted);font-size:var(--font-xs);">No metadata fields found</div>';
+      function populateFieldVisibilityDropdown({ dropdownId, keys, visibility, labelFor, defaultVisible, emptyMessage }) {
+        const dropdown = el(dropdownId);
+        if (!dropdown) return;
+        const searchValue = dropdown.querySelector('[data-field-search]')?.value || '';
+        if (!keys.length) {
+          dropdown.innerHTML = `<div class="qym-dropdown__option">${escapeHtml(emptyMessage)}</div>`;
           return;
         }
-        dropdown.innerHTML = state.allMetadataKeys.map(k => {
-          const checked = state.visibleMetadataFields[k] ? 'checked' : '';
-          return `<label><input type="checkbox" ${checked} data-meta-key="${escapeAttr(k)}" /> ${escapeHtml(k)}</label>`;
+        const optionsHtml = keys.map(key => {
+          const label = labelFor(key);
+          const checked = defaultVisible(key) ? ' checked' : '';
+          const hidden = searchValue && !label.toLowerCase().includes(searchValue.toLowerCase()) ? ' style="display:none"' : '';
+          return `<div class="qym-dropdown__option multi-select-option" data-field-key="${escapeAttr(key)}" data-search-label="${escapeAttr(label)}"${hidden}>
+            <label class="ms-option-main"><input type="checkbox" aria-label="${escapeAttr(label)}"${checked} /><span>${escapeHtml(label)}</span></label>
+            <button type="button" class="qym-dropdown__only ms-only-btn" aria-label="Show only ${escapeAttr(label)}">Only</button>
+          </div>`;
         }).join('');
-        dropdown.querySelectorAll('input[type="checkbox"]').forEach(cb => {
-          cb.addEventListener('change', () => {
-            state.visibleMetadataFields[cb.dataset.metaKey] = cb.checked;
+        dropdown.innerHTML = `
+          <div class="qym-dropdown__search model-search-box"><input type="search" class="qym-control qym-search model-search-input" data-field-search placeholder="Search fields..." value="${escapeAttr(searchValue)}" /></div>
+          <div class="qym-dropdown__actions ms-actions"><button type="button" class="qym-dropdown__action ms-action-btn" data-fields-action="all">Select All</button><button type="button" class="qym-dropdown__action ms-action-btn" data-fields-action="none">None</button></div>
+          ${optionsHtml}`;
+
+        const syncChecks = () => {
+          dropdown.querySelectorAll('[data-field-key]').forEach(option => {
+            const input = option.querySelector('input[type="checkbox"]');
+            if (input) input.checked = defaultVisible(option.dataset.fieldKey);
+          });
+        };
+        dropdown.querySelector('[data-field-search]')?.addEventListener('input', event => {
+          const query = event.target.value.trim().toLowerCase();
+          dropdown.querySelectorAll('[data-field-key]').forEach(option => {
+            option.style.display = !query || (option.dataset.searchLabel || '').toLowerCase().includes(query) ? '' : 'none';
+          });
+        });
+        dropdown.querySelectorAll('[data-field-key] input[type="checkbox"]').forEach(input => {
+          input.addEventListener('change', () => {
+            const option = input.closest('[data-field-key]');
+            visibility[option.dataset.fieldKey] = input.checked;
+            renderItems();
+          });
+        });
+        dropdown.querySelectorAll('[data-fields-action]').forEach(button => {
+          button.addEventListener('click', event => {
+            event.stopPropagation();
+            const visible = button.dataset.fieldsAction === 'all';
+            keys.forEach(key => { visibility[key] = visible; });
+            syncChecks();
+            renderItems();
+          });
+        });
+        dropdown.querySelectorAll('.ms-only-btn').forEach(button => {
+          button.addEventListener('click', event => {
+            event.preventDefault();
+            event.stopPropagation();
+            const selected = button.closest('[data-field-key]')?.dataset.fieldKey;
+            keys.forEach(key => { visibility[key] = key === selected; });
+            syncChecks();
             renderItems();
           });
         });
       }
 
+      function populateMetadataFieldsDropdown() {
+        populateFieldVisibilityDropdown({
+          dropdownId: 'metadata-fields-dropdown',
+          keys: state.allMetadataKeys,
+          visibility: state.visibleMetadataFields,
+          labelFor: key => key,
+          defaultVisible: key => !!state.visibleMetadataFields[key],
+          emptyMessage: 'No metadata fields found',
+        });
+      }
+
       function populateMetricMetaFieldsDropdown() {
-        const dropdown = el('metric-meta-fields-dropdown');
-        if (!dropdown || state.allMetricMetaKeys.length === 0) {
-          if (dropdown) dropdown.innerHTML = '<div style="padding:4px;color:var(--text-muted);font-size:var(--font-xs);">No metric metadata fields found</div>';
-          return;
-        }
-        dropdown.innerHTML = state.allMetricMetaKeys.map(k => {
-          const checked = state.visibleMetricMetaFields[k] !== false ? 'checked' : '';
-          return `<label><input type="checkbox" ${checked} data-mm-key="${escapeAttr(k)}" /> ${escapeHtml(formatFieldName(k))}</label>`;
-        }).join('');
-        dropdown.querySelectorAll('input[type="checkbox"]').forEach(cb => {
-          cb.addEventListener('change', () => {
-            state.visibleMetricMetaFields[cb.dataset.mmKey] = cb.checked;
-            renderItems();
-          });
+        populateFieldVisibilityDropdown({
+          dropdownId: 'metric-meta-fields-dropdown',
+          keys: state.allMetricMetaKeys,
+          visibility: state.visibleMetricMetaFields,
+          labelFor: formatFieldName,
+          defaultVisible: key => state.visibleMetricMetaFields[key] !== false,
+          emptyMessage: 'No metric metadata fields found',
         });
       }
 
@@ -12058,13 +12131,13 @@
       }
 
       async function inlineCompareExportAssets(html) {
-        const stylesheetTags = Array.from(html.matchAll(/<link\s+rel="stylesheet"\s+href="((?:\.\/|\/)static\/(?:dashboard|shell)\.css(?:\?[^"]*)?)"\s*>/g));
+        const stylesheetTags = Array.from(html.matchAll(/<link\s+rel="stylesheet"\s+href="((?:\.\/|\/)static\/(?:dashboard|shell|ui_components)\.css(?:\?[^"]*)?)"\s*>/g));
         for (const match of stylesheetTags) {
           const css = await fetchStaticTextForExport(match[1]);
           html = html.replace(match[0], () => '<style>\n' + css + '\n</style>');
         }
 
-        const scriptTags = Array.from(html.matchAll(/<script\s+src="((?:\.\/|\/)static\/(?:metrics|trace_viewer)\.js(?:\?[^"]*)?)"><\/script>/g));
+        const scriptTags = Array.from(html.matchAll(/<script\s+(?:defer\s+)?src="((?:\.\/|\/)static\/(?:metrics|trace_viewer|ui_components)\.js(?:\?[^"]*)?)"><\/script>/g));
         for (const match of scriptTags) {
           const js = await fetchStaticTextForExport(match[1]);
           html = html.replace(match[0], () => '<script>\n' + escapeInlineScriptContent(js) + '\n</' + 'script>');

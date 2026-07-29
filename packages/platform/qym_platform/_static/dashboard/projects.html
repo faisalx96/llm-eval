@@ -60,6 +60,8 @@
     .empty-state h2 { font-size: var(--font-lg); margin-bottom: var(--space-sm); color: var(--text-primary); }
 
   </style>
+  <link rel="stylesheet" href="/static/ui_components.css">
+  <script defer src="/static/ui_components.js"></script>
 </head>
 <body>
   <main class="projects-page">
@@ -149,7 +151,7 @@
           return `<a class="project-card" href="${(window.__QYM_ROOT_PATH__ || '').replace(/\/$/, '')}/projects/${encodeURIComponent(p.slug)}">
             <div class="project-card-top">
               ${window.QymShell && QymShell.identiconHTML ? QymShell.identiconHTML(p.slug, { cell: 10, gap: 3 }) : ''}
-              <span class="role-badge ${roleClass}">${esc(p.role || 'MEMBER')}</span>
+              <span class="role-badge qym-badge ${roleClass}">${esc(p.role || 'MEMBER')}</span>
             </div>
             <div>
               <div class="project-card-name">${esc(p.name)}</div>

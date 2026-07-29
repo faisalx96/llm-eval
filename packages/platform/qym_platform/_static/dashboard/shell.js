@@ -1159,6 +1159,7 @@
         if (userPopover) userPopover.classList.remove('open');
       }
     });
+
   }
 
   // ══════════════════════════════════════════════════

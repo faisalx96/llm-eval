@@ -96,6 +96,8 @@
       animation: spin 0.7s linear infinite;
     }
   </style>
+  <link rel="stylesheet" href="/static/ui_components.css">
+  <script defer src="/static/ui_components.js"></script>
 </head>
 <body>
   <main class="settings-page">
@@ -104,16 +106,16 @@
       <p id="project-subtitle">Manage members, API keys, and integrations for this project.</p>
     </div>
 
-    <div class="settings-tabs">
-      <button class="settings-tab active" data-tab="general">General</button>
-      <button class="settings-tab" data-tab="members">Members</button>
-      <button class="settings-tab" data-tab="apikeys">API Keys</button>
-      <button class="settings-tab" data-tab="llm">LLM Connections</button>
-      <button class="settings-tab" data-tab="danger">Danger Zone</button>
+    <div class="settings-tabs qym-tabs" role="tablist" aria-label="Project settings sections">
+      <button type="button" role="tab" id="settings-tab-general" class="settings-tab qym-tabs__tab active" data-tab="general" aria-selected="true" aria-controls="panel-general">General</button>
+      <button type="button" role="tab" id="settings-tab-members" class="settings-tab qym-tabs__tab" data-tab="members" aria-selected="false" aria-controls="panel-members">Members</button>
+      <button type="button" role="tab" id="settings-tab-apikeys" class="settings-tab qym-tabs__tab" data-tab="apikeys" aria-selected="false" aria-controls="panel-apikeys">API Keys</button>
+      <button type="button" role="tab" id="settings-tab-llm" class="settings-tab qym-tabs__tab" data-tab="llm" aria-selected="false" aria-controls="panel-llm">LLM Connections</button>
+      <button type="button" role="tab" id="settings-tab-danger" class="settings-tab qym-tabs__tab" data-tab="danger" aria-selected="false" aria-controls="panel-danger">Danger Zone</button>
     </div>
 
     <!-- General -->
-    <div class="settings-panel active" id="panel-general">
+    <div class="settings-panel active" id="panel-general" role="tabpanel" aria-labelledby="settings-tab-general">
       <div class="card">
         <div class="card-header"><div><div class="card-title">Project Details</div><div class="card-subtitle">Name, slug, and description</div></div></div>
         <div class="card-body">
@@ -134,7 +136,7 @@
     </div>
 
     <!-- Members -->
-    <div class="settings-panel" id="panel-members">
+    <div class="settings-panel" id="panel-members" role="tabpanel" aria-labelledby="settings-tab-members" hidden>
       <div class="card">
         <div class="card-header"><div><div class="card-title">Members</div><div class="card-subtitle" id="member-count-label"></div></div></div>
         <div class="add-bar" id="member-form">
@@ -143,7 +145,7 @@
             <option value="MEMBER">Member</option>
             <option value="MANAGER">Manager</option>
           </select>
-          <button class="btn btn-primary" id="add-member-btn" type="button" style="padding:var(--space-sm) var(--space-md);font-size:var(--font-sm);">Add</button>
+          <button class="btn btn-primary" id="add-member-btn" type="button" style="padding:0 var(--space-md);font-size:var(--font-sm);">Add</button>
         </div>
         <div class="note" id="member-note" style="padding:0 var(--space-lg);"></div>
         <div class="card-body flush">
@@ -156,14 +158,14 @@
     </div>
 
     <!-- API Keys -->
-    <div class="settings-panel" id="panel-apikeys">
+    <div class="settings-panel" id="panel-apikeys" role="tabpanel" aria-labelledby="settings-tab-apikeys" hidden>
       <div class="card">
         <div class="card-header">
           <div><div class="card-title">API Keys</div><div class="card-subtitle">Project-scoped keys for programmatic access</div></div>
         </div>
         <div class="add-bar">
           <input class="form-input" id="key-name" placeholder="Key name" />
-          <button class="btn btn-primary" id="create-key-btn" type="button" style="padding:var(--space-sm) var(--space-md);font-size:var(--font-sm);">Create Key</button>
+          <button class="btn btn-primary" id="create-key-btn" type="button" style="padding:0 var(--space-md);font-size:var(--font-sm);">Create Key</button>
         </div>
         <div class="card-body flush">
           <table class="data-table">
@@ -175,7 +177,7 @@
     </div>
 
     <!-- LLM Connections -->
-    <div class="settings-panel" id="panel-llm">
+    <div class="settings-panel" id="panel-llm" role="tabpanel" aria-labelledby="settings-tab-llm" hidden>
       <div class="card">
         <div class="card-header"><div><div class="card-title">LLM Connections</div><div class="card-subtitle">Providers for AI-assisted root cause analysis</div></div></div>
         <div class="card-body flush">
@@ -205,7 +207,7 @@
     </div>
 
     <!-- Danger Zone -->
-    <div class="settings-panel" id="panel-danger">
+    <div class="settings-panel" id="panel-danger" role="tabpanel" aria-labelledby="settings-tab-danger" hidden>
       <div class="card danger-card">
         <div class="card-header"><div><div class="card-title" style="color:var(--error);">Danger Zone</div><div class="card-subtitle">Irreversible actions — proceed with caution</div></div></div>
         <div class="card-body">
@@ -229,11 +231,21 @@
       // ── Tab switching ──
       document.querySelectorAll('.settings-tab').forEach(tab => {
         tab.addEventListener('click', () => {
-          document.querySelectorAll('.settings-tab').forEach(t => t.classList.remove('active'));
-          document.querySelectorAll('.settings-panel').forEach(p => p.classList.remove('active'));
+          document.querySelectorAll('.settings-tab').forEach(t => {
+            t.classList.remove('active');
+            t.setAttribute('aria-selected', 'false');
+          });
+          document.querySelectorAll('.settings-panel').forEach(p => {
+            p.classList.remove('active');
+            p.hidden = true;
+          });
           tab.classList.add('active');
+          tab.setAttribute('aria-selected', 'true');
           const panel = document.getElementById('panel-' + tab.dataset.tab);
-          if (panel) panel.classList.add('active');
+          if (panel) {
+            panel.classList.add('active');
+            panel.hidden = false;
+          }
         });
       });
 
@@ -320,7 +332,7 @@
           <tr>
             <td>
               <span style="font-weight:600;color:var(--text-primary)">${escapeHtml(c.name)}</span>
-              ${c.is_default ? '<span class="role-badge default" style="margin-left:10px">default</span>' : ''}
+              ${c.is_default ? '<span class="role-badge qym-badge default" style="margin-left:10px">default</span>' : ''}
             </td>
             <td><span style="font-family:var(--font-mono);color:var(--text-secondary)">${escapeHtml(c.llm_model || '—')}</span></td>
             <td><span style="font-family:var(--font-mono);display:inline-block;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle" title="${escapeHtml(c.llm_base_url || '')}">${escapeHtml(c.llm_base_url || '—')}</span></td>
@@ -370,7 +382,7 @@
             <td><span style="font-family:var(--font-mono);font-size:var(--font-sm);color:var(--text-muted)">${escapeHtml(m.email)}</span></td>
             <td>${canManageMembers()
               ? `<select class="form-select" data-member-role="${escapeHtml(m.user_id)}"><option value="MEMBER" ${m.role==='MEMBER'?'selected':''}>Member</option><option value="MANAGER" ${m.role==='MANAGER'?'selected':''}>Manager</option></select>`
-              : `<span class="role-badge ${m.role==='MANAGER'?'manager':'member'}">${escapeHtml(m.role)}</span>`}</td>
+              : `<span class="role-badge qym-badge ${m.role==='MANAGER'?'manager':'member'}">${escapeHtml(m.role)}</span>`}</td>
             <td style="font-size:var(--font-sm);color:var(--text-muted)">${ts(m.created_at)}</td>
             <td style="text-align:right">${canManageMembers() ? `<div class="row-actions" style="justify-content:flex-end"><button class="btn btn-secondary" style="padding:4px 10px;font-size:var(--font-sm)" data-member-save="${escapeHtml(m.user_id)}">Save</button><button class="btn btn-danger" style="padding:4px 10px;font-size:var(--font-sm)" data-member-remove="${escapeHtml(m.user_id)}">Remove</button></div>` : ''}</td>
           </tr>`).join('');
@@ -427,19 +439,28 @@
         document.getElementById('key-modal-backdrop').classList.remove('open');
         document.getElementById('key-modal-token').textContent = '';
       }
-      document.getElementById('key-modal-copy').addEventListener('click', async () => {
-        const token = document.getElementById('key-modal-token').textContent;
-        const btn = document.getElementById('key-modal-copy');
-        try {
-          await navigator.clipboard.writeText(token);
-          const prev = btn.textContent; btn.textContent = 'Copied'; setTimeout(() => { btn.textContent = prev; }, 1500);
-          if (window.QymShell && window.QymShell.toast) window.QymShell.toast('Key copied', 'success');
-        } catch (_) {
-          if (window.QymShell && window.QymShell.toast) window.QymShell.toast('Copy failed — select and copy manually', 'error');
-        }
-      });
-      document.getElementById('key-modal-done').addEventListener('click', closeKeyModal);
-      document.getElementById('key-modal-backdrop').addEventListener('click', e => { if (e.target.id === 'key-modal-backdrop') closeKeyModal(); });
+      function initKeyModalListeners() {
+        document.getElementById('key-modal-copy')?.addEventListener('click', async () => {
+          const token = document.getElementById('key-modal-token').textContent;
+          const btn = document.getElementById('key-modal-copy');
+          try {
+            await navigator.clipboard.writeText(token);
+            const prev = btn.textContent; btn.textContent = 'Copied'; setTimeout(() => { btn.textContent = prev; }, 1500);
+            if (window.QymShell && window.QymShell.toast) window.QymShell.toast('Key copied', 'success');
+          } catch (_) {
+            if (window.QymShell && window.QymShell.toast) window.QymShell.toast('Copy failed — select and copy manually', 'error');
+          }
+        });
+        document.getElementById('key-modal-done')?.addEventListener('click', closeKeyModal);
+        document.getElementById('key-modal-backdrop')?.addEventListener('click', e => {
+          if (e.target.id === 'key-modal-backdrop') closeKeyModal();
+        });
+      }
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initKeyModalListeners, { once: true });
+      } else {
+        initKeyModalListeners();
+      }
 
       document.getElementById('create-key-btn').addEventListener('click', async () => {
         const data = await fetchJson(`v1/projects/${state.project.id}/api-keys`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: document.getElementById('key-name').value.trim() || 'default' }) });

@@ -630,6 +630,8 @@
       .dsx-diff-field { grid-template-columns: 1fr; }
     }
   </style>
+  <link rel="stylesheet" href="/static/ui_components.css">
+  <script defer src="/static/ui_components.js"></script>
 </head>
 <body>
   <main class="dsx-page" id="dsx-root">
@@ -1967,7 +1969,13 @@
       const root = el('div', { className: 'dsx-page' });
       root.appendChild(buildHero());
       root.appendChild(buildTabs());
-      const tabContent = el('div', { id: 'dsx-tab-content', className: 'dsx-content tight', style: { padding: 0 } });
+      const tabContent = el('div', {
+        id: 'dsx-tab-content',
+        className: 'dsx-content tight',
+        role: 'tabpanel',
+        'aria-labelledby': 'dsx-detail-tab-' + state.tab,
+        style: { padding: 0 },
+      });
       root.appendChild(tabContent);
       // dispatch to tab
       renderTabContent(tabContent);
@@ -2100,8 +2108,12 @@
 
     function updateActiveTabs(){
       document.querySelectorAll('#dsx-detail-tabs .dsx-tab').forEach(btn => {
-        btn.classList.toggle('active', btn.dataset.tabKey === state.tab);
+        const isActive = btn.dataset.tabKey === state.tab;
+        btn.classList.toggle('active', isActive);
+        btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
       });
+      const panel = document.getElementById('dsx-tab-content');
+      if (panel) panel.setAttribute('aria-labelledby', 'dsx-detail-tab-' + state.tab);
     }
 
     function buildHero(){
@@ -2157,7 +2169,7 @@
         // bold content — mirroring the gutter layout of the popover rows.
         pill.appendChild(el('span', { className: v.name ? 'vver' : 'label' }, v.version));
         if (v.name) pill.appendChild(el('span', { className: 'vname', title: v.name + ' (' + v.version + ')' }, v.name));
-        pill.appendChild(el('span', { className: 'dsx-pill ' + versionStatePillClass(v) }, versionStateLabel(v)));
+        pill.appendChild(el('span', { className: 'dsx-pill qym-badge ' + versionStatePillClass(v) }, versionStateLabel(v)));
       }
       pill.addEventListener('click', e => { e.stopPropagation(); toggleVersionPopover(wrap, pill); });
       wrap.appendChild(pill);
@@ -2220,14 +2232,14 @@
         className: 'vname' + (v.name ? '' : ' unnamed'),
         title: v.name ? v.name + ' (' + v.version + ')' : v.version,
       }, v.name || '—'));
-      row.appendChild(el('span', { className: 'dsx-pill ' + versionStatePillClass(v) }, versionStateLabel(v)));
+      row.appendChild(el('span', { className: 'dsx-pill qym-badge ' + versionStatePillClass(v) }, versionStateLabel(v)));
       const when = relTime(v.published_at || v.created_at);
       row.appendChild(el('div', { className: 'vmeta' }, pluralize(v.item_count || 0, 'item') + ' · ' + pluralize(v.run_count || 0, 'run') + ' · ' + when));
       return row;
     }
 
     function buildTabs(){
-      const tabs = el('div', { className: 'dsx-tabs' });
+      const tabs = el('div', { className: 'dsx-tabs qym-tabs', role: 'tablist', 'aria-label': 'Dataset sections' });
       tabs.id = 'dsx-detail-tabs';
       // Counts intentionally omitted — the hero meta row already shows items / versions / runs.
       const tabSpec = [
@@ -2237,7 +2249,15 @@
         { key: 'settings', label: 'Settings' },
       ];
       tabSpec.forEach(t => {
-        const btn = el('button', { className: 'dsx-tab' + (state.tab === t.key ? ' active' : ''), dataset: { tabKey: t.key } });
+        const btn = el('button', {
+          className: 'dsx-tab qym-tabs__tab' + (state.tab === t.key ? ' active' : ''),
+          type: 'button',
+          role: 'tab',
+          id: 'dsx-detail-tab-' + t.key,
+          'aria-controls': 'dsx-tab-content',
+          'aria-selected': state.tab === t.key ? 'true' : 'false',
+          dataset: { tabKey: t.key },
+        });
         btn.appendChild(document.createTextNode(t.label));
         btn.addEventListener('click', () => navigate({ tab: t.key, item: null }));
         tabs.appendChild(btn);
@@ -2281,7 +2301,7 @@
       const searchInput = el('input', { className: 'dsx-itemsearch', type: 'text', placeholder: 'Search items...', value: state.search });
       left.appendChild(dsxSearchControl(searchInput));
       if (state.label) {
-        const labelChip = el('span', { className: 'dsx-pill info' });
+        const labelChip = el('span', { className: 'dsx-pill qym-badge info' });
         labelChip.textContent = 'label: ' + state.label;
         const x = el('button', { style: { background: 'transparent', border: 0, color: 'inherit', cursor: 'pointer', marginLeft: '4px' }, onclick: () => navigate({ label: '' }) }, '×');
         labelChip.appendChild(x);
@@ -2652,6 +2672,7 @@
     // -------------------------------------------------------------
     async function renderItemPage(){
       const root = document.getElementById('dsx-root');
+      const restoreTabFocus = !!document.activeElement?.closest?.('.dsx-item-tabs [role="tab"]');
       const renderSeq = ++itemPageRenderSeq;
       const hadContent = !!root.children.length;
       if (!hadContent) {
@@ -2733,19 +2754,37 @@
       header.appendChild(main);
       page.appendChild(header);
 
-      const tabs = el('div', { className: 'dsx-item-tabs' });
+      const tabs = el('div', { className: 'dsx-item-tabs qym-tabs', role: 'tablist', 'aria-label': 'Dataset item sections' });
       [['details', 'Details'], ['runs', 'Runs'], ['history', 'History']].forEach(([key, label]) => {
-        tabs.appendChild(el('button', { className: 'dsx-item-tab' + (itemTab === key ? ' active' : ''), onclick: () => navigate({ tab: key, item: item.item_id }) }, label));
+        tabs.appendChild(el('button', {
+          className: 'dsx-item-tab qym-tabs__tab' + (itemTab === key ? ' active' : ''),
+          type: 'button',
+          role: 'tab',
+          id: 'dsx-item-tab-' + key,
+          'aria-controls': 'dsx-item-content',
+          'aria-selected': itemTab === key ? 'true' : 'false',
+          onclick: () => navigate({ tab: key, item: item.item_id }),
+        }, label));
       });
       page.appendChild(tabs);
 
-      const content = el('div', { className: 'dsx-item-content' });
+      const content = el('div', {
+        className: 'dsx-item-content',
+        id: 'dsx-item-content',
+        role: 'tabpanel',
+        'aria-labelledby': 'dsx-item-tab-' + itemTab,
+      });
       page.appendChild(content);
       root.replaceChildren(page);
 
       if (itemTab === 'runs') renderItemPageRuns(content, item, v);
       else if (itemTab === 'history') renderItemPageHistory(content, item, v);
       else renderItemPageDetails(content, item, v);
+      if (restoreTabFocus) {
+        requestAnimationFrame(() => {
+          document.getElementById('dsx-item-tab-' + itemTab)?.focus({ preventScroll: true });
+        });
+      }
     }
 
     async function navigateItemPage(item, delta){
@@ -2889,13 +2928,13 @@
           host.appendChild(el('div', { className: 'dsx-empty' }, [el('h3', null, 'No runs yet'), el('p', null, 'This item has not been used in any run.')])); return;
         }
         const agg = resp.aggregates || {};
-        const aggWrap = el('div', { className: 'dsx-run-aggregate', style: { marginBottom: '12px' } });
+        const aggWrap = el('div', { className: 'dsx-run-aggregate qym-stat-strip', style: { marginBottom: '12px' } });
         [['Runs', agg.run_count], ['Errors', agg.error_count || 0], ['Avg latency', fmtSeconds(agg.avg_latency_ms)]].forEach(([label, value]) => {
-          aggWrap.appendChild(el('div', { className: 'tile' }, [el('div', { className: 'value' }, String(value == null ? '—' : value)), el('div', { className: 'label' }, label)]));
+          aggWrap.appendChild(el('div', { className: 'tile qym-stat-strip__item' }, [el('div', { className: 'label qym-stat-strip__label' }, label), el('div', { className: 'value qym-stat-strip__value' }, String(value == null ? '—' : value))]));
         });
         Object.keys(agg.metrics || {}).sort().forEach(metric => {
           const m = agg.metrics[metric] || {};
-          aggWrap.appendChild(el('div', { className: 'tile' }, [el('div', { className: 'value' }, metricScoreNode(m.avg)), el('div', { className: 'label' }, metric)]));
+          aggWrap.appendChild(el('div', { className: 'tile qym-stat-strip__item' }, [el('div', { className: 'label qym-stat-strip__label' }, metric), el('div', { className: 'value qym-stat-strip__value' }, metricScoreNode(m.avg))]));
         });
         host.appendChild(aggWrap);
 
@@ -3069,7 +3108,7 @@
           const entry = el('div', { className: 'dsx-history-entry' });
           const head = el('div', { className: 'dsx-history-head' });
           head.appendChild(el('span', null, [
-            el('span', { className: 'dsx-pill ' + (version.status === 'draft' ? 'warning' : 'published') }, version.version || 'version'),
+            el('span', { className: 'dsx-pill qym-badge ' + (version.status === 'draft' ? 'warning' : 'published') }, version.version || 'version'),
             document.createTextNode(' '),
             userLabelPill('Drafted By', version.created_by) || el('span', { className: 'actor' }, 'unknown'),
           ]));
@@ -3083,7 +3122,7 @@
             const rev = el('div', { className: 'dsx-history-entry', style: { marginLeft: '14px' } });
             const rh = el('div', { className: 'dsx-history-head' });
             rh.appendChild(el('span', null, [
-              el('span', { className: 'dsx-pill ' + (r.change_type === 'created' ? 'success' : r.change_type === 'deleted' ? 'remove' : 'info') }, r.change_type),
+              el('span', { className: 'dsx-pill qym-badge ' + (r.change_type === 'created' ? 'success' : r.change_type === 'deleted' ? 'remove' : 'info') }, r.change_type),
               document.createTextNode(' '),
               el('span', { className: 'rev' }, '#' + r.revision_number),
               document.createTextNode(' '),
@@ -3139,13 +3178,30 @@
       function render(host){
         host.classList.add('dsx-item-drawer-body');
         host.innerHTML = '';
-        const tabs = el('div', { className: 'dsx-drawer-tabs' });
+        const tabs = el('div', { className: 'dsx-drawer-tabs qym-tabs', role: 'tablist', 'aria-label': 'Item drawer sections' });
         ['details', 'runs', 'history'].forEach(t => {
-          const b = el('button', { className: 'dsx-drawer-tab' + (ddTab.current === t ? ' active' : ''), onclick: () => { ddTab.current = t; render(host); } }, t[0].toUpperCase() + t.slice(1));
+          const b = el('button', {
+            className: 'dsx-drawer-tab qym-tabs__tab' + (ddTab.current === t ? ' active' : ''),
+            type: 'button',
+            role: 'tab',
+            id: 'dsx-drawer-tab-' + t,
+            'aria-controls': 'dsx-drawer-panel',
+            'aria-selected': ddTab.current === t ? 'true' : 'false',
+            onclick: () => {
+              ddTab.current = t;
+              render(host);
+              document.getElementById('dsx-drawer-tab-' + t)?.focus({ preventScroll: true });
+            },
+          }, t[0].toUpperCase() + t.slice(1));
         tabs.appendChild(b);
         });
         host.appendChild(tabs);
-        const body = el('div', { className: 'dsx-drawer-section' });
+        const body = el('div', {
+          className: 'dsx-drawer-section',
+          id: 'dsx-drawer-panel',
+          role: 'tabpanel',
+          'aria-labelledby': 'dsx-drawer-tab-' + ddTab.current,
+        });
         if (ddTab.current === 'runs') body.classList.add('runs-compact');
         if (ddTab.current === 'details') renderDetails(body);
         else if (ddTab.current === 'runs') renderRuns(body);
@@ -3289,7 +3345,7 @@
           const runs = resp.runs || [];
           if (runs.length === 0) { body.appendChild(el('div', { className: 'dsx-empty' }, [el('h3', null, 'No runs yet'), el('p', null, 'This item has not been used in any run.')])); return; }
           const agg = resp.aggregates || {};
-          const aggWrap = el('div', { className: 'dsx-run-aggregate' });
+          const aggWrap = el('div', { className: 'dsx-run-aggregate qym-stat-strip' });
           const aggTiles = [
             ['Runs', agg.run_count],
             ['Errors', agg.error_count || 0],
@@ -3300,9 +3356,9 @@
             aggTiles.push(['Avg ' + metric, metricScoreNode(m.avg)]);
           });
           aggTiles.forEach(([label, value]) => {
-            aggWrap.appendChild(el('div', { className: 'tile' }, [
-              el('div', { className: 'value' }, value == null ? '—' : value),
-              el('div', { className: 'label' }, label),
+            aggWrap.appendChild(el('div', { className: 'tile qym-stat-strip__item' }, [
+              el('div', { className: 'label qym-stat-strip__label' }, label),
+              el('div', { className: 'value qym-stat-strip__value' }, value == null ? '—' : value),
             ]));
           });
           body.appendChild(aggWrap);
@@ -3390,7 +3446,7 @@
             const versionEntry = el('div', { className: 'dsx-history-entry' });
             const versionHead = el('div', { className: 'dsx-history-head' });
             versionHead.appendChild(el('span', null, [
-              el('span', { className: 'dsx-pill ' + (version.status === 'draft' ? 'warning' : 'published') }, version.version || 'version'),
+              el('span', { className: 'dsx-pill qym-badge ' + (version.status === 'draft' ? 'warning' : 'published') }, version.version || 'version'),
               document.createTextNode(' '),
               userLabelPill('Drafted By', version.created_by) || el('span', { className: 'actor' }, 'unknown'),
             ]));
@@ -3408,7 +3464,7 @@
               const entry = el('div', { className: 'dsx-history-entry', style: { marginLeft: '14px' } });
               const head = el('div', { className: 'dsx-history-head' });
               head.appendChild(el('span', null, [
-                el('span', { className: 'dsx-pill ' + (r.change_type === 'created' ? 'success' : r.change_type === 'deleted' ? 'remove' : 'info') }, r.change_type),
+                el('span', { className: 'dsx-pill qym-badge ' + (r.change_type === 'created' ? 'success' : r.change_type === 'deleted' ? 'remove' : 'info') }, r.change_type),
                 document.createTextNode(' '),
                 el('span', { className: 'rev' }, '#' + r.revision_number),
                 document.createTextNode(' '),
@@ -3573,7 +3629,7 @@
               title: runName,
               onclick: e => { e.stopPropagation(); navigateToApp(runDetailUrl(r.id)); },
             }, runName)));
-            tr.appendChild(el('td', { className: 'col-run-status' }, [el('span', { className: 'status-badge status-' + status, title: status }, status)]));
+            tr.appendChild(el('td', { className: 'col-run-status' }, [el('span', { className: 'status-badge qym-badge status-' + status, title: status }, status)]));
             tr.appendChild(el('td', { className: 'col-run-date' }, fullDateTime(r.started_at || r.completed_at)));
             tr.appendChild(el('td', { className: 'col-run-model' }, r.model || '—'));
             tr.appendChild(el('td', { className: 'col-latency', style: { fontFamily: 'var(--font-mono)' } }, fmtSeconds(r.avg_latency_ms)));
@@ -3666,17 +3722,17 @@
           // Same gutter pattern as the version picker: muted mono vN first, bold name after.
           row.appendChild(el('span', { style: { color: v.name ? 'var(--text-muted)' : 'var(--text-primary)', fontFamily: 'var(--font-mono)', fontWeight: v.name ? 500 : 650 } }, v.version));
           if (v.name) row.appendChild(el('span', { style: { fontWeight: 650 }, title: v.name + ' (' + v.version + ')' }, v.name));
-          row.appendChild(el('span', { className: 'dsx-pill ' + (v.status === 'draft' ? 'warning' : 'published') }, v.status));
-          (v.aliases || []).forEach(a => row.appendChild(el('span', { className: 'dsx-pill alias' + (a === 'production' ? ' prod' : '') }, a)));
+          row.appendChild(el('span', { className: 'dsx-pill qym-badge ' + (v.status === 'draft' ? 'warning' : 'published') }, v.status));
+          (v.aliases || []).forEach(a => row.appendChild(el('span', { className: 'dsx-pill qym-badge alias' + (a === 'production' ? ' prod' : '') }, a)));
           row.appendChild(el('span', { className: 'dsx-lineage-meta' }, '· ' + pluralize(v.item_count || 0, 'item') + ' · ' + pluralize(v.run_count || 0, 'run')));
           const deltas = v.change_counts || {};
           const deltaWrap = el('span', { className: 'dsx-lineage-deltas' });
           const added = Number(deltas.added || 0);
           const deleted = Number(deltas.deleted || 0);
           const modified = Number(deltas.modified || 0);
-          if (added) deltaWrap.appendChild(el('span', { className: 'dsx-pill add', title: 'Questions added relative to parent' }, '+' + added));
-          if (deleted) deltaWrap.appendChild(el('span', { className: 'dsx-pill remove', title: 'Questions deleted relative to parent' }, '-' + deleted));
-          if (modified) deltaWrap.appendChild(el('span', { className: 'dsx-pill warning', title: 'Questions modified relative to parent' }, '~' + modified));
+          if (added) deltaWrap.appendChild(el('span', { className: 'dsx-pill qym-badge add', title: 'Questions added relative to parent' }, '+' + added));
+          if (deleted) deltaWrap.appendChild(el('span', { className: 'dsx-pill qym-badge remove', title: 'Questions deleted relative to parent' }, '-' + deleted));
+          if (modified) deltaWrap.appendChild(el('span', { className: 'dsx-pill qym-badge warning', title: 'Questions modified relative to parent' }, '~' + modified));
           if (deltaWrap.childNodes.length) row.appendChild(deltaWrap);
           const publisherPill = userLabelPill('Published By', publishedByUser(v));
           if (publisherPill) row.appendChild(publisherPill);
@@ -4004,13 +4060,22 @@
         setTimeout(() => URL.revokeObjectURL(url), 1000);
       }
 
-      const summary = el('div', { className: 'dsx-compare-summary', id: 'dsx-cmp-summary' });
-      summary.innerHTML = '<div class="dsx-skeleton" style="width:200px;height:18px"></div>';
+      const summary = el('div', { className: 'dsx-compare-summary qym-stat-strip', id: 'dsx-cmp-summary' });
+      summary.innerHTML = '<div class="qym-stat-strip__item"><div class="dsx-skeleton" style="width:200px;height:18px"></div></div>';
       root.appendChild(summary);
 
-      const tabsEl = el('div', { className: 'dsx-compare-tabs', id: 'dsx-cmp-tabs' });
+      const tabsEl = el('div', {
+        className: 'dsx-compare-tabs qym-tabs',
+        id: 'dsx-cmp-tabs',
+        role: 'tablist',
+        'aria-label': 'Dataset comparison results',
+      });
       root.appendChild(tabsEl);
-      const listEl = el('div', { className: 'dsx-compare-list', id: 'dsx-cmp-list' });
+      const listEl = el('div', {
+        className: 'dsx-compare-list',
+        id: 'dsx-cmp-list',
+        role: 'tabpanel',
+      });
       root.appendChild(listEl);
 
       loadCompare();
@@ -4031,21 +4096,33 @@
         const s = resp.summary || {};
         summary.innerHTML = '';
         [{ key: 'added', label: 'Added', cls: 'add' }, { key: 'removed', label: 'Removed', cls: 'rem' }, { key: 'changed', label: 'Changed', cls: 'chg' }, { key: 'unchanged', label: 'Unchanged', cls: '' }].forEach(stat => {
-          const div = el('div', { className: 'stat ' + stat.cls });
-          div.appendChild(el('strong', null, String(s[stat.key] || 0)));
-          div.appendChild(el('span', null, stat.label));
+          const div = el('div', { className: 'stat qym-stat-strip__item ' + stat.cls });
+          div.appendChild(el('span', { className: 'qym-stat-strip__label' }, stat.label));
+          div.appendChild(el('strong', { className: 'qym-stat-strip__value' }, String(s[stat.key] || 0)));
           summary.appendChild(div);
         });
 
         // Tabs
         const tabKey = state._cmpTab || 'changed';
+        listEl.setAttribute('aria-labelledby', 'dsx-cmp-tab-' + tabKey);
         tabsEl.innerHTML = '';
         const tabSpec = [['changed', 'Changed', s.changed || 0], ['added', 'Added', s.added || 0], ['removed', 'Removed', s.removed || 0], ['unchanged', 'Unchanged', s.unchanged || 0]];
         tabSpec.forEach(([k, lbl, n]) => {
-          const b = el('button', { className: 'dsx-tab' + (tabKey === k ? ' active' : '') });
+        const b = el('button', {
+          className: 'dsx-tab qym-tabs__tab' + (tabKey === k ? ' active' : ''),
+          type: 'button',
+          role: 'tab',
+          id: 'dsx-cmp-tab-' + k,
+          'aria-controls': 'dsx-cmp-list',
+          'aria-selected': tabKey === k ? 'true' : 'false',
+        });
           b.appendChild(document.createTextNode(lbl));
           b.appendChild(el('span', { className: 'count' }, '· ' + n));
-          b.addEventListener('click', () => { state._cmpTab = k; renderCompareResult(resp); });
+          b.addEventListener('click', () => {
+            state._cmpTab = k;
+            renderCompareResult(resp);
+            document.getElementById('dsx-cmp-tab-' + k)?.focus({ preventScroll: true });
+          });
           tabsEl.appendChild(b);
         });
 
@@ -4071,7 +4148,7 @@
         const head = el('div', { className: 'dsx-diff-head' });
         const ident = compareItemIdentity(it);
         head.appendChild(el('span', null, [
-          el('span', { className: 'dsx-pill ' + kind }, kind === 'add' ? '+ added' : '− removed'),
+          el('span', { className: 'dsx-pill qym-badge ' + kind }, kind === 'add' ? '+ added' : '− removed'),
           document.createTextNode(' '),
           el('span', { className: 'dsx-diff-idlabel' }, ident.label),
           document.createTextNode(' '),

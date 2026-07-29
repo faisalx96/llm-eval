@@ -9,6 +9,8 @@
   <link rel="stylesheet" href="/static/shell.css">
   <script src="/static/auth.js"></script>
   <script src="/static/shell.js"></script>
+  <link rel="stylesheet" href="/static/ui_components.css">
+  <script defer src="/static/ui_components.js"></script>
 </head>
 <body>
   <!-- Command Bar -->
@@ -20,10 +22,10 @@
         <div class="multi-select-dropdown" id="metric-visibility-dropdown"></div>
       </div>
     </div>
-    <div class="quick-filters">
-      <button class="filter-btn active" data-filter="all">All</button>
-      <button class="filter-btn" data-filter="today">Today</button>
-      <button class="filter-btn" data-filter="week">7d</button>
+    <div class="quick-filters qym-segmented" role="group" aria-label="Time range">
+      <button class="filter-btn qym-segmented__option active" data-filter="all" aria-pressed="true">All</button>
+      <button class="filter-btn qym-segmented__option" data-filter="today" aria-pressed="false">Today</button>
+      <button class="filter-btn qym-segmented__option" data-filter="week" aria-pressed="false">7d</button>
     </div>
     <div class="command-bar-filter-row">
       <div class="filter-dropdowns">

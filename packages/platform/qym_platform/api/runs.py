@@ -1912,6 +1912,12 @@ def export_run_html(
     run_html = (dashboard_dir / "run.html").read_text(encoding="utf-8")
     css_content = (dashboard_dir / "dashboard.css").read_text(encoding="utf-8")
     shell_css_content = (dashboard_dir / "shell.css").read_text(encoding="utf-8")
+    ui_components_css_content = (dashboard_dir / "ui_components.css").read_text(
+        encoding="utf-8"
+    )
+    ui_components_js = (dashboard_dir / "ui_components.js").read_text(
+        encoding="utf-8"
+    )
     metrics_js = (dashboard_dir / "metrics.js").read_text(encoding="utf-8")
 
     # Inline dashboard.css
@@ -1927,11 +1933,23 @@ def export_run_html(
         run_html,
         count=1,
     )
+    run_html = re.sub(
+        r'\s*<link\s+rel="stylesheet"\s+href="/static/ui_components\.css(?:\?[^"]*)?">\s*',
+        lambda _match: f"<style>\n{ui_components_css_content}\n</style>",
+        run_html,
+        count=1,
+    )
 
     # Inline metrics.js
     run_html = re.sub(
         r'\s*<script\s+src="/static/metrics\.js(?:\?[^"]*)?"></script>\s*',
         lambda _match: f"<script>\n{metrics_js}\n</script>",
+        run_html,
+        count=1,
+    )
+    run_html = re.sub(
+        r'\s*<script\s+defer\s+src="/static/ui_components\.js(?:\?[^"]*)?"></script>\s*',
+        lambda _match: f"<script>\n{ui_components_js}\n</script>",
         run_html,
         count=1,
     )

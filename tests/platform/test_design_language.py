@@ -14,6 +14,8 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
 DASHBOARD_DIR = REPO / "packages" / "platform" / "qym_platform" / "_static" / "dashboard"
+UI_COMPONENTS = DASHBOARD_DIR / "ui_components.css"
+UI_BEHAVIOR = DASHBOARD_DIR / "ui_components.js"
 
 # Vendored files exempt from all rules (see DESIGN_LANGUAGE.md §5).
 # Design scratch mocks live in tmp/mockups/ (gitignored), outside this dir.
@@ -38,6 +40,12 @@ def _asset_files() -> list[Path]:
 
 def _hardcoded_sizes(text: str) -> list[str]:
     return FONT_SIZE_CSS.findall(text) + FONT_SIZE_JS.findall(text)
+
+
+def _rule_body(text: str, selector: str) -> str:
+    match = re.search(re.escape(selector) + r"\s*\{([^}]*)\}", text, re.S)
+    assert match, f"CSS rule missing: {selector}"
+    return match.group(1)
 
 
 # ---------------------------------------------------------------------------
@@ -164,6 +172,172 @@ class TestColorRamp:
 
 
 class TestSharedComponents:
+    def test_shared_ui_primitives_are_on_spec(self):
+        """The approved consistency decisions stay centralized and tokenized."""
+        assert UI_COMPONENTS.exists(), "ui_components.css is the shared primitive layer"
+        css = UI_COMPONENTS.read_text(encoding="utf-8")
+        dashboard_css = (DASHBOARD_DIR / "dashboard.css").read_text(encoding="utf-8")
+        assert "--control-height: 24px;" in dashboard_css
+        assert ".field-input" not in css, "42px authentication fields are not compact controls"
+        assert ".pg-connection-select" not in css, (
+            "the connection select inherits its 42px composite shell"
+        )
+
+        for selector in (
+            ".qym-control",
+            ".qym-dropdown",
+            ".qym-dropdown__search",
+            ".qym-dropdown__actions",
+            ".qym-dropdown__option",
+            ".qym-dropdown__only",
+            ".qym-tabs",
+            ".qym-tabs__tab",
+            ".qym-segmented",
+            ".qym-segmented__option",
+            ".qym-badge",
+            ".qym-badge--success",
+            ".qym-badge--info",
+            ".qym-badge--danger",
+            ".qym-badge--warning",
+            ".qym-badge--neutral",
+            ".qym-chip",
+            ".qym-stat-strip",
+            ".qym-stat-strip__item",
+            ".qym-stat-strip__label",
+            ".qym-stat-strip__value",
+            ".qym-help-marker",
+            ".qym-help-tooltip",
+        ):
+            assert selector in css, f"{selector} missing from shared primitive layer"
+
+        for contract in (
+            "height: var(--control-height)",
+            "border-radius: var(--control-radius)",
+            "min-height: var(--dropdown-option-height)",
+            "min-height: var(--tab-height)",
+            "min-height: var(--segment-height)",
+            "background: var(--accent-primary)",
+            "min-height: var(--badge-height)",
+            "min-height: var(--chip-height)",
+            "min-height: var(--stat-strip-min-height)",
+            "width: var(--info-marker-size)",
+            "font-family: var(--font-sans)",
+            "font-family: var(--font-mono)",
+            "--dsx-action-h: var(--control-height)",
+            "padding-left: 26px",
+            ".qym-inline-action",
+            ".reviews-search input",
+            ".pg-mapping-key-select",
+        ):
+            assert contract in css, f"shared component contract lost: {contract}"
+
+        for canonical_contract in (
+            ":is(.qym-dropdown, .multi-select-dropdown).open",
+            "display: none",
+            "position: absolute",
+            ".qym-stat-strip__item:last-child",
+            "left: 50%",
+            "bottom: calc(100% + var(--space-sm))",
+            "[aria-pressed=\"true\"]",
+        ):
+            assert canonical_contract in css, (
+                f"canonical classes must work without a legacy alias: {canonical_contract}"
+            )
+
+    def test_compact_control_exceptions_and_alignment_are_preserved(self):
+        ui_css = UI_COMPONENTS.read_text(encoding="utf-8")
+        dashboard_css = (DASHBOARD_DIR / "dashboard.css").read_text(encoding="utf-8")
+        login = (DASHBOARD_DIR / "login.html").read_text(encoding="utf-8")
+
+        auth_input = _rule_body(login, ".field-input")
+        assert "min-height: 42px" in auth_input
+        assert "font-size: var(--font-md)" in auth_input
+
+        connection = _rule_body(dashboard_css, ".pg-connection")
+        assert "height: 42px" in connection
+        connection_select = _rule_body(dashboard_css, ".pg-connection-select")
+        for declaration in ("height: 100%", "border: 0", "background: transparent"):
+            assert declaration in connection_select
+
+        companions = ui_css.split(
+            "/* Compact rows keep their action companions level with the 24px field. */",
+            1,
+        )[1].split("}", 1)[0]
+        for selector in (
+            ".add-bar > .btn",
+            ".bootstrap-form > .btn",
+            ".pg-add-btn",
+            ".qym-inline-action",
+            ".tv-header-btn",
+            ".tv-close",
+        ):
+            assert selector in companions
+        for declaration in (
+            "min-height: var(--control-height)",
+            "height: var(--control-height)",
+            "padding-top: 0",
+            "padding-bottom: 0",
+        ):
+            assert declaration in companions
+
+        trace = _rule_body(ui_css, ".tv-search-wrap > input.tv-search")
+        assert "padding-left: 26px" in trace
+        root_cause_action = _rule_body(
+            ui_css,
+            ".root-cause-dropdown .rc-custom-input > button.qym-inline-action",
+        )
+        assert "border-radius: var(--control-radius)" in root_cause_action
+        assert "font-size: var(--font-sm)" in root_cause_action
+        assert "padding: 0 var(--space-sm)" in root_cause_action
+        review_search = _rule_body(
+            ui_css, ".dsx-search-wrap input,\n.fp-search input,\n.reviews-search input"
+        )
+        assert "height: 100%" in review_search
+        assert "padding-top: 0" in review_search
+        assert "padding-bottom: 0" in review_search
+
+        mapping = _rule_body(ui_css, ".pg-mapping-label,\n.pg-mapping-arrow")
+        assert "align-items: center" in mapping
+        assert "min-height: var(--control-height)" in mapping
+        assert "padding-top: 0" in mapping
+
+        docs_js = (DASHBOARD_DIR / "docs.js").read_text(encoding="utf-8")
+        reviews = (DASHBOARD_DIR / "reviews.html").read_text(encoding="utf-8")
+        run = (DASHBOARD_DIR / "run.html").read_text(encoding="utf-8")
+        compare = (DASHBOARD_DIR / "compare.html").read_text(encoding="utf-8")
+        assert 'class="qym-control qym-search"' in docs_js
+        assert reviews.count('class="qym-control qym-input"') >= 2
+        assert run.count('class="qym-control qym-input"') >= 3
+        assert compare.count('class="qym-control qym-input"') >= 3
+
+    def test_shared_ui_behavior_is_accessible_and_exportable(self):
+        assert UI_BEHAVIOR.exists(), "ui_components.js is the shared behavior layer"
+        source = UI_BEHAVIOR.read_text(encoding="utf-8")
+        for contract in (
+            "marker.setAttribute('aria-describedby', tooltip.id);",
+            "button.setAttribute('aria-haspopup', 'dialog');",
+            "button.setAttribute('aria-expanded'",
+            "directTabs(tablist)",
+            "'ArrowLeft', 'ArrowRight', 'Home', 'End'",
+            "new MutationObserver",
+        ):
+            assert contract in source, f"shared UI behavior lost: {contract}"
+
+    def test_qym_component_rules_are_not_forked(self):
+        """Canonical qym component CSS is defined in one file only."""
+        component_rule = re.compile(
+            r"\.qym-(?:control|input|select|search|dropdown[\w-]*|tabs[\w-]*|"
+            r"segmented[\w-]*|badge[\w-]*|chip[\w-]*|stat-strip[\w-]*|"
+            r"help[\w-]*)(?:[:.#\[][^,{]*)?\s*(?:,|\{)"
+        )
+        forks = []
+        for path in DASHBOARD_DIR.glob("*.css"):
+            if path == UI_COMPONENTS:
+                continue
+            if component_rule.search(path.read_text(encoding="utf-8")):
+                forks.append(path.name)
+        assert not forks, f"canonical qym component rules forked outside ui_components.css: {forks}"
+
     def test_qdt_table_reference_implementation(self):
         """.qdt-table is the blessed table recipe — keep it on-spec."""
         css = (DASHBOARD_DIR / "dashboard.css").read_text(encoding="utf-8")
@@ -181,6 +355,7 @@ class TestSharedComponents:
         assert doc.exists(), "docs/DESIGN_LANGUAGE.md is missing"
         text = doc.read_text(encoding="utf-8")
         assert "--font-title" in text and "--text-dim" in text
+        assert "ui_components.css" in text and "ui_components.js" in text
         agents = REPO / "AGENTS.md"
         assert agents.exists() and "DESIGN_LANGUAGE.md" in agents.read_text(
             encoding="utf-8"

@@ -66,6 +66,20 @@
   --space-lg: 20px;
   --space-xl: 32px;
 
+  /* Canonical interactive component geometry.
+     One aligned density is used across forms and analysis toolbars. */
+  --control-height: 24px;
+  --control-radius: 5px;
+  --dropdown-radius: 7px;
+  --dropdown-option-height: 32px;
+  --tab-height: 34px;
+  --segment-height: 24px;
+  --badge-height: 20px;
+  --chip-height: 26px;
+  --stat-strip-min-height: 72px;
+  --info-marker-size: 12px;
+  --help-tooltip-width: 240px;
+
   /* Type scale — every element maps to one role:
      xs 10px badge/pill · sm 11px meta/caption/label/table-header ·
      base 12px body/table-cell/code · md 13px card title/sub-header ·

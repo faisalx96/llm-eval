@@ -115,7 +115,7 @@
   function buildNav() {
     var html = ''
       + '<div class="docs-search">' + ICON_SEARCH
-      + '<input type="text" id="docs-search-input" placeholder="Search docs…" autocomplete="off" spellcheck="false" /></div>';
+      + '<input class="qym-control qym-search" type="text" id="docs-search-input" placeholder="Search docs…" autocomplete="off" spellcheck="false" /></div>';
     SECTIONS.forEach(function (s) {
       html += '<div class="docs-nav-section" data-section="' + s.id + '">'
         + '<div class="docs-nav-section-title"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">' + s.icon + '</svg>' + esc(s.title) + '</div>';
