@@ -6954,18 +6954,24 @@
           rightLabel: state.explicitGroupedOutcomeGroups.modelBLabel,
         } : null);
 
-        // Fetch comparison data from API
-        const params = files.map(f => 'files=' + encodeURIComponent(f)).join('&');
+        // Fetch comparison data from API. Pass refs ("<file>::pass<N>")
+        // resolve to their base run server-side; the slice happens here.
+        const baseFiles = [...new Set(files.map(f => passRefBase(f)))];
+        const params = baseFiles.map(f => 'files=' + encodeURIComponent(f)).join('&');
         try {
           const compareResponse = await fetch(apiUrl('api/compare?' + params));
           const data = await compareResponse.json();
 
-          if (!data.runs || data.runs.length < 2) {
+          if (!data.runs || data.runs.length < (baseFiles.length > 1 ? 2 : 1)) {
             showEmpty();
             return;
           }
 
-          state.runs = data.runs;
+          state.runs = expandPassRefs(files, data.runs);
+          if (state.runs.length < 2) {
+            showEmpty();
+            return;
+          }
           state.langfuseHost = data.langfuse_host || '';
           state.langfuseProjectId = data.langfuse_project_id || '';
           // Fallback: use per-run Langfuse config if top-level is incomplete
@@ -9356,6 +9362,75 @@
         if (!host || !grid || anchorTop == null) return;
         const currentTop = grid.getBoundingClientRect().top;
         host.scrollTop += currentTop - anchorTop;
+      }
+
+      // Pass refs: "<file_path>::pass<N>" addresses one execution of a
+      // repeat run. The compare API loads the base run; these helpers slice
+      // its snapshot down to the one pass so the ref behaves as a run.
+      const PASS_REF_SEP = '::pass';
+      function passRefBase(ref) {
+        const sep = String(ref).indexOf(PASS_REF_SEP);
+        return sep < 0 ? String(ref) : String(ref).slice(0, sep);
+      }
+      function sliceRunToPass(rd, ref, passNo) {
+        const baseRun = rd.run || {};
+        const run = {
+          ...baseRun,
+          file_path: ref,
+          run_name: `${baseRun.run_name || baseRun.run_id || 'run'} · pass ${passNo}`,
+          samples: 1,
+        };
+        const snapshot = { ...(rd.snapshot || {}) };
+        const metricNames = snapshot.metric_names || baseRun.metric_names || [];
+        snapshot.rows = (snapshot.rows || []).map(row => {
+          const att = Array.isArray(row.pass_attempts) ? row.pass_attempts[passNo - 1] : null;
+          const mv = metricNames.map((m, i) => {
+            const ps = row.pass_scores ? row.pass_scores[m] : null;
+            if (Array.isArray(ps)) return ps[passNo - 1] == null ? '' : ps[passNo - 1];
+            return row.metric_values ? row.metric_values[i] : '';
+          });
+          const meta = {};
+          metricNames.forEach(m => {
+            const pm = row.pass_metric_meta ? row.pass_metric_meta[m] : null;
+            const v = Array.isArray(pm) ? pm[passNo - 1] : null;
+            if (v && typeof v === 'object') meta[m] = v;
+          });
+          const next = {
+            ...row,
+            metric_values: mv,
+            metric_meta: Object.keys(meta).length ? meta : row.metric_meta,
+            pass_scores: null,
+            pass_attempts: null,
+            pass_metric_meta: null,
+          };
+          if (att) {
+            next.status = att.status;
+            next.error = att.error || '';
+            next.output = att.output;
+            next.output_full = att.output;
+            next.latency_ms = att.latency_ms || 0;
+            next.trace_id = att.trace_id || '';
+            next.trace_url = att.trace_url || '';
+          }
+          return next;
+        });
+        return { ...rd, run, snapshot };
+      }
+      function expandPassRefs(requested, loadedRuns) {
+        const byPath = new Map(loadedRuns.map(rd => [rd.run?.file_path, rd]));
+        const out = [];
+        (requested || []).forEach(ref => {
+          const base = passRefBase(ref);
+          const rd = byPath.get(base);
+          if (!rd) return;
+          if (ref === base) {
+            if (!out.includes(rd)) out.push(rd);
+            return;
+          }
+          const passNo = parseInt(ref.slice(base.length + PASS_REF_SEP.length), 10);
+          if (Number.isFinite(passNo) && passNo >= 1) out.push(sliceRunToPass(rd, ref, passNo));
+        });
+        return out;
       }
 
       function makeSafeDomId(value) {

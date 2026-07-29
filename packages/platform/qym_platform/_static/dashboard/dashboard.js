@@ -3534,6 +3534,12 @@
         };
       };
 
+      // Pass refs address one execution: "<file_path>::pass<N>". They join
+      // cohorts as single units next to whole runs.
+      const runFilePath = row?.getAttribute
+        ? decodeURIComponent(row.getAttribute('data-file') || '')
+        : '';
+
       const memberRow = (pass, isLast) => {
         const firstPass = Number(pass.pass_number) || 1;
         const lastPass = Number(pass._lastPassNumber) || firstPass;
@@ -3569,9 +3575,15 @@
         const passDuration = typeof pass.duration_ms === 'number'
           ? formatDurationMs(pass.duration_ms)
           : null;
+        const passRef = runFilePath && !pass._queued && rawStatus === 'completed'
+          ? `${runFilePath}::pass${firstPass}`
+          : '';
+        const passSelected = passRef && state.selectedRuns.has(passRef);
         return `<tr class="pass-member${isLast ? ' pass-member-last' : ''}${pass._queued ? ' pass-member-queued' : ''}"
             data-samples-for="${escapeHtml(runId)}"${pass._queued ? '' : ` data-pass-number="${firstPass}" title="Open Pass ${firstPass} details"`}>
-          <td class="col-select"></td>
+          <td class="col-select" onclick="event.stopPropagation()">${passRef
+            ? `<label class="custom-checkbox"><input type="checkbox" class="pass-checkbox" data-pass-ref="${escapeHtml(passRef)}" ${passSelected ? 'checked' : ''} /><span class="checkmark"></span></label>`
+            : ''}</td>
           <td class="col-status">${badgeClass
             ? `<span class="status-badge status-${badgeClass}">${statusLabel}</span>`
             : `<span class="pass-member-status">${statusLabel}</span>`}${errors
@@ -4055,7 +4067,8 @@
     const deleteBtn = el('delete-selected');
     const headerLabel = panel.querySelector('.compare-header > span');
     const subtitleEl = el('compare-subtitle');
-    const hasOverlap = isCohortMode && selectedRuns.some(run => cohortAnchor.includes(run.file_path));
+    const hasOverlap = isCohortMode
+      && Array.from(selected).some(ref => cohortAnchor.some(a => cohortRefsConflict(a, ref)));
     // Cohort balance runs on executions: a repeat run contributes its k passes.
     const anchorUnits = isCohortMode ? cohortUnitCount(cohortAnchor) : 0;
     const selectedUnits = isCohortMode ? cohortUnitCount(Array.from(selected)) : 0;
@@ -4112,16 +4125,18 @@
       publishBtn.textContent = 'Submit';
     }
 
+    // Chips render refs directly so picked passes show alongside whole runs.
+    const anchorRefs = isCohortMode ? cohortAnchor : [];
     chips.innerHTML = [
-      ...anchorRuns.map(run => `
+      ...anchorRefs.map(ref => `
         <span class="compare-chip is-cohort-a">
-          <span title="${escapeHtml(run.run_id)}">${escapeHtml(getCohortRunDisplayName(run.file_path) || run.run_id)}</span>
+          <span title="${escapeHtml(ref)}">${escapeHtml(getCohortRunDisplayName(ref) || ref)}</span>
         </span>
       `),
-      ...selectedRuns.map(run => `
-        <span class="compare-chip is-cohort-b">
-          <span title="${escapeHtml(run.run_id)}">${escapeHtml(getCohortRunDisplayName(run.file_path) || run.run_id)}</span>
-          <span class="remove" data-file="${encodeURIComponent(run.file_path)}">×</span>
+      ...Array.from(selected).map(ref => `
+        <span class="compare-chip${isCohortMode ? ' is-cohort-b' : ''}">
+          <span title="${escapeHtml(ref)}">${escapeHtml(getCohortRunDisplayName(ref) || ref)}</span>
+          <span class="remove" data-file="${encodeURIComponent(ref)}">×</span>
         </span>
       `),
     ].join('');
@@ -5009,9 +5024,9 @@
     if (!cohortAnchor || !cohortAnchor.length) return true;
 
     if (state.selectedRuns.has(filePath)) return true;
-    if (cohortAnchor.includes(filePath)) {
+    if (cohortAnchor.some(ref => cohortRefsConflict(ref, filePath))) {
       if (showError) {
-        showToast('error', 'Run Already In Cohort A', 'Pick a different run for Cohort B. The two cohorts must be disjoint.');
+        showToast('error', 'Run Already In Cohort A', 'Pick a different run for Cohort B. A whole run and one of its passes cannot face each other.');
       }
       return false;
     }
@@ -5029,6 +5044,10 @@
       state.selectedRuns.delete(filePath);
     } else {
       if (!canSelectForCohortB(filePath)) return;
+      // Selecting the whole run supersedes any of its picked passes.
+      for (const ref of Array.from(state.selectedRuns)) {
+        if (isPassRef(ref) && passRefBase(ref) === filePath) state.selectedRuns.delete(ref);
+      }
       state.selectedRuns.add(filePath);
     }
     render();
@@ -5107,9 +5126,13 @@
   }
 
   function getCohortRunDisplayName(filePath) {
-    const run = state.flatRuns.find(candidate => candidate.file_path === filePath);
+    const base = passRefBase(filePath);
+    const run = state.flatRuns.find(candidate => candidate.file_path === base);
     if (!run) return '';
-    return stripProviderFromRunId(run.run_id || run.run_name || filePath);
+    const name = stripProviderFromRunId(run.run_id || run.run_name || base);
+    if (!isPassRef(filePath)) return name;
+    const passNo = filePath.slice(base.length + PASS_REF_SEP.length);
+    return `${name} · pass ${passNo}`;
   }
 
   function buildCohortLabel(filePaths) {
@@ -5142,15 +5165,51 @@
     openUrl(apiUrl('compare?' + params), e);
   }
 
-  // Cohort unit rule: one unit = one execution. A single run contributes 1;
-  // a repeat run contributes its k passes. The two sides must hold an equal
-  // number of units, whatever mix of runs supplies them.
+  // Cohort unit rule: one unit = one execution. A single run contributes 1,
+  // a repeat run contributes its k passes, and a pass ref
+  // ("<file_path>::pass<N>") contributes exactly 1. The two sides must hold
+  // an equal number of units, whatever mix supplies them.
+  const PASS_REF_SEP = '::pass';
+
+  function passRefBase(ref) {
+    const sep = String(ref).indexOf(PASS_REF_SEP);
+    return sep < 0 ? String(ref) : String(ref).slice(0, sep);
+  }
+
+  function isPassRef(ref) {
+    return String(ref).indexOf(PASS_REF_SEP) >= 0;
+  }
+
   function cohortUnitCount(filePaths) {
     return (filePaths || []).reduce((sum, filePath) => {
+      if (isPassRef(filePath)) return sum + 1;
       const run = state.flatRuns.find(candidate => candidate.file_path === filePath);
       const samples = Number(run?.samples) || 1;
       return sum + (samples > 1 ? samples : 1);
     }, 0);
+  }
+
+  // A whole run and one of its passes cannot face each other across cohort
+  // sides (the pass is already inside the run). Two different passes of the
+  // same run on opposite sides stay legal.
+  function cohortRefsConflict(a, b) {
+    if (a === b) return true;
+    const aBase = passRefBase(a);
+    if (aBase !== passRefBase(b)) return false;
+    return a === aBase || b === aBase;
+  }
+
+  function togglePassSelection(ref) {
+    if (!ref) return;
+    setSelectMode(true, { skipRender: true });
+    if (state.selectedRuns.has(ref)) {
+      state.selectedRuns.delete(ref);
+    } else {
+      // A pass and its whole run are exclusive within one selection.
+      state.selectedRuns.delete(passRefBase(ref));
+      state.selectedRuns.add(ref);
+    }
+    render();
   }
 
   function openCohortComparison(e) {
@@ -5176,7 +5235,7 @@
       showToast('error', 'Cohorts Not Balanced', `Cohort A holds ${leftUnits} execution${leftUnits === 1 ? '' : 's'}; the current Cohort B selection holds ${rightUnits}. A repeat run counts as its k passes. Balance the two sides before opening the comparison.`);
       return;
     }
-    if (right.some(file => left.includes(file))) {
+    if (right.some(ref => left.some(l => cohortRefsConflict(l, ref)))) {
       showToast('error', 'Cohorts Must Be Disjoint', 'One or more selected runs are already in Cohort A. Remove them from Cohort B and pick different runs.');
       return;
     }
@@ -6254,6 +6313,11 @@
   el('select-mode-btn')?.addEventListener('click', () => {
     if (state.selectMode) clearSelection();
     else setSelectMode(true);
+  });
+  // Pass checkboxes live inside re-rendered expansion rows; delegate once.
+  document.addEventListener('change', (e) => {
+    const cb = e.target.closest?.('.pass-checkbox');
+    if (cb) togglePassSelection(cb.dataset.passRef);
   });
   document.querySelectorAll('[data-table-page="prev"]').forEach(btn => btn.addEventListener('click', () => {
     setTablePage(state.tablePage - 1, { syncFocus: true });
