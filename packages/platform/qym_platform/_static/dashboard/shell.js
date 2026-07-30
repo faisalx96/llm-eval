@@ -682,10 +682,6 @@
       +       '<label class="shell-form-label">Slug</label>'
       +       '<input class="shell-form-input" id="shell-new-project-slug" type="text" placeholder="my-project" style="font-family:var(--font-mono);font-size:var(--font-base)" />'
       +     '</div>'
-      +     '<div class="shell-form-group">'
-      +       '<label class="shell-form-label">Description (optional)</label>'
-      +       '<input class="shell-form-input" id="shell-new-project-desc" type="text" placeholder="What is this project for?" />'
-      +     '</div>'
       +     '<div class="shell-form-error" id="shell-new-project-error"></div>'
       +   '</div>'
       +   '<div class="shell-modal-footer">'
@@ -697,7 +693,6 @@
 
     var nameInput = document.getElementById('shell-new-project-name');
     var slugInput = document.getElementById('shell-new-project-slug');
-    var descInput = document.getElementById('shell-new-project-desc');
     var errorEl = document.getElementById('shell-new-project-error');
     var cancelBtn = document.getElementById('shell-create-cancel');
     var submitBtn = document.getElementById('shell-create-submit');
@@ -744,7 +739,7 @@
           method: 'POST',
           credentials: 'same-origin',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: name, slug: slug, description: descInput.value.trim() }),
+          body: JSON.stringify({ name: name, slug: slug }),
         });
         var data = await res.json().catch(function () { return {}; });
         if (!res.ok) throw new Error(data.detail || 'Failed to create project');
@@ -762,7 +757,6 @@
     submitBtn.addEventListener('click', submit);
     nameInput.addEventListener('keydown', function (e) { if (e.key === 'Enter') submit(); });
     slugInput.addEventListener('keydown', function (e) { if (e.key === 'Enter') submit(); });
-    descInput.addEventListener('keydown', function (e) { if (e.key === 'Enter') submit(); });
   }
 
   function openConfirmDialog(options) {

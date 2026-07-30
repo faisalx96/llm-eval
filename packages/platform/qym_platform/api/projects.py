@@ -181,7 +181,6 @@ def _project_payload(
         "id": project.id,
         "name": project.name,
         "slug": project.slug,
-        "description": project.description,
         "is_active": project.is_active,
         "member_count": member_count,
         "run_count": run_count,
@@ -290,13 +289,11 @@ def _ensure_not_last_manager(
 class CreateProjectRequest(BaseModel):
     name: str
     slug: Optional[str] = None
-    description: str = ""
 
 
 class UpdateProjectRequest(BaseModel):
     name: Optional[str] = None
     slug: Optional[str] = None
-    description: Optional[str] = None
     is_active: Optional[bool] = None
 
 
@@ -598,7 +595,6 @@ def create_project_for_creator(
     project = Project(
         name=req.name.strip(),
         slug=slug,
-        description=req.description.strip(),
         created_by_user_id=principal.user.id,
         is_active=True,
     )
@@ -852,7 +848,6 @@ def create_project(
     project = Project(
         name=req.name.strip(),
         slug=slug,
-        description=req.description.strip(),
         created_by_user_id=principal.user.id,
         is_active=True,
     )
@@ -897,8 +892,6 @@ def update_project(
         if conflict:
             raise HTTPException(status_code=400, detail="Project slug already exists")
         project.slug = next_slug
-    if req.description is not None:
-        project.description = req.description.strip()
     if req.is_active is not None:
         project.is_active = req.is_active
     db.commit()

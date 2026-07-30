@@ -39,7 +39,7 @@ analysis workspace when they can view the run.
 
 The analyzer builds a bounded, metric-specific prompt from:
 
-- the project description, task, dataset, evaluated model, and active analysis rules;
+- the project name, task, dataset, evaluated model, and active analysis rules;
 - the selected metric's score, label, explanation, metadata, direction, and pass threshold;
 - the input, expected output, actual output, error, and selected item metadata;
 - useful trace evidence, including reconstructed LLM messages, reasoning, tool
@@ -89,7 +89,7 @@ timed-out aggregation never discards the raw item diagnoses.
 Rules are short title/instruction pairs describing business requirements,
 invariants, decision logic, and evidence checks. They are guidance for diagnosis,
 not a list of root-cause answers. The rule-writer agent can use any combination of
-the project description, selected documents, and approved correction examples.
+selected documents and approved correction examples.
 Generated rules are returned as a draft; they are never silently made production.
 
 The rule editor preserves stable rule IDs so edits can be compared. Identical
@@ -184,7 +184,7 @@ analysis endpoints are:
 | `POST` | `/api/runs/{run_id}/analysis-documents` | Extract, store, and select an uploaded document. |
 | `PATCH` | `/api/runs/{run_id}/analysis-documents/{id}` | Select or deselect a project document for the run. |
 | `DELETE` | `/api/runs/{run_id}/analysis-documents/{id}` | Remove a document from the project library. |
-| `PATCH` | `/api/runs/{run_id}/analysis-context` | Save the project description and working rule draft/version. |
+| `PATCH` | `/api/runs/{run_id}/analysis-context` | Save the working rule draft/version. |
 | `POST` | `/api/runs/{run_id}/analysis-rules/infer` | Generate a draft ruleset from selected sources. |
 | `GET` | `/api/runs/{run_id}/corrections` | Read approved correction records available as rule-writer evidence. |
 

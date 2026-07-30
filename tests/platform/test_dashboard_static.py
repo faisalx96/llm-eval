@@ -934,7 +934,7 @@ def test_shell_form_dialog_supports_structured_details() -> None:
     assert ".shell-form-checkbox-help" in styles
 
 
-def test_auto_analysis_is_a_first_class_project_page_with_required_context() -> None:
+def test_auto_analysis_is_a_first_class_project_page() -> None:
     run = (DASHBOARD_DIR / "run.html").read_text(encoding="utf-8")
     analyzer = (DASHBOARD_DIR / "analyzer.html").read_text(encoding="utf-8")
     compare = (DASHBOARD_DIR / "compare.html").read_text(encoding="utf-8")
@@ -948,31 +948,97 @@ def test_auto_analysis_is_a_first_class_project_page_with_required_context() -> 
     assert "projectUrl(CURRENT_PROJECT_SLUG, 'analysis')" in run
     assert "buildNavItem('Auto-analysis', 'analysis', 'analysis'" in shell
     assert "else if (rest === 'analysis') page = 'analysis';" in shell
-    assert 'id="analysis-run-select"' in analyzer
-    assert "api/runs?limit=200&project_slug=" in analyzer
+    assert 'id="analysis-run-select"' not in analyzer
+    assert "api/runs?limit=200&project_slug=" not in analyzer
+    assert "api/runs?limit=1&project_slug=" in analyzer
+    assert "Select a run to start analysis" in analyzer
+    assert "Select a run from Runs" in analyzer
+    assert "Production rules and Documents remain available" in analyzer
+    assert "if (!runId) {" in analyzer
+    assert "getRunId: () => state.contextRunId" in analyzer
     assert 'id="analyzer-host"' in analyzer
     assert "container: document.getElementById('analyzer-host')" in analyzer
-    assert 'id="pg-project-description"' in playground
+    assert 'id="pg-project-description"' not in playground
     assert 'class="pg-context-panel"' in playground
     assert 'id="pg-rule-list"' in playground
     assert 'id="pg-rule-count"' in playground
     assert "function _formatRuleCount()" in playground
-    assert "· unlimited" in playground
+    assert "no rule count limit" in playground
     assert "_MAX_ANALYSIS_RULES" not in playground
     assert "_analysisRules.push({ title: '', instruction: '' });" in playground
     assert 'id="pg-infer-rules"' in playground
-    assert 'id="pg-infer-use-description"' in playground
+    assert 'id="pg-update-rules"' in playground
+    assert 'id="pg-infer-use-description"' not in playground
     assert 'id="pg-infer-use-documents"' in playground
     assert 'id="pg-infer-use-examples"' in playground
-    assert "include_project_description: inferenceSources.include_project_description" in playground
+    assert "include_project_description" not in playground
     assert "include_documents: inferenceSources.include_documents" in playground
     assert "include_examples: inferenceSources.include_examples" in playground
+    assert "mode: mode" in playground
     assert 'id="pg-rule-version-list"' in playground
     assert 'id="pg-create-rule-version"' in playground
     assert 'pg-rule-compare-stats' in playground
     assert 'pg-rule-compare-group' in playground
-    assert "function _createRuleDraft()" in playground
+    assert 'pg-rule-compare-picker' in playground
+    assert '<details class="pg-rule-inference-options">' in playground
+    assert 'pg-rule-inference-content' in playground
+    assert 'pg-infer-source-summary' in playground
+    assert '2 of 2 sources enabled' in playground
+    assert "function _syncInferenceSourceSummary()" in playground
+    assert 'pg-context-action-group' in playground
+    assert 'pg-context-action-divider' in playground
+    assert 'pg-context-feedback' in playground
+    assert "function _renderRuleViewStatus()" in playground
+    assert "function _showContextFeedback(message, isError)" in playground
+    assert '3500' in playground
+    assert "Create a draft to edit rules" in playground
+    assert "Create a draft to add rules" in playground
+    assert "panel.classList.add('pg-rule-compare-picker')" in playground
+    assert "panel.classList.remove('pg-rule-compare-picker')" in playground
+    assert 'pg-rule-compare-backdrop' in playground
+    assert 'role="dialog"' in playground
+    assert "event.key !== 'Escape'" in playground
+    assert "function _createRuleDraft(fromVersionId)" in playground
+    assert "var sourceVersionId = fromVersionId || _selectedRuleVersionId;" in playground
+    assert "Select an available version before creating a draft." in playground
+    assert "from_version: String(selected.id)" in playground
+    assert "_createRuleDraft(selected.id)" in playground
+    assert "function _ruleVersionStateLabel(version)" in playground
+    assert "return 'Live';" in playground
+    assert "return 'Draft';" in playground
+    assert "return 'Published';" in playground
+    assert "function _renderRuleCompareDialog(panel, content)" in playground
+    assert "function _mountRuleComparePortal(panel)" in playground
+    assert "document.body.appendChild(panel)" in playground
+    assert "function _closeRuleCompareDialog(panel)" in playground
+    assert "function _wireRuleVersionSearch(panel, selectSelector, searchSelector, emptySelector)" in playground
+    assert "data-rule-' + key + '-search" in playground
+    assert "data-rule-' + key + ' value=" in playground
+    assert 'class="pg-rule-version-option' in playground
+    assert 'role="option"' in playground
+    assert "pg-rule-version-option-selected" in playground
+    assert "No matching versions." in playground
     assert "function _publishRuleVersion(versionId)" in playground
+    assert "function _openRuleMerge(targetId)" in playground
+    assert "function _openRuleCompare(versionId)" in playground
+    assert "if (versionId && (activate || publish || merge || compare || remove))" in playground
+    assert "_openRuleVersion(versionId);" in playground
+    assert "data-merge-rule-version" in playground
+    assert "data-rule-version-menu-toggle" in playground
+    assert "Compare with…" in playground
+    assert "Merge with…" in playground
+    assert "_icon('check')" in playground
+    assert "_icon('upload')" in playground
+    assert 'M5 14v6h14v-6' in playground
+    assert "_icon('rocket')" in playground
+    assert "_icon('checkFilled')" in playground
+    assert 'pg-rule-version-lifecycle-label' in playground
+    assert '>Publish</span>' in playground
+    assert '>Promote</span>' in playground
+    assert '>Live</span>' in playground
+    assert "_icon('merge')" in playground
+    assert "M6 4v4c0 4 2 6 6 6h6" in playground
+    assert "candidate.is_active;" in playground
     assert "rule_version_id: _selectedRuleVersionId" in playground
     assert "data-activate-rule-version" in playground
     assert "data-publish-rule-version" in playground
@@ -980,36 +1046,54 @@ def test_auto_analysis_is_a_first_class_project_page_with_required_context() -> 
     assert "data-delete-rule-version" in playground
     assert "_confirmRuleVersionDeletion" in playground
     assert "Delete version" in playground
+    assert "confirmClass: 'shell-btn-danger'" in playground
     assert "window.confirm('Delete this rule version?" not in playground
     assert "This action cannot be undone." in playground
     assert "liveVersionCount > 1" in playground
     assert "openFormDialog" in playground
     assert "Set as production" in playground
+    assert 'pg-rule-compare-picker' in analyzer
+    assert 'width: min(680px, 100%)' in analyzer
+    assert 'position: fixed' in analyzer
+    assert 'place-items: center' in analyzer
+    assert 'grid-template-columns: minmax(0, 1fr)' in analyzer
+    assert 'analysis-info-popover' in analyzer
+    assert 'analysis-rule-view-state' in analyzer
+    assert 'analysis-rule-version-meta' in analyzer
+    assert 'analysis-version-node-key' in analyzer
+    assert "_renderRuleVersionMeta(selected)" in playground
+    assert "label: 'Created at'" in playground
+    assert "label: 'Updated at'" in playground
+    assert "version.created_by.display_name" in playground
+    assert '-webkit-line-clamp: 2' in analyzer
     assert "window.confirm(" not in playground
     assert "window.prompt(" not in playground
     assert "window.alert(" not in playground
-    assert "Set production" in playground
+    assert "to production" in playground
+    assert "_openRuleVersion(versionRow.dataset.ruleVersionId)" in playground
+    assert "data-toggle-rule" in playground
+    assert "_editingRuleIndex === toggleIndex ? null : toggleIndex" in playground
     assert "function _readAnalysisRuleDraftsFromEditor()" in playground
     assert "_analysisRules = _readAnalysisRuleDraftsFromEditor();" in playground
     assert "function _validateAnalysisRuleDrafts()" in playground
     assert "Complete the title and instruction for every rule before saving." in playground
     assert "Removing rule from the current version" in playground
     assert "_saveAnalysisContext().catch(function () {" in playground
-    assert "cfg.project_description = descriptionEl.value.trim();" in playground
+    assert "cfg.project_description" not in playground
     assert "cfg.analysis_rules = rules" in playground
     assert 'id="pg-document-input"' in playground
-    assert "cfg.reference_documents = selectedDocuments.map" in playground
+    assert "cfg.include_project_documents = documentsToggle.checked" in playground
     assert "'/analysis-documents'" in playground
-    assert "Reference Document Library" in playground
-    assert "selectedDocumentCount + ' selected'" in playground
+    assert "Project documents" in playground
     assert "_updateReferenceDocumentSelection" in playground
+    assert 'class="pg-document-select"' in playground
     assert "_deleteReferenceDocument" in playground
     assert '@router.get("/api/runs/{run_id:path}/analysis-documents")' in analysis_api
     assert '@router.patch("/api/runs/{run_id:path}/analysis-documents/{document_id}")' in analysis_api
     assert '@router.delete("/api/runs/{run_id:path}/analysis-documents/{document_id}")' in analysis_api
     assert "_MAX_REFERENCE_DOCUMENTS" not in playground
     assert "5 documents" not in playground
-    assert "if (!_validateProjectDescription()) return;" in playground
+    assert "_validateProjectDescription" not in playground
     assert '@router.get("/projects/{project_slug}/analysis"' in routes
     assert '@router.get("/projects/{project_slug}/runs/{run_id:path}/analyzer"' in routes
     assert '@router.post("/api/runs/{run_id:path}/analysis-documents")' in analysis_api
@@ -1043,6 +1127,27 @@ def test_auto_analysis_is_a_first_class_project_page_with_required_context() -> 
     assert "evt.type === 'aggregating'" in playground
     assert "Aggregating root causes\\u2026" in playground
     assert "labels consolidated" in playground
+    assert 'id="pg-target-limit"' in playground
+    assert 'id="pg-target-limit-decrease"' not in playground
+    assert 'id="pg-target-limit-increase"' not in playground
+    assert 'maxlength="4"' in playground
+    assert 'placeholder="All"' in playground
+    assert "Empty = all" not in playground
+    assert "pg-target-limit-help" not in playground
+    assert "slice(0, 4)" in playground
+    assert ".analysis-page .pg-score-slider::-webkit-slider-runnable-track" in analyzer
+    assert "grid-template-columns: 260px max-content max-content;" in analyzer
+    assert "width: 96px;" in analyzer
+    assert 'id="pg-connection-trigger"' in playground
+    assert 'id="pg-connection-menu"' in playground
+    assert "body.limit = requestedLimit" in playground
+    assert "'pg-use-project-description'" not in analyzer
+    assert "'pg-use-project-rules'" in analyzer
+    assert "'pg-use-project-documents'" in analyzer
+    assert 'id="analysis-mapping-open"' in analyzer
+    assert ">Input mapping</button>" in analyzer
+    assert "Advanced run configuration" not in analyzer
+    assert "state.wizardStep" not in analyzer
 
 
 def test_playground_pages_load_matching_asset_revisions() -> None:
@@ -1062,31 +1167,72 @@ def test_playground_pages_load_matching_asset_revisions() -> None:
         assert dashboard_revision.group(1) == playground_revision.group(1)
 
 
-def test_auto_analysis_page_visually_separates_project_and_run_configuration() -> None:
+def test_auto_analysis_page_uses_first_class_run_rules_and_document_tabs() -> None:
     analyzer = (DASHBOARD_DIR / "analyzer.html").read_text(encoding="utf-8")
     playground = (DASHBOARD_DIR / "playground.js").read_text(encoding="utf-8")
+    styles = (DASHBOARD_DIR / "dashboard.css").read_text(encoding="utf-8")
 
-    assert "Analyzer workspace views" in analyzer
-    assert "Shared configuration" in analyzer
-    assert "Run analyzer" in analyzer
+    assert "Auto-analysis views" in analyzer
+    assert "Project configuration" not in analyzer
+    assert "Analyze run" in analyzer
+    assert "Analyze this run" not in analyzer
+    assert "Choose another run" not in analyzer
+    assert ">Select all</button>" in analyzer
+    assert ">Clear</button>" in analyzer
+    assert 'class="analysis-run-context" aria-label="Run information"' in analyzer
+    assert 'analysis-run-context-label">Run ID' not in analyzer
+    assert "Production rules" in analyzer
+    assert ">Documents</button>" in analyzer
     assert 'role="tablist"' in analyzer
-    assert 'id="analysis-project-tab"' in analyzer
+    assert 'id="analysis-rules-tab"' in analyzer
+    assert 'id="analysis-documents-tab"' in analyzer
     assert 'id="analysis-run-tab"' in analyzer
+    assert 'id="analysis-diagnosis-tab"' in analyzer
+    assert 'aria-controls="analysis-diagnosis-view"' in analyzer
+    assert 'aria-disabled="true" disabled' in analyzer
     assert "setAnalyzerView(state.currentView" in analyzer
     assert "nextParams.set('scope', nextView)" in analyzer
-    assert "Shared analyzer configuration" in analyzer
-    assert "Reference documents" in analyzer
+    assert "Project documents" in analyzer
+    assert 'data-context-view="\' + item[3] + \'"' in analyzer
+    assert "analysisViewUrl(item[3])" in analyzer
+    assert "setAnalyzerView(link.dataset.contextView, { focus: true })" in analyzer
     assert "organizeAnalyzerWorkspace()" in analyzer
-    assert "organizeAnalyzerWorkspaceWhenReady()" in analyzer
+    assert "organizeWhenReady()" in analyzer
     assert "new MutationObserver" in analyzer
-    assert "analysis-project-documents" in analyzer
-    assert "documentsBlock.append" in analyzer
-    assert "contextGroup.body.append(documentsSection)" not in analyzer
-    assert "max-height: 360px" in analyzer
+    assert "['overview', 'Overview']" not in analyzer
+    assert "documentsPanel.append" in analyzer
+    assert "Advanced run configuration" not in analyzer
+    assert "buildInputMappingDialog(mapping)" in analyzer
+    assert "buildAdvancedDialog" not in analyzer
+    assert "diagnosisTab.disabled = false" in analyzer
+    assert "diagnosisBody.append(catalog)" in analyzer
+    assert "diagnosisPanel.append(diagnosisHeader, diagnosisBody)" in analyzer
+    assert "diagnosisCard" not in analyzer
+    assert 'id="analysis-category-count"' in analyzer
+    assert 'id="analysis-example-count"' in analyzer
+    assert "data-example-count" in playground
+    assert "category_examples" in playground
+    assert "Approved examples" in playground
+    assert "No approved examples in this category yet." in playground
+    assert "Remove category from this analysis" in playground
+    assert "pg-category-example-data" in playground
+    assert "instructionsBody.append(instructions)" in analyzer
+    assert analyzer.index("runPanel.append(instructionsCard)") < analyzer.index("runPanel.append(targetCard)")
+    assert "max-height: 420px" in analyzer
+    assert "max-height: 640px" in analyzer
+    assert "grid-template-columns: minmax(220px, 0.46fr) minmax(0, 1.54fr);" in analyzer
+    footer_style = analyzer.split(".analysis-project-footer {", 1)[1].split("}", 1)[0]
+    assert "position: fixed" not in footer_style
+    assert "border-top: 1px solid var(--border-subtle);" in footer_style
     assert ".analysis-page .playground-page-overlay" in analyzer
-    assert "projectPanel.append(projectGrid)" in analyzer
-    assert "runPanel.append(contextGroup.group)" in analyzer
+    assert "projectPanel.append(rulesPanel, documentsPanel)" in analyzer
+    assert "rulesWorkspaceCard.append(projectFooter)" in analyzer
+    assert "documentsPanel.append(uploadCard, libraryCard)" in analyzer
+    assert "runPanel.append(targetCard)" in analyzer
     assert "newRuleTitle.scrollIntoView" in playground
+    assert 'class="pg-hl-category" style="color:' not in playground
+    assert "pg-hl-rule-title" in playground
+    assert ".pg-hl-rule-title { color: var(--accent-primary);" in styles
 
     # The shared Compare modal keeps using the untouched controller markup;
     # the dedicated page applies its organization only after page-mode render.

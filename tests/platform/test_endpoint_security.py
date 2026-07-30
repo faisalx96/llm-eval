@@ -333,7 +333,7 @@ def test_run_mutation_permissions_enforced(client, session_factory) -> None:
     )
     assert second_run_library.status_code == 200
     assert second_run_library.json()["documents"][0]["id"] == document_id
-    assert second_run_library.json()["documents"][0]["selected"] is False
+    assert second_run_library.json()["documents"][0]["selected"] is True
 
     deselected = client.patch(
         f"/api/runs/run-1/analysis-documents/{document_id}",
@@ -342,6 +342,14 @@ def test_run_mutation_permissions_enforced(client, session_factory) -> None:
     )
     assert deselected.status_code == 200
     assert deselected.json()["document"]["selected"] is False
+    project_selection_from_second_run = client.get(
+        "/api/runs/run-2/analysis-documents",
+        headers=_headers("manager-a@example.com"),
+    )
+    assert (
+        project_selection_from_second_run.json()["documents"][0]["selected"]
+        is False
+    )
 
     manager_can_change_project_document_selection = client.patch(
         f"/api/runs/run-1/analysis-documents/{document_id}",
@@ -359,6 +367,11 @@ def test_run_mutation_permissions_enforced(client, session_factory) -> None:
         headers=_headers("owner@example.com"),
     )
     assert shared_selection.json()["documents"][0]["selected"] is True
+    shared_selection_from_second_run = client.get(
+        "/api/runs/run-2/analysis-documents",
+        headers=_headers("manager-a@example.com"),
+    )
+    assert shared_selection_from_second_run.json()["documents"][0]["selected"] is True
 
     denied_document = client.post(
         "/api/runs/run-1/analysis-documents",
@@ -542,6 +555,32 @@ def test_correction_review_permissions_and_filtering(client, session_factory) ->
     )
     assert allowed_approve.status_code == 200
     assert allowed_approve.json()["status"] == "approved"
+
+    analysis_config = client.get(
+        "/api/runs/run-1/analysis-config",
+        headers=_headers("manager-a@example.com"),
+    )
+    assert analysis_config.status_code == 200
+    category_examples = analysis_config.json()["category_examples"]
+    assert analysis_config.json()["category_example_counts"]["Wrong Format"] == 1
+    assert category_examples["Wrong Format"] == [
+        {
+            "id": 1,
+            "item_id": "item-1",
+            "metric_name": None,
+            "run_name": "run-1",
+            "dataset": "dataset-1",
+            "model": "",
+            "detail": "",
+            "note": "Human review",
+            "solution": "",
+            "solution_note": "",
+            "input": {"prompt": "hello"},
+            "expected": {"answer": "world"},
+            "output": {"answer": "nope"},
+            "created_at": category_examples["Wrong Format"][0]["created_at"],
+        }
+    ]
 
     denied_bulk = client.post(
         "/api/corrections/bulk",

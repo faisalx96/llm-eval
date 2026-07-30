@@ -20,11 +20,11 @@ from qym_platform.auth import Principal, require_ui_principal
 from qym_platform.datetime_utils import to_api_timestamp, utc_now_naive
 from qym_platform.db.models import (
     AnalyzerDocument,
-    AnalyzerRunDocument,
     AnalysisRuleVersionStatus,
     CorrectionStatus,
     Project,
     ProjectAnalysisRuleAlias,
+    ProjectAnalysisRuleMergeParent,
     ProjectAnalysisRuleVersion,
     ProjectLlmConnection,
     ReviewCorrection,
@@ -72,6 +72,7 @@ from qym_platform.services.llm_analyzer import (
     get_all_approved_examples,
     infer_analysis_rules,
     normalize_analysis_rules,
+    update_analysis_rules,
 )
 from qym_platform.services.root_cause_changes import (
     apply_root_cause_change,
@@ -388,12 +389,16 @@ def _save_active_analysis_rules(
             source="manual",
             actor_user_id=actor_user_id,
         )
+    normalized = _rules_with_stable_ids(rules, existing=target.rules)
     if _rule_status(target) != AnalysisRuleVersionStatus.DRAFT.value:
+        if normalize_analysis_rules(target.rules) == normalize_analysis_rules(
+            normalized
+        ):
+            return target
         raise HTTPException(
             status_code=409,
-            detail="Only draft analysis rule versions can be edited",
+            detail="Published analysis rule versions are immutable; continue as a draft to edit them",
         )
-    normalized = _rules_with_stable_ids(rules, existing=target.rules)
     if target.rules != normalized:
         target.rules = normalized
         target.source = "manual"
@@ -408,6 +413,11 @@ def _analysis_rule_version_payload(
     active_version_id: str | None,
 ) -> Dict[str, Any]:
     session = object_session(version)
+    creator = (
+        session.get(User, version.created_by_user_id)
+        if session is not None and version.created_by_user_id
+        else None
+    )
     aliases = [
         row.alias
         for row in session.query(ProjectAnalysisRuleAlias)
@@ -415,6 +425,17 @@ def _analysis_rule_version_payload(
         .order_by(ProjectAnalysisRuleAlias.alias)
         .all()
     ] if session is not None else []
+    merge_parents = (
+        session.query(ProjectAnalysisRuleMergeParent)
+        .filter(ProjectAnalysisRuleMergeParent.version_id == version.id)
+        .order_by(
+            ProjectAnalysisRuleMergeParent.created_at.asc(),
+            ProjectAnalysisRuleMergeParent.id.asc(),
+        )
+        .all()
+        if session is not None
+        else []
+    )
     return {
         "id": version.id,
         "version": version.version,
@@ -426,11 +447,26 @@ def _analysis_rule_version_payload(
         "source": version.source,
         "parent_version_id": version.parent_version_id,
         "base_version_id": version.base_version_id,
+        "merge_parent_ids": [edge.parent_version_id for edge in merge_parents],
+        "merge_base_version_ids": [
+            edge.merge_base_version_id
+            for edge in merge_parents
+            if edge.merge_base_version_id
+        ],
         "content_hash": version.content_hash or "",
         "aliases": aliases,
         "is_active": version.id == active_version_id,
         "is_deleted": version.deleted_at is not None,
         "created_by_user_id": version.created_by_user_id,
+        "created_by": (
+            {
+                "id": creator.id,
+                "display_name": creator.display_name
+                or creator.email.split("@")[0],
+            }
+            if creator is not None
+            else None
+        ),
         "created_at": to_api_timestamp(version.created_at),
         "updated_at": to_api_timestamp(version.updated_at),
         "published_by_user_id": version.published_by_user_id,
@@ -441,6 +477,176 @@ def _analysis_rule_version_payload(
         "deleted_at": to_api_timestamp(version.deleted_at),
         "restored_by_user_id": version.restored_by_user_id,
         "restored_at": to_api_timestamp(version.restored_at),
+    }
+
+
+def _rule_version_parent_ids(
+    db: Session, version: ProjectAnalysisRuleVersion
+) -> list[str]:
+    parent_ids: list[str] = []
+    if version.parent_version_id:
+        parent_ids.append(version.parent_version_id)
+    for (parent_id,) in (
+        db.query(ProjectAnalysisRuleMergeParent.parent_version_id)
+        .filter(ProjectAnalysisRuleMergeParent.version_id == version.id)
+        .order_by(ProjectAnalysisRuleMergeParent.id.asc())
+        .all()
+    ):
+        if parent_id and parent_id not in parent_ids:
+            parent_ids.append(parent_id)
+    return parent_ids
+
+
+def _rule_version_ancestor_depths(
+    db: Session, version: ProjectAnalysisRuleVersion
+) -> dict[str, int]:
+    """Return this version and all ancestors with their shortest graph depth."""
+    depths = {version.id: 0}
+    queue = [version.id]
+    while queue:
+        current_id = queue.pop(0)
+        current = db.get(ProjectAnalysisRuleVersion, current_id)
+        if current is None:
+            continue
+        next_depth = depths[current_id] + 1
+        for parent_id in _rule_version_parent_ids(db, current):
+            if parent_id not in depths or next_depth < depths[parent_id]:
+                depths[parent_id] = next_depth
+                queue.append(parent_id)
+    return depths
+
+
+def _nearest_rule_merge_base(
+    db: Session,
+    target: ProjectAnalysisRuleVersion,
+    source: ProjectAnalysisRuleVersion,
+) -> ProjectAnalysisRuleVersion | None:
+    target_depths = _rule_version_ancestor_depths(db, target)
+    source_depths = _rule_version_ancestor_depths(db, source)
+    common = set(target_depths) & set(source_depths)
+    if not common:
+        return None
+    base_id = min(
+        common,
+        key=lambda version_id: (
+            target_depths[version_id] + source_depths[version_id],
+            max(target_depths[version_id], source_depths[version_id]),
+        ),
+    )
+    return db.get(ProjectAnalysisRuleVersion, base_id)
+
+
+def _rule_map(
+    rules: list[dict[str, str]] | None,
+) -> tuple[dict[str, dict[str, str]], list[str]]:
+    mapped: dict[str, dict[str, str]] = {}
+    order: list[str] = []
+    for rule in rules or []:
+        if not isinstance(rule, dict):
+            continue
+        key = str(rule.get("id") or "").strip() or (
+            "title:" + str(rule.get("title") or "").strip().casefold()
+        )
+        if not key or key in mapped:
+            continue
+        normalized = {
+            "id": str(rule.get("id") or "").strip(),
+            "title": str(rule.get("title") or "").strip(),
+            "instruction": str(rule.get("instruction") or "").strip(),
+        }
+        mapped[key] = normalized
+        order.append(key)
+    return mapped, order
+
+
+def _rule_equal(
+    left: dict[str, str] | None, right: dict[str, str] | None
+) -> bool:
+    if left is None or right is None:
+        return left is right
+    return (
+        str(left.get("title") or "").strip()
+        == str(right.get("title") or "").strip()
+        and str(left.get("instruction") or "").strip()
+        == str(right.get("instruction") or "").strip()
+    )
+
+
+def _merge_rule_versions(
+    *,
+    base: ProjectAnalysisRuleVersion | None,
+    target: ProjectAnalysisRuleVersion,
+    source: ProjectAnalysisRuleVersion,
+    resolutions: Dict[str, Union[str, AnalyzerRuleConfig]],
+) -> dict[str, Any]:
+    base_map, base_order = _rule_map(base.rules if base else [])
+    target_map, target_order = _rule_map(target.rules)
+    source_map, source_order = _rule_map(source.rules)
+    ordered_keys = list(dict.fromkeys(target_order + source_order + base_order))
+    merged: dict[str, dict[str, str]] = {}
+    conflicts: list[dict[str, Any]] = []
+
+    for key in ordered_keys:
+        before = base_map.get(key)
+        current = target_map.get(key)
+        incoming = source_map.get(key)
+        if _rule_equal(current, incoming):
+            chosen = current
+        elif _rule_equal(current, before):
+            chosen = incoming
+        elif _rule_equal(incoming, before):
+            chosen = current
+        else:
+            resolution = resolutions.get(key)
+            if resolution == "target":
+                chosen = current
+            elif resolution == "source":
+                chosen = incoming
+            elif isinstance(resolution, AnalyzerRuleConfig):
+                chosen = resolution.model_dump(exclude_none=True)
+                chosen["id"] = str(chosen.get("id") or "").strip() or str(
+                    (current or incoming or before or {}).get("id") or ""
+                )
+            else:
+                conflicts.append(
+                    {
+                        "key": key,
+                        "base": before,
+                        "target": current,
+                        "source": incoming,
+                    }
+                )
+                continue
+        if chosen is not None:
+            merged[key] = chosen
+
+    merged_rules = [
+        merged[key] for key in ordered_keys if key in merged
+    ]
+    normalized_rules = _rules_with_stable_ids(
+        merged_rules,
+        existing=list(target.rules or []) + list(source.rules or []),
+    )
+    before_keys = set(target_map)
+    after_map, _ = _rule_map(normalized_rules)
+    after_keys = set(after_map)
+    changed = sum(
+        not _rule_equal(target_map[key], after_map[key])
+        for key in before_keys & after_keys
+    )
+    return {
+        "base_version_id": base.id if base else None,
+        "target_version_id": target.id,
+        "source_version_id": source.id,
+        "rules": normalized_rules,
+        "summary": {
+            "added": len(after_keys - before_keys),
+            "removed": len(before_keys - after_keys),
+            "changed": changed,
+            "unchanged": len(before_keys & after_keys) - changed,
+            "conflicts": len(conflicts),
+        },
+        "conflicts": conflicts,
     }
 
 
@@ -460,7 +666,7 @@ class AnalyzerRuleConfig(BaseModel):
 
 
 class AnalyzerDocumentSelection(BaseModel):
-    """Selection state for one document in the current user's run library."""
+    """Project-level inclusion state for one analyzer document."""
 
     selected: bool
 
@@ -468,11 +674,12 @@ class AnalyzerDocumentSelection(BaseModel):
 class PlaygroundConfig(BaseModel):
     """Configuration overrides for the AI evaluator playground."""
 
-    project_description: Optional[str] = Field(default=None, max_length=20_000)
     analysis_rules: Optional[List[AnalyzerRuleConfig]] = None
     reference_documents: Optional[List[ReferenceDocument]] = Field(
         default=None, max_length=8
     )
+    include_project_rules: Optional[bool] = None
+    include_project_documents: Optional[bool] = None
     system_prompt: Optional[str] = Field(default=None, max_length=50_000)
     additional_instructions: Optional[str] = Field(default=None, max_length=20_000)
     custom_variable_mapping: Optional[Dict[str, MappingSource]] = None
@@ -503,6 +710,7 @@ class AnalyzeRequest(BaseModel):
     domain: Optional[List[str]] = None
     root_cause: Optional[List[str]] = None
     item_ids: Optional[List[str]] = None
+    limit: Optional[int] = Field(default=None, ge=1)
     concurrency: int = Field(default=20, ge=1, le=20)
     config: Optional[PlaygroundConfig] = None
     connection_id: Optional[str] = (
@@ -529,9 +737,8 @@ class TestRequest(BaseModel):
 
 
 class AnalysisContextUpdate(BaseModel):
-    """Project-scoped analyzer context edited in the analyzer side panel."""
+    """Project-scoped analysis rules edited in the analyzer."""
 
-    project_description: str = Field(default="", max_length=20_000)
     analysis_rules: List[AnalyzerRuleConfig] = Field(default_factory=list)
     create_new_version: bool = False
     rule_version_id: Optional[str] = None
@@ -560,11 +767,21 @@ class AnalysisRuleAliasUpdate(BaseModel):
 class RuleInferenceRequest(BaseModel):
     """Inputs for the project rule-writer agent."""
 
-    project_description: str = Field(..., min_length=1, max_length=20_000)
-    include_project_description: bool = True
     include_documents: bool = True
     include_examples: bool = True
+    mode: Literal["generate", "update"] = "generate"
+    rule_version_id: Optional[str] = None
     connection_id: Optional[str] = None
+
+
+class AnalysisRuleMergeRequest(BaseModel):
+    """Preview or apply a three-way merge into a rule version."""
+
+    source_version: str = Field(..., min_length=1, max_length=100)
+    apply: bool = False
+    resolutions: Dict[str, Union[Literal["target", "source"], AnalyzerRuleConfig]] = (
+        Field(default_factory=dict)
+    )
 
 
 def _resolve_connection(
@@ -631,14 +848,16 @@ def _playground_config_to_analyzer(
     if pg is None:
         return None
     cfg: dict[str, Any] = {}
-    if pg.project_description is not None:
-        cfg["project_description"] = pg.project_description
     if pg.analysis_rules is not None:
         cfg["analysis_rules"] = [rule.model_dump() for rule in pg.analysis_rules]
     if pg.reference_documents is not None:
         cfg["reference_documents"] = [
             document.model_dump() for document in pg.reference_documents
         ]
+    if pg.include_project_rules is not None:
+        cfg["_include_project_rules"] = pg.include_project_rules
+    if pg.include_project_documents is not None:
+        cfg["_include_project_documents"] = pg.include_project_documents
     if pg.system_prompt is not None:
         cfg["system_prompt"] = pg.system_prompt
     if pg.root_cause_categories is not None:
@@ -1391,6 +1610,24 @@ def _filter_analysis_targets(
                     continue
             targets.append((item, metric_name))
 
+    def severity_key(target: tuple[RunItem, str]) -> tuple[float, int, str]:
+        item, metric_name = target
+        score = scores_by_item.get(item.item_id, {}).get(metric_name)
+        direction = str(
+            getattr(metric_specs.get(metric_name), "direction", "maximize")
+            or "maximize"
+        ).lower()
+        if item.error or score is None or score.score_numeric is None:
+            severity = float("-inf")
+        elif direction in {"minimize", "lower", "lower_is_better"}:
+            severity = -float(score.score_numeric)
+        else:
+            severity = float(score.score_numeric)
+        return severity, int(item.index or 0), metric_name
+
+    targets.sort(key=severity_key)
+    if request.limit is not None:
+        targets = targets[: request.limit]
     return targets
 
 
@@ -1401,38 +1638,36 @@ def _analysis_config_with_project_context(
 ) -> dict[str, Any] | None:
     """Fill omitted request context from the project's saved analyzer settings."""
     config = dict(analyzer_config or {})
+    include_rules = bool(config.pop("_include_project_rules", True))
+    include_documents = bool(config.pop("_include_project_documents", True))
     project = db.get(Project, run.project_id)
     if project is not None:
-        if not str(config.get("project_description") or "").strip():
-            config["project_description"] = str(project.description or "").strip()
         active_rules = _active_analysis_rule_version(db, project.id)
-        if not config.get("analysis_rules"):
+        if include_rules and not config.get("analysis_rules"):
             config["analysis_rules"] = (
                 active_rules.rules if active_rules else []
             )
-        if active_rules and normalize_analysis_rules(
+        elif not include_rules:
+            config["analysis_rules"] = []
+        if include_rules and active_rules and normalize_analysis_rules(
             config.get("analysis_rules")
         ) == normalize_analysis_rules(active_rules.rules):
             config["_analysis_rule_version_id"] = active_rules.id
-    if "reference_documents" not in config:
-        selected_documents = (
+    if not include_documents:
+        config["reference_documents"] = []
+    elif "reference_documents" not in config:
+        project_documents = (
             db.query(AnalyzerDocument)
-            .join(
-                AnalyzerRunDocument,
-                AnalyzerRunDocument.document_id == AnalyzerDocument.id,
-            )
             .filter(
-                AnalyzerRunDocument.run_id == run.id,
-                AnalyzerRunDocument.selected.is_(True),
                 AnalyzerDocument.project_id == run.project_id,
+                AnalyzerDocument.enabled.is_(True),
             )
             .order_by(AnalyzerDocument.created_at.asc(), AnalyzerDocument.id.asc())
-            .limit(8)
             .all()
         )
         config["reference_documents"] = [
             {"name": document.name, "content": document.content}
-            for document in selected_documents
+            for document in project_documents
         ]
     return config or None
 
@@ -1846,16 +2081,14 @@ async def analyze_run_items_stream(
     )
 
 
-def _analysis_document_payload(
-    document: AnalyzerDocument, *, selected: bool
-) -> Dict[str, Any]:
+def _analysis_document_payload(document: AnalyzerDocument) -> Dict[str, Any]:
     return {
         "id": document.id,
         "name": document.name,
         "content": document.content,
         "characters": document.characters,
         "truncated": document.truncated,
-        "selected": selected,
+        "selected": document.enabled,
         "created_at": to_api_timestamp(document.created_at),
     }
 
@@ -1881,7 +2114,7 @@ def list_analysis_documents(
     db: Session = Depends(get_db),
     principal: Principal = Depends(require_ui_principal),
 ) -> Dict[str, Any]:
-    """List the project library with this run's shared selections."""
+    """List documents owned by the run's project."""
     run = _document_library_run(db, principal, run_id, modify=True)
     documents = (
         db.query(AnalyzerDocument)
@@ -1889,17 +2122,9 @@ def list_analysis_documents(
         .order_by(AnalyzerDocument.created_at.asc(), AnalyzerDocument.id.asc())
         .all()
     )
-    selections = {
-        row.document_id: row.selected
-        for row in db.query(AnalyzerRunDocument)
-        .filter(AnalyzerRunDocument.run_id == run.id)
-        .all()
-    }
     return {
         "documents": [
-            _analysis_document_payload(
-                document, selected=selections.get(document.id, False)
-            )
+            _analysis_document_payload(document)
             for document in documents
         ]
     }
@@ -1912,7 +2137,7 @@ async def upload_analysis_document(
     db: Session = Depends(get_db),
     principal: Principal = Depends(require_ui_principal),
 ) -> Dict[str, Any]:
-    """Extract a project document and select it for the current run."""
+    """Extract and save a document to the run's project."""
     run = _document_library_run(db, principal, run_id, modify=True)
 
     try:
@@ -1946,11 +2171,9 @@ async def upload_analysis_document(
         truncated=document.truncated,
     )
     db.add(stored)
-    db.flush()
-    db.add(AnalyzerRunDocument(run_id=run.id, document_id=stored.id, selected=True))
     db.commit()
     db.refresh(stored)
-    return {"document": _analysis_document_payload(stored, selected=True)}
+    return {"document": _analysis_document_payload(stored)}
 
 
 @router.patch("/api/runs/{run_id:path}/analysis-documents/{document_id}")
@@ -1961,7 +2184,7 @@ def select_analysis_document(
     db: Session = Depends(get_db),
     principal: Principal = Depends(require_ui_principal),
 ) -> Dict[str, Any]:
-    """Persist whether a project-library document is selected for this run."""
+    """Persist whether a project document is available to analyzer prompts."""
     run = _document_library_run(db, principal, run_id, modify=True)
     document = (
         db.query(AnalyzerDocument)
@@ -1973,27 +2196,10 @@ def select_analysis_document(
     )
     if not document:
         raise HTTPException(status_code=404, detail="Analyzer document not found")
-    selection = (
-        db.query(AnalyzerRunDocument)
-        .filter(
-            AnalyzerRunDocument.run_id == run.id,
-            AnalyzerRunDocument.document_id == document.id,
-        )
-        .first()
-    )
-    if selection:
-        selection.selected = request.selected
-    else:
-        selection = AnalyzerRunDocument(
-            run_id=run.id,
-            document_id=document.id,
-            selected=request.selected,
-        )
-        db.add(selection)
+    document.enabled = request.selected
     db.commit()
-    return {
-        "document": _analysis_document_payload(document, selected=selection.selected)
-    }
+    db.refresh(document)
+    return {"document": _analysis_document_payload(document)}
 
 
 @router.delete("/api/runs/{run_id:path}/analysis-documents/{document_id}")
@@ -2034,7 +2240,7 @@ def update_analysis_context(
     db: Session = Depends(get_db),
     principal: Principal = Depends(require_ui_principal),
 ) -> Dict[str, Any]:
-    """Persist project description and update the active working rules version."""
+    """Update the active working rules version."""
     run = Run.active(db).filter(Run.id == run_id).first()
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
@@ -2044,7 +2250,6 @@ def update_analysis_context(
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    project.description = request.project_description.strip()
     rules = [rule.model_dump(exclude_none=True) for rule in request.analysis_rules]
     if request.create_new_version:
         parent = (
@@ -2072,7 +2277,6 @@ def update_analysis_context(
     db.commit()
     production = _active_analysis_rule_version(db, project.id)
     return {
-        "project_description": project.description,
         "analysis_rules": version.rules or [],
         "rule_version": _analysis_rule_version_payload(
             version, active_version_id=production.id if production else None
@@ -2098,11 +2302,7 @@ async def infer_project_analysis_rules(
     project = db.get(Project, run.project_id)
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found")
-    if not (
-        request.include_project_description
-        or request.include_documents
-        or request.include_examples
-    ):
+    if not (request.include_documents or request.include_examples):
         raise HTTPException(
             status_code=422,
             detail="Select at least one source for rules inference",
@@ -2111,14 +2311,9 @@ async def infer_project_analysis_rules(
     selected_documents = (
         (
             db.query(AnalyzerDocument)
-            .join(
-                AnalyzerRunDocument,
-                AnalyzerRunDocument.document_id == AnalyzerDocument.id,
-            )
             .filter(
-                AnalyzerRunDocument.run_id == run.id,
-                AnalyzerRunDocument.selected.is_(True),
                 AnalyzerDocument.project_id == run.project_id,
+                AnalyzerDocument.enabled.is_(True),
             )
             .order_by(AnalyzerDocument.created_at.asc(), AnalyzerDocument.id.asc())
             .all()
@@ -2136,22 +2331,32 @@ async def infer_project_analysis_rules(
         else []
     )
     llm_config = _get_llm_config(db, run.project_id, request.connection_id)
+    target_version = (
+        _resolve_analysis_rule_version(
+            db, project.id, request.rule_version_id
+        )
+        if request.rule_version_id
+        else _active_analysis_rule_version(db, project.id)
+    )
+    existing_rules = list(target_version.rules or []) if target_version else []
 
     try:
-        rules = await infer_analysis_rules(
-            build_client(llm_config),
-            llm_config.get("llm_model", "gpt-4o-mini"),
-            project_description=(
-                request.project_description
-                if request.include_project_description
-                else ""
-            ),
-            reference_documents=[
+        inference_args = {
+            "client": build_client(llm_config),
+            "model": llm_config.get("llm_model", "gpt-4o-mini"),
+            "reference_documents": [
                 {"name": document.name, "content": document.content}
                 for document in selected_documents
             ],
-            corrections=corrections,
-        )
+            "corrections": corrections,
+        }
+        if request.mode == "update":
+            rules = await update_analysis_rules(
+                existing_rules=existing_rules,
+                **inference_args,
+            )
+        else:
+            rules = await infer_analysis_rules(**inference_args)
     except asyncio.TimeoutError as exc:
         logger.warning(
             "Rule inference timed out for run=%s project=%s model=%s",
@@ -2183,28 +2388,53 @@ async def infer_project_analysis_rules(
             status_code=502, detail=f"Rule inference failed: {exc}"
         ) from exc
 
-    project.description = request.project_description.strip()
-    version = _create_analysis_rule_version(
-        db,
-        project_id=project.id,
-        rules=rules,
-        source="inferred",
-        actor_user_id=principal.user.id,
-        force_new=True,
-        parent=_active_analysis_rule_version(db, project.id),
-    )
+    normalized_rules = _rules_with_stable_ids(rules, existing=existing_rules)
+    if (
+        target_version is not None
+        and _rule_status(target_version) == AnalysisRuleVersionStatus.DRAFT.value
+    ):
+        version = target_version
+        version.rules = normalized_rules
+        version.source = (
+            "inference_update" if request.mode == "update" else "inferred"
+        )
+        version.updated_at = utc_now_naive()
+    else:
+        version = _create_analysis_rule_version(
+            db,
+            project_id=project.id,
+            rules=normalized_rules,
+            source=(
+                "inference_update" if request.mode == "update" else "inferred"
+            ),
+            actor_user_id=principal.user.id,
+            force_new=True,
+            parent=target_version,
+        )
     db.commit()
     production = _active_analysis_rule_version(db, project.id)
+    before_map, _ = _rule_map(existing_rules)
+    after_map, _ = _rule_map(version.rules)
+    common_keys = set(before_map) & set(after_map)
+    changed_count = sum(
+        not _rule_equal(before_map[key], after_map[key])
+        for key in common_keys
+    )
     return {
-        "project_description": project.description,
         "analysis_rules": version.rules or [],
         "rule_version": _analysis_rule_version_payload(
             version, active_version_id=production.id if production else None
         ),
+        "mode": request.mode,
+        "changes": {
+            "added": len(set(after_map) - set(before_map)),
+            "removed": len(set(before_map) - set(after_map)),
+            "changed": changed_count,
+            "unchanged": len(common_keys) - changed_count,
+        },
         "documents_used": len(selected_documents),
         "examples_used": len(corrections),
         "sources_used": {
-            "project_description": request.include_project_description,
             "documents": request.include_documents,
             "approved_examples": request.include_examples,
         },
@@ -2456,6 +2686,100 @@ def compare_project_analysis_rule_versions(
 
 
 @router.post(
+    "/api/runs/{run_id:path}/analysis-rule-versions/{target_ref}:merge"
+)
+def merge_project_analysis_rule_versions(
+    run_id: str,
+    target_ref: str,
+    request: AnalysisRuleMergeRequest,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_ui_principal),
+) -> Dict[str, Any]:
+    """Preview or apply a three-way merge between two rule-version branches."""
+    run = Run.active(db).filter(Run.id == run_id).first()
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+    if not is_project_manager(db, principal, run.project_id):
+        raise HTTPException(
+            status_code=403, detail="Project manager access required"
+        )
+    target = _resolve_analysis_rule_version(db, run.project_id, target_ref)
+    source = _resolve_analysis_rule_version(
+        db, run.project_id, request.source_version
+    )
+    if target.id == source.id:
+        raise HTTPException(
+            status_code=409, detail="A rule version cannot be merged with itself"
+        )
+    base = _nearest_rule_merge_base(db, target, source)
+    merge = _merge_rule_versions(
+        base=base,
+        target=target,
+        source=source,
+        resolutions=request.resolutions,
+    )
+    if not request.apply:
+        return {"preview": merge}
+    if merge["conflicts"]:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": "Resolve every rule conflict before applying the merge",
+                "preview": merge,
+            },
+        )
+
+    source_ancestors = _rule_version_ancestor_depths(db, source)
+    update_in_place = (
+        _rule_status(target) == AnalysisRuleVersionStatus.DRAFT.value
+        and target.id not in source_ancestors
+    )
+    if update_in_place:
+        result = target
+        result.rules = merge["rules"]
+        result.source = "merged"
+        result.updated_at = utc_now_naive()
+    else:
+        result = _create_analysis_rule_version(
+            db,
+            project_id=run.project_id,
+            rules=merge["rules"],
+            source="merged",
+            actor_user_id=principal.user.id,
+            force_new=True,
+            parent=target,
+            description=f"Merged {source.name or 'v' + str(source.version)}",
+        )
+    merge["created_new_draft"] = result.id != target.id
+    edge = (
+        db.query(ProjectAnalysisRuleMergeParent)
+        .filter(
+            ProjectAnalysisRuleMergeParent.version_id == result.id,
+            ProjectAnalysisRuleMergeParent.parent_version_id == source.id,
+        )
+        .first()
+    )
+    if edge is None:
+        db.add(
+            ProjectAnalysisRuleMergeParent(
+                version_id=result.id,
+                parent_version_id=source.id,
+                merge_base_version_id=base.id if base else None,
+                created_by_user_id=principal.user.id,
+                created_at=utc_now_naive(),
+            )
+        )
+    db.commit()
+    production = _active_analysis_rule_version(db, run.project_id)
+    return {
+        "version": _analysis_rule_version_payload(
+            result, active_version_id=production.id if production else None
+        ),
+        "merge": merge,
+    }
+
+
+@router.post(
     "/api/runs/{run_id:path}/analysis-rule-versions/{version_id}/activate"
 )
 def activate_project_analysis_rule_version(
@@ -2562,6 +2886,24 @@ def delete_project_analysis_rule_version(
             descendant.parent_version_id = None
         if descendant.base_version_id == version.id:
             descendant.base_version_id = None
+    db.query(ProjectAnalysisRuleMergeParent).filter(
+        ProjectAnalysisRuleMergeParent.version_id == version.id
+    ).delete(synchronize_session=False)
+    merge_descendants = (
+        db.query(ProjectAnalysisRuleMergeParent)
+        .filter(
+            ProjectAnalysisRuleMergeParent.parent_version_id == version.id
+        )
+        .all()
+    )
+    for edge in merge_descendants:
+        db.delete(edge)
+    db.query(ProjectAnalysisRuleMergeParent).filter(
+        ProjectAnalysisRuleMergeParent.merge_base_version_id == version.id
+    ).update(
+        {ProjectAnalysisRuleMergeParent.merge_base_version_id: None},
+        synchronize_session=False,
+    )
     db.query(ProjectAnalysisRuleAlias).filter(
         ProjectAnalysisRuleAlias.project_id == run.project_id,
         ProjectAnalysisRuleAlias.rule_version_id == version.id,
@@ -2675,12 +3017,25 @@ def permanently_delete_project_analysis_rule_version(
         .first()
         is not None
     )
-    if has_aliases or has_descendants:
+    has_merge_references = (
+        db.query(ProjectAnalysisRuleMergeParent.id)
+        .filter(
+            or_(
+                ProjectAnalysisRuleMergeParent.parent_version_id == version.id,
+                ProjectAnalysisRuleMergeParent.merge_base_version_id == version.id,
+            )
+        )
+        .first()
+        is not None
+    )
+    if has_aliases or has_descendants or has_merge_references:
         references = []
         if has_aliases:
             references.append("aliases")
         if has_descendants:
             references.append("descendant versions")
+        if has_merge_references:
+            references.append("merge lineage")
         raise HTTPException(
             status_code=409,
             detail=(
@@ -3029,7 +3384,7 @@ def get_analysis_config(
         and i.item_metadata.get("root_cause_source") == "ai"
     )
 
-    correction_count = (
+    approved_corrections = (
         db.query(ReviewCorrection)
         .join(Run, Run.id == ReviewCorrection.run_id)
         .filter(
@@ -3038,12 +3393,52 @@ def get_analysis_config(
             ReviewCorrection.status == CorrectionStatus.APPROVED,
             ReviewCorrection.is_active.is_(True),
         )
-        .count()
+        .order_by(ReviewCorrection.created_at.desc(), ReviewCorrection.id.desc())
+        .all()
     )
+    correction_count = len(approved_corrections)
 
     all_categories, category_details_map = _collect_task_root_cause_catalog(
         db, run, items
     )
+    correction_runs = _load_runs_map(
+        db, {correction.run_id for correction in approved_corrections}
+    )
+    category_examples: Dict[str, List[Dict[str, Any]]] = {
+        category: [] for category in all_categories
+    }
+    for correction in approved_corrections:
+        category = str(
+            correction.human_root_cause or correction.ai_root_cause or ""
+        ).strip()
+        if not category:
+            continue
+        example_run = correction_runs.get(correction.run_id)
+        category_examples.setdefault(category, []).append(
+            {
+                "id": correction.id,
+                "item_id": correction.item_id,
+                "metric_name": correction.metric_name,
+                "run_name": _run_display_name(example_run),
+                "dataset": example_run.dataset if example_run else "",
+                "model": (
+                    _strip_model_provider(example_run.model or "")
+                    if example_run
+                    else ""
+                ),
+                "detail": correction.human_root_cause_detail
+                or correction.ai_root_cause_detail,
+                "note": correction.human_root_cause_note
+                or correction.ai_root_cause_note,
+                "solution": correction.human_solution or correction.ai_solution,
+                "solution_note": correction.human_solution_note
+                or correction.ai_solution_note,
+                "input": _normalize_snapshot_value(correction.input_snapshot),
+                "expected": _normalize_snapshot_value(correction.expected_snapshot),
+                "output": _normalize_snapshot_value(correction.output_snapshot),
+                "created_at": to_api_timestamp(correction.created_at),
+            }
+        )
     active_rule_version = (
         _active_analysis_rule_version(db, project.id) if project else None
     )
@@ -3053,7 +3448,6 @@ def get_analysis_config(
         "model": default_conn.llm_model if default_conn else None,
         "llm_connections": connection_payloads,
         "default_connection_id": default_conn.id if default_conn else None,
-        "project_description": str(project.description or "") if project else "",
         "analysis_rules": (
             normalize_analysis_rules(active_rule_version.rules)
             if active_rule_version
@@ -3080,6 +3474,11 @@ def get_analysis_config(
         "default_categories": all_categories,
         "default_solution_categories": SOLUTION_CATEGORIES,
         "category_details_map": category_details_map,
+        "category_example_counts": {
+            category: len(examples)
+            for category, examples in category_examples.items()
+        },
+        "category_examples": category_examples,
         # Keep flat list for backwards compatibility
         "existing_details": _ordered_unique(
             [d for dets in category_details_map.values() for d in dets]

@@ -9,6 +9,7 @@ from sqlalchemy import (
     BigInteger,
     JSON,
     Boolean,
+    CheckConstraint,
     DateTime,
     Enum,
     Float,
@@ -108,7 +109,6 @@ class Project(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     slug: Mapped[str] = mapped_column(String(200), nullable=False, unique=True, index=True)
-    description: Mapped[str] = mapped_column(Text, default="")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
     created_by_user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
@@ -208,6 +208,42 @@ class ProjectAnalysisRuleAlias(Base):
     __table_args__ = (
         UniqueConstraint(
             "project_id", "alias", name="uq_project_analysis_rule_alias"
+        ),
+    )
+
+
+class ProjectAnalysisRuleMergeParent(Base):
+    """Additional parent edge recorded when two rule branches are merged."""
+
+    __tablename__ = "project_analysis_rule_merge_parents"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    version_id: Mapped[str] = mapped_column(
+        ForeignKey("project_analysis_rule_versions.id", ondelete="CASCADE"),
+        index=True,
+    )
+    parent_version_id: Mapped[str] = mapped_column(
+        ForeignKey("project_analysis_rule_versions.id", ondelete="RESTRICT"),
+        index=True,
+    )
+    merge_base_version_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("project_analysis_rule_versions.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    created_by_user_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("users.id"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "version_id",
+            "parent_version_id",
+            name="uq_project_analysis_rule_merge_parent",
+        ),
+        CheckConstraint(
+            "version_id <> parent_version_id",
+            name="ck_project_analysis_rule_merge_parent_distinct",
         ),
     )
 
@@ -350,6 +386,7 @@ class AnalyzerDocument(Base):
     content: Mapped[str] = mapped_column(Text, nullable=False)
     characters: Mapped[int] = mapped_column(Integer, nullable=False)
     truncated: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

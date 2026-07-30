@@ -123,7 +123,7 @@ curl -s -X POST "https://qym.example.com/v1/datasets:upload" \
   <thead><tr><th>Method &amp; path</th><th>Purpose</th></tr></thead>
   <tbody>
     <tr><td><code>GET /v1/projects</code></td><td>Projects visible to the caller (all projects for an admin; member projects otherwise).</td></tr>
-    <tr><td><code>POST /v1/projects</code></td><td>Create a project. Body: <code>name</code>, optional <code>slug</code> / <code>description</code>. The creator becomes a manager. Only admins and existing managers may create; otherwise <code>403 Only admins and project managers can create projects</code>. Duplicate slug &rarr; <code>400 Project slug already exists</code>.</td></tr>
+    <tr><td><code>POST /v1/projects</code></td><td>Create a project. Body: <code>name</code> and optional <code>slug</code>. The creator becomes a manager. Only admins and existing managers may create; otherwise <code>403 Only admins and project managers can create projects</code>. Duplicate slug &rarr; <code>400 Project slug already exists</code>.</td></tr>
     <tr><td><code>GET /v1/projects/{project_id}</code></td><td>Get one project (with <code>member_count</code>, <code>run_count</code>, caller <code>role</code>).</td></tr>
     <tr><td><code>GET /v1/projects/by-slug/{project_slug}</code></td><td>Resolve a project by slug.</td></tr>
     <tr><td><code>GET /v1/projects/{project_id}/members</code></td><td>List members with roles.</td></tr>
@@ -213,11 +213,11 @@ curl -s -X POST "https://qym.example.com/v1/datasets:upload" \
     <tr><td><code>POST /api/runs/{run_id}/analyze-stream</code></td><td>Same, streamed as progress events.</td></tr>
     <tr><td><code>POST /api/runs/{run_id}/analyze-preview</code></td><td>Render the exact LLM messages for one item without calling the model or saving analysis.</td></tr>
     <tr><td><code>POST /api/runs/{run_id}/analyze-test</code></td><td>Run analysis against 1&ndash;3 selected items without saving; returns rendered messages, results, and any aggregation error.</td></tr>
-    <tr><td><code>GET /api/runs/{run_id}/analysis-documents</code></td><td>List the project's shared reference-document library and the run's selected documents.</td></tr>
-    <tr><td><code>POST /api/runs/{run_id}/analysis-documents</code></td><td>Upload a reference document to the project library and select it for this run.</td></tr>
-    <tr><td><code>PATCH /api/runs/{run_id}/analysis-documents/{document_id}</code></td><td>Change whether this run selects a project reference document.</td></tr>
+    <tr><td><code>GET /api/runs/{run_id}/analysis-documents</code></td><td>List the project's shared reference-document library and project inclusion state.</td></tr>
+    <tr><td><code>POST /api/runs/{run_id}/analysis-documents</code></td><td>Upload and enable a reference document in the project library.</td></tr>
+    <tr><td><code>PATCH /api/runs/{run_id}/analysis-documents/{document_id}</code></td><td>Change whether a project reference document is included in analyzer prompts.</td></tr>
     <tr><td><code>DELETE /api/runs/{run_id}/analysis-documents/{document_id}</code></td><td>Remove a reference document from the project library.</td></tr>
-    <tr><td><code>PATCH /api/runs/{run_id}/analysis-context</code></td><td>Save the project description and working analysis-rule draft/version. Use the document selection endpoint above to select documents for a run.</td></tr>
+    <tr><td><code>PATCH /api/runs/{run_id}/analysis-context</code></td><td>Save the working analysis-rule draft/version. Use the document selection endpoint above to select documents for a run.</td></tr>
     <tr><td><code>POST /api/runs/{run_id}/analysis-rules/infer</code></td><td>Generate bounded analysis-rule drafts from selected project context, documents, and approved correction evidence.</td></tr>
     <tr><td><code>GET /api/runs/{run_id}/corrections</code></td><td>Approved correction-bank entries for this run's task (up to 20).</td></tr>
     <tr><td><code>GET /api/runs/{run_id}/analysis-config</code></td><td>Analysis configuration for the run.</td></tr>

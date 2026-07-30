@@ -17,8 +17,8 @@ metric-aware analysis workspace. The complete developer/operator record is in
 - **Metric-aware analysis** — analyze selected item/metric targets, persist
   independent diagnoses under `item_metadata.metric_analyses`, expose metric-scoped
   review candidates, and switch run/compare root-cause breakdowns by metric.
-- **Project context** — add project descriptions, bounded reference-document
-  libraries, nested field/custom-variable mapping, useful trace projection, secret
+- **Project context** — add bounded reference-document libraries, nested
+  field/custom-variable mapping, useful trace projection, secret
   redaction, reasoning-model parsing, confidence calibration, and prompt/test
   previews.
 - **Versioned analyzer rules** — generate draft rules from project material and

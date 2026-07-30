@@ -53,7 +53,6 @@ def _ensure_import_project(db: Session, owner: User) -> Project:
     project = Project(
         name="Imported Results",
         slug="imported-results",
-        description="Imported legacy runs",
         created_by_user_id=owner.id,
         is_active=True,
     )

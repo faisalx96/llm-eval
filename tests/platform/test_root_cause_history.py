@@ -22,12 +22,14 @@ if "openai" not in sys.modules:
 
 from qym_platform.api.analysis import (
     AnalysisContextUpdate,
+    AnalysisRuleMergeRequest,
     AnalysisRuleVersionCreate,
     AnalysisRuleVersionPublish,
     AnalyzeRequest,
     AnalyzerRuleConfig,
     PlaygroundConfig,
     ReferenceDocument,
+    _analysis_config_with_project_context,
     _aggregate_run_analysis_results,
     _approve_candidate,
     _collect_task_root_cause_catalog,
@@ -49,6 +51,7 @@ from qym_platform.api.analysis import (
     create_project_analysis_rule_version,
     delete_project_analysis_rule_version,
     list_project_analysis_rule_versions,
+    merge_project_analysis_rule_versions,
     permanently_delete_project_analysis_rule_version,
     publish_project_analysis_rule_version,
     update_analysis_context,
@@ -58,9 +61,11 @@ from qym_platform.api.runs import _build_run_data
 from qym_platform.auth import Principal
 from qym_platform.db.base import Base
 from qym_platform.db.models import (
+    AnalyzerDocument,
     CorrectionStatus,
     Project,
     ProjectAnalysisRuleAlias,
+    ProjectAnalysisRuleMergeParent,
     ProjectAnalysisRuleVersion,
     ProjectMembership,
     ProjectRole,
@@ -113,7 +118,6 @@ def _seed_run(session: Session) -> tuple[User, User, Run, RunItem]:
         id="project-1",
         name="Project One",
         slug="project-one",
-        description="Test project",
         created_by_user_id=actor.id,
         is_active=True,
     )
@@ -387,7 +391,6 @@ def test_few_shot_examples_are_scoped_to_the_run_project(
         id="project-2",
         name="Project Two",
         slug="project-two",
-        description="Other tenant",
         created_by_user_id=actor.id,
         is_active=True,
     )
@@ -1208,7 +1211,7 @@ def test_build_analysis_prompt_includes_only_useful_trace_evidence(
     assert "trace-secret" not in system_content
 
 
-def test_build_analysis_prompt_includes_project_description(
+def test_build_analysis_prompt_ignores_legacy_project_description(
     db_session: Session,
 ) -> None:
     _, _, _, item = _seed_run(db_session)
@@ -1225,10 +1228,8 @@ def test_build_analysis_prompt_includes_project_description(
         message["content"] for message in messages if message["role"] == "system"
     )
 
-    assert (
-        "Project description: A text-to-SQL assistant for read-only analytics."
-        in system_content
-    )
+    assert "Project description:" not in system_content
+    assert "Stored project description:" not in system_content
     assert "{business_context}" not in system_content
 
 
@@ -1301,11 +1302,8 @@ def test_build_analysis_prompt_renders_all_new_system_contexts(
         assert placeholder not in system_content
 
     assert "Project: Project One" in system_content
-    assert (
-        "Project description: A regulated financial support assistant."
-        in system_content
-    )
-    assert "Stored project description: Test project" in system_content
+    assert "Project description:" not in system_content
+    assert "Stored project description:" not in system_content
     assert "Evaluation task: insightor_api" in system_content
     assert "Dataset: dataset-1" in system_content
     assert "Attached reference documents: policy.md" not in system_content
@@ -1612,24 +1610,52 @@ def test_analysis_prompt_scopes_category_root_cause_and_feedback_to_selected_met
     None
 ):
     item = RunItem(run_id="run-1", item_id="item-1", index=0, input={"q": "x"})
+    accuracy_score = RunItemScore(
+        run_id="run-1",
+        item_id="item-1",
+        metric_name="accuracy",
+        score_numeric=0.25,
+    )
+    format_score = RunItemScore(
+        run_id="run-1",
+        item_id="item-1",
+        metric_name="format",
+        score_numeric=1.0,
+    )
+    scores = {"accuracy": accuracy_score, "format": format_score}
 
     accuracy_messages = build_analysis_prompt(
         item,
-        {},
+        scores,
         [],
         metric_name="accuracy",
     )
     format_messages = build_analysis_prompt(
         item,
-        {},
+        scores,
         [],
         metric_name="format",
     )
 
     accuracy_prompt = "\n".join(message["content"] for message in accuracy_messages)
     format_prompt = "\n".join(message["content"] for message in format_messages)
-    assert "Analyze only the selected metric accuracy" in accuracy_prompt
-    assert "Analyze only the selected metric format" in format_prompt
+    accuracy_user_message = next(
+        message["content"]
+        for message in accuracy_messages
+        if message["role"] == "user"
+    )
+    format_user_message = next(
+        message["content"] for message in format_messages if message["role"] == "user"
+    )
+
+    assert '"selected_metric": "accuracy"' in accuracy_prompt
+    assert '"accuracy": {' in accuracy_prompt
+    assert '"format": {' not in accuracy_prompt
+    assert '"selected_metric": "format"' in format_prompt
+    assert '"format": {' in format_prompt
+    assert '"accuracy": {' not in format_prompt
+    assert accuracy_user_message == "Return only the JSON object required by the system prompt."
+    assert format_user_message == "Return only the JSON object required by the system prompt."
 
 
 def test_parse_llm_response_calibrates_and_bounds_confidence() -> None:
@@ -1709,14 +1735,13 @@ async def test_analyze_single_item_sends_max_tokens_and_records_provenance() -> 
     assert len(result.prompt_hash) == 64
 
 
-def test_playground_config_passes_project_description_to_analyzer() -> None:
+def test_playground_config_has_no_project_description_override() -> None:
     config = PlaygroundConfig(
         project_description="A support assistant for billing questions."
     )
 
-    assert _playground_config_to_analyzer(config) == {
-        "project_description": "A support assistant for billing questions.",
-    }
+    assert "project_description" not in PlaygroundConfig.model_fields
+    assert _playground_config_to_analyzer(config) is None
 
 
 def test_rule_request_models_allow_more_than_twenty_rules() -> None:
@@ -1848,6 +1873,70 @@ def test_empty_metric_selection_analyzes_nothing(db_session: Session) -> None:
     )
 
     assert targets == []
+
+
+def test_analysis_target_limit_uses_deterministic_severity_order(
+    db_session: Session,
+) -> None:
+    _, _, run, first_item = _seed_run(db_session)
+    second_item = RunItem(
+        run_id=run.id,
+        item_id="item-2",
+        index=1,
+        input={"question": "second"},
+        item_metadata={},
+    )
+    third_item = RunItem(
+        run_id=run.id,
+        item_id="item-3",
+        index=2,
+        input={"question": "third"},
+        item_metadata={},
+    )
+    second_score = RunItemScore(
+        run_id=run.id,
+        item_id=second_item.item_id,
+        metric_name="accuracy",
+        score_numeric=0.4,
+    )
+    third_score = RunItemScore(
+        run_id=run.id,
+        item_id=third_item.item_id,
+        metric_name="accuracy",
+        score_numeric=0.0,
+    )
+    db_session.add_all([second_item, third_item, second_score, third_score])
+    db_session.commit()
+    first_score = (
+        db_session.query(RunItemScore)
+        .filter(
+            RunItemScore.run_id == run.id,
+            RunItemScore.item_id == first_item.item_id,
+        )
+        .one()
+    )
+
+    targets = _filter_analysis_targets(
+        run,
+        AnalyzeRequest(
+            metrics=["accuracy"],
+            item_filter="failed",
+            only_unanalyzed=False,
+            limit=2,
+        ),
+        [first_item, second_item, third_item],
+        {
+            first_item.item_id: {"accuracy": first_score},
+            second_item.item_id: {"accuracy": second_score},
+            third_item.item_id: {"accuracy": third_score},
+        },
+        {},
+    )
+
+    assert [(item.item_id, metric) for item, metric in targets] == [
+        ("item-3", "accuracy"),
+        ("item-1", "accuracy"),
+    ]
 
 
 def test_analysis_targets_do_not_apply_max_score_as_an_upper_bound_to_minimize_metrics(
@@ -2308,6 +2397,10 @@ def test_analysis_rules_are_normalized_and_included_in_prompt() -> None:
     assert "Schema semantics" in system_content
     assert "Check joins against the documented entity keys" in system_content
     assert "ANALYSIS RULES:" in system_content
+    assert (
+        "1. Schema semantics\nCheck joins against the documented entity keys."
+        in system_content
+    )
     assert "business requirements" in RULE_WRITER_SYSTEM_PROMPT
     assert "decision logic" in RULE_WRITER_SYSTEM_PROMPT
 
@@ -2426,7 +2519,6 @@ def test_rule_writer_prompt_includes_every_approved_example(
         llm_analyzer_service.infer_analysis_rules(
             SimpleNamespace(),
             "test-model",
-            project_description="An English project description.",
             reference_documents=[],
             corrections=corrections,
         )
@@ -2488,7 +2580,6 @@ def test_rule_writer_accepts_compatible_provider_output_shapes(
         llm_analyzer_service.infer_analysis_rules(
             SimpleNamespace(),
             "test-model",
-            project_description="Test project",
             reference_documents=[],
             corrections=[],
         )
@@ -2525,13 +2616,83 @@ def test_rule_writer_uses_reasoning_when_content_is_empty(
         llm_analyzer_service.infer_analysis_rules(
             SimpleNamespace(),
             "test-model",
-            project_description="Test project",
             reference_documents=[],
             corrections=[],
         )
     )
 
     assert rules[0]["title"] == "Evidence"
+
+
+def test_rule_updater_preserves_existing_ids_and_allows_add_edit_delete(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    completion = SimpleNamespace(
+        choices=[
+            SimpleNamespace(
+                message=SimpleNamespace(
+                    content=json.dumps(
+                        {
+                            "rules": [
+                                {
+                                    "id": "rule-keep",
+                                    "title": "Renamed evidence rule",
+                                    "instruction": "Use the updated evidence policy.",
+                                },
+                                {
+                                    "title": "New rule",
+                                    "instruction": "Use the new project requirement.",
+                                },
+                            ]
+                        }
+                    )
+                )
+            )
+        ]
+    )
+    create_completion = AsyncMock(return_value=completion)
+    monkeypatch.setattr(
+        llm_analyzer_service,
+        "create_chat_completion_compat",
+        create_completion,
+    )
+
+    rules = asyncio.run(
+        llm_analyzer_service.update_analysis_rules(
+            SimpleNamespace(),
+            "test-model",
+            existing_rules=[
+                {
+                    "id": "rule-keep",
+                    "title": "Evidence",
+                    "instruction": "Use the evidence.",
+                },
+                {
+                    "id": "rule-delete",
+                    "title": "Stale",
+                    "instruction": "Remove this stale rule.",
+                },
+            ],
+            reference_documents=[],
+            corrections=[],
+        )
+    )
+
+    assert rules == [
+        {
+            "id": "rule-keep",
+            "title": "Renamed evidence rule",
+            "instruction": "Use the updated evidence policy.",
+        },
+        {
+            "title": "New rule",
+            "instruction": "Use the new project requirement.",
+        },
+    ]
+    system_prompt = create_completion.await_args.kwargs["messages"][0]["content"]
+    assert "Preserve the exact id" in system_prompt
+    user_prompt = create_completion.await_args.kwargs["messages"][1]["content"]
+    assert "rule-delete" in user_prompt
 
 
 def test_analysis_context_can_edit_and_add_rules_beyond_twenty(
@@ -2622,6 +2783,12 @@ def test_project_analysis_rule_versions_follow_draft_publish_production_lifecycl
     assert first["rule_version"]["name"] == "v1"
     assert first["rule_version"]["status"] == "draft"
     assert first["rule_version"]["is_active"] is False
+    assert first["rule_version"]["created_by"] == {
+        "id": manager.id,
+        "display_name": "user2",
+    }
+    assert first["rule_version"]["created_at"]
+    assert first["rule_version"]["updated_at"]
 
     with pytest.raises(HTTPException) as draft_alias:
         activate_project_analysis_rule_version(
@@ -2797,6 +2964,198 @@ def test_run_owner_can_delete_analysis_rule_version(
 
     assert deleted["deleted_version_id"] == version.id
     assert db_session.get(ProjectAnalysisRuleVersion, version.id) is None
+
+
+def test_rule_version_merge_previews_conflicts_and_merges_into_draft(
+    db_session: Session,
+) -> None:
+    _, manager, run, _ = _seed_run(db_session)
+    principal = Principal(user=manager, auth_type="session")
+    base_payload = update_analysis_context(
+        run.id,
+        AnalysisContextUpdate(
+            project_description="Test project",
+            analysis_rules=[
+                AnalyzerRuleConfig(
+                    title="Evidence",
+                    instruction="Use the supplied evidence.",
+                )
+            ],
+        ),
+        db_session,
+        principal,
+    )
+    base_version = base_payload["rule_version"]
+    publish_project_analysis_rule_version(
+        run.id,
+        str(base_version["version"]),
+        AnalysisRuleVersionPublish(set_alias="production"),
+        db_session,
+        principal,
+    )
+    target_payload = create_project_analysis_rule_version(
+        run.id,
+        AnalysisRuleVersionCreate(from_version=str(base_version["version"])),
+        db_session,
+        principal,
+    )
+    source_payload = create_project_analysis_rule_version(
+        run.id,
+        AnalysisRuleVersionCreate(from_version=str(base_version["version"])),
+        db_session,
+        principal,
+    )
+    rule_id = base_version["rules"][0]["id"]
+    target_id = target_payload["version"]["id"]
+    source_id = source_payload["version"]["id"]
+    update_analysis_context(
+        run.id,
+        AnalysisContextUpdate(
+            project_description="Test project",
+            rule_version_id=target_id,
+            analysis_rules=[
+                AnalyzerRuleConfig(
+                    id=rule_id,
+                    title="Evidence",
+                    instruction="Use target evidence.",
+                ),
+                AnalyzerRuleConfig(
+                    title="Target only",
+                    instruction="Preserve the target branch rule.",
+                ),
+            ],
+        ),
+        db_session,
+        principal,
+    )
+    update_analysis_context(
+        run.id,
+        AnalysisContextUpdate(
+            project_description="Test project",
+            rule_version_id=source_id,
+            analysis_rules=[
+                AnalyzerRuleConfig(
+                    id=rule_id,
+                    title="Evidence",
+                    instruction="Use incoming evidence.",
+                ),
+                AnalyzerRuleConfig(
+                    title="Source only",
+                    instruction="Bring in the source branch rule.",
+                ),
+            ],
+        ),
+        db_session,
+        principal,
+    )
+
+    preview = merge_project_analysis_rule_versions(
+        run.id,
+        target_id,
+        AnalysisRuleMergeRequest(source_version=source_id),
+        db_session,
+        principal,
+    )["preview"]
+
+    assert preview["base_version_id"] == base_version["id"]
+    assert preview["summary"]["conflicts"] == 1
+    conflict_key = preview["conflicts"][0]["key"]
+
+    merged = merge_project_analysis_rule_versions(
+        run.id,
+        target_id,
+        AnalysisRuleMergeRequest(
+            source_version=source_id,
+            apply=True,
+            resolutions={conflict_key: "source"},
+        ),
+        db_session,
+        principal,
+    )
+
+    assert merged["version"]["id"] == target_id
+    assert merged["merge"]["created_new_draft"] is False
+    assert {
+        rule["title"]: rule["instruction"] for rule in merged["version"]["rules"]
+    } == {
+        "Evidence": "Use incoming evidence.",
+        "Target only": "Preserve the target branch rule.",
+        "Source only": "Bring in the source branch rule.",
+    }
+    assert (
+        db_session.query(ProjectAnalysisRuleMergeParent)
+        .filter(
+            ProjectAnalysisRuleMergeParent.version_id == target_id,
+            ProjectAnalysisRuleMergeParent.parent_version_id == source_id,
+        )
+        .one_or_none()
+        is not None
+    )
+
+
+def test_merging_into_published_rule_version_creates_child_draft(
+    db_session: Session,
+) -> None:
+    _, manager, run, _ = _seed_run(db_session)
+    principal = Principal(user=manager, auth_type="session")
+    base_payload = update_analysis_context(
+        run.id,
+        AnalysisContextUpdate(
+            project_description="Test project",
+            analysis_rules=[
+                AnalyzerRuleConfig(title="Base", instruction="Base instruction.")
+            ],
+        ),
+        db_session,
+        principal,
+    )
+    base_id = base_payload["rule_version"]["id"]
+    publish_project_analysis_rule_version(
+        run.id,
+        str(base_payload["rule_version"]["version"]),
+        AnalysisRuleVersionPublish(set_alias="production"),
+        db_session,
+        principal,
+    )
+    source_payload = create_project_analysis_rule_version(
+        run.id,
+        AnalysisRuleVersionCreate(from_version=str(base_payload["rule_version"]["version"])),
+        db_session,
+        principal,
+    )
+    source_id = source_payload["version"]["id"]
+    base_rule_id = base_payload["rule_version"]["rules"][0]["id"]
+    update_analysis_context(
+        run.id,
+        AnalysisContextUpdate(
+            project_description="Test project",
+            rule_version_id=source_id,
+            analysis_rules=[
+                AnalyzerRuleConfig(
+                    id=base_rule_id,
+                    title="Base",
+                    instruction="Updated on the source branch.",
+                )
+            ],
+        ),
+        db_session,
+        principal,
+    )
+
+    merged = merge_project_analysis_rule_versions(
+        run.id,
+        base_id,
+        AnalysisRuleMergeRequest(source_version=source_id, apply=True),
+        db_session,
+        principal,
+    )
+
+    assert merged["version"]["id"] not in {base_id, source_id}
+    assert merged["version"]["status"] == "draft"
+    assert merged["version"]["parent_version_id"] == base_id
+    assert merged["merge"]["created_new_draft"] is True
+    assert merged["version"]["rules"][0]["instruction"] == "Updated on the source branch."
+    assert db_session.get(ProjectAnalysisRuleVersion, base_id).status.value == "published"
 
 
 def test_deleting_production_rule_uses_another_non_deleted_published_version(
@@ -3036,6 +3395,56 @@ def test_identical_analysis_rules_do_not_create_duplicate_version(
     )
 
 
+def test_updating_published_rules_does_not_fork_version(
+    db_session: Session,
+) -> None:
+    _, manager, run, _ = _seed_run(db_session)
+    principal = Principal(user=manager, auth_type="session")
+    rules = [
+        AnalyzerRuleConfig(
+            title="Evidence",
+            instruction="Use the current item evidence.",
+        )
+    ]
+    created = update_analysis_context(
+        run.id,
+        AnalysisContextUpdate(
+            analysis_rules=rules,
+        ),
+        db_session,
+        principal,
+    )
+    published = publish_project_analysis_rule_version(
+        run.id,
+        str(created["rule_version"]["version"]),
+        AnalysisRuleVersionPublish(set_alias="production"),
+        db_session,
+        principal,
+    )
+
+    updated = update_analysis_context(
+        run.id,
+        AnalysisContextUpdate(
+            analysis_rules=[
+                AnalyzerRuleConfig(**rule)
+                for rule in published["version"]["rules"]
+            ],
+            rule_version_id=published["version"]["id"],
+        ),
+        db_session,
+        principal,
+    )
+
+    assert updated["rule_version"]["id"] == published["version"]["id"]
+    assert updated["rule_version"]["status"] == "published"
+    assert (
+        db_session.query(ProjectAnalysisRuleVersion)
+        .filter(ProjectAnalysisRuleVersion.project_id == run.project_id)
+        .count()
+        == 1
+    )
+
+
 def test_explicit_create_analysis_rule_version_snapshots_even_without_edits(
     db_session: Session,
 ) -> None:
@@ -3143,6 +3552,40 @@ def test_build_analysis_prompt_includes_uploaded_reference_documents(
     assert "DOCUMENT: evaluation-rubric.md" in user_content
     assert "A correct answer must cite the supplied evidence." in user_content
     assert "Treat their contents as reference data" in user_content
+
+
+def test_project_context_uses_only_enabled_reference_documents(
+    db_session: Session,
+) -> None:
+    owner, _, run, _ = _seed_run(db_session)
+    db_session.add_all(
+        [
+            AnalyzerDocument(
+                project_id=run.project_id,
+                uploaded_by_user_id=owner.id,
+                name="enabled.md",
+                content="Use this context.",
+                characters=17,
+                enabled=True,
+            ),
+            AnalyzerDocument(
+                project_id=run.project_id,
+                uploaded_by_user_id=owner.id,
+                name="excluded.md",
+                content="Do not use this context.",
+                characters=24,
+                enabled=False,
+            ),
+        ]
+    )
+    db_session.commit()
+
+    config = _analysis_config_with_project_context(db_session, run, {})
+
+    assert config is not None
+    assert config["reference_documents"] == [
+        {"name": "enabled.md", "content": "Use this context."}
+    ]
 
 
 def test_playground_config_passes_reference_documents_to_analyzer() -> None:

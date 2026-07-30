@@ -150,7 +150,7 @@ class AnalysisResult:
 
 RULE_WRITER_SYSTEM_PROMPT = (
     "You are a rule writer for an evaluation root-cause analyzer. Create a concise ruleset from "
-    "the supplied project description, reference documents, and approved correction examples. Rules may encode "
+    "the supplied reference documents and approved correction examples. Rules may encode "
     "business requirements, invariants, decision logic, and concrete evidence checks that the "
     "analyzer must apply.\n\n"
     "Each rule must be independently understandable. Ground rules in supplied project facts and "
@@ -262,7 +262,10 @@ def _rule_writer_candidates(value: Any) -> list[Any]:
     return candidates
 
 
-def _rules_from_writer_response(*values: Any) -> list[dict[str, str]]:
+def _rules_from_writer_response(
+    *values: Any,
+    preserve_ids: bool = False,
+) -> list[dict[str, str]]:
     """Extract normalized rules from content or reasoning response fields."""
     for value in values:
         for candidate in _rule_writer_candidates(value):
@@ -273,6 +276,13 @@ def _rules_from_writer_response(*values: Any) -> list[dict[str, str]]:
                     raw_rules = candidate.get("analysis_rules")
             rules = normalize_analysis_rules(raw_rules)
             if rules:
+                if preserve_ids and isinstance(raw_rules, list):
+                    for index, rule in enumerate(rules):
+                        raw_rule = raw_rules[index] if index < len(raw_rules) else None
+                        if isinstance(raw_rule, dict):
+                            rule_id = str(raw_rule.get("id") or "").strip()
+                            if rule_id:
+                                rule["id"] = rule_id[:36]
                 return rules
     return []
 
@@ -281,7 +291,6 @@ async def infer_analysis_rules(
     client: AsyncOpenAI,
     model: str,
     *,
-    project_description: str,
     reference_documents: list[dict[str, str]],
     corrections: list[ReviewCorrection],
 ) -> list[dict[str, str]]:
@@ -318,7 +327,6 @@ async def infer_analysis_rules(
         )
 
     user_payload = {
-        "project_description": project_description.strip(),
         "reference_documents": document_payload,
         "approved_correction_examples": correction_payload,
     }
@@ -353,6 +361,105 @@ async def infer_analysis_rules(
         finish_reason = str(getattr(choice, "finish_reason", "") or "unknown")
         raise ValueError(
             "The rule writer response did not contain usable rules. "
+            f"The provider finished with reason '{finish_reason}'. "
+            "Try again or choose a model that supports structured JSON output."
+        )
+    return rules
+
+
+async def update_analysis_rules(
+    client: AsyncOpenAI,
+    model: str,
+    *,
+    existing_rules: list[dict[str, str]],
+    reference_documents: list[dict[str, str]],
+    corrections: list[ReviewCorrection],
+) -> list[dict[str, str]]:
+    """Revise an existing ruleset, allowing additions, edits, and removals."""
+    document_payload: list[dict[str, str]] = []
+    remaining_document_chars = MAX_TOTAL_REFERENCE_DOCUMENT_CHARS
+    for document in reference_documents:
+        if remaining_document_chars <= 0 or not isinstance(document, dict):
+            break
+        content = str(document.get("content") or "").strip()
+        if not content:
+            continue
+        content = content[:remaining_document_chars]
+        remaining_document_chars -= len(content)
+        document_payload.append(
+            {
+                "name": str(document.get("name") or "document").strip()[:255],
+                "content": content,
+            }
+        )
+
+    correction_payload = [
+        {
+            "input": correction.input_snapshot,
+            "expected": correction.expected_snapshot,
+            "output": correction.output_snapshot,
+            "previous_ai_root_cause": correction.ai_root_cause,
+            "approved_root_cause": correction.human_root_cause,
+            "approved_detail": correction.human_root_cause_detail,
+            "reviewer_reasoning": correction.human_root_cause_note,
+        }
+        for correction in corrections
+    ]
+    user_payload = {
+        "existing_rules": [
+            {
+                "id": str(rule.get("id") or "").strip(),
+                "title": str(rule.get("title") or "").strip(),
+                "instruction": str(rule.get("instruction") or "").strip(),
+            }
+            for rule in existing_rules
+            if isinstance(rule, dict)
+            and str(rule.get("title") or "").strip()
+            and str(rule.get("instruction") or "").strip()
+        ],
+        "reference_documents": document_payload,
+        "approved_correction_examples": correction_payload,
+    }
+    update_prompt = (
+        RULE_WRITER_SYSTEM_PROMPT
+        + "\n\nYou are updating an existing ruleset. Return the complete revised ruleset, "
+        "not only changed rules. Keep every still-useful rule, improve weak or stale rules, "
+        "remove rules contradicted or made redundant by the supplied evidence, and add rules "
+        "only when the evidence requires them. Preserve the exact id of every retained or edited "
+        "existing rule. Omit id only for genuinely new rules."
+    )
+    response = await asyncio.wait_for(
+        create_chat_completion_compat(
+            client,
+            model=model,
+            messages=[
+                {"role": "system", "content": update_prompt},
+                {
+                    "role": "user",
+                    "content": (
+                        "Update the existing analysis rules using this project data. "
+                        "Respond with the complete revised ruleset.\n\n"
+                        + _prompt_dump(user_payload)
+                    ),
+                },
+            ],
+            temperature=0.1,
+            response_format={"type": "json_object"},
+        ),
+        timeout=RULE_INFERENCE_TIMEOUT_SECONDS,
+    )
+    choice = response.choices[0] if response.choices else None
+    message = choice.message if choice else None
+    rules = _rules_from_writer_response(
+        getattr(message, "content", None),
+        getattr(message, "reasoning", None),
+        getattr(message, "reasoning_content", None),
+        preserve_ids=True,
+    )
+    if not rules:
+        finish_reason = str(getattr(choice, "finish_reason", "") or "unknown")
+        raise ValueError(
+            "The rule updater response did not contain usable rules. "
             f"The provider finished with reason '{finish_reason}'. "
             "Try again or choose a model that supports structured JSON output."
         )
@@ -793,8 +900,8 @@ def _format_analysis_rules(value: Any) -> str:
     rules = normalize_analysis_rules(value)
     if not rules:
         return "No project-specific analysis rules were provided."
-    return "\n".join(
-        f"{index}. {rule['title']}: {rule['instruction']}"
+    return "\n\n".join(
+        f"{index}. {rule['title']}\n{rule['instruction']}"
         for index, rule in enumerate(rules, start=1)
     )
 
@@ -812,15 +919,6 @@ def _format_business_context(
 
     if project is not None:
         lines.append(f"Project: {project.name}")
-
-    configured_description = str(config.get("project_description") or "").strip()
-    stored_description = (
-        str(project.description or "").strip() if project is not None else ""
-    )
-    if configured_description:
-        lines.append(f"Project description: {configured_description}")
-    if stored_description and stored_description != configured_description:
-        lines.append(f"Stored project description: {stored_description}")
 
     if run is not None:
         lines.append(f"Evaluation task: {run.task}")
@@ -1272,7 +1370,6 @@ def build_analysis_prompt(
 
     config keys:
       - system_prompt: overrides DEFAULT_SYSTEM_PROMPT
-      - project_description: stable project context for the analyzer
       - analysis_rules: versioned project rules inferred from references
       - reference_documents: uploaded document names and extracted text
       - business_context: optional supplemental business-domain context
@@ -1444,10 +1541,6 @@ def build_analysis_prompt(
         for section in (reference_section,)
         if section.strip()
     ]
-    if metric_name:
-        user_sections.append(
-            f"Analyze only the selected metric {_prompt_dump(metric_name)}."
-        )
     user_sections.append("Return only the JSON object required by the system prompt.")
     user_message = "\n\n".join(user_sections)
 
