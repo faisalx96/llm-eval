@@ -5,10 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>قيِّم • Deleted Runs</title>
   <link rel="icon" type="image/png" href="./static/qym_icon.png">
-  <link rel="stylesheet" href="./static/dashboard.css">
+  <link rel="stylesheet" href="./static/dashboard.css?v=ui-consistency-20260730-16">
   <link rel="stylesheet" href="./static/shell.css">
   <script src="./static/auth.js"></script>
-  <script src="./static/shell.js"></script>
+  <script src="./static/shell.js?v=ui-consistency-20260730-15"></script>
   <style>
     .trash-container {
       padding: var(--space-lg) var(--space-xl);
@@ -208,8 +208,8 @@
       }
     }
   </style>
-  <link rel="stylesheet" href="./static/ui_components.css">
-  <script defer src="./static/ui_components.js"></script>
+  <link rel="stylesheet" href="./static/ui_components.css?v=ui-consistency-20260730-29">
+  <script defer src="./static/ui_components.js?v=ui-consistency-20260730-25"></script>
 </head>
 <body>
   <main class="trash-container">
@@ -315,7 +315,7 @@
             <div class="toast-title">${escapeHtml(title)}</div>
             <div class="toast-message">${escapeHtml(message)}</div>
           </div>
-          <button class="toast-close" type="button" aria-label="Close notification">×</button>
+          <button class="toast-close qym-icon-action" type="button" aria-label="Close notification">×</button>
         `;
         toast.querySelector('.toast-close')?.addEventListener('click', () => toast.remove());
         container.appendChild(toast);

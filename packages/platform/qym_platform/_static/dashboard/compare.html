@@ -5,12 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>قيِّم • Compare Runs</title>
   <link rel="icon" type="image/png" href="./static/qym_icon.png">
-  <link rel="stylesheet" href="./static/dashboard.css?v=estimator-mark-20260717">
+  <link rel="stylesheet" href="./static/dashboard.css?v=ui-consistency-20260730-16">
   <link rel="stylesheet" href="./static/shell.css">
   <script src="./static/auth.js"></script>
-  <script src="./static/shell.js"></script>
+  <script src="./static/shell.js?v=ui-consistency-20260730-15"></script>
   <script src="./static/metrics.js"></script>
-  <script src="./static/trace_viewer.js"></script>
+  <script src="./static/trace_viewer.js?v=ui-consistency-20260730-18"></script>
   <script src="./static/playground.js?v=variable-mapping-20260510"></script>
   <style>
     /* Typography/color rules: docs/DESIGN_LANGUAGE.md — tokens only (var(--font-*), var(--text-*)). */
@@ -938,7 +938,7 @@
     /* Summary cards grid */
     .compare-summary {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
       gap: var(--space-md);
       margin-bottom: var(--space-lg);
     }
@@ -1578,11 +1578,12 @@
       flex-direction: column;
       gap: 3px;
       border: 1px solid var(--border-subtle);
-      transition: border-color 0.15s;
+      transition: border-color 0.2s, box-shadow 0.2s;
     }
 
     .breakdown-card:hover {
-      border-color: var(--border-default);
+      border-color: var(--border-strong);
+      box-shadow: 0 2px 16px rgba(0, 0, 0, 0.12);
     }
 
     .breakdown-complexity .breakdown-card {
@@ -1622,13 +1623,11 @@
     .breakdown-errors.trace-error-group .breakdown-header { color: var(--warning); }
     .breakdown-errors.task-error-group .breakdown-card { border-left: 3px solid rgba(239, 68, 68, 0.35); }
     .breakdown-errors.trace-error-group .breakdown-card { border-left: 3px solid rgba(245, 158, 11, 0.42); }
-    .breakdown-errors.task-error-group .breakdown-card:hover {
-      border-color: var(--border-default);
-      border-left-color: rgba(239, 68, 68, 0.35);
+    .breakdown-errors.task-error-group .error-card:not(.active):is(:hover, :focus-visible) {
+      border-left-color: color-mix(in srgb, var(--error) 35%, transparent);
     }
-    .breakdown-errors.trace-error-group .breakdown-card:hover {
-      border-color: var(--border-default);
-      border-left-color: rgba(245, 158, 11, 0.42);
+    .breakdown-errors.trace-error-group .error-card:not(.active):is(:hover, :focus-visible) {
+      border-left-color: color-mix(in srgb, var(--warning) 42%, transparent);
     }
     .breakdown-errors .error-card {
       flex: 0 0 300px;
@@ -1652,6 +1651,12 @@
       width: 100%;
       overflow: hidden;
       cursor: pointer;
+    }
+    .error-card:focus-visible {
+      border-color: var(--border-strong);
+      box-shadow: 0 2px 16px rgba(0, 0, 0, 0.12);
+      outline: 1px solid var(--accent-primary);
+      outline-offset: 2px;
     }
     .error-card.active {
       border-color: rgba(239, 68, 68, 0.65);
@@ -2472,7 +2477,7 @@
     .items-grid {
       display: flex;
       flex-direction: column;
-      gap: var(--space-xl);
+      gap: var(--space-sm);
     }
 
     .item-comparison-row {
@@ -2505,17 +2510,48 @@
       border-bottom: none;
       padding-bottom: 0;
     }
-    .item-chevron {
-      color: var(--accent-primary);
-      font-size: var(--font-xs);
-      width: 12px;
-      flex: 0 0 auto;
+    /* Collapsed cards are one-line zebra rows: borderless, breathing
+       padding, alternating surface — a list, not a stack of boxes. */
+    .item-comparison-row.item-collapsed {
+      padding: 13px 16px;
+      border: none;
     }
+    .items-grid > .item-comparison-row.item-collapsed:nth-child(even) {
+      background: color-mix(in srgb, var(--bg-surface) 55%, var(--bg-base));
+    }
+    .items-grid > .item-comparison-row.item-collapsed:hover {
+      background: var(--bg-hover);
+    }
+    /* Premium disclosure control: stroked SVG chevron in a rounded hover
+       target; rotates 90deg while the item is open. */
+    .item-chevron {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 26px;
+      height: 26px;
+      border-radius: 6px;
+      color: var(--accent-primary);
+      flex: 0 0 auto;
+      transition: background 0.12s;
+    }
+    .item-header-expand:hover .item-chevron { background: var(--bg-active); }
+    .item-chevron svg {
+      width: 15px;
+      height: 15px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 2.2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      transition: transform 0.15s;
+    }
+    .item-chevron.open svg { transform: rotate(90deg); }
     .item-title {
       font-family: var(--font-sans);
-      font-size: var(--font-md);
+      font-size: var(--font-base);
       font-weight: 600;
-      color: var(--text-primary);
+      color: var(--text-secondary);
       line-height: 1.45;
       flex: 1 1 auto;
       min-width: 0;
@@ -2612,10 +2648,17 @@
       margin-bottom: 4px;
     }
 
-    .item-input-row .input-text,
+    /* Input is prose: sans at body size (matches the run page). Expected
+       keeps mono below. */
+    .item-input-row .input-text {
+      font-family: var(--font-sans);
+      font-size: var(--font-base);
+      color: var(--text-secondary);
+      line-height: 1.7;
+    }
     .item-expected-row .expected-text {
       font-family: var(--font-mono);
-      font-size: var(--font-sm);
+      font-size: var(--font-base);
       color: var(--text-secondary);
       line-height: 1.6;
       white-space: pre-wrap;
@@ -2797,7 +2840,7 @@
 
     .item-run-output .output-text {
       font-family: var(--font-mono);
-      font-size: var(--font-sm);
+      font-size: var(--font-base);
       color: var(--text-secondary);
       line-height: 1.6;
       white-space: pre-wrap;
@@ -2914,55 +2957,6 @@
       margin-top: 4px;
       font-size: var(--font-xs);
       color: var(--text-muted);
-    }
-
-    /* Pagination */
-    .pagination {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      gap: 0;
-      height: 28px;
-      overflow: hidden;
-      border: 1px solid var(--border-subtle);
-      border-radius: 7px;
-      background: var(--bg-elevated);
-      margin-left: auto;
-    }
-
-    .pagination button {
-      height: 28px;
-      padding: 0 12px;
-      background: transparent;
-      border: 0;
-      border-right: 1px solid var(--border-subtle);
-      border-radius: 0;
-      color: var(--text-secondary);
-      cursor: pointer;
-    }
-    .pagination button:last-child { border-right: 0; border-left: 1px solid var(--border-subtle); }
-
-    .pagination button:hover:not(:disabled) {
-      background: var(--bg-hover);
-    }
-
-    .pagination button:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-    }
-
-    .pagination .page-info {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      height: 28px;
-      width: 112px;
-      padding: 0 12px;
-      font-family: var(--font-mono);
-      font-size: var(--font-sm);
-      font-variant-numeric: tabular-nums;
-      color: var(--text-secondary);
-      background: rgba(255,255,255,0.015);
     }
 
     /* Empty/loading states */
@@ -3467,27 +3461,7 @@
     }
 
     /* Copy button — icon only */
-    .copy-btn {
-      background: none;
-      border: none;
-      cursor: pointer;
-      padding: 2px;
-      line-height: 1;
-      opacity: 0.4;
-      transition: all 0.15s;
-      flex-shrink: 0;
-      display: inline-flex;
-      align-items: center;
-    }
     .copy-btn svg { width: 14px; height: 14px; }
-    .copy-btn:hover {
-      opacity: 1;
-    }
-    .copy-btn:hover svg { stroke: var(--accent-primary); }
-    .copy-btn.copied svg { stroke: var(--success); }
-    .copy-btn.copied {
-      opacity: 1;
-    }
     /* Per-field copy on formatted rows */
     .formatted-row {
       position: relative;
@@ -4405,9 +4379,220 @@
         transform: none;
         box-shadow: none;
     }
+
+    /* Keep Compare on the same page and component system as Run Detail. */
+    .compare-header-bar {
+      justify-content: space-between;
+      align-items: flex-end;
+      gap: var(--space-lg);
+      margin-bottom: var(--space-md);
+    }
+
+    .compare-heading {
+      min-width: 0;
+    }
+
+    .compare-title {
+      margin: 0;
+      line-height: 1.25;
+    }
+
+    .compare-header-actions {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+      flex: 0 0 auto;
+    }
+
+    .compare-mode-tabs {
+      margin-bottom: var(--space-xl);
+    }
+
+    .compare-mode-tabs[hidden] {
+      display: none;
+    }
+
+    .compare-section-head,
+    .comparison-overview-heading {
+      display: flex;
+      flex-direction: row;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: var(--space-lg);
+      margin-bottom: var(--space-md);
+    }
+
+    .compare-section-head .section-title,
+    .comparison-overview-heading .section-title {
+      margin: 0;
+    }
+
+    .compare-section-copy {
+      margin: var(--space-xs) 0 0;
+      color: var(--text-muted);
+      font-family: var(--font-sans);
+      font-size: var(--font-sm);
+      line-height: 1.4;
+    }
+
+    .comparison-overview-heading .metric-tabs-row {
+      justify-content: flex-end;
+    }
+
+    .compare-run-card {
+      transition: border-color 0.15s;
+    }
+
+    .compare-run-card:hover {
+      border-color: var(--border-strong);
+    }
+
+    .compare-run-card-top {
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      gap: var(--space-md);
+      margin-bottom: var(--space-md);
+    }
+
+    .compare-run-title {
+      font-size: var(--font-xl);
+      line-height: 1.25;
+    }
+
+    .compare-run-actions {
+      justify-content: flex-start;
+      gap: var(--space-sm);
+      width: 100%;
+    }
+
+    .compare-run-meta-label,
+    .compare-run-card .context-cell-key {
+      font-size: var(--font-sm);
+      font-weight: 650;
+      letter-spacing: 0.05em;
+    }
+
+    .compare-run-meta-value,
+    .compare-run-card .context-cell-val {
+      font-size: var(--font-base);
+    }
+
+    .compare-run-summary-strip {
+      width: 100%;
+    }
+
+    .compare-run-summary-pill {
+      align-items: center;
+      min-height: 34px;
+      height: 34px;
+      padding: 0 var(--space-sm);
+    }
+
+    .compare-run-summary-icon {
+      border-radius: var(--control-radius);
+    }
+
+    .compare-run-summary-pill .compare-run-summary-text {
+      flex-direction: row;
+      align-items: center;
+      gap: var(--space-xs);
+    }
+
+    .compare-run-summary-pill .compare-run-summary-label {
+      font-size: var(--font-sm);
+      white-space: nowrap;
+    }
+
+    .compare-run-summary-pill .compare-run-summary-value {
+      margin-top: 0;
+      font-size: var(--font-md);
+    }
+
+    .compare-run-card .context-cell-key {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .metrics-table.qdt-table {
+      border: 1px solid var(--border-default);
+      border-collapse: separate;
+      border-spacing: 0;
+      table-layout: auto;
+    }
+
+    .metrics-table.qdt-table th:not(:first-child),
+    .metrics-table.qdt-table td:not(:first-child) {
+      text-align: right;
+    }
+
+    .metrics-table.qdt-table tbody td {
+      font-size: var(--font-base);
+    }
+
+    .metrics-table.qdt-table .metric-name,
+    .metrics-table.qdt-table .metric-value-cell {
+      font-family: var(--font-mono);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .metric-run-heading,
+    .metric-val {
+      display: inline-flex;
+      align-items: center;
+    }
+
+    .metric-run-heading {
+      justify-content: flex-end;
+      gap: var(--space-sm);
+      max-width: 100%;
+    }
+
+    .metric-run-marker {
+      width: var(--space-sm);
+      height: var(--space-sm);
+      border-radius: var(--control-radius);
+      flex: 0 0 auto;
+    }
+
+    .metric-val {
+      justify-content: flex-end;
+      min-height: var(--badge-height);
+      padding: 0 var(--space-sm);
+      border-radius: var(--control-radius);
+    }
+
+    .metrics-table .metric-val.best {
+      background: var(--success-dim);
+    }
+
+    .fp-status .filter-count {
+      margin: 0;
+    }
+
+    .sweep-table.qdt-table,
+    .sweep-metadata-table.qdt-table {
+      table-layout: auto;
+    }
+
+    @media (max-width: 760px) {
+      .compare-header-bar,
+      .compare-section-head,
+      .comparison-overview-heading {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: var(--space-md);
+      }
+
+      .compare-run-actions,
+      .comparison-overview-heading .metric-tabs-row {
+        justify-content: flex-start;
+      }
+    }
   </style>
-  <link rel="stylesheet" href="./static/ui_components.css">
-  <script defer src="./static/ui_components.js"></script>
+  <link rel="stylesheet" href="./static/ui_components.css?v=ui-consistency-20260730-29">
+  <script defer src="./static/ui_components.js?v=ui-consistency-20260730-25"></script>
 </head>
 <body>
   <main class="compare-container">
@@ -4420,13 +4605,17 @@
       <div style="font-size: 48px; margin-bottom: var(--space-md);">∅</div>
       <h2>No runs to compare</h2>
       <p>Select at least 2 runs from the dashboard to compare.</p>
-      <a href="" class="back-link" id="back-link-empty" style="margin-top: var(--space-md); margin-left: 0; padding: 8px 20px; background: var(--accent-primary); color: #fff; border-radius: 6px; font-weight: 600; text-decoration: none;">← Back to Dashboard</a>
+      <a href="" class="back-link qym-inline-action qym-inline-action--accent" id="back-link-empty" style="margin-top: var(--space-md); margin-left: 0;">← Back to Dashboard</a>
     </div>
 
     <div id="compare-content" style="display: none;">
       <div class="compare-header-bar">
-        <div style="display:flex;align-items:center;gap:var(--space-md);">
-          <button class="export-html-btn" id="export-share-btn" title="Download as a shareable HTML file">
+        <div class="compare-heading">
+          <h1 class="compare-title">Compare Runs</h1>
+          <p class="compare-subtitle" id="compare-subtitle">Review run configuration, performance, and item-level differences.</p>
+        </div>
+        <div class="compare-header-actions">
+          <button class="export-html-btn qym-inline-action qym-inline-action--accent" id="export-share-btn" title="Download as a shareable HTML file">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
             Share
           </button>
@@ -4443,8 +4632,13 @@
 
         <!-- Metrics comparison -->
         <div class="metrics-comparison">
-          <h3 class="section-title">Per-Run Averages</h3>
-          <table class="metrics-table" id="metrics-table">
+          <div class="compare-section-head">
+            <div>
+              <h3 class="section-title">Per-Run Averages</h3>
+              <p class="compare-section-copy">Compare metric, latency, and trace averages across the selected runs.</p>
+            </div>
+          </div>
+          <table class="metrics-table qdt-table" id="metrics-table">
             <thead id="metrics-thead"></thead>
             <tbody id="metrics-tbody"></tbody>
           </table>
@@ -4452,7 +4646,10 @@
 
         <!-- Comparison Statistics -->
         <div class="comparison-overview-heading">
-          <h3 class="section-title">Comparison Overview</h3>
+          <div>
+            <h3 class="section-title">Comparison Overview</h3>
+            <p class="compare-section-copy">Inspect the selected metric across runs, distributions, and agreement.</p>
+          </div>
           <div class="compare-shared-controls" id="compare-shared-controls">
             <div class="metric-tabs-row">
               <div class="metric-tabs qym-segmented" id="overview-metric-tabs" role="group" aria-label="Overview metric"></div>
@@ -4474,18 +4671,23 @@
 
         <!-- Side-by-side items -->
         <div class="items-comparison">
-          <h3 class="section-title">Item-by-Item Comparison</h3>
+          <div class="compare-section-head">
+            <div>
+              <h3 class="section-title">Item-by-Item Comparison</h3>
+              <p class="compare-section-copy">Filter and inspect aligned inputs, outputs, scores, and review metadata.</p>
+            </div>
+          </div>
           <div class="compare-empty" id="alignment-warning" style="display:none;margin-bottom:var(--space-lg);"></div>
 
           <div class="filter-panel">
             <div class="fp-filter-row">
               <div class="fp-group">
                 <span class="fp-label">Metric</span>
-                <select id="items-metric-select" class="filter-select"></select>
+                <select id="items-metric-select" class="filter-select qym-control qym-select"></select>
               </div>
               <div class="fp-group">
                 <span class="fp-label">Show</span>
-                <select id="item-filter" class="filter-select">
+                <select id="item-filter" class="filter-select qym-control qym-select">
                   <option value="all">All Items</option>
                   <option value="different">Different Outputs</option>
                   <option value="errors">With Errors</option>
@@ -4499,26 +4701,26 @@
               </div>
               <div class="fp-group fp-winner-group">
                 <span class="fp-label">Winner</span>
-                <select id="run-winner-filter" class="filter-select">
+                <select id="run-winner-filter" class="filter-select qym-control qym-select">
                   <option value="any">Any Winner</option>
                 </select>
               </div>
               <div class="fp-group fp-pass-rate-group">
                 <span class="fp-label">Pass Rate</span>
                 <div class="fp-pass-rate-row">
-                  <select id="pass-rate-op" class="filter-select">
+                  <select id="pass-rate-op" class="filter-select qym-control qym-select">
                     <option value="">Any</option>
                     <option value="gte">&ge;</option>
                     <option value="lte">&le;</option>
                     <option value="eq">=</option>
                   </select>
-                  <input type="number" id="pass-rate-value" class="fp-pass-rate-input" min="0" value="0" style="display:none;" />
+                  <input type="number" id="pass-rate-value" class="fp-pass-rate-input qym-control qym-input" min="0" value="0" style="display:none;" />
                   <span class="fp-pass-rate-suffix" id="pass-rate-suffix" style="display:none;">of <span id="pass-rate-k">0</span> runs</span>
                 </div>
               </div>
               <div class="fp-group">
                 <span class="fp-label">Sort</span>
-                <select id="sort-select" class="filter-select">
+                <select id="sort-select" class="filter-select qym-control qym-select">
                   <option value="index">Index</option>
                   <option value="score_asc">Score &uarr;</option>
                   <option value="score_desc">Score &darr;</option>
@@ -4529,27 +4731,27 @@
               <div class="fp-group fp-cat-group" id="fp-cat-complexity" style="display:none;">
                 <span class="fp-label">Complexity</span>
                 <div class="multi-select-wrapper">
-                  <button class="multi-select-btn" id="complexity-ms-btn">All Complexity</button>
-                  <div class="multi-select-dropdown" id="complexity-ms-dropdown"></div>
+                  <button class="multi-select-btn qym-control qym-select" id="complexity-ms-btn">All Complexity</button>
+                  <div class="multi-select-dropdown qym-dropdown" id="complexity-ms-dropdown"></div>
                 </div>
               </div>
               <div class="fp-group fp-cat-group" id="fp-cat-domain" style="display:none;">
                 <span class="fp-label">Domain</span>
                 <div class="multi-select-wrapper">
-                  <button class="multi-select-btn" id="domain-ms-btn">All Domains</button>
-                  <div class="multi-select-dropdown" id="domain-ms-dropdown"></div>
+                  <button class="multi-select-btn qym-control qym-select" id="domain-ms-btn">All Domains</button>
+                  <div class="multi-select-dropdown qym-dropdown" id="domain-ms-dropdown"></div>
                 </div>
               </div>
               <div class="fp-group fp-cat-group" id="fp-cat-root_cause" style="display:none;">
                 <span class="fp-label">Root Cause</span>
                 <div class="multi-select-wrapper">
-                  <button class="multi-select-btn" id="root_cause-ms-btn">All Root Causes</button>
-                  <div class="multi-select-dropdown" id="root_cause-ms-dropdown"></div>
+                  <button class="multi-select-btn qym-control qym-select" id="root_cause-ms-btn">All Root Causes</button>
+                  <div class="multi-select-dropdown qym-dropdown" id="root_cause-ms-dropdown"></div>
                 </div>
               </div>
               <div class="fp-group" id="fp-cat-approval">
                 <span class="fp-label">Approval</span>
-                <select id="filter-approval" class="filter-select">
+                <select id="filter-approval" class="filter-select qym-control qym-select">
                   <option value="">All</option>
                   <option value="approved">Approved</option>
                   <option value="not_approved">Not Approved</option>
@@ -4557,33 +4759,32 @@
               </div>
               <div class="fp-gear-wrapper" id="fp-meta-fields" style="display:none;">
                 <div class="metadata-fields-selector multi-select-wrapper" style="position:relative;">
-                  <button type="button" class="fp-gear-btn metadata-fields-btn multi-select-btn qym-control" id="metadata-fields-btn" title="Choose which item metadata fields to display">&#9881; Item</button>
+                  <button type="button" class="fp-gear-btn metadata-fields-btn multi-select-btn qym-inline-action qym-inline-action--neutral" id="metadata-fields-btn" title="Choose which item metadata fields to display">&#9881; Item</button>
                   <div class="metadata-fields-dropdown qym-dropdown" id="metadata-fields-dropdown"></div>
                 </div>
               </div>
               <div class="fp-gear-wrapper" id="fp-metric-meta-fields" style="display:none;">
                 <div class="metadata-fields-selector multi-select-wrapper" style="position:relative;">
-                  <button type="button" class="fp-gear-btn metadata-fields-btn multi-select-btn qym-control" id="metric-meta-fields-btn" title="Choose which metric metadata fields to display">&#9881; Metric</button>
+                  <button type="button" class="fp-gear-btn metadata-fields-btn multi-select-btn qym-inline-action qym-inline-action--neutral" id="metric-meta-fields-btn" title="Choose which metric metadata fields to display">&#9881; Metric</button>
                   <div class="metadata-fields-dropdown qym-dropdown" id="metric-meta-fields-dropdown"></div>
                 </div>
               </div>
               <div class="fp-actions-spacer"></div>
               <div class="fp-actions">
-                <button class="fp-clear-btn" id="clear-all-btn" title="Clear all active filters">
+                <button class="fp-clear-btn qym-clear-action" id="clear-all-btn" title="Clear all active filters">
                   <span class="fp-clear-x">&times;</span> Clear <span class="fp-clear-count" id="active-filter-count">0</span>
                 </button>
-                <button class="fp-btn fp-export" id="export-filtered-btn" title="Export filtered items as CSV">Export CSV</button>
+                <button class="fp-btn fp-export qym-inline-action qym-inline-action--accent" id="export-filtered-btn" title="Export filtered items as CSV">Export CSV</button>
               </div>
             </div>
             <div class="fp-search-row">
-              <div class="fp-search">
-                <span class="fp-search-icon">&#x2315;</span>
-                <input type="text" id="items-search" placeholder="Search inputs / outputs / expected..." />
+              <div class="fp-search qym-search-wrap">
+                <input type="text" id="items-search" class="qym-control qym-search" placeholder="Search inputs / outputs / expected..." />
               </div>
             </div>
             <div class="fp-status">
-              <span class="filter-count" id="filter-count"></span>
-              <div class="pagination" id="pagination"></div>
+              <span class="filter-count qym-tag qym-tag--count" id="filter-count"></span>
+              <div class="pagination qym-pagination" id="pagination" aria-label="Compared items pagination"></div>
             </div>
           </div>
 
@@ -5173,6 +5374,7 @@
           { key: 'compare', label: 'Compare' },
           ...(showSweep ? [{ key: 'sweep', label: 'Sweep' }] : []),
         ];
+        container.hidden = tabs.length < 2;
 
         container.innerHTML = tabs.map(tab => `
           <button type="button" class="compare-mode-tab qym-segmented__option ${state.activeCompareTab === tab.key ? 'active' : ''}" data-compare-tab="${tab.key}" aria-pressed="${state.activeCompareTab === tab.key}">
@@ -6027,7 +6229,7 @@
             <div class="sweep-section-title">Cohort Metrics by ${escapeHtml(formatSweepMetadataLabel(metadataKey))}</div>
             <div class="sweep-section-subtitle">Current sweep filters applied</div>
             <div class="sweep-metadata-shell">
-              <table class="sweep-metadata-table">
+              <table class="sweep-metadata-table qdt-table">
                 <thead>
                   <tr>
                     <th>${renderSortableHeader(formatSweepMetadataLabel(metadataKey), 'value', state.sweepBreakdownSortKey, state.sweepBreakdownSortDir, 'data-sweep-breakdown-sort')}</th>
@@ -6148,7 +6350,7 @@
               <div class="sweep-subtitle">${escapeHtml(leftLabel)} vs ${escapeHtml(rightLabel)} across ${k} runs per cohort • Metric: ${escapeHtml(metricName)} • ${presentation.items.length}/${presentation.totalItems} items shown</div>
             </div>
             <div class="sweep-toolbar-actions">
-              <button type="button" class="compare-mode-tab sweep-reverse-btn ${presentation.reversed ? 'active' : ''}" id="sweep-reverse-btn">Reverse</button>
+              <button type="button" class="sweep-reverse-btn qym-inline-action qym-inline-action--neutral ${presentation.reversed ? 'active' : ''}" id="sweep-reverse-btn">Reverse</button>
             </div>
           </div>
 
@@ -6157,7 +6359,7 @@
           <div class="sweep-filter-bar">
             <div class="sweep-filter-group">
               <label class="sweep-filter-label" for="sweep-move-filter">Move</label>
-              <select id="sweep-move-filter" class="filter-select">
+              <select id="sweep-move-filter" class="filter-select qym-control qym-select">
                 <option value="all"${state.sweepMoveFilter === 'all' ? ' selected' : ''}>All Items</option>
                 <option value="improved"${state.sweepMoveFilter === 'improved' ? ' selected' : ''}>Improved</option>
                 <option value="regressed"${state.sweepMoveFilter === 'regressed' ? ' selected' : ''}>Regressed</option>
@@ -6166,7 +6368,7 @@
             </div>
             <div class="sweep-filter-group">
               <label class="sweep-filter-label" for="sweep-outcome-filter">Outcome</label>
-              <select id="sweep-outcome-filter" class="filter-select">
+              <select id="sweep-outcome-filter" class="filter-select qym-control qym-select">
                 <option value="all"${state.sweepOutcomeFilter === 'all' ? ' selected' : ''}>All Outcomes</option>
                 <option value="left_sweeps_right"${state.sweepOutcomeFilter === 'left_sweeps_right' ? ' selected' : ''}>${escapeHtml(leftLabel)} sweeps ${escapeHtml(rightLabel)}</option>
                 <option value="right_sweeps_left"${state.sweepOutcomeFilter === 'right_sweeps_left' ? ' selected' : ''}>${escapeHtml(rightLabel)} sweeps ${escapeHtml(leftLabel)}</option>
@@ -6177,11 +6379,11 @@
             </div>
             <div class="sweep-filter-group">
               <label class="sweep-filter-label" for="sweep-search-input">Search</label>
-              <input id="sweep-search-input" class="sweep-filter-search" type="search" value="${escapeAttr(state.sweepSearchQuery || '')}" placeholder="Issue, domain, complexity">
+              <input id="sweep-search-input" class="sweep-filter-search qym-control qym-search" type="search" value="${escapeAttr(state.sweepSearchQuery || '')}" placeholder="Issue, domain, complexity">
             </div>
             <div class="sweep-filter-group">
               <label class="sweep-filter-label" for="sweep-metadata-key-filter">Metadata</label>
-              <select id="sweep-metadata-key-filter" class="filter-select">
+              <select id="sweep-metadata-key-filter" class="filter-select qym-control qym-select">
                 <option value="all">All Categories</option>
                 ${metadataKeys.map((key) => `<option value="${escapeAttr(key)}"${state.sweepMetadataKey === key ? ' selected' : ''}>${escapeHtml(formatSweepMetadataLabel(key))}</option>`).join('')}
               </select>
@@ -6191,11 +6393,11 @@
               <div class="multi-select-wrapper">
                 <button
                   type="button"
-                  class="multi-select-btn${Array.isArray(state.sweepMetadataValues) && state.sweepMetadataValues.length ? ' has-selection' : ''}"
+                  class="multi-select-btn qym-control qym-select${Array.isArray(state.sweepMetadataValues) && state.sweepMetadataValues.length ? ' has-selection' : ''}"
                   id="sweep-metadata-values-btn"
                   ${state.sweepMetadataKey === 'all' ? 'disabled' : ''}
                 >${escapeHtml(metadataValueButtonLabel)}</button>
-                <div class="multi-select-dropdown" id="sweep-metadata-values-dropdown">
+                <div class="multi-select-dropdown qym-dropdown" id="sweep-metadata-values-dropdown">
                   <div class="model-search-box qym-dropdown__search">
                     <input type="search" class="model-search-input qym-control qym-search" id="sweep-metadata-values-search" placeholder="Search values...">
                   </div>
@@ -6276,7 +6478,7 @@
           </div>
 
           <div class="sweep-table-shell">
-            <table class="sweep-table">
+            <table class="sweep-table qdt-table">
               <thead>
                 <tr>
                   <th>${renderSortableHeader('Item', 'issue', state.sweepTableSortKey, state.sweepTableSortDir, 'data-sweep-table-sort')}</th>
@@ -7953,11 +8155,11 @@
               <div class="breakdown-card-scores">
                 <div class="score-col">
                   <span class="score-col-label">${bdIsNumeric ? 'Avg' : `Avg@${K}`}</span>
-                  <span class="score-col-value ${bdColorCls}">${bdDisplay}</span>
+                  <span class="score-col-value qym-score-value ${bdColorCls}">${bdDisplay}</span>
                 </div>
                 ${bdIsNumeric ? '' : `<div class="score-col">
                   <span class="score-col-label">Pass@${K}</span>
-                  <span class="score-col-value ${passAtKClass}">${passAtKStr}</span>
+                  <span class="score-col-value qym-score-value ${passAtKClass}">${passAtKStr}</span>
                 </div>`}
                 <div class="score-col" style="margin-left:auto;">
                   <span class="score-col-label">Items</span>
@@ -7966,7 +8168,7 @@
               </div>
               <div class="breakdown-card-details">
                 <span class="breakdown-detail"><span class="breakdown-detail-label">Latency</span> ${latStr}</span>
-                ${bdIsNumeric ? '' : `<span class="breakdown-detail"><span class="breakdown-detail-label">Consistency</span> <span class="breakdown-detail-value ${consClass}">${consStr}</span></span>`}
+                ${bdIsNumeric ? '' : `<span class="breakdown-detail"><span class="breakdown-detail-label">Consistency</span> <span class="breakdown-detail-value qym-score-value ${consClass}">${consStr}</span></span>`}
               </div>
             </div>`;
           }
@@ -8162,36 +8364,36 @@
           <div class="stats-row qym-stat-strip">
             <div class="stat-box qym-stat-strip__item">
               <div class="stat-title qym-stat-strip__label">Pass@${K} ${infoIcon(tooltips.passAtK)}</div>
-              <div class="stat-main qym-stat-strip__value ${scoreColorClass(stats.passAtK / stats.totalCompared)}">${formatPercent(stats.passAtK / stats.totalCompared)}</div>
+              <div class="stat-main qym-stat-strip__value qym-score-value ${scoreColorClass(stats.passAtK / stats.totalCompared)}">${formatPercent(stats.passAtK / stats.totalCompared)}</div>
             </div>
 
             <div class="stat-box qym-stat-strip__item">
               <div class="stat-title qym-stat-strip__label">Pass^${K} ${infoIcon(tooltips.passHatK)}</div>
-              <div class="stat-main qym-stat-strip__value ${scoreColorClass(stats.passHatK / stats.totalCompared)}">${formatPercent(stats.passHatK / stats.totalCompared)}</div>
+              <div class="stat-main qym-stat-strip__value qym-score-value ${scoreColorClass(stats.passHatK / stats.totalCompared)}">${formatPercent(stats.passHatK / stats.totalCompared)}</div>
             </div>
 
             <div class="stat-box qym-stat-strip__item">
               <div class="stat-title qym-stat-strip__label">Max@${K} ${infoIcon(tooltips.maxAtK)}</div>
-              <div class="stat-main qym-stat-strip__value ${scoreColorClass(stats.maxAtK / stats.totalCompared)}">${formatPercent(stats.maxAtK / stats.totalCompared)}</div>
+              <div class="stat-main qym-stat-strip__value qym-score-value ${scoreColorClass(stats.maxAtK / stats.totalCompared)}">${formatPercent(stats.maxAtK / stats.totalCompared)}</div>
             </div>
 
             <div class="stat-box qym-stat-strip__item">
               <div class="stat-title qym-stat-strip__label">Consistency ${infoIcon(tooltips.consistency)}</div>
               ${stats.itemsWithMultipleRuns > 0
-                ? `<div class="stat-main qym-stat-strip__value ${scoreColorClass(stats.totalConsistencySum / stats.itemsWithMultipleRuns)}">${formatPercent(stats.totalConsistencySum / stats.itemsWithMultipleRuns)}</div>`
+                ? `<div class="stat-main qym-stat-strip__value qym-score-value ${scoreColorClass(stats.totalConsistencySum / stats.itemsWithMultipleRuns)}">${formatPercent(stats.totalConsistencySum / stats.itemsWithMultipleRuns)}</div>`
                 : `<div class="stat-main qym-stat-strip__value">NA</div>`}
             </div>
 
             <div class="stat-box qym-stat-strip__item">
               <div class="stat-title qym-stat-strip__label">Reliability ${infoIcon(tooltips.reliability)}</div>
               ${stats.itemsWithAtLeastOnePass > 0
-                ? `<div class="stat-main qym-stat-strip__value ${scoreColorClass(stats.totalReliabilitySum / stats.itemsWithAtLeastOnePass)}">${formatPercent(stats.totalReliabilitySum / stats.itemsWithAtLeastOnePass)}</div>`
+                ? `<div class="stat-main qym-stat-strip__value qym-score-value ${scoreColorClass(stats.totalReliabilitySum / stats.itemsWithAtLeastOnePass)}">${formatPercent(stats.totalReliabilitySum / stats.itemsWithAtLeastOnePass)}</div>`
                 : `<div class="stat-main qym-stat-strip__value">NA</div>`}
             </div>
 
             <div class="stat-box qym-stat-strip__item">
               <div class="stat-title qym-stat-strip__label">Avg Score ${infoIcon(tooltips.avgScore)}</div>
-              <div class="stat-main qym-stat-strip__value ${scoreColorClass(stats.overallAvgScore)}">${formatPercent(stats.overallAvgScore)}</div>
+              <div class="stat-main qym-stat-strip__value qym-score-value ${scoreColorClass(stats.overallAvgScore)}">${formatPercent(stats.overallAvgScore)}</div>
             </div>
 
             <div class="stat-box qym-stat-strip__item">
@@ -8274,11 +8476,26 @@
       function renderSummaries() {
         const container = el('run-summaries');
         const visibleContextRows = getVisibleCompareContextEntries();
+        const subtitle = el('compare-subtitle');
+        if (subtitle) {
+          const runCount = state.runs.length;
+          subtitle.textContent = `Review configuration, performance, and item-level differences across ${runCount} ${runCount === 1 ? 'run' : 'runs'}.`;
+        }
         container.innerHTML = state.runs.map((run, idx) => {
           const info = run.run || {};
           const color = COLORS[idx % COLORS.length];
           const canRemove = state.runs.length > 2;
           const statusClass = String(info.status || 'unknown').toLowerCase();
+          const statusToneClass = {
+            completed: 'qym-badge--success',
+            approved: 'qym-badge--success',
+            running: 'qym-badge--info',
+            failed: 'qym-badge--danger',
+            rejected: 'qym-badge--danger',
+            stopped: 'qym-badge--warning',
+            pending: 'qym-badge--neutral',
+            submitted: 'qym-badge--neutral',
+          }[statusClass] || 'qym-badge--neutral';
           const statusText = escapeHtml(String(info.status || 'unknown').toUpperCase());
           const modelName = info.model_name || info.config?.model || info.config?.model_name || '—';
           const taskName = info.task_name || info.metadata?.task_name || info.config?.task || '—';
@@ -8317,10 +8534,10 @@
           }
 
           const metaHtml = [
-            metaItem('Task', taskName),
-            metaItem('Dataset', info.dataset_name || '—', { html: (window.QymShell && info.dataset_name ? QymShell.identiconHTML(info.dataset_name, { cell: 2, gap: 1, showEmpty: false, chip: true }) : '') + escapeHtml(info.dataset_name || '—') + (window.QymShell ? QymShell.datasetVersionInline(info.dataset_version) + QymShell.datasetAliasTags(info.dataset_aliases) : '') }),
-            metaItem('Model', modelName || '—', { html: renderModelLabel(modelName || '—', hasReasoningTraceStats(info.trace_stats)) }),
-            metaItem('Owner', ownerLabel),
+            metaItem('Task', taskName, { nowrap: true }),
+            metaItem('Dataset', info.dataset_name || '—', { nowrap: true, html: (window.QymShell && info.dataset_name ? QymShell.identiconHTML(info.dataset_name, { cell: 2, gap: 1, showEmpty: false, chip: true }) : '') + escapeHtml(info.dataset_name || '—') + (window.QymShell ? QymShell.datasetVersionInline(info.dataset_version) + QymShell.datasetAliasTags(info.dataset_aliases) : '') }),
+            metaItem('Model', modelName || '—', { nowrap: true, html: renderModelLabel(modelName || '—', hasReasoningTraceStats(info.trace_stats)) }),
+            metaItem('Owner', ownerLabel, { nowrap: true }),
             metaItem('Started', formatIsoDateTime(startedAt), { nowrap: true }),
             metaItem('Runtime', runtimeText, { nowrap: true }),
             metaItem('Version', versionText, { mono: true, nowrap: true }),
@@ -8335,10 +8552,11 @@
             const value = row.values[idx];
             if (!value || value === '—') return '';
             const dotColor = ['var(--accent-primary)', 'var(--accent-secondary)', 'var(--accent-tertiary)', 'var(--chart-4)', 'var(--chart-5)'][visibleContextRows.indexOf(row) % 5];
+            const contextLabel = row.label + ' • ' + row.source;
             return `<div class="context-cell">
               <span class="context-cell-dot" style="background:${dotColor}"></span>
               <div class="context-cell-text">
-                <div class="context-cell-key">${escapeHtml(row.label + ' • ' + row.source)}</div>
+                <div class="context-cell-key" title="${escapeAttr(contextLabel)}">${escapeHtml(contextLabel)}</div>
                 <div class="context-cell-val" title="${escapeAttr(value)}">${escapeHtml(value)}</div>
               </div>
             </div>`;
@@ -8357,11 +8575,11 @@
                   </div>
                 </div>
                 <div class="compare-run-actions">
-                  <div class="compare-run-status qym-badge ${statusClass}">
+                  <div class="compare-run-status qym-badge ${statusClass} ${statusToneClass}">
                     <span class="compare-run-status-dot"></span>${statusText}
                   </div>
-                  ${langfuseUrl ? `<a href="${escapeAttr(langfuseUrl)}" target="_blank" rel="noopener" class="compare-run-link langfuse">Langfuse &#8599;</a>` : ''}
-                  ${canRemove ? `<button class="compare-run-remove" data-idx="${idx}" title="Remove from comparison">Remove</button>` : ''}
+                  ${langfuseUrl ? `<a href="${escapeAttr(langfuseUrl)}" target="_blank" rel="noopener" class="compare-run-link langfuse qym-inline-action qym-inline-action--langfuse">Langfuse &#8599;</a>` : ''}
+                  ${canRemove ? `<button class="compare-run-remove qym-inline-action qym-inline-action--neutral" data-idx="${idx}" title="Remove from comparison">Remove</button>` : ''}
                 </div>
               </div>
               <div class="compare-run-meta-grid">${metaHtml}</div>
@@ -8391,7 +8609,7 @@
             ${state.runs.map((run, idx) => {
               const info = run.run || {};
               const color = COLORS[idx % COLORS.length];
-              return `<th><span style="display:inline-block;width:10px;height:10px;background:${color};border-radius:2px;margin-right:6px;"></span>${info.run_name || 'Run ' + (idx + 1)}</th>`;
+              return `<th><span class="metric-run-heading"><span class="metric-run-marker" style="background:${color}"></span><span>${escapeHtml(info.run_name || 'Run ' + (idx + 1))}</span></span></th>`;
             }).join('')}
           </tr>
         `;
@@ -8461,11 +8679,11 @@
             .filter(val => val !== null && val !== undefined && !isNaN(val));
           const cells = runMetricAvgs.map(avgs => {
             const val = avgs[metric];
-            if (val === null) return '<td class="metric-val">—</td>';
-            const isBest = val === bestValues[metric] && state.runs.length > 1;
+            if (val === null) return '<td class="metric-value-cell"><span class="metric-val">—</span></td>';
+            const isBest = mType !== 'numeric' && val === bestValues[metric] && state.runs.length > 1;
             const cls = window.QymMetrics.getMetricColorClass(val, mType);
             const display = window.QymMetrics.formatMetricValueSmart(val, mType, peerValues);
-            return `<td class="metric-val ${cls} ${isBest ? 'best' : ''}">${display}</td>`;
+            return `<td class="metric-value-cell"><span class="metric-val qym-score-value ${cls} ${isBest ? 'best' : ''}"${isBest ? ' title="Best across runs"' : ''}>${display}</span></td>`;
           }).join('');
 
           return `
@@ -8478,9 +8696,9 @@
 
         // Latency row
         const latencyCells = runLatencyAvgs.map(val => {
-          if (val === null) return '<td class="metric-val">—</td>';
+          if (val === null) return '<td class="metric-value-cell"><span class="metric-val">—</span></td>';
           const isBest = val === bestLatency && state.runs.length > 1;
-          return `<td class="metric-val ${isBest ? 'best' : ''}" style="${isBest ? 'background: var(--success-dim);' : ''}">${formatLatency(val)}</td>`;
+          return `<td class="metric-value-cell"><span class="metric-val ${isBest ? 'best' : ''}"${isBest ? ' title="Best across runs"' : ''}>${formatLatency(val)}</span></td>`;
         }).join('');
 
         const latencyRow = `
@@ -8514,7 +8732,7 @@
             const bestVal = validVals.length > 0 ? (td.best === 'high' ? Math.max(...validVals) : Math.min(...validVals)) : null;
             const cells = vals.map(v => {
               const isBest = v != null && bestVal != null && v === bestVal && validVals.length > 1;
-              return '<td class="metric-val' + (isBest ? ' best' : '') + '">' + td.fmt(v) + '</td>';
+              return '<td class="metric-value-cell"><span class="metric-val' + (isBest ? ' best' : '') + '"' + (isBest ? ' title="Best across runs"' : '') + '>' + td.fmt(v) + '</span></td>';
             }).join('');
             traceRows += '<tr class="trace-metric-row"><td class="metric-name">' + td.label + '</td>' + cells + '</tr>';
           }
@@ -8861,7 +9079,7 @@
             const countLabel = entry.count === 1 ? 'error' : 'errors';
             const activeFilter = state[getErrorFilterSlot(entry.kind)];
             const isActive = activeFilter && activeFilter.kind === entry.kind && activeFilter.label === entry.label;
-            cards += '<div class="breakdown-card error-card' + (isActive ? ' active' : '') + '" data-error-kind="' + escapeAttr(entry.kind) + '" data-error-label="' + escapeAttr(entry.label) + '" title="Click to filter by this error">' +
+            cards += '<div class="breakdown-card error-card' + (isActive ? ' active' : '') + '" role="button" tabindex="0" aria-pressed="' + (isActive ? 'true' : 'false') + '" data-error-kind="' + escapeAttr(entry.kind) + '" data-error-label="' + escapeAttr(entry.label) + '" title="Click to filter by this error">' +
               '<div class="error-card-top">' +
                 '<div class="error-card-text"><div class="error-card-title" title="' + escapeAttr(entry.label) + '">' + escapeHtml(labelParts.title) + '</div></div>' +
                 '<div class="error-card-count">' + entry.count + '<span class="error-card-count-label">' + countLabel + '</span></div>' +
@@ -8899,14 +9117,22 @@
         section.innerHTML = html;
 
         section.querySelectorAll('.error-card[data-error-kind]').forEach(card => {
-          card.addEventListener('click', (e) => {
-            if (e.target.closest('.error-detail-toggle')) return;
+          const toggleErrorFilter = () => {
             const nextFilter = { kind: card.dataset.errorKind, label: card.dataset.errorLabel };
             const slot = getErrorFilterSlot(nextFilter.kind);
             const current = state[slot];
             state[slot] = current && current.kind === nextFilter.kind && current.label === nextFilter.label ? null : nextFilter;
             state.page = 1;
             renderItems();
+          };
+          card.addEventListener('click', (e) => {
+            if (e.target.closest('.error-detail-toggle')) return;
+            toggleErrorFilter();
+          });
+          card.addEventListener('keydown', (e) => {
+            if (e.target !== card || (e.key !== 'Enter' && e.key !== ' ')) return;
+            e.preventDefault();
+            toggleErrorFilter();
           });
         });
         section.querySelectorAll('.error-detail-toggle').forEach(btn => {
@@ -9352,6 +9578,16 @@
         host.scrollTop += currentTop - anchorTop;
       }
 
+      function scrollItemByItemToTop() {
+        const host = getScrollHost();
+        const section = document.querySelector('.items-comparison');
+        if (!host || !section) return;
+        const hostRect = host.getBoundingClientRect();
+        const sectionRect = section.getBoundingClientRect();
+        const top = host.scrollTop + sectionRect.top - hostRect.top;
+        host.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+      }
+
       // Pass refs: "<file_path>::pass<N>" addresses one execution of a
       // repeat run. The compare API loads the base run; these helpers slice
       // its snapshot down to the one pass so the ref behaves as a run.
@@ -9461,7 +9697,7 @@
           if (v !== null) {
             const mType = state.metricTypes?.[name] || 'score';
             const cls = window.QymMetrics.getMetricColorClass(v, mType);
-            badge = `<span class="metric-score-value ${cls}">${window.QymMetrics.formatMetricObservation(v, mType, state.metricSpecs?.[name])}</span>`;
+            badge = `<span class="metric-score-value qym-score-value ${cls}">${window.QymMetrics.formatMetricObservation(v, mType, state.metricSpecs?.[name])}</span>`;
           }
           const bid = `det_${safeId}_${i}`;
           return `<div class="metric-det"><button type="button" class="det-toggle" data-det-target="${bid}" aria-expanded="false"><span class="det-caret">▸</span><span class="det-metric">${escapeHtml(name)}</span>${badge}</button><div class="det-body hidden" id="${bid}">${formatObjectAsHtml(obj)}</div></div>`;
@@ -9537,7 +9773,7 @@
                 : window.QymMetrics.formatMetricObservation(v, itemMType, state.metricSpecs?.[name]);
               const isSelected = name === selectedMetric;
               const meta = metricMeta[name] || {};
-              const editBtn = `<button class="metric-edit-open" data-run-idx="${runIdx}" data-row-index="${escapeAttr(String(row.index ?? 0))}" data-metric="${escapeAttr(name)}" aria-label="Edit ${escapeAttr(name)}" title="Edit">✎</button>`;
+              const editBtn = `<button class="metric-edit-open qym-icon-action" data-run-idx="${runIdx}" data-row-index="${escapeAttr(String(row.index ?? 0))}" data-metric="${escapeAttr(name)}" aria-label="Edit ${escapeAttr(name)}" title="Edit">✎</button>`;
               const editedBadge = String(meta.modified || '').toLowerCase() === 'true'
                 ? '<span class="metric-edit-badge">Edited</span>'
                 : '';
@@ -9545,7 +9781,7 @@
               return `<div class="metric-score-row ${isSelected ? 'highlighted' : ''}">
                 <span class="metric-score-name">${escapeHtml(name)}</span>
                 <span class="metric-score-meta">
-                  <span class="metric-score-value ${cls}">${display}</span>
+                  <span class="metric-score-value qym-score-value ${cls}">${display}</span>
                   ${editBtn}
                   ${editedBadge}
                 </span>
@@ -9586,7 +9822,7 @@
             const traceButton = !IS_COMPARE_EXPORT
               ? `<button type="button" class="action-chip trace-drawer-btn" data-trace-endpoint="${escapeAttr(traceEndpoint)}" data-trace-item-label="${escapeAttr((runInfo.run_name || ('Run ' + (runIdx + 1))) + ' · ' + runItemId)}" data-trace-id="${escapeAttr(traceId || '')}" data-trace-url="${escapeAttr(traceUrl || '')}" title="Open trace viewer"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M2.5 4h11M2.5 8h7M2.5 12h9"/><circle cx="12.5" cy="8" r="1.2" fill="currentColor" stroke="none" opacity=".5"/><circle cx="13.5" cy="12" r="1.2" fill="currentColor" stroke="none" opacity=".5"/></svg>Trace</button>`
               : '';
-            const copyBtn = `<button class="copy-btn" data-copy-text="${escapeAttr(typeof output === 'object' ? JSON.stringify(output, null, 2) : String(output))}" title="Copy output">${COPY_ICON}</button>`;
+            const copyBtn = `<button class="copy-btn qym-icon-action" data-copy-text="${escapeAttr(typeof output === 'object' ? JSON.stringify(output, null, 2) : String(output))}" title="Copy output">${COPY_ICON}</button>`;
             const langfuseChip = traceUrl ? `<a class="action-chip" href="${escapeAttr(traceUrl)}" target="_blank" title="View in Langfuse"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3.5H4A1.5 1.5 0 0 0 2.5 5v7A1.5 1.5 0 0 0 4 13.5h7A1.5 1.5 0 0 0 12.5 12v-2"/><path d="M9.5 2.5h4v4"/><path d="M13.25 2.75 7.5 8.5"/></svg>Langfuse</a>` : '';
 
             // Metric details for this run: closed toggles inside the cell
@@ -9787,32 +10023,34 @@
             const cls = window.QymMetrics.getMetricColorClass(v, mType);
             const display = window.QymMetrics.formatMetricObservation(v, mType, state.metricSpecs?.[mNames[mIdx]]);
             const color = COLORS[runIdx % COLORS.length];
-            return `<span class="item-agg-pill" title="${escapeAttr((runInfo.run_name || ('Run ' + (runIdx + 1))) + ' \u00B7 ' + mNames[mIdx])}"><span class="compare-run-dot" style="background:${color}"></span><span class="metric-score-value ${cls}">${display}</span></span>`;
+            return `<span class="item-agg-pill" title="${escapeAttr((runInfo.run_name || ('Run ' + (runIdx + 1))) + ' \u00B7 ' + mNames[mIdx])}"><span class="compare-run-dot" style="background:${color}"></span><span class="metric-score-value qym-score-value ${cls}">${display}</span></span>`;
           }).join('');
           const expandable = !options.forceExpanded;
+          const expandAttrs = ` data-item-expand="${escapeAttr(itemId)}" role="button" tabindex="0" aria-expanded="${isExpanded}"`;
           const headerHtml = `
-              <div class="item-header${expandable ? ' item-header-expand' : ''}"${expandable ? ` data-item-expand="${escapeAttr(itemId)}" role="button" tabindex="0" aria-expanded="${isExpanded}"` : ''}>
-                ${expandable ? `<span class="item-chevron">${isExpanded ? '\u25BE' : '\u25B8'}</span>` : ''}
+              <div class="item-header${expandable ? ' item-header-expand' : ''}"${expandable && isExpanded ? expandAttrs : ''}>
+                ${expandable ? `<span class="item-chevron${isExpanded ? ' open' : ''}"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m5.5 3.5 5 4.5-5 4.5"/></svg></span>` : ''}
                 <span class="item-index" title="ID: ${escapeHtml(itemId)}">${escapeHtml(displayItemId)}</span>
                 <span class="item-title">${escapeHtml(titleText)}</span>
                 <span class="item-agg-pills">${headerPills}</span>
-                <button class="copy-btn" data-item-id="${escapeAttr(itemId)}" title="Copy all fields">${COPY_ICON}</button>
+                <button class="copy-btn qym-icon-action" data-item-id="${escapeAttr(itemId)}" title="Copy all fields">${COPY_ICON}</button>
               </div>`;
 
           if (!isExpanded) {
-            return `<div class="item-comparison-row item-collapsed">${headerHtml}</div>`;
+            // The whole collapsed card is the expand target
+            return `<div class="item-comparison-row item-collapsed item-header-expand"${expandable ? expandAttrs : ''}>${headerHtml}</div>`;
           }
 
           return `
             <div class="item-comparison-row">
               ${headerHtml}
               <div class="item-input-row">
-                <div class="input-label">Input <button class="copy-btn" data-copy-text="${escapeAttr(typeof input === 'object' ? JSON.stringify(input, null, 2) : String(input))}" title="Copy input">${COPY_ICON}</button></div>
+                <div class="input-label">Input <button class="copy-btn qym-icon-action" data-copy-text="${escapeAttr(typeof input === 'object' ? JSON.stringify(input, null, 2) : String(input))}" title="Copy input">${COPY_ICON}</button></div>
                 <div class="input-text">${renderMarkdownSafe(input)}</div>
               </div>
               ${expected ? `
               <div class="item-expected-row">
-                <div class="expected-label">Expected Output <button class="copy-btn" data-copy-text="${escapeAttr(typeof expected === 'object' ? JSON.stringify(expected, null, 2) : String(expected))}" title="Copy expected output">${COPY_ICON}</button></div>
+                <div class="expected-label">Expected Output <button class="copy-btn qym-icon-action" data-copy-text="${escapeAttr(typeof expected === 'object' ? JSON.stringify(expected, null, 2) : String(expected))}" title="Copy expected output">${COPY_ICON}</button></div>
                 <div class="expected-text collapsed">${renderMarkdownSafe(expected)}</div>
                 <button class="expected-toggle" onclick="this.previousElementSibling.classList.toggle('collapsed'); this.textContent = this.previousElementSibling.classList.contains('collapsed') ? 'Show more \u25BC' : 'Show less \u25B2';">Show more \u25BC</button>
               </div>` : ''}
@@ -10007,20 +10245,23 @@
 
         container.innerHTML = pageItems.map(({ itemId, rowData }) => renderItemComparisonCard(itemId, rowData)).join('');
 
-        // Pagination controls
-        const paginationHtml = `
-          <button data-page-action="prev" ${state.page <= 1 ? 'disabled' : ''}>← Prev</button>
-          <span class="page-info">Page ${state.page} of ${totalPages}</span>
-          <button data-page-action="next" ${state.page >= totalPages ? 'disabled' : ''}>Next →</button>
-        `;
-        paginationEl.innerHTML = paginationHtml;
+        window.QymUIComponents?.renderPagination(paginationEl, {
+          page: state.page,
+          pageCount: totalPages,
+          pageSize: state.pageSize,
+          total: items.length,
+          start: items.length === 0 ? 0 : start + 1,
+          end: Math.min(items.length, start + pageItems.length),
+          noun: 'items',
+          onPageChange: page => {
+            state.page = page;
+            renderItems(true);
+          },
+        });
 
-        paginationEl.querySelector('[data-page-action="prev"]')?.addEventListener('click', () => { state.page--; renderItems(true); });
-        paginationEl.querySelector('[data-page-action="next"]')?.addEventListener('click', () => { state.page++; renderItems(true); });
-
-        // Scroll to top of items grid if requested
+        // Page navigation returns to the start of the Item-by-Item section.
         if (scrollToTop) {
-          container.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          requestAnimationFrame(scrollItemByItemToTop);
         } else if (anchorTop != null) {
           requestAnimationFrame(() => restoreItemsGridTop(anchorTop));
         }
@@ -10130,7 +10371,7 @@
         div.textContent = text || '';
         return div.innerHTML;
       }
-      const COPY_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="#9898a8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+      const COPY_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
       const CHECK_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
       const MODEL_REASONING_BADGE_TITLE = 'Reasoning model';
       const MODEL_REASONING_BADGE_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18h6" /><path d="M10 21h4" /><path d="M12 2a7 7 0 0 0-4.2 12.6c.7.5 1.2 1.4 1.2 2.3V18h6v-1.1c0-.9.5-1.8 1.2-2.3A7 7 0 0 0 12 2Z" /></svg>';
@@ -10173,7 +10414,7 @@
                   <div class="toast-title">${escapeHtml(title)}</div>
                   <div class="toast-message">${escapeHtml(message)}</div>
               </div>
-              <button class="toast-close" onclick="this.parentElement.remove()">\u00d7</button>
+              <button class="toast-close qym-icon-action" type="button" aria-label="Close notification" onclick="this.parentElement.remove()">\u00d7</button>
           `;
           container.appendChild(toast);
           setTimeout(() => {
@@ -11127,7 +11368,7 @@
             formattedVal = escapeHtml(String(val));
           }
           const copyVal = String(val ?? '');
-          groups.push(`<div class="formatted-row"><span class="formatted-key">${escapeHtml(key)}</span>${formattedVal}<button class="copy-btn" data-copy-text="${escapeAttr(copyVal)}" title="Copy ${escapeHtml(key)}">${COPY_ICON}</button></div>`);
+          groups.push(`<div class="formatted-row"><span class="formatted-key">${escapeHtml(key)}</span>${formattedVal}<button class="copy-btn qym-icon-action" data-copy-text="${escapeAttr(copyVal)}" title="Copy ${escapeHtml(key)}">${COPY_ICON}</button></div>`);
         }
         flushTables();
 

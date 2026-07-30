@@ -5,12 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>قيِّم • Run Detail</title>
   <link rel="icon" type="image/png" href="/static/qym_icon.png">
-  <link rel="stylesheet" href="/static/dashboard.css?v=estimator-mark-20260717">
+  <link rel="stylesheet" href="/static/dashboard.css?v=ui-consistency-20260730-17">
   <link rel="stylesheet" href="/static/shell.css">
   <script src="/static/auth.js"></script>
-  <script src="/static/shell.js"></script>
+  <script src="/static/shell.js?v=ui-consistency-20260730-15"></script>
   <script src="/static/metrics.js"></script>
-  <script src="/static/trace_viewer.js"></script>
+  <script src="/static/trace_viewer.js?v=ui-consistency-20260730-18"></script>
   <script src="/static/playground.js?v=variable-mapping-20260510"></script>
   <style>
     /* Typography/color rules: docs/DESIGN_LANGUAGE.md — tokens only (var(--font-*), var(--text-*)). */
@@ -47,36 +47,6 @@
     }
     .back-link:hover { text-decoration: underline; }
 
-    .export-html-btn {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      padding: 7px 16px;
-      font-size: var(--font-sm);
-      font-weight: 500;
-      font-family: var(--font-sans);
-      color: var(--bg-void);
-      background: var(--accent-primary);
-      border: none;
-      border-radius: var(--radius-md);
-      cursor: pointer;
-      transition: background 0.15s, transform 0.1s;
-      white-space: nowrap;
-    }
-    .export-html-btn:hover {
-      background: #00e8bb;
-      transform: translateY(-1px);
-    }
-    .export-html-btn:active { transform: translateY(0); }
-    .export-html-btn svg { flex-shrink: 0; }
-    .export-html-download {
-      background: transparent;
-      color: var(--accent-primary);
-      border: 1px solid var(--accent-primary);
-    }
-    .export-html-download:hover {
-      background: rgba(0, 212, 170, 0.12);
-    }
     /* ─── Hero Summary Card ─── */
     .run-summary {
       margin-bottom: var(--space-lg);
@@ -367,56 +337,15 @@
       justify-content: flex-end;
       gap: 6px;
     }
-    .hero-actions .export-html-btn {
-      background: rgba(0, 212, 170, 0.08);
-      color: var(--accent-primary);
-      border: 1px solid rgba(0, 212, 170, 0.22);
-      padding: 5px 10px;
-      font-size: var(--font-xs);
-    }
-    .hero-actions .export-html-btn:hover {
-      background: rgba(0, 212, 170, 0.14);
-      border-color: rgba(0, 212, 170, 0.34);
-    }
-    .hero-actions .export-html-download {
-      background: transparent;
-      color: var(--text-secondary);
-      border-color: var(--border-default);
-    }
-    .hero-actions .export-html-download:hover {
-      background: var(--bg-hover);
-      border-color: var(--border-strong);
-      color: var(--text-primary);
-    }
-    .hero-link-btn {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      padding: 5px 10px;
-      border-radius: var(--radius-md);
-      border: 1px solid var(--border-default);
-      background: var(--bg-elevated);
-      color: var(--text-primary);
-      text-decoration: none;
-      font-size: var(--font-xs);
-      font-weight: 500;
+    .hero-right .hero-status.qym-badge,
+    .hero-actions > .qym-inline-action {
+      min-height: var(--control-height);
+      height: var(--control-height);
+      box-sizing: border-box;
+      margin-top: 0;
+      padding-top: 0;
+      padding-bottom: 0;
       line-height: 1;
-      transition: background 0.15s, border-color 0.15s, transform 0.1s;
-      white-space: nowrap;
-    }
-    .hero-link-btn:hover {
-      background: var(--bg-hover);
-      border-color: var(--border-strong);
-      transform: translateY(-1px);
-    }
-    .hero-link-btn.langfuse {
-      color: #fb7185;
-      border-color: rgba(225, 29, 72, 0.28);
-      background: rgba(225, 29, 72, 0.08);
-    }
-    .hero-link-btn.langfuse:hover {
-      background: rgba(225, 29, 72, 0.14);
-      border-color: rgba(225, 29, 72, 0.4);
     }
     .hero-id-pills {
       display: flex;
@@ -809,7 +738,7 @@
     .overview-header {
       display: flex;
       justify-content: space-between;
-      align-items: flex-end;
+      align-items: center;
       margin-bottom: 12px;
       gap: 12px;
     }
@@ -822,27 +751,28 @@
       margin-top: 3px;
       letter-spacing: 0.2px;
     }
-    .overview-summary-strip {
-      display: flex;
-      flex-wrap: wrap;
-      justify-content: flex-end;
-      gap: 8px;
+    .overview-summary-strip.qym-stat-strip {
+      display: grid;
+      grid-template-columns: repeat(3, max-content);
+      flex: 0 0 auto;
+      width: auto;
+      max-width: 100%;
       min-width: 0;
     }
-    .overview-summary-pill {
-      display: inline-flex;
+    .overview-summary-strip > .overview-summary-pill.qym-stat-strip__item {
+      display: flex;
       align-items: center;
-      gap: 8px;
-      padding: 7px 10px;
-      border-radius: 999px;
-      border: 1px solid rgba(63, 63, 92, 0.52);
-      background: rgba(26, 26, 40, 0.5);
+      gap: var(--space-sm);
+      min-height: 34px;
+      height: 34px;
+      padding: 0 var(--space-md);
       min-width: 0;
+      width: auto;
     }
     .overview-summary-icon {
-      width: 20px;
-      height: 20px;
-      border-radius: 999px;
+      width: var(--badge-height);
+      height: var(--badge-height);
+      border-radius: var(--control-radius);
       display: inline-flex;
       align-items: center;
       justify-content: center;
@@ -873,16 +803,11 @@
       color: var(--accent-primary);
       background: rgba(0, 212, 170, 0.12);
     }
-    .overview-summary-text {
-      display: flex;
-      align-items: baseline;
-      gap: 6px;
-      min-width: 0;
-    }
-    .overview-summary-value {
+    .overview-summary-strip > .overview-summary-pill .overview-summary-value {
+      margin-top: 0;
       font-family: var(--font-mono);
       font-size: var(--font-md);
-      font-weight: 600;
+      font-weight: 700;
       line-height: 1;
       color: var(--text-primary);
       white-space: nowrap;
@@ -893,33 +818,44 @@
     .overview-summary-value.score-2 { color: var(--score-2); }
     .overview-summary-value.score-1 { color: var(--score-1); }
     .overview-summary-label {
-      font-size: var(--font-xs);
-      font-weight: 600;
+      align-self: center;
+      min-width: 0;
+      overflow: hidden;
+      font-size: var(--font-md);
+      font-weight: 650;
       color: var(--text-muted);
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
+      text-overflow: ellipsis;
       white-space: nowrap;
     }
     .system-metrics-section {
       margin-top: var(--space-md);
       margin-bottom: var(--space-xl);
     }
-    .system-metrics-label {
-      font-size: var(--font-sm);
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 1.2px;
-      color: var(--text-muted);
-      margin-bottom: var(--space-sm);
-      padding-bottom: var(--space-sm);
-    }
     .system-metrics-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
       gap: var(--space-md);
     }
+    .system-metrics-grid > :is(.ri-panel, .metric-card) {
+      grid-column: auto;
+      min-width: 0;
+      height: auto;
+      align-self: stretch;
+    }
+    .system-trace-row {
+      margin-top: var(--space-md);
+    }
+    .system-trace-row > .metric-card {
+      width: 100%;
+    }
+    .system-trace-row .trace-pills-row.qym-stat-strip {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
     @media (max-width: 900px) {
       .system-metrics-grid { grid-template-columns: 1fr; }
+      .system-trace-row .trace-pills-row.qym-stat-strip {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
       .hero-top {
         flex-direction: column;
       }
@@ -939,7 +875,7 @@
         flex-direction: column;
       }
       .overview-summary-strip {
-        justify-content: flex-start;
+        align-self: flex-start;
       }
     }
     @media (max-width: 640px) {
@@ -957,23 +893,20 @@
         width: 100%;
         justify-content: center;
       }
-      .overview-summary-strip {
-        gap: 6px;
-      }
-      .overview-summary-pill {
-        padding: 6px 9px;
-      }
       .trace-pills-row {
+        grid-template-columns: 1fr;
+      }
+      .system-trace-row .trace-pills-row.qym-stat-strip {
         grid-template-columns: 1fr;
       }
     }
     @media (max-width: 520px) {
-      .overview-summary-strip {
+      .overview-summary-strip.qym-stat-strip {
+        grid-template-columns: minmax(0, 1fr);
         width: 100%;
       }
-      .overview-summary-pill {
-        width: calc(50% - 3px);
-        justify-content: flex-start;
+      .overview-summary-strip > .overview-summary-pill.qym-stat-strip__item {
+        width: 100%;
       }
       .hero-meta-grid {
         grid-template-columns: 1fr;
@@ -1573,7 +1506,8 @@
       text-transform: uppercase;
       letter-spacing: 0.05em;
     }
-    .category-compare-head span:not(:first-child) { text-align: right; }
+    .category-compare-head span:nth-child(2) { text-align: left; }
+    .category-compare-head span:nth-child(n + 3) { text-align: right; }
     .category-compare-row {
       appearance: none;
       width: 100%;
@@ -1697,13 +1631,11 @@
     .breakdown-errors.task-error-group .breakdown-header { color: var(--error); }
     .breakdown-errors.trace-error-group .breakdown-icon,
     .breakdown-errors.trace-error-group .breakdown-header { color: var(--warning); }
-    .breakdown-errors.task-error-group .breakdown-card:hover {
-      border-color: var(--border-default);
-      border-left-color: rgba(239, 68, 68, 0.35);
+    .breakdown-errors.task-error-group .error-card:not(.active):is(:hover, :focus-visible) {
+      border-left-color: color-mix(in srgb, var(--error) 35%, transparent);
     }
-    .breakdown-errors.trace-error-group .breakdown-card:hover {
-      border-color: var(--border-default);
-      border-left-color: rgba(245, 158, 11, 0.42);
+    .breakdown-errors.trace-error-group .error-card:not(.active):is(:hover, :focus-visible) {
+      border-left-color: color-mix(in srgb, var(--warning) 42%, transparent);
     }
     .breakdown-errors .error-card {
       flex: 0 0 300px;
@@ -1727,6 +1659,12 @@
       width: 100%;
       overflow: hidden;
       cursor: pointer;
+    }
+    .error-card:focus-visible {
+      border-color: var(--border-strong);
+      box-shadow: 0 2px 16px rgba(0, 0, 0, 0.12);
+      outline: 1px solid var(--accent-primary);
+      outline-offset: 2px;
     }
     .error-card.active {
       border-color: rgba(239, 68, 68, 0.65);
@@ -2152,24 +2090,6 @@
       background: var(--bg-hover);
     }
     .fp-gear-wrapper { display: flex; align-items: flex-end; }
-    .fp-gear-btn.metadata-fields-btn {
-      padding: var(--space-xs) var(--space-sm);
-      padding-right: var(--space-sm);
-      background: var(--bg-surface);
-      background-image: none;
-      border: 1px solid var(--border-default);
-      border-radius: 3px;
-      color: var(--text-muted);
-      font-size: var(--font-base);
-      cursor: pointer;
-      transition: all 0.15s;
-      line-height: 1;
-    }
-    .fp-gear-btn.metadata-fields-btn:hover {
-      color: var(--text-primary);
-      border-color: var(--border-strong);
-      background-color: var(--bg-hover);
-    }
     .fp-actions-spacer { flex: 1 1 0; }
     .fp-actions {
       display: flex;
@@ -2177,26 +2097,6 @@
       gap: 6px;
       flex-shrink: 0;
       align-self: flex-end;
-    }
-    .fp-btn {
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      padding: var(--space-xs) var(--space-sm);
-      background: transparent;
-      border: 1px solid var(--border-default);
-      border-radius: 3px;
-      color: var(--text-muted);
-      font-size: var(--font-xs);
-      font-family: var(--font-sans);
-      cursor: pointer;
-      transition: all 0.15s;
-      white-space: nowrap;
-    }
-    .fp-btn:hover {
-      background: var(--bg-hover);
-      color: var(--text-primary);
-      border-color: var(--border-strong);
     }
     .fp-clear-btn {
       display: inline-flex;
@@ -2235,21 +2135,6 @@
       font-size: var(--font-xs);
       font-weight: 700;
       line-height: 1;
-    }
-    .fp-btn.fp-export {
-      background: rgba(0, 212, 170, 0.08);
-      border-color: rgba(0, 212, 170, 0.22);
-      color: var(--accent-primary);
-      border-radius: var(--radius-md);
-      padding: 5px 10px;
-      gap: 6px;
-      font-size: var(--font-xs);
-      font-weight: 500;
-    }
-    .fp-btn.fp-export:hover {
-      background: rgba(0, 212, 170, 0.14);
-      border-color: rgba(0, 212, 170, 0.34);
-      color: var(--accent-primary);
     }
     .fp-search-row { padding: 0 var(--space-md) var(--space-sm); }
     .fp-search {
@@ -2307,7 +2192,7 @@
     .items-grid {
       display: flex;
       flex-direction: column;
-      gap: var(--space-xl);
+      gap: var(--space-sm);
     }
     .items-view-toggle { margin-left: auto; }
     .item-heatmap-shell {
@@ -2426,21 +2311,64 @@
       border-bottom: none;
       padding-bottom: 0;
     }
+    /* Collapsed cards are one-line zebra rows: borderless, breathing
+       padding, alternating surface — a list, not a stack of boxes. */
+    .item-card.item-collapsed {
+      padding: 13px 16px;
+      border: none;
+    }
+    .items-grid > .item-card.item-collapsed:nth-child(even) {
+      background: color-mix(in srgb, var(--bg-surface) 55%, var(--bg-base));
+    }
+    .items-grid > .item-card.item-collapsed:hover {
+      background: var(--bg-hover);
+    }
+    /* Premium disclosure control: stroked SVG chevron in a rounded hover
+       target; rotates 90deg while the item is open. */
     .item-chevron {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 26px;
+      height: 26px;
+      border-radius: 6px;
       color: var(--accent-primary);
-      font-size: var(--font-md);
-      width: 18px;
-      text-align: center;
+      flex: 0 0 auto;
+      transition: background 0.12s;
+    }
+    .item-header-expand:hover .item-chevron { background: var(--bg-active); }
+    .item-chevron svg {
+      width: 15px;
+      height: 15px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 2.2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      transition: transform 0.15s;
+    }
+    .item-chevron.open svg { transform: rotate(90deg); }
+    /* Verdict chip: squared, borderless, filled tint — one anchor per row */
+    .item-verdict {
+      display: inline-flex;
+      align-items: center;
+      height: 20px;
+      padding: 0 7px;
+      border-radius: 4px;
+      font-size: var(--font-sm);
+      font-weight: 700;
       flex: 0 0 auto;
     }
+    .item-verdict.pass { background: var(--success-dim); color: var(--score-5); }
+    .item-verdict.fail { background: rgba(239, 68, 68, 0.15); color: var(--score-1); }
     /* Fills the title's slot while the item is open (the full input shows
        in its own block below, so the header drops the duplicate). */
     .item-header-spacer { flex: 1 1 auto; }
     .item-title {
       font-family: var(--font-sans);
-      font-size: var(--font-md);
+      font-size: var(--font-base);
       font-weight: 600;
-      color: var(--text-primary);
+      color: var(--text-secondary);
       line-height: 1.45;
       flex: 1 1 auto;
       min-width: 0;
@@ -2487,6 +2415,7 @@
       display: flex;
       flex-direction: column;
       gap: 4px;
+      max-width: 680px;
       border-top: 1px solid var(--border-subtle);
       padding-top: var(--space-sm);
       margin-top: var(--space-sm);
@@ -2505,14 +2434,24 @@
       font-family: var(--font-sans);
       text-align: left;
     }
-    .det-toggle:hover { background: var(--bg-hover); border-color: var(--accent-primary); }
+    .det-toggle:hover { background: var(--bg-hover); border-color: var(--border-strong); }
     .det-toggle.open {
       border-bottom-left-radius: 0;
       border-bottom-right-radius: 0;
-      border-color: var(--accent-primary);
       background: var(--bg-elevated);
     }
     .det-caret { color: var(--accent-primary); font-size: var(--font-xs); }
+    .det-caret-none { visibility: hidden; }
+    /* Strip rows without judge meta read, but do not toggle */
+    .det-toggle.static { cursor: default; }
+    .det-toggle.static:hover { background: var(--bg-surface); border-color: var(--border-subtle); }
+    .det-toggle.highlighted { background: var(--bg-hover); }
+    .det-toggle .metric-score-value {
+      font-family: var(--font-mono);
+      font-size: var(--font-sm);
+      font-weight: 700;
+    }
+    .det-toggle .metric-edit-open { flex: 0 0 auto; }
     .det-metric {
       font-size: var(--font-sm);
       color: var(--text-secondary);
@@ -2520,7 +2459,7 @@
       flex: 1;
     }
     .det-body {
-      border: 1px solid var(--accent-primary);
+      border: 1px solid var(--border-default);
       border-top: none;
       border-bottom-left-radius: 4px;
       border-bottom-right-radius: 4px;
@@ -2566,8 +2505,8 @@
        but at body size, not caption size. */
     .item-input-row .input-text {
       font-family: var(--font-sans);
-      font-size: var(--font-md);
-      color: var(--text-primary);
+      font-size: var(--font-base);
+      color: var(--text-secondary);
       line-height: 1.7;
       white-space: pre-wrap;
       word-break: break-word;
@@ -2631,9 +2570,14 @@
       flex-wrap: wrap;
       gap: 4px;
     }
+    /* Same section identity as Input/Expected: 11px semibold label colored
+       to match the block's accent rail. */
     .item-run-output .run-label {
-      font-size: var(--font-xs);
-      color: var(--text-muted);
+      font-size: var(--font-sm);
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      color: var(--accent-primary);
       display: flex;
       align-items: center;
       gap: 4px;
@@ -2751,7 +2695,7 @@
     .item-run-output .metric-badge.score-1 { background: var(--error-dim); color: var(--score-1); }
     .item-run-output .output-text {
       font-family: var(--font-mono);
-      font-size: var(--font-sm);
+      font-size: var(--font-base);
       color: var(--text-secondary);
       line-height: 1.6;
       white-space: pre-wrap;
@@ -3403,67 +3347,15 @@
     .formatted-index { color: #60a5fa; font-size: var(--font-xs); margin-right: 4px; font-weight: 600; }
 
     /* Copy button */
-    .copy-btn {
-      background: none;
-      border: none;
-      cursor: pointer;
-      padding: 2px;
-      line-height: 1;
-      opacity: 0.4;
-      transition: all 0.15s;
-      flex-shrink: 0;
-      display: inline-flex;
-      align-items: center;
-    }
     .copy-btn svg { width: 14px; height: 14px; }
-    .copy-btn:hover { opacity: 1; }
-    .copy-btn:hover svg { stroke: var(--accent-primary); }
-    .copy-btn.copied svg { stroke: var(--success); }
-    .copy-btn.copied { opacity: 1; }
     .formatted-row > .copy-btn { position: absolute; top: 6px; right: 4px; opacity: 0; }
     .formatted-row:hover > .copy-btn { opacity: 0.4; }
     .formatted-row:hover > .copy-btn:hover { opacity: 1; }
     .formatted-row > .copy-btn.copied { opacity: 1; }
 
-    /* Pagination */
-    .pagination {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      gap: 0;
-      height: 28px;
-      overflow: hidden;
-      border: 1px solid var(--border-subtle);
-      border-radius: 7px;
-      background: var(--bg-elevated);
-      margin-left: auto;
-    }
-    .pagination button {
-      height: 28px;
-      padding: 0 12px;
-      background: transparent;
-      border: 0;
-      border-right: 1px solid var(--border-subtle);
-      border-radius: 0;
-      color: var(--text-secondary);
-      cursor: pointer;
-    }
-    .pagination button:last-child { border-right: 0; border-left: 1px solid var(--border-subtle); }
-    .pagination button:hover:not(:disabled) { background: var(--bg-hover); }
-    .pagination button:disabled { opacity: 0.5; cursor: not-allowed; }
-    .pagination .page-info {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      height: 28px;
-      width: 112px;
-      padding: 0 12px;
-      font-family: var(--font-mono);
-      font-size: var(--font-sm);
-      font-variant-numeric: tabular-nums;
-      color: var(--text-secondary);
-      background: rgba(255,255,255,0.015);
-    }
+    /* The single pager sits centered under the item list. */
+    .items-grid + .qym-pagination { margin-top: var(--space-md); }
+    .items-grid + .qym-pagination:empty { display: none; }
 
     /* Loading/empty */
     .run-loading, .run-empty, .run-error {
@@ -3929,14 +3821,8 @@
       background: var(--bg-surface);
       box-shadow: 0 1px 3px rgba(0,0,0,0.2);
     }
-    /* Chart/Table view toggle (accent-active segmented buttons) */
-    .samples-curve-controls {
-      display: flex;
-      align-items: center;
-      gap: var(--space-md);
-      flex-wrap: wrap;
-      justify-content: flex-end;
-    }
+    /* Chart controls occupy explicit header slots rather than floating
+       independently around the plot. */
     .samples-statistic-tabs {
       display: inline-flex;
       align-items: center;
@@ -3944,6 +3830,8 @@
       padding: 3px;
       border-radius: 6px;
       background: var(--bg-elevated);
+      grid-area: statistic;
+      justify-self: end;
     }
     .samples-statistic-btn {
       appearance: none;
@@ -3964,6 +3852,10 @@
     .samples-statistic-btn.active {
       color: var(--accent-primary);
       background: var(--bg-surface);
+    }
+    .samples-curve-head > .samples-view-toggle {
+      grid-area: display;
+      justify-self: end;
     }
     .samples-view-toggle {
       display: inline-flex;
@@ -4022,6 +3914,7 @@
       min-width: 640px;
     }
     .samples-sweep thead th {
+      box-sizing: border-box;
       font-size: var(--font-sm);
       color: var(--text-muted);
       background: var(--bg-elevated);
@@ -4032,8 +3925,9 @@
       padding: 7px 14px;
       white-space: nowrap;
     }
-    .samples-sweep thead th.sw-num-h { text-align: right; }
+    .samples-sweep thead th.sw-num-h { text-align: center; }
     .samples-sweep tbody td {
+      box-sizing: border-box;
       padding: 8px 14px;
       border-top: 1px solid var(--border-subtle);
       background: var(--bg-surface);
@@ -4049,23 +3943,26 @@
       font-size: var(--font-sm);
       color: var(--text-muted);
     }
-    .sw-pass {
+    .sw-pass-content {
       display: flex;
       align-items: center;
       gap: var(--space-sm);
     }
     .sw-num {
-      text-align: right;
+      text-align: center;
     }
     .sw-cell-value {
-      display: block;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      vertical-align: middle;
+      line-height: 1;
     }
-    /* Best-in-column marker: a soft chip hugging the winning value (outlined when tied).
-       Zero right padding keeps the chip flush with the column's right alignment edge —
-       digits stay aligned and the tint only trails left into empty space. */
+    /* Best-in-column marker: a soft chip centered on the winning value
+       (outlined when tied), with equal padding so the tint shares its center. */
     .sw-cell-value.sw-best {
-      display: inline-block;
-      padding: 2px 0 2px 8px;
+      display: inline-flex;
+      padding: 2px 6px;
       margin: -2px 0;
       border-radius: 5px;
       background: color-mix(in srgb, var(--success) 14%, transparent);
@@ -4079,7 +3976,8 @@
       font-variant-numeric: tabular-nums;
       font-weight: 700;
       font-size: var(--font-md);
-      display: block;
+      display: inline-block;
+      line-height: 1.25;
     }
     .sw-val.score-5 { color: var(--score-5); }
     .sw-val.score-4 { color: var(--score-4); }
@@ -4128,12 +4026,14 @@
       grid-column: auto;
       align-self: stretch;
     }
-    .samples-stability-section {
+    .ri-analysis-section.samples-performance-section,
+    .ri-analysis-section.samples-stability-section {
       width: 100%;
       margin-bottom: var(--space-lg);
       padding-top: var(--space-lg);
       border-top: 1px solid var(--border-subtle);
     }
+    .samples-performance-section .samples-charts-row { margin-bottom: 0; }
     .samples-chart-block {
       padding: 0;
       display: flex;
@@ -4148,16 +4048,27 @@
       flex-direction: column;
       justify-content: flex-end;
     }
-    .samples-curve-head {
+    .samples-distribution-panel {
       display: flex;
-      align-items: flex-start;
-      justify-content: space-between;
-      gap: var(--space-md);
+      flex-direction: column;
+    }
+    .samples-distribution-panel .samples-chart-body {
+      justify-content: center;
+    }
+    .samples-curve-head {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      grid-template-areas:
+        "title statistic"
+        "legend display";
+      align-items: center;
+      gap: var(--space-sm) var(--space-lg);
       min-height: 30px;
       padding: var(--space-md);
       margin-bottom: 0;
     }
     .samples-chart-heading {
+      grid-area: title;
       min-width: 0;
     }
     .samples-zone-title {
@@ -4175,7 +4086,14 @@
       font-size: var(--font-sm);
       line-height: 1.45;
     }
-    .samples-legend { display: flex; gap: var(--space-md); }
+    .samples-legend {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: var(--space-md);
+      grid-area: legend;
+      justify-self: start;
+    }
     .samples-legend-chip {
       display: inline-flex;
       align-items: center;
@@ -4196,6 +4114,20 @@
       border-radius: 2px;
       background: var(--accent-primary);
       opacity: 0.2;
+    }
+    @media (max-width: 760px) {
+      .samples-curve-head {
+        grid-template-columns: minmax(0, 1fr);
+        grid-template-areas:
+          "title"
+          "statistic"
+          "legend"
+          "display";
+      }
+      .samples-statistic-tabs,
+      .samples-curve-head > .samples-view-toggle {
+        justify-self: start;
+      }
     }
     .samples-curve {
       width: 100%;
@@ -4431,6 +4363,10 @@
       height: auto;
       max-height: 320px;
       margin-inline: auto;
+    }
+    .ri-chart-square {
+      max-width: var(--analysis-matrix-max-width);
+      margin-inline: 0;
     }
     .ri-axis {
       stroke: var(--border-strong);
@@ -4706,8 +4642,8 @@
     .pass-cmp-vtable td.score-1 { color: var(--score-1); }
     .pass-cmp-actions { display: flex; gap: 6px; }
   </style>
-  <link rel="stylesheet" href="/static/ui_components.css">
-  <script defer src="/static/ui_components.js"></script>
+  <link rel="stylesheet" href="/static/ui_components.css?v=ui-consistency-20260730-29">
+  <script defer src="/static/ui_components.js?v=ui-consistency-20260730-25"></script>
 </head>
 <body>
   <main class="run-container">
@@ -4733,10 +4669,12 @@
     <div id="run-content" style="display:none;">
       <div class="run-summary" id="run-summary"></div>
 
-      <div id="overview-section"></div>
-
-      <!-- Pass-centric repeat analysis; empty for classic runs -->
-      <div id="samples-analysis-section"></div>
+      <div id="overview-section">
+        <div id="overview-primary-section"></div>
+        <!-- Pass-centric repeat analysis; empty for classic runs -->
+        <div id="samples-analysis-section"></div>
+        <div id="overview-deep-section"></div>
+      </div>
 
       <div id="metadata-breakdown"></div>
 
@@ -4818,13 +4756,13 @@
             </div>
             <div class="fp-gear-wrapper" id="fp-meta-fields" style="display:none;">
               <div class="metadata-fields-selector multi-select-wrapper" style="position:relative;">
-                <button type="button" class="fp-gear-btn metadata-fields-btn multi-select-btn qym-control" id="metadata-fields-btn" title="Choose which item metadata fields to display">&#9881; Item</button>
+                <button type="button" class="qym-inline-action qym-inline-action--neutral" id="metadata-fields-btn" title="Choose which item metadata fields to display">&#9881; Item</button>
                 <div class="metadata-fields-dropdown qym-dropdown" id="metadata-fields-dropdown"></div>
               </div>
             </div>
             <div class="fp-gear-wrapper" id="fp-metric-meta-fields" style="display:none;">
               <div class="metadata-fields-selector multi-select-wrapper" style="position:relative;">
-                <button type="button" class="fp-gear-btn metadata-fields-btn multi-select-btn qym-control" id="metric-meta-fields-btn" title="Choose which metric metadata fields to display">&#9881; Metric</button>
+                <button type="button" class="qym-inline-action qym-inline-action--neutral" id="metric-meta-fields-btn" title="Choose which metric metadata fields to display">&#9881; Metric</button>
                 <div class="metadata-fields-dropdown qym-dropdown" id="metric-meta-fields-dropdown"></div>
               </div>
             </div>
@@ -4837,21 +4775,20 @@
               <button class="fp-clear-btn" id="clear-all-btn" title="Clear all active filters">
                 <span class="fp-clear-x">&times;</span> Clear <span class="fp-clear-count" id="active-filter-count">0</span>
               </button>
-              <button class="fp-btn fp-export" id="export-filtered-btn" title="Export filtered items as CSV">Export CSV</button>
+              <button class="qym-inline-action qym-inline-action--accent" id="export-filtered-btn" title="Export filtered items as CSV">Export CSV</button>
             </div>
           </div>
           <div class="fp-search-row">
-            <div class="fp-search">
-              <span class="fp-search-icon">&#x2315;</span>
+            <div class="fp-search qym-search-wrap">
               <input type="text" id="items-search" placeholder="Search inputs / outputs..." />
             </div>
           </div>
           <div class="fp-status">
             <span class="filter-count" id="filter-count"></span>
-            <div class="pagination" id="pagination"></div>
           </div>
         </div>
         <div class="items-grid" id="items-grid"></div>
+        <div class="pagination qym-pagination" id="pagination" aria-label="Run items pagination"></div>
       </div>
     </div>
   </main>
@@ -4934,7 +4871,7 @@
         'Restructure Chain-of-Thought': '#a855f7', 'Update Knowledge Base': '#6366f1',
       };
 
-      const COPY_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="#9898a8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+      const COPY_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
       const CHECK_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
 
       const formatPercent = window.QymMetrics.formatPercent;
@@ -5369,7 +5306,7 @@
           if (table) { tableBuffer.push({ key: k, table: table }); continue; }
           flushTables();
           let f; if(v===null||v===undefined) f='<span class="formatted-null">null</span>'; else if(typeof v==='object') f=formatObjectAsHtml(v); else if(typeof v==='string') f=fmtStr(v); else if(typeof v==='number') f='<span class="formatted-number">'+v+'</span>'; else if(typeof v==='boolean') f='<span class="formatted-boolean">'+v+'</span>'; else f=escapeHtml(String(v));
-          groups.push('<div class="formatted-row"><span class="formatted-key">'+escapeHtml(k)+'</span>'+f+'<button class="copy-btn" data-copy-text="'+escapeAttr(String(v??''))+'" title="Copy '+escapeHtml(k)+'">'+COPY_ICON+'</button></div>');
+          groups.push('<div class="formatted-row"><span class="formatted-key">'+escapeHtml(k)+'</span>'+f+'<button class="copy-btn qym-icon-action" data-copy-text="'+escapeAttr(String(v??''))+'" title="Copy '+escapeHtml(k)+'">'+COPY_ICON+'</button></div>');
         }
         flushTables();
         return '<div class="formatted-object">' + groups.join('') + '</div>';
@@ -5470,7 +5407,7 @@
                   <div class="toast-title">${escapeHtml(title)}</div>
                   <div class="toast-message">${escapeHtml(message)}</div>
               </div>
-              <button class="toast-close" onclick="this.parentElement.remove()">×</button>
+              <button class="toast-close qym-icon-action" type="button" aria-label="Close notification" onclick="this.parentElement.remove()">×</button>
           `;
           container.appendChild(toast);
           setTimeout(() => {
@@ -5738,16 +5675,16 @@
         }
 
         let actionsHtml =
-          '<button class="export-html-btn export-html-download" id="export-download-btn" style="display:none;" title="Download a new file with your edits baked in">' +
+          '<button class="qym-inline-action qym-inline-action--neutral" id="export-download-btn" style="display:none;" title="Download a new file with your edits baked in">' +
             '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>' +
             'Download with Changes' +
           '</button>' +
-          '<button class="export-html-btn" id="export-share-btn" title="Download as a shareable HTML file">' +
+          '<button class="qym-inline-action qym-inline-action--accent" id="export-share-btn" title="Download as a shareable HTML file">' +
             '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>' +
             'Share' +
           '</button>';
         if (langfuseUrl) {
-          actionsHtml += '<a href="' + escapeAttr(langfuseUrl) + '" target="_blank" rel="noopener" class="hero-link-btn langfuse">Langfuse &#8599;</a>';
+          actionsHtml += '<a href="' + escapeAttr(langfuseUrl) + '" target="_blank" rel="noopener" class="qym-inline-action qym-inline-action--langfuse">Langfuse &#8599;</a>';
         }
 
         let ingestWarningHtml = '';
@@ -5928,7 +5865,7 @@
 
         const metricTabsHtml = state.allMetrics.map(m =>
           '<button type="button" class="samples-metric-tab qym-segmented__option' + (m === groupMetric ? ' active' : '') + '" ' +
-            'data-samples-metric="' + escapeAttr(m) + '" aria-pressed="' + (m === groupMetric) + '">' + escapeHtml(m) + '</button>'
+            'data-samples-metric="' + escapeAttr(m) + '" aria-pressed="' + (m === groupMetric) + '" title="' + escapeAttr(m) + '">' + escapeHtml(m) + '</button>'
         ).join('');
         const thresholdControlHtml = supportsThreshold
           ? '<div class="threshold-control samples-repeat-threshold">' +
@@ -5992,7 +5929,7 @@
             }).join('');
             const errs = p.error_count || 0;
             return '<tr data-sw-pass="' + p.pass_number + '" title="View pass ' + p.pass_number + '">' +
-              '<td class="sw-pass"><span class="sp-dot ' + escapeHtml(p.status || '') + '"></span><span>Pass ' + p.pass_number + '</span></td>' +
+              '<td class="sw-pass"><span class="sw-pass-content"><span class="sp-dot ' + escapeHtml(p.status || '') + '"></span><span>Pass ' + p.pass_number + '</span></span></td>' +
               metricCells +
               valueCell(latCell(p.avg_latency_ms), avgLatencyWinners, p.pass_number, 'sw-dim') +
               valueCell(latCell(p.median_latency_ms), medianLatencyWinners, p.pass_number, 'sw-dim') +
@@ -6138,13 +6075,16 @@
           const tableCell = (point, statistic) => {
             const value = statisticValue(point, statistic.key);
             const interval = statisticInterval(point, statistic.key);
+            const valueColorClass = Number.isFinite(value)
+              ? window.QymMetrics.getMetricColorClass(value, groupMetricType)
+              : '';
             const margin = interval && Number.isFinite(interval.low) && Number.isFinite(interval.high)
               ? (interval.high - interval.low) / 2
               : null;
             const title = interval
               ? '95% CI: ' + formatStatistic(interval.low, statistic.key) + ' to ' + formatStatistic(interval.high, statistic.key)
               : '95% CI unavailable';
-            return '<td class="sw-num" title="' + escapeAttr(title) + '"><span class="samples-band-cell-main">' + escapeHtml(formatStatistic(value, statistic.key)) + '</span>' +
+            return '<td class="sw-num" title="' + escapeAttr(title) + '"><span class="samples-band-cell-main qym-score-value' + (valueColorClass ? ' ' + valueColorClass : '') + '">' + escapeHtml(formatStatistic(value, statistic.key)) + '</span>' +
               (margin !== null ? '<span class="samples-band-cell-ci">±' + escapeHtml(formatStatistic(margin, statistic.key)) + '</span>' : '') + '</td>';
           };
           const rows = ks.map(k =>
@@ -6174,17 +6114,12 @@
               '</div>'
             : '';
           return '<div class="samples-curve-head">' +
-              '<div class="samples-chart-heading">' +
-                '<div class="samples-zone-title">Repeat Performance</div>' +
-                '<div class="samples-zone-copy">' + escapeHtml(selected.copy) + '</div>' +
-              '</div>' +
-              '<div class="samples-curve-controls">' +
-                '<div class="samples-statistic-tabs qym-segmented" role="group" aria-label="Repeat performance view">' + statisticOptions.map(option => '<button type="button" class="samples-statistic-btn qym-segmented__option' + (option.key === selected.key ? ' active' : '') + '" data-samples-statistic="' + option.key + '" aria-pressed="' + (option.key === selected.key) + '">' + escapeHtml(option.label) + '</button>').join('') + '</div>' +
-                legend +
-                '<div class="samples-view-toggle qym-segmented" role="group" aria-label="Repeat performance display">' +
-                  '<button type="button" class="samples-view-btn qym-segmented__option' + (mode === 'chart' ? ' active' : '') + '" data-view="chart" aria-pressed="' + (mode === 'chart') + '">Chart</button>' +
-                  '<button type="button" class="samples-view-btn qym-segmented__option' + (mode === 'table' ? ' active' : '') + '" data-view="table" aria-pressed="' + (mode === 'table') + '">Table</button>' +
-                '</div>' +
+              '<div class="samples-chart-heading"><div class="samples-zone-title">Performance Across Attempts</div></div>' +
+              '<div class="samples-statistic-tabs qym-segmented" role="group" aria-label="Repeat performance view">' + statisticOptions.map(option => '<button type="button" class="samples-statistic-btn qym-segmented__option' + (option.key === selected.key ? ' active' : '') + '" data-samples-statistic="' + option.key + '" aria-pressed="' + (option.key === selected.key) + '">' + escapeHtml(option.label) + '</button>').join('') + '</div>' +
+              legend +
+              '<div class="samples-view-toggle qym-segmented" role="group" aria-label="Repeat performance display">' +
+                '<button type="button" class="samples-view-btn qym-segmented__option' + (mode === 'chart' ? ' active' : '') + '" data-view="chart" aria-pressed="' + (mode === 'chart') + '">Chart</button>' +
+                '<button type="button" class="samples-view-btn qym-segmented__option' + (mode === 'table' ? ' active' : '') + '" data-view="table" aria-pressed="' + (mode === 'table') + '">Table</button>' +
               '</div>' +
             '</div>' +
             (mode === 'chart'
@@ -6305,9 +6240,12 @@
           '</div>' +
           '<div class="samples-group-tiles qym-stat-strip">' + tilesHtml + '</div>' +
           sweepHtml +
-          '<div class="samples-charts-row' + (distBlockHtml ? ' with-distribution' : '') + '">' +
-            '<div class="samples-chart-block samples-sweep-wrap" id="samples-curve-block">' + curveBlock() + '</div>' +
-            distBlockHtml +
+          '<div class="ri-analysis-section samples-performance-section" style="--ri-section-color:var(--accent-primary)">' +
+            '<div class="ri-subhead"><h4>Repeat Performance</h4><span>' + escapeHtml(selectedStatistic().copy) + '</span></div>' +
+            '<div class="samples-charts-row' + (distBlockHtml ? ' with-distribution' : '') + '">' +
+              '<div class="samples-chart-block samples-sweep-wrap" id="samples-curve-block">' + curveBlock() + '</div>' +
+              distBlockHtml +
+            '</div>' +
           '</div>' +
           stabilitySectionHtml;
 
@@ -6325,7 +6263,6 @@
             if (!nextMetric || nextMetric === groupMetric) return;
             state.samplesMetric = nextMetric;
             await renderSamplesAnalysis();
-            renderOverview(getFilteredItems());
             renderMetadataBreakdown();
             const replacement = Array.from(document.querySelectorAll('.samples-metric-tab')).find(candidate =>
               candidate.dataset.samplesMetric === nextMetric
@@ -6368,6 +6305,8 @@
               if (!statisticKeys.has(statistic) || statistic === state.samplesStatistic) return;
               state.samplesStatistic = statistic;
               blockEl.innerHTML = curveBlock();
+              const performanceCopy = container.querySelector('.samples-performance-section > .ri-subhead span');
+              if (performanceCopy) performanceCopy.textContent = selectedStatistic().copy;
               wireCurveToggle();
               blockEl.querySelector(`[data-samples-statistic="${statistic}"]`)?.focus({ preventScroll: true });
               requestAnimationFrame(fitCurveChart);
@@ -6941,8 +6880,9 @@
 
       function buildDeepAnalysisCharts(rows) {
         const series = riMetricSeries(rows);
-        if (!series.length || !rows.length) return '';
-        const chartColors = ['var(--chart-1)', 'var(--chart-2)', 'var(--chart-3)', 'var(--chart-4)', 'var(--chart-5)'];
+        if (!series.length || !rows.length) {
+          return { deepAnalysisHtml: '', frontierPanel: '' };
+        }
         const metricByName = new Map(series.map(metric => [metric.name, metric]));
         if (!metricByName.has(state.relationshipX)) state.relationshipX = series[0].name;
         if (!metricByName.has(state.relationshipY) || state.relationshipY === state.relationshipX) {
@@ -6987,7 +6927,7 @@
             });
           });
           relationshipPanels.push('<div class="ri-panel"><div class="ri-panel-head"><div><div class="ri-panel-title">Metric Correlation</div><div class="ri-panel-copy">Pearson correlation across matched item means.</div></div></div>' +
-            '<svg class="ri-chart" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Metric correlation matrix">' + matrix + '</svg></div>');
+            '<svg class="ri-chart ri-chart-square" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Metric correlation matrix">' + matrix + '</svg></div>');
 
           const xMetric = metricByName.get(state.relationshipX);
           const yMetric = metricByName.get(state.relationshipY);
@@ -7078,21 +7018,28 @@
             '<span class="ri-frontier-legend-item"><span class="ri-frontier-line p95"></span>p95 latency</span>' +
             (hasOutliers ? '<span class="ri-frontier-legend-item"><span class="ri-frontier-outlier"></span>&gt;p95 outliers</span>' : '') +
           '</div>';
-          frontierPanel = '<div class="ri-panel"><div class="ri-panel-head"><div><div class="ri-panel-title">Quality–Latency Frontier</div><div class="ri-panel-copy">One point per item, positioned by quality and response time.</div></div></div>' +
+          frontierPanel = '<div class="ri-panel system-frontier-panel"><div class="ri-panel-head"><div><div class="ri-panel-title">Quality–Latency Frontier</div><div class="ri-panel-copy">One point per item, positioned by quality and response time.</div></div></div>' +
             frontierLegend +
             '<svg class="ri-chart" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Quality versus latency by item">' + frontier + '</svg>' +
           '</div>';
         }
 
-        let html = '<div class="ri-insights"><div class="ri-header"><div><h3 class="section-title">Deep Analysis</h3><div class="ri-header-copy">Explore metric relationships and quality alongside response latency.</div></div></div>';
-        const deepPanels = relationshipPanels.concat(frontierPanel ? [frontierPanel] : []);
-        if (deepPanels.length) html += '<div class="ri-grid deep-analysis-grid">' + deepPanels.join('') + '</div>';
-        return html + '</div>';
+        const deepAnalysisHtml = relationshipPanels.length
+          ? '<div class="ri-insights"><div class="ri-header"><div><h3 class="section-title">Deep Analysis</h3><div class="ri-header-copy">Explore relationships across item-level metric results.</div></div></div>' +
+              '<div class="ri-grid deep-analysis-grid">' + relationshipPanels.join('') + '</div></div>'
+          : '';
+        return { deepAnalysisHtml, frontierPanel };
       }
 
       function renderOverview(filteredItemsOverride = null) {
         const section = el('overview-section');
-        if (!section || !state.snapshot) { if (section) section.innerHTML = ''; return; }
+        const primarySection = el('overview-primary-section');
+        const deepSection = el('overview-deep-section');
+        if (!section || !primarySection || !deepSection || !state.snapshot) {
+          if (primarySection) primarySection.innerHTML = '';
+          if (deepSection) deepSection.innerHTML = '';
+          return;
+        }
         const rows = Array.isArray(filteredItemsOverride)
           ? filteredItemsOverride.map(item => item.row).filter(Boolean)
           : (state.snapshot.rows || []);
@@ -7103,10 +7050,8 @@
         const summaryItem = (kind, label, valueHtml, iconHtml) =>
           '<div class="overview-summary-pill qym-stat-strip__item ' + kind + '">' +
             '<span class="overview-summary-icon">' + iconHtml + '</span>' +
-            '<span class="overview-summary-text">' +
-              '<span class="overview-summary-label qym-stat-strip__label">' + label + '</span>' +
-              '<span class="overview-summary-value qym-stat-strip__value">' + valueHtml + '</span>' +
-            '</span>' +
+            '<span class="overview-summary-label qym-stat-strip__label">' + label + '</span>' +
+            '<span class="overview-summary-value qym-stat-strip__value">' + valueHtml + '</span>' +
           '</div>';
         const runSummaryHtml =
           '<div class="overview-summary-strip qym-stat-strip">' +
@@ -7115,7 +7060,9 @@
             summaryItem('errors', 'Errors', String(failed), '<svg viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>') +
           '</div>';
 
-        const intelligenceCharts = buildDeepAnalysisCharts(rows);
+        const analysisCharts = buildDeepAnalysisCharts(rows);
+        const intelligenceCharts = analysisCharts.deepAnalysisHtml;
+        const frontierPanel = analysisCharts.frontierPanel;
 
         // ── Gauge color (hex for conic-gradient) ──
         function gaugeColorHex(score) {
@@ -7328,7 +7275,7 @@
           // Format mean as rounded integer seconds if >= 1s
           const meanFmt = meanLat >= 1000 ? Math.round(meanLat / 1000) + 's' : formatLatency(meanLat);
 
-          latencyCard = '<div class="metric-card" style="animation-delay:' + (cardIdx * 50) + 'ms;">' +
+          latencyCard = '<div class="metric-card system-latency-card" style="animation-delay:' + (cardIdx * 50) + 'ms;">' +
             '<div class="latency-hero">' +
               '<div class="latency-p50-block">' +
                 '<div class="latency-p50-val">' + meanFmt + '</div>' +
@@ -7356,7 +7303,7 @@
                 .map(s => '<div class="trace-pill qym-stat-strip__item" title="' + escapeAttr('Avg ' + s.name + ' latency') + '"><div class="trace-pill-icon agent"><svg viewBox="0 0 16 16"><circle cx="8" cy="4" r="3" fill="currentColor"/><path d="M2.5 14.5c0-3 2.5-5.5 5.5-5.5s5.5 2.5 5.5 5.5z" fill="currentColor" opacity=".75"/></svg></div><div class="trace-pill-text"><span class="trace-pill-label qym-stat-strip__label">Avg ' + escapeHtml(s.name) + ' latency</span><span class="trace-pill-val qym-stat-strip__value" style="color:#34d399;">' + fmtLatency(s.avg_ms) + '</span></div></div>')
                 .join('')
             : '';
-          traceCard = '<div class="metric-card" style="animation-delay:' + (cardIdx * 50) + 'ms;">' +
+          traceCard = '<div class="metric-card system-trace-card" style="animation-delay:' + (cardIdx * 50) + 'ms;">' +
             '<div class="metric-card-header">' +
               '<div class="metric-card-gauge">' +
                 '<div class="metric-card-info" style="display:flex;flex-direction:row;align-items:center;gap:8px;">' +
@@ -7381,24 +7328,28 @@
           cardIdx++;
         }
 
-        // ── System metrics (latency + trace) ──
-        const systemCards = (latencyCard || traceCard
+        // ── Latency and trace: operational tradeoffs first, trace detail below. ──
+        const latencyPanels = (latencyCard || '') + (frontierPanel || '');
+        const systemCards = (latencyPanels || traceCard
             ? '<div class="system-metrics-section">' +
-                '<div class="system-metrics-label">Qym Metrics</div>' +
-                '<div class="system-metrics-grid">' + (latencyCard || '') + (traceCard || '') + '</div>' +
+                '<div class="ri-header system-metrics-header"><div>' +
+                  '<h3 class="section-title">Latency and Trace Analysis</h3>' +
+                  '<div class="ri-header-copy">Inspect response latency, quality tradeoffs, and trace-level execution behavior.</div>' +
+                '</div></div>' +
+                (latencyPanels ? '<div class="system-metrics-grid">' + latencyPanels + '</div>' : '') +
+                (traceCard ? '<div class="system-trace-row">' + traceCard + '</div>' : '') +
               '</div>'
             : '');
 
         // ── Assemble ──
-        section.innerHTML =
+        primarySection.innerHTML =
           '<div class="overview-header">' +
             '<div><h3 class="section-title">Overview</h3>' +
             '<div class="overview-header-hint">Score distributions per metric and response latency. Click any bar to filter the item table.</div></div>' +
             runSummaryHtml +
           '</div>' +
-          (cards ? '<div class="metric-cards-grid">' + cards + '</div>' : '') +
-          intelligenceCharts +
-          systemCards;
+          (cards ? '<div class="metric-cards-grid">' + cards + '</div>' : '');
+        deepSection.innerHTML = systemCards + intelligenceCharts;
 
         // ── Wire click handlers ──
         const grid = section;
@@ -8152,7 +8103,7 @@
             const countLabel = entry.count === 1 ? 'error' : 'errors';
             const activeFilter = state[getErrorFilterSlot(entry.kind)];
             const isActive = activeFilter && activeFilter.kind === entry.kind && activeFilter.label === entry.label;
-            cards += '<div class="breakdown-card error-card' + (isActive ? ' active' : '') + '" data-error-kind="' + escapeAttr(entry.kind) + '" data-error-label="' + escapeAttr(entry.label) + '" title="Click to filter by this error">' +
+            cards += '<div class="breakdown-card error-card' + (isActive ? ' active' : '') + '" role="button" tabindex="0" aria-pressed="' + (isActive ? 'true' : 'false') + '" data-error-kind="' + escapeAttr(entry.kind) + '" data-error-label="' + escapeAttr(entry.label) + '" title="Click to filter by this error">' +
               '<div class="error-card-top">' +
                 '<div class="error-card-text"><div class="error-card-title" title="' + escapeAttr(entry.label) + '">' + escapeHtml(labelParts.title) + '</div></div>' +
                 '<div class="error-card-count">' + entry.count + '<span class="error-card-count-label">' + countLabel + '</span></div>' +
@@ -8190,14 +8141,22 @@
         section.innerHTML = html;
 
         section.querySelectorAll('.error-card[data-error-kind]').forEach(card => {
-          card.addEventListener('click', (e) => {
-            if (e.target.closest('.error-detail-toggle')) return;
+          const toggleErrorFilter = () => {
             const nextFilter = { kind: card.dataset.errorKind, label: card.dataset.errorLabel };
             const slot = getErrorFilterSlot(nextFilter.kind);
             const current = state[slot];
             state[slot] = current && current.kind === nextFilter.kind && current.label === nextFilter.label ? null : nextFilter;
             state.page = 1;
             renderItems();
+          };
+          card.addEventListener('click', (e) => {
+            if (e.target.closest('.error-detail-toggle')) return;
+            toggleErrorFilter();
+          });
+          card.addEventListener('keydown', (e) => {
+            if (e.target !== card || (e.key !== 'Enter' && e.key !== ' ')) return;
+            e.preventDefault();
+            toggleErrorFilter();
           });
         });
         section.querySelectorAll('.error-detail-toggle').forEach(btn => {
@@ -8571,7 +8530,17 @@
         host.scrollTop += currentTop - anchorTop;
       }
 
-      function scheduleBreakdownRender(preserveAnchor = false) {
+      function scrollItemByItemToTop() {
+        const host = getScrollHost();
+        const section = document.querySelector('.items-comparison');
+        if (!host || !section) return;
+        const hostRect = host.getBoundingClientRect();
+        const sectionRect = section.getBoundingClientRect();
+        const top = host.scrollTop + sectionRect.top - hostRect.top;
+        host.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+      }
+
+      function scheduleBreakdownRender(preserveAnchor = false, afterRender = null) {
         const anchorTop = preserveAnchor ? getItemsGridTop() : null;
         clearTimeout(_breakdownTimer);
         _breakdownTimer = setTimeout(function () {
@@ -8580,6 +8549,8 @@
           renderRootCauseSection();
           if (anchorTop != null) {
             requestAnimationFrame(() => restoreItemsGridTop(anchorTop));
+          } else if (typeof afterRender === 'function') {
+            requestAnimationFrame(afterRender);
           }
         }, 80);
       }
@@ -8833,11 +8804,56 @@
         return blocks ? '<div class="metric-det-zone">' + blocks + '</div>' : '';
       }
 
+      // The item-level metrics strip: one row per metric that reads the
+      // value, opens the judge details (when meta exists), and edits the
+      // score. Replaces the inline score row, the header pills (while
+      // open), and the separate detail toggles.
+      function renderMetricStrip(detailMeta, fullMeta, metricVals, safeId, rowIndex) {
+        const rows = state.allMetrics.map((name, i) => {
+          const v = window.QymMetrics.parseScoreValue((metricVals || [])[i]);
+          const meta = (detailMeta || {})[name] || {};
+          const metaKeys = Object.keys(meta).filter(k =>
+            !['modified', 'original_score'].includes(k)
+            && state.visibleMetricMetaFields[k] !== false
+            && meta[k] !== undefined && meta[k] !== null && meta[k] !== '');
+          if (v === null && !metaKeys.length) return '';
+          let badge = '';
+          if (v !== null) {
+            const mType = state.metricTypes[name] || 'score';
+            const cls = window.QymMetrics.getMetricColorClass(v, mType);
+            const isReducedBoolean = mType === 'boolean' && Number(state.run?.samples || 1) > 1;
+            const display = isReducedBoolean
+              ? window.QymMetrics.formatMetricValue(v, 'score')
+              : window.QymMetrics.formatMetricObservation(v, mType, state.metricSpecs?.[name]);
+            badge = '<span class="metric-score-value ' + cls + '">' + display + '</span>';
+          }
+          const editBtn = '<button class="metric-edit-open qym-icon-action" data-row-index="' + escapeAttr(String(rowIndex ?? 0)) + '" data-metric="' + escapeAttr(name) + '" title="Edit" aria-label="Edit ' + escapeAttr(name) + '">✎</button>';
+          const modified = String(((fullMeta || {})[name] || {}).modified || '').toLowerCase() === 'true';
+          const editedBadge = modified ? '<span class="metric-edit-badge">Edited</span>' : '';
+          const bid = 'det_' + safeId + '_' + i;
+          let bodyHtml = '';
+          let caret = '<span class="det-caret det-caret-none">▸</span>';
+          let toggleAttrs = '';
+          if (metaKeys.length) {
+            const obj = {};
+            metaKeys.forEach(k => { obj[k] = _parseMetaDeep(meta[k]); });
+            bodyHtml = '<div class="det-body hidden" id="' + bid + '">' + formatObjectAsHtml(obj) + '</div>';
+            caret = '<span class="det-caret">▸</span>';
+            toggleAttrs = ' role="button" tabindex="0" data-det-target="' + bid + '" aria-expanded="false"';
+          }
+          const hl = name === state.selectedMetric ? ' highlighted' : '';
+          return '<div class="metric-det"><div class="det-toggle' + hl + (metaKeys.length ? '' : ' static') + '"' + toggleAttrs + '>'
+            + caret + '<span class="det-metric">' + escapeHtml(name) + '</span>' + badge + editBtn + editedBadge
+            + '</div>' + bodyHtml + '</div>';
+        }).filter(Boolean).join('');
+        return rows ? '<div class="metric-det-zone">' + rows + '</div>' : '';
+      }
+
       function renderItems(scrollToTop) {
         const preserveAnchor = state.hasRenderedItems && !scrollToTop;
         const anchorTop = preserveAnchor ? getItemsGridTop() : null;
         // Keep Performance by Category in sync with the current filters (debounced)
-        scheduleBreakdownRender(preserveAnchor);
+        scheduleBreakdownRender(preserveAnchor, scrollToTop ? scrollItemByItemToTop : null);
 
         const container = el('items-grid');
         const paginationEl = el('pagination');
@@ -8860,16 +8876,15 @@
         if (items.length === 0) {
           container.classList.remove('heatmap-mode');
           container.innerHTML = '<div style="text-align:center;padding:2rem;color:var(--text-muted);">No items match the current filter</div>';
-          paginationEl.innerHTML = '';
+          if (paginationEl) paginationEl.innerHTML = '';
           if (anchorTop != null) requestAnimationFrame(() => restoreItemsGridTop(anchorTop));
           return;
         }
 
         if (state.itemDetailView === 'heatmap') {
-          paginationEl.innerHTML = '';
+          if (paginationEl) paginationEl.innerHTML = '';
           renderItemsHeatmap(container, items, metric, mIdx);
-          if (scrollToTop) container.scrollIntoView({ behavior: 'smooth', block: 'start' });
-          else if (anchorTop != null) requestAnimationFrame(() => restoreItemsGridTop(anchorTop));
+          if (!scrollToTop && anchorTop != null) requestAnimationFrame(() => restoreItemsGridTop(anchorTop));
           state.hasRenderedItems = true;
           return;
         }
@@ -8904,24 +8919,6 @@
           const itemMatch = itemId.match(/^item_(\d+)$/);
           if (itemMatch) displayItemId = 'Item ' + (parseInt(itemMatch[1], 10) + 1);
 
-          // Metric scores inline
-          const metricScoresHtml = state.allMetrics.map((name, i) => {
-            const sv = metricVals[i];
-            const v = window.QymMetrics.parseScoreValue(sv);
-            if (v === null) return '';
-            const mType = state.metricTypes[name] || 'score';
-            const cls = window.QymMetrics.getMetricColorClass(v, mType);
-            const isReducedBoolean = mType === 'boolean' && Number(state.run?.samples || 1) > 1;
-            const display = isReducedBoolean
-              ? window.QymMetrics.formatMetricValue(v, 'score')
-              : window.QymMetrics.formatMetricObservation(v, mType, state.metricSpecs?.[name]);
-            const isSelected = name === metric;
-            const meta = metricMeta[name] || {};
-            const editBtn = '<button class="metric-edit-open" data-row-index="' + escapeAttr(String(row.index ?? 0)) + '" data-metric="' + escapeAttr(name) + '" title="Edit">\u270E</button>';
-            const editedBadge = String(meta.modified || '').toLowerCase() === 'true' ? '<span class="metric-edit-badge">Edited</span>' : '';
-            return '<div class="metric-score-row ' + (isSelected ? 'highlighted' : '') + '"><span class="metric-score-name">' + escapeHtml(name) + '</span><span class="metric-score-meta"><span class="metric-score-value ' + cls + '">' + display + '</span>' + editBtn + editedBadge + '</span></div>';
-          }).join('');
-
           // Metric edit blocks
           let metricEditHtml = state.allMetrics.map((name, i) => {
             const rawScore = metricVals[i];
@@ -8940,7 +8937,7 @@
           const timePart = startInfo ? '<span class="toolbar-sep">\u00B7</span><span class="toolbar-time" title="' + escapeAttr(startInfo.ts) + '">' + escapeHtml(startInfo.ts) + '</span>' : '';
 
           // Action chips (right cluster)
-          const copyBtn = '<button class="copy-btn" data-copy-text="' + escapeAttr(typeof output === 'object' ? JSON.stringify(output,null,2) : String(output)) + '" title="Copy output">' + COPY_ICON + '</button>';
+          const copyBtn = '<button class="copy-btn qym-icon-action" data-copy-text="' + escapeAttr(typeof output === 'object' ? JSON.stringify(output,null,2) : String(output)) + '" title="Copy output">' + COPY_ICON + '</button>';
           const traceEndpoint = apiUrl('api/runs/' + encodeURIComponent(state.run.file_path || '') + '/items/' + encodeURIComponent(itemId) + '/trace');
           const traceChip = !IS_EXPORT
             ? '<button type="button" class="action-chip trace-drawer-btn" data-trace-endpoint="' + escapeAttr(traceEndpoint) + '" data-trace-item-label="' + escapeAttr((state.run.run_name || 'Run') + ' \u00B7 ' + displayItemId) + '" data-trace-id="' + escapeAttr(traceId || '') + '" data-trace-url="' + escapeAttr(traceUrl || '') + '" title="Open trace viewer"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M2.5 4h11M2.5 8h7M2.5 12h9"/><circle cx="12.5" cy="8" r="1.2" fill="currentColor" stroke="none" opacity=".5"/><circle cx="13.5" cy="12" r="1.2" fill="currentColor" stroke="none" opacity=".5"/></svg>Trace</button>'
@@ -8960,8 +8957,9 @@
             }
           }
           if (pfClass) {
-            const pfBadgeClass = pfClass === 'pass' ? 'qym-badge--success' : 'qym-badge--danger';
-            statusIndicator = '<div class="status-indicator qym-badge ' + pfBadgeClass + '"><div class="status-dot ' + pfClass + '"></div><span class="status-label ' + pfClass + '">' + (pfClass === 'pass' ? 'Pass' : 'Fail') + '</span></div>';
+            // Squared borderless verdict chip — the row's one colored anchor,
+            // opening the row right after the item number.
+            statusIndicator = '<span class="item-verdict ' + pfClass + '">' + (pfClass === 'pass' ? 'Pass' : 'Fail') + '</span>';
           }
 
           // Root cause + Solution (side by side for failed items)
@@ -9064,12 +9062,14 @@
             '</div>';
           }
 
-          // Metric details: one closed toggle per metric, structured viewer.
-          // Repeat items with per-pass meta show details inside the columns
-          // instead — the item-level zone is the fallback for older runs.
+          // The metrics strip: ONE row per metric doing all three jobs —
+          // read the value, open the judge details, edit the score. Repeat
+          // items with per-pass meta keep details inside the columns, so the
+          // strip carries meta only when it lives at the item level.
           const hasPassMeta = isRepeatItem && row.pass_metric_meta
             && Object.keys(row.pass_metric_meta).length > 0;
-          const metricDetailsHtml = hasPassMeta ? '' : renderMetricDetailBlocks(metricMeta, metricVals, safeId);
+          const metricStripHtml = renderMetricStrip(
+            hasPassMeta ? {} : metricMeta, metricMeta, metricVals, safeId, row.index);
 
           // Item metadata badges
           let itemMetadataHtml = '';
@@ -9108,16 +9108,18 @@
           let outputBlockHtml = '';
           if (isRepeatItem) {
             outputBlockHtml = renderAnswerColumns(baseRow, itemId, displayItemId, metric, threshold)
-              + _renderTraceChips(row.trace_stats, row.retry_count) + metricEditHtml + metricDetailsHtml + rootCauseHtml;
+              + _renderTraceChips(row.trace_stats, row.retry_count) + metricStripHtml + metricEditHtml + rootCauseHtml;
           }
           if (!outputBlockHtml) {
-            outputBlockHtml = '<div class="item-run-output"><div class="output-header"><span class="output-status-cluster"><span class="run-label">' + outputLabel + '</span>' + durationPart + timePart + '</span><span class="output-actions">' + copyBtn + traceChip + langfuseChip + '</span></div><div class="output-text ' + (status === 'error' ? 'score-1' : '') + '">' + renderMarkdownSafe(output) + '</div><div class="metric-scores-inline">' + metricScoresHtml + '</div>' + _renderTraceChips(row.trace_stats, row.retry_count) + metricEditHtml + metricDetailsHtml + rootCauseHtml + '</div>';
+            outputBlockHtml = '<div class="item-run-output"><div class="output-header"><span class="output-status-cluster"><span class="run-label">' + outputLabel + '</span>' + durationPart + timePart + '</span><span class="output-actions">' + copyBtn + traceChip + langfuseChip + '</span></div><div class="output-text ' + (status === 'error' ? 'score-1' : '') + '">' + renderMarkdownSafe(output) + '</div>' + _renderTraceChips(row.trace_stats, row.retry_count) + metricStripHtml + metricEditHtml + rootCauseHtml + '</div>';
           }
 
           // Collapsed header: the input itself is the title; aggregates live
           // beside it as pills. No output shows until the item expands.
           const titleText = (typeof input === 'object' ? JSON.stringify(input) : String(input)).replace(/\s+/g, ' ').trim();
-          const aggPills = state.allMetrics.map((name, i) => {
+          // Header pills carry the summary only while the card is closed;
+          // open, the metrics strip in the body is the single source.
+          const aggPills = isExpanded ? '' : state.allMetrics.map((name, i) => {
             const v = window.QymMetrics.parseScoreValue(metricVals[i]);
             if (v === null) return '';
             const mType = state.metricTypes[name] || 'score';
@@ -9126,51 +9128,53 @@
             const display = isReducedBoolean
               ? window.QymMetrics.formatMetricValue(v, 'score')
               : window.QymMetrics.formatMetricObservation(v, mType, state.metricSpecs?.[name]);
-            // Repeat items carry no inline score row in the body, so the
-            // edit affordance lives here while the item is open.
-            const meta = metricMeta[name] || {};
-            const editBtn = (isExpanded && isRepeatItem)
-              ? '<button class="metric-edit-open" data-row-index="' + escapeAttr(String(row.index ?? 0)) + '" data-metric="' + escapeAttr(name) + '" title="Edit">✎</button>'
-                + (String(meta.modified || '').toLowerCase() === 'true' ? '<span class="metric-edit-badge">Edited</span>' : '')
-              : '';
-            return '<span class="item-agg-pill' + (name === metric ? ' highlighted' : '') + '"><span class="metric-score-name">' + escapeHtml(name) + '</span><span class="metric-score-value ' + cls + '">' + display + '</span>' + editBtn + '</span>';
+            return '<span class="item-agg-pill' + (name === metric ? ' highlighted' : '') + '"><span class="metric-score-name">' + escapeHtml(name) + '</span><span class="metric-score-value ' + cls + '">' + display + '</span></span>';
           }).join('');
           const passNote = isRepeatItem
             ? '<span class="item-pass-note">' + passAttempts.filter(Boolean).length + ' passes</span>'
             : '';
-          const headerHtml = '<div class="item-header item-header-expand" data-item-expand="' + escapeAttr(itemId) + '" role="button" tabindex="0" aria-expanded="' + isExpanded + '">' +
-            '<span class="item-chevron">' + (isExpanded ? '\u25BE' : '\u25B8') + '</span>' +
+          const expandAttrs = ' data-item-expand="' + escapeAttr(itemId) + '" role="button" tabindex="0" aria-expanded="' + isExpanded + '"';
+          const headerHtml = '<div class="item-header item-header-expand"' + (isExpanded ? expandAttrs : '') + '>' +
+            '<span class="item-chevron' + (isExpanded ? ' open' : '') + '"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m5.5 3.5 5 4.5-5 4.5"/></svg></span>' +
             '<span class="item-index" title="ID: ' + escapeHtml(itemId) + '">#' + (row.index + 1) + '</span>' +
+            statusIndicator +
             (isExpanded
               ? '<span class="item-header-spacer"></span>'
               : '<span class="item-title" title="' + escapeAttr(displayItemId) + '">' + escapeHtml(titleText) + '</span>') +
             '<span class="item-agg-pills">' + aggPills + '</span>' +
-            statusIndicator + passNote +
-            '<button class="copy-btn" data-item-id="' + escapeAttr(itemId) + '" title="Copy all fields">' + COPY_ICON + '</button>' +
+            passNote +
+            '<button class="copy-btn qym-icon-action" data-item-id="' + escapeAttr(itemId) + '" title="Copy all fields">' + COPY_ICON + '</button>' +
           '</div>';
 
           if (!isExpanded) {
-            return '<div class="item-card item-collapsed">' + headerHtml + '</div>';
+            // The whole collapsed card is the expand target
+            return '<div class="item-card item-collapsed item-header-expand"' + expandAttrs + '>' + headerHtml + '</div>';
           }
 
           return '<div class="item-card">' +
             headerHtml +
-            '<div class="item-input-row"><div class="input-label">INPUT <button class="copy-btn" data-copy-text="' + escapeAttr(typeof input === 'object' ? JSON.stringify(input,null,2) : String(input)) + '" title="Copy input">' + COPY_ICON + '</button></div><div class="input-text">' + renderMarkdownSafe(input) + '</div></div>' +
-            (expected ? '<div class="item-expected-row"><div class="expected-label">EXPECTED OUTPUT <button class="copy-btn" data-copy-text="' + escapeAttr(typeof expected === 'object' ? JSON.stringify(expected,null,2) : String(expected)) + '" title="Copy expected">' + COPY_ICON + '</button></div><div class="expected-text collapsed">' + renderMarkdownSafe(expected) + '</div><button class="expected-toggle" onclick="this.previousElementSibling.classList.toggle(\'collapsed\'); this.textContent = this.previousElementSibling.classList.contains(\'collapsed\') ? \'Show more \u25BC\' : \'Show less \u25B2\';">Show more \u25BC</button></div>' : '') +
+            '<div class="item-input-row"><div class="input-label">INPUT <button class="copy-btn qym-icon-action" data-copy-text="' + escapeAttr(typeof input === 'object' ? JSON.stringify(input,null,2) : String(input)) + '" title="Copy input">' + COPY_ICON + '</button></div><div class="input-text">' + renderMarkdownSafe(input) + '</div></div>' +
+            (expected ? '<div class="item-expected-row"><div class="expected-label">EXPECTED OUTPUT <button class="copy-btn qym-icon-action" data-copy-text="' + escapeAttr(typeof expected === 'object' ? JSON.stringify(expected,null,2) : String(expected)) + '" title="Copy expected">' + COPY_ICON + '</button></div><div class="expected-text collapsed">' + renderMarkdownSafe(expected) + '</div><button class="expected-toggle" onclick="this.previousElementSibling.classList.toggle(\'collapsed\'); this.textContent = this.previousElementSibling.classList.contains(\'collapsed\') ? \'Show more \u25BC\' : \'Show less \u25B2\';">Show more \u25BC</button></div>' : '') +
             itemMetadataHtml +
             outputBlockHtml +
           '</div>';
         }).join('');
 
-        // Pagination
-        const paginationHtml = '<button data-page-action="prev" ' + (state.page <= 1 ? 'disabled' : '') + '>&larr; Prev</button><span class="page-info">Page ' + state.page + ' of ' + totalPages + '</span><button data-page-action="next" ' + (state.page >= totalPages ? 'disabled' : '') + '>Next &rarr;</button>';
-        paginationEl.innerHTML = paginationHtml;
-        paginationEl.querySelector('[data-page-action="prev"]')?.addEventListener('click', () => { state.page--; renderItems(true); });
-        paginationEl.querySelector('[data-page-action="next"]')?.addEventListener('click', () => { state.page++; renderItems(true); });
+        window.QymUIComponents?.renderPagination(paginationEl, {
+          page: state.page,
+          pageCount: totalPages,
+          pageSize: state.pageSize,
+          total: items.length,
+          start: items.length === 0 ? 0 : start + 1,
+          end: Math.min(items.length, start + pageItems.length),
+          noun: 'items',
+          onPageChange: page => {
+            state.page = page;
+            renderItems(true);
+          },
+        });
 
-        if (scrollToTop) {
-          container.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        } else if (anchorTop != null) {
+        if (!scrollToTop && anchorTop != null) {
           requestAnimationFrame(() => restoreItemsGridTop(anchorTop));
         }
 
@@ -9215,7 +9219,7 @@
 
         // Metric detail toggles: pure DOM show/hide, no re-render.
         container.querySelectorAll('.det-toggle').forEach(btn => {
-          btn.addEventListener('click', () => {
+          const toggle = () => {
             const body = document.getElementById(btn.dataset.detTarget);
             if (!body) return;
             const open = !body.classList.toggle('hidden');
@@ -9223,6 +9227,14 @@
             btn.setAttribute('aria-expanded', open ? 'true' : 'false');
             const caret = btn.querySelector('.det-caret');
             if (caret) caret.textContent = open ? '▾' : '▸';
+          };
+          btn.addEventListener('click', (e) => {
+            // The pencil inside the strip row edits; it must not toggle.
+            if (e.target.closest('.metric-edit-open')) return;
+            toggle();
+          });
+          btn.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); }
           });
         });
       }

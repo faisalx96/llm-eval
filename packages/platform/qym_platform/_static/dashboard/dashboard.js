@@ -6,6 +6,8 @@
 (() => {
   'use strict';
 
+  let dashboardActive = true;
+
   // ═══════════════════════════════════════════════════
   // BASE URL HANDLING (for proxy/subpath compatibility)
   // ═══════════════════════════════════════════════════
@@ -153,7 +155,6 @@
     knownVersions: new Set(),
     knownVersionsProjectSlug: '',
     currentView: window.__QYM_INITIAL_VIEW__ || 'charts',
-    selectMode: false,       // checkbox column hidden until the user clicks Select
     selectedRuns: new Set(),
     focusedIndex: -1,
     aggregations: null,
@@ -645,18 +646,23 @@
   }
 
   function renderTablePagination(meta) {
-    const infoEls = Array.from(document.querySelectorAll('.table-pagination-info'));
-    const pageEls = Array.from(document.querySelectorAll('.table-pagination-page'));
-    const prevBtns = Array.from(document.querySelectorAll('[data-table-page="prev"]'));
-    const nextBtns = Array.from(document.querySelectorAll('[data-table-page="next"]'));
-    if (!infoEls.length || !pageEls.length || !prevBtns.length || !nextBtns.length) return;
-
+    const host = el('table-pagination');
+    const pagination = window.QymUIComponents?.renderPagination;
+    if (!host || !pagination) return;
     const { totalRuns, pageCount, start, end } = meta;
-    const startLabel = totalRuns === 0 ? 0 : start + 1;
-    infoEls.forEach(infoEl => { infoEl.textContent = `Showing ${startLabel}-${end} of ${totalRuns} runs`; });
-    pageEls.forEach(pageEl => { pageEl.textContent = `Page ${pageCount === 0 ? 0 : state.tablePage} of ${pageCount}`; });
-    prevBtns.forEach(prevBtn => { prevBtn.disabled = state.tablePage <= 1; });
-    nextBtns.forEach(nextBtn => { nextBtn.disabled = state.tablePage >= pageCount; });
+    pagination(host, {
+      page: state.tablePage,
+      pageCount,
+      pageSize: TABLE_PAGE_SIZE,
+      total: totalRuns,
+      start: totalRuns === 0 ? 0 : start + 1,
+      end,
+      noun: 'runs',
+      onPageChange: page => {
+        setTablePage(page, { syncFocus: true });
+        render();
+      },
+    });
   }
 
   function getFilterOptionLabel(value, labelFn = null) {
@@ -1163,9 +1169,9 @@
         case 'totalRetries':
           return { key, label: 'Retries' };
         case 'avgLatency':
-          return { key, label: 'Avg Latency' };
+          return { key, label: '⚡ Avg Latency' };
         case 'medianLatency':
-          return { key, label: 'Median Latency' };
+          return { key, label: '⚡ Median Latency' };
         case 'correctDistribution':
           return { key, label: 'Correct Distribution' };
         case 'minScore':
@@ -1963,7 +1969,7 @@
         <div class="chart-dataset-tabs qym-tabs" id="${chartTabsetId}" role="tablist" aria-label="Datasets for ${taskName}">
           ${datasets.map((d, datasetIndex) => `
             <button type="button" role="tab" id="${chartTabsetId}-tab-${datasetIndex}" aria-controls="${chartPanelId}" class="chart-dataset-tab qym-tabs__tab ${d.dataset === combo.dataset ? 'active' : ''}" data-task="${taskName}" data-dataset="${d.dataset}" aria-selected="${d.dataset === combo.dataset}">
-              ${d.dataset} <span class="tab-count">${d.totalRuns}</span>
+              ${d.dataset} <span class="tab-count qym-tag qym-tag--count">${d.totalRuns}</span>
             </button>
           `).join('')}
         </div>
@@ -2285,7 +2291,7 @@
           displayHtml = `${displayModel}<span class="run-timestamp">${dt.date} \u00b7 ${dt.time}</span>`;
         }
         const versionStr = runData.git_commit ? (runData.git_branch ? `${runData.git_branch}/${runData.git_commit}` : runData.git_commit) : '';
-        const versionTag = versionStr ? `<span class="chart-version-tag">${versionStr}</span>` : '';
+        const versionTag = versionStr ? `<span class="chart-version-tag qym-tag">${versionStr}</span>` : '';
         const tooltipText = `Run name: ${hoverRunName}${versionStr ? `\nVersion: ${versionStr}` : ''}`;
         const dataCells = displayColumns.map(column => {
           if (column === AVG_LATENCY_COLUMN_KEY) {
@@ -2845,7 +2851,10 @@
           const replacement = Array.from(document.querySelectorAll('.chart-dataset-tab')).find(candidate =>
             candidate.dataset.task === taskName && candidate.dataset.dataset === dataset
           );
-          if (replacement) replacement.focus({ preventScroll: true });
+          if (replacement) {
+            replacement.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+            replacement.focus({ preventScroll: true });
+          }
         }
       });
     });
@@ -3069,6 +3078,7 @@
       visibleTraceMetricCount,
     );
     if (allRuns.length === 0) {
+      if (headerRow) headerRow.classList.remove('has-repeat-rows');
       tbody.innerHTML = `
         <tr>
           <td colspan="${colCount}" style="text-align:center;padding:2rem;color:var(--text-muted);">
@@ -3081,6 +3091,7 @@
       if (selectAllCheckbox) {
         selectAllCheckbox.checked = false;
         selectAllCheckbox.indeterminate = false;
+        selectAllCheckbox.disabled = true;
       }
       return;
     }
@@ -3091,6 +3102,7 @@
     // Align run names across rows when any visible run carries a disclosure
     // chevron (mock option C's hidden-toggle trick).
     const anyRepeatRows = runs.some(r => r.samples > 1);
+    if (headerRow) headerRow.classList.toggle('has-repeat-rows', anyRepeatRows);
 
     tbody.innerHTML = runs.map((run, pageIdx) => {
       const idx = pagination.start + pageIdx;
@@ -3165,7 +3177,7 @@
             class="${rowClasses}">
           <td class="col-select" onclick="event.stopPropagation()">
             <label class="custom-checkbox">
-              <input type="checkbox" class="row-checkbox" ${isSelected ? 'checked' : ''} />
+              <input type="checkbox" class="row-checkbox" aria-label="Select run ${escapeHtml(run.external_run_id || run.run_id || '')}" ${isSelected ? 'checked' : ''} />
               <span class="checkmark"></span>
             </label>
           </td>
@@ -3174,7 +3186,7 @@
           </td>
           <td class="col-run">
             <div class="run-cell-content">
-              ${run.samples > 1 ? `<button type="button" class="samples-toggle${samplesOpen ? ' open' : ''}"
+              ${run.samples > 1 ? `<button type="button" class="samples-toggle qym-icon-action${samplesOpen ? ' open' : ''}"
                 data-run-id="${run.run_id}" data-panel-id="${samplesPanelId}"
                 data-count="${run.samples}"
                 data-status="${escapeHtml(status)}"
@@ -3188,19 +3200,19 @@
             </div>
           </td>
           <td class="col-task">
-            <span class="tag task" title="${escapeHtml(run.task_name || '')}">${run.task_name ? escapeHtml(run.task_name) : '—'}</span>
+            <span class="tag qym-tag task" title="${escapeHtml(run.task_name || '')}">${run.task_name ? escapeHtml(run.task_name) : '—'}</span>
           </td>
           <td class="col-model">
-            <span class="tag model" title="${run.model_name}">
+            <span class="tag qym-tag model" title="${run.model_name}">
               <span class="model-color-dot" style="background:${CHART_COLORS[state.allModels.indexOf(getRunModelKey(run)) % CHART_COLORS.length]}"></span>
               ${renderModelLabelForRun(run)}
             </span>
           </td>
           <td class="col-dataset">
-            <span class="tag" title="${run.dataset_name}">${truncateText(run.dataset_name, 25)}${window.QymShell ? QymShell.datasetVersionInline(run.dataset_version) + QymShell.datasetAliasTags(run.dataset_aliases) : ''}</span>
+            <span class="tag qym-tag" title="${run.dataset_name}">${truncateText(run.dataset_name, 25)}${window.QymShell ? QymShell.datasetVersionInline(run.dataset_version) + QymShell.datasetAliasTags(run.dataset_aliases) : ''}</span>
           </td>
           <td class="col-version">
-            ${run.git_commit ? `<span class="version-badge qym-badge qym-badge--neutral" title="${run.git_branch ? run.git_branch + '/' : ''}${run.git_commit}">${run.git_branch ? run.git_branch + '/' : ''}${run.git_commit}</span>` : '<span style="color:var(--text-muted)">—</span>'}
+            ${run.git_commit ? `<span class="version-badge qym-tag" title="${run.git_branch ? run.git_branch + '/' : ''}${run.git_commit}">${run.git_branch ? run.git_branch + '/' : ''}${run.git_commit}</span>` : '<span style="color:var(--text-muted)">—</span>'}
           </td>
           ${metricCells}${visibleTraceMetrics.length > 0 ? '<td class="col-trace-separator"></td>' : ''}
           ${visibleSystemColumns.has('latency') ? `<td class="col-latency">
@@ -3237,7 +3249,7 @@
           <td class="col-actions">
             ${(canApprove || canUnapprove || canUnreject) ? `
               <div class="actions-dropdown" onclick="event.stopPropagation()">
-                <button class="actions-trigger workflow-trigger" title="${(canUnapprove || canUnreject) ? 'Review decision actions' : 'Review'}">
+                <button class="actions-trigger qym-icon-action workflow-trigger" title="${(canUnapprove || canUnreject) ? 'Review decision actions' : 'Review'}" aria-label="${(canUnapprove || canUnreject) ? 'Review decision actions' : 'Review run'}">
                   <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
                     <polyline points="14 2 14 8 20 8"></polyline>
@@ -3277,7 +3289,7 @@
               </div>
             ` : ''}
             ${canSubmit ? `
-              <a href="#" class="action-icon submit-run" title="Submit for Approval" onclick="event.stopPropagation()">
+              <a href="#" class="action-icon qym-icon-action submit-run" title="Submit for Approval" aria-label="Submit for approval" onclick="event.stopPropagation()">
                 <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
                   <line x1="22" y1="2" x2="11" y2="13"></line>
                   <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
@@ -3290,7 +3302,7 @@
               </a>
             ` : ''}
             ${canDelete ? `
-            <a href="#" class="action-icon delete-run" title="Delete" onclick="event.stopPropagation()">
+            <a href="#" class="action-icon qym-icon-action delete-run" title="Delete" aria-label="Delete run" onclick="event.stopPropagation()">
               <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
                 <polyline points="3 6 5 6 21 6"></polyline>
                 <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
@@ -3929,6 +3941,7 @@
     if (selectAllCheckbox) {
       const visibleFilePaths = runs.map(run => run.file_path);
       const selectedCount = visibleFilePaths.filter(filePath => state.selectedRuns.has(filePath)).length;
+      selectAllCheckbox.disabled = visibleFilePaths.length === 0;
       selectAllCheckbox.checked = visibleFilePaths.length > 0 && selectedCount === visibleFilePaths.length;
       selectAllCheckbox.indeterminate = selectedCount > 0 && selectedCount < visibleFilePaths.length;
     }
@@ -4052,7 +4065,6 @@
   function renderStatusBar() {
     const total = state.flatRuns.length;
     const filtered = state.filteredRuns.length;
-    const selected = state.selectedRuns.size;
     const countText = filtered === total ? `${total} runs` : `${filtered} of ${total} runs`;
 
     const hasFilters = state.quickFilter !== 'all'
@@ -4094,7 +4106,6 @@
     }
 
     if (el('status-filter')) el('status-filter').textContent = filterText;
-    if (el('status-selected')) el('status-selected').textContent = `${selected} selected`;
   }
 
   function renderComparePanel() {
@@ -4102,71 +4113,57 @@
     const selected = state.selectedRuns;
     const cohortAnchor = Array.isArray(state.cohortAnchorRuns) ? state.cohortAnchorRuns : null;
     const isCohortMode = !!(cohortAnchor && cohortAnchor.length > 0);
+    const showActions = selected.size > 0 || isCohortMode;
 
     if (!panel) return;
-    if (selected.size === 0 && !isCohortMode && !state.selectMode) {
-      panel.style.display = 'none';
-      return;
-    }
+    panel.closest('.status-bar')?.classList.toggle('selection-active', showActions);
+    panel.style.display = showActions ? 'inline-flex' : 'none';
+    const separator = el('selection-status-separator');
+    if (separator) separator.style.display = showActions ? '' : 'none';
+    if (!showActions) return;
 
-    panel.style.display = 'block';
     const countEl = el('compare-count');
     if (countEl) {
-      // Cohort mode counts executions, not runs: a repeat run adds its k.
       countEl.textContent = isCohortMode
-        ? `${cohortUnitCount(Array.from(selected))}/${cohortUnitCount(cohortAnchor)}`
-        : selected.size;
+        ? `Cohort B ${cohortUnitCount(Array.from(selected))}/${cohortUnitCount(cohortAnchor)} executions`
+        : `${selected.size} selected`;
     }
 
-    const chips = el('compare-chips');
     const selectedRuns = state.flatRuns.filter(r => selected.has(r.file_path));
-    const anchorRuns = isCohortMode
-      ? cohortAnchor.map(filePath => state.flatRuns.find(run => run.file_path === filePath)).filter(Boolean)
-      : [];
-
-    // Hide Langfuse button - it's available in row actions
-    const langfuseBtn = el('langfuse-btn');
-    if (langfuseBtn) langfuseBtn.style.display = 'none';
 
     const compareBtn = el('compare-view');
     const cohortBtn = el('cohort-view');
     const clearBtn = el('compare-clear');
     const deleteBtn = el('delete-selected');
-    const headerLabel = panel.querySelector('.compare-header > span');
-    const subtitleEl = el('compare-subtitle');
     const hasOverlap = isCohortMode
       && Array.from(selected).some(ref => cohortAnchor.some(a => cohortRefsConflict(a, ref)));
     // Cohort balance runs on executions: a repeat run contributes its k passes.
     const anchorUnits = isCohortMode ? cohortUnitCount(cohortAnchor) : 0;
     const selectedUnits = isCohortMode ? cohortUnitCount(Array.from(selected)) : 0;
 
-    if (headerLabel) {
-      headerLabel.textContent = isCohortMode
-        ? `⊕ COHORT B ${selectedUnits}/${anchorUnits} EXECUTIONS`
-        : `⊕ SELECTED ${selected.size} RUNS`;
+    let guidance = '';
+    if (!isCohortMode) {
+      guidance = selected.size >= 2
+        ? 'Ready to compare, or lock this selection as Cohort A.'
+        : 'Select runs to compare or create a cohort.';
+    } else if (hasOverlap) {
+      guidance = 'Cohort B cannot include runs already locked in Cohort A.';
+    } else if (selectedUnits < anchorUnits) {
+      guidance = `Select ${anchorUnits - selectedUnits} more execution${anchorUnits - selectedUnits === 1 ? '' : 's'} for Cohort B.`;
+    } else if (selectedUnits === anchorUnits) {
+      guidance = `Balanced: ${anchorUnits} vs ${anchorUnits} executions.`;
+    } else {
+      guidance = `Remove ${selectedUnits - anchorUnits} execution${selectedUnits - anchorUnits === 1 ? '' : 's'} from Cohort B.`;
     }
-    if (subtitleEl) {
-      subtitleEl.classList.remove('is-warning', 'is-ready');
-      if (!isCohortMode) {
-        subtitleEl.textContent = selected.size >= 2
-          ? 'Ready to open a flat comparison, or lock this selection as Cohort A.'
-          : 'Select runs, then use Compare for a flat comparison or Cohort for an explicit A vs B setup.';
-      } else if (hasOverlap) {
-        subtitleEl.textContent = 'Cohort B cannot include runs already locked in Cohort A.';
-        subtitleEl.classList.add('is-warning');
-      } else if (selectedUnits < anchorUnits) {
-        subtitleEl.textContent = `Cohort A holds ${anchorUnits} execution${anchorUnits === 1 ? '' : 's'}. Select ${anchorUnits - selectedUnits} more (a repeat run counts as its k passes).`;
-      } else if (selectedUnits === anchorUnits) {
-        subtitleEl.textContent = `Balanced: ${anchorUnits} vs ${anchorUnits} executions. Click Open Cohort to compare the two groups.`;
-        subtitleEl.classList.add('is-ready');
-      } else {
-        subtitleEl.textContent = `Cohort B holds ${selectedUnits} executions but Cohort A holds ${anchorUnits}. Remove ${selectedUnits - anchorUnits} to balance the sides.`;
-        subtitleEl.classList.add('is-warning');
-      }
+    if (countEl) countEl.title = guidance;
+    const guidanceEl = el('selection-guidance');
+    if (guidanceEl) guidanceEl.textContent = guidance;
+    if (compareBtn) {
+      compareBtn.style.display = isCohortMode ? 'none' : 'inline-flex';
+      compareBtn.disabled = selected.size < 2;
     }
-    if (compareBtn) compareBtn.style.display = isCohortMode ? 'none' : 'inline-block';
     if (cohortBtn) {
-      cohortBtn.style.display = 'inline-block';
+      cohortBtn.style.display = 'inline-flex';
       cohortBtn.textContent = isCohortMode ? 'Open Cohort' : 'Cohort';
       cohortBtn.disabled = isCohortMode ? (selectedUnits !== anchorUnits || hasOverlap) : (selected.size < 1);
       cohortBtn.title = isCohortMode
@@ -4174,48 +4171,31 @@
         : 'Lock the current selection as Cohort A';
     }
     if (clearBtn) clearBtn.textContent = isCohortMode ? 'Cancel Cohort' : 'Clear';
-    if (deleteBtn) deleteBtn.style.display = isCohortMode ? 'none' : 'inline-block';
-
-    // Show Submit button only if:
-    // 1. User is not a manager (managers approve/reject, not submit)
-    // 2. At least 1 run is selected
-    // 3. ALL selected runs are submittable (COMPLETED, FAILED, or REJECTED status)
-    const publishBtn = el('publish-selected');
-    if (publishBtn) {
-      const role = (state.currentUser && state.currentUser.role) || '';
-      const isManager = role === 'MANAGER';
-      const allSubmittable = selectedRuns.length > 0 && selectedRuns.every(r => {
-        const status = r.status || '';
-        return status === 'COMPLETED' || status === 'FAILED' || status === 'REJECTED';
-      });
-      publishBtn.style.display = (!isManager && allSubmittable && !isCohortMode) ? 'inline-block' : 'none';
-      publishBtn.textContent = 'Submit';
+    if (deleteBtn) {
+      const globalRole = (state.currentUser && state.currentUser.role) || '';
+      const projectRole = (state.currentProject && state.currentProject.role) || '';
+      const currentUserId = state.currentUser && state.currentUser.id;
+      const canManageProject = globalRole === 'ADMIN' || projectRole === 'MANAGER';
+      const allDeletable = selectedRuns.length > 0 && selectedRuns.every(run =>
+        canManageProject || !!(currentUserId && run.owner && run.owner.id === currentUserId)
+      );
+      deleteBtn.style.display = isCohortMode ? 'none' : 'inline-flex';
+      deleteBtn.disabled = !allDeletable;
+      deleteBtn.title = allDeletable ? 'Delete selected runs' : 'You can only delete runs you own';
     }
 
-    // Chips render refs directly so picked passes show alongside whole runs.
-    const anchorRefs = isCohortMode ? cohortAnchor : [];
-    chips.innerHTML = [
-      ...anchorRefs.map(ref => `
-        <span class="compare-chip qym-chip is-cohort-a">
-          <span title="${escapeHtml(ref)}">${escapeHtml(getCohortRunDisplayName(ref) || ref)}</span>
-        </span>
-      `),
-      ...Array.from(selected).map(ref => `
-        <span class="compare-chip qym-chip${isCohortMode ? ' is-cohort-b' : ''}">
-          <span title="${escapeHtml(ref)}">${escapeHtml(getCohortRunDisplayName(ref) || ref)}</span>
-          <span class="remove" data-file="${encodeURIComponent(ref)}">×</span>
-        </span>
-      `),
-    ].join('');
-
-    chips.querySelectorAll('.remove').forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const filePath = decodeURIComponent(btn.dataset.file);
-        state.selectedRuns.delete(filePath);
-        render();
+    // Bulk actions must follow the same ownership and status rules as row actions.
+    const publishBtn = el('publish-selected');
+    if (publishBtn) {
+      const currentUserId = state.currentUser && state.currentUser.id;
+      const allSubmittable = selectedRuns.length > 0 && selectedRuns.every(r => {
+        const status = r.status || '';
+        const isOwner = !!(currentUserId && r.owner && r.owner.id === currentUserId);
+        return isOwner && (status === 'COMPLETED' || status === 'FAILED' || status === 'REJECTED');
       });
-    });
+      publishBtn.style.display = (allSubmittable && !isCohortMode) ? 'inline-flex' : 'none';
+      publishBtn.textContent = 'Submit';
+    }
   }
 
   // ═══════════════════════════════════════════════════
@@ -4233,6 +4213,14 @@
     const gridView = el('grid-view');
     const timelineView = el('timeline-view');
     const modelsView = el('models-view');
+    const selectionAvailable = !!state.runs && state.flatRuns.length > 0;
+
+    if (!selectionAvailable) {
+      state.selectedRuns.clear();
+      state.cohortAnchorRuns = null;
+    }
+    // Keep selection controls coherent even when loading/empty states return early.
+    renderComparePanel();
 
     if (!state.runs) {
       loading.style.display = 'flex';
@@ -4263,6 +4251,7 @@
       if (selectAllCheckbox) {
         selectAllCheckbox.checked = false;
         selectAllCheckbox.indeterminate = false;
+        selectAllCheckbox.disabled = true;
       }
       empty.style.display = 'flex';
       chartsView.style.display = 'none';
@@ -4810,9 +4799,9 @@
 
       function renderModelStatTile(title, value, valueClass = '', tooltip = '') {
         return `
-          <div class="model-stat-item qym-stat-strip__item">
-            <div class="stat-label qym-stat-strip__label">${title}${tooltip ? ` ${infoIcon(tooltip)}` : ''}</div>
-            <div class="stat-value qym-stat-strip__value ${valueClass}">${value}</div>
+          <div class="model-stat-item">
+            <div class="stat-label">${title}${tooltip ? ` ${infoIcon(tooltip)}` : ''}</div>
+            <div class="stat-value ${valueClass}">${value}</div>
           </div>
         `;
       }
@@ -4857,7 +4846,7 @@
 
       const showDistribution = !isNumeric && visibleStatKeys.has('correctDistribution');
       const statsGridHtml = statTiles.length > 0
-        ? `<div class="model-stats-grid qym-stat-strip">${statTiles.join('')}</div>`
+        ? `<div class="model-stats-grid">${statTiles.join('')}</div>`
         : '<div class="model-stats-empty">No summary metrics selected.</div>';
 
       return `
@@ -5173,31 +5162,11 @@
   }
 
   function clearSelection() {
+    const restoreTableFocus = !!document.activeElement?.closest?.('#compare-panel, .col-select');
     state.selectedRuns.clear();
     state.cohortAnchorRuns = null;
-    setSelectMode(false, { skipRender: true });
     render();
-  }
-
-  // Selection mode: the checkbox column and the action panel only exist
-  // while the mode is on. Entry: the Select button or the `x` shortcut.
-  // Exit: Escape or Clear (both land in clearSelection).
-  function setSelectMode(on, { skipRender = false } = {}) {
-    on = !!on;
-    if (state.selectMode === on) return;
-    state.selectMode = on;
-    const container = el('table-view');
-    if (container) container.classList.toggle('select-mode', on);
-    const btn = el('select-mode-btn');
-    if (btn) {
-      btn.classList.toggle('active', on);
-      btn.setAttribute('aria-pressed', on ? 'true' : 'false');
-    }
-    if (!on && !skipRender && (state.selectedRuns.size || state.cohortAnchorRuns)) {
-      state.selectedRuns.clear();
-      state.cohortAnchorRuns = null;
-    }
-    if (!skipRender) render();
+    if (restoreTableFocus) el('select-all')?.focus({ preventScroll: true });
   }
 
   function getCohortRunDisplayName(filePath) {
@@ -5276,7 +5245,6 @@
 
   function togglePassSelection(ref) {
     if (!ref) return;
-    setSelectMode(true, { skipRender: true });
     if (state.selectedRuns.has(ref)) {
       state.selectedRuns.delete(ref);
     } else {
@@ -5521,7 +5489,6 @@
 
   function toggleFocusedSelect() {
     if (state.focusedIndex >= 0 && state.focusedIndex < state.filteredRuns.length) {
-      setSelectMode(true, { skipRender: true });
       const run = state.filteredRuns[state.focusedIndex];
       toggleSelect(run.file_path);
     }
@@ -5637,6 +5604,8 @@
   }
 
   function _applyRunsData(data) {
+    if (!dashboardActive) return;
+
     showDashboardChrome();
     state.runs = data;
     if (data && data.project) {
@@ -5689,6 +5658,8 @@
     }
 
     const pages = await Promise.all(pagePromises);
+    if (!dashboardActive) return;
+
     for (const page of pages) {
       if (page) _mergeTasksData(data, page);
     }
@@ -5737,8 +5708,6 @@
   function showDashboardChrome() {
     const commandBar = document.querySelector('.command-bar');
     if (commandBar) commandBar.style.display = '';
-    const comparePanel = el('compare-panel');
-    if (comparePanel) comparePanel.style.display = state.selectedRuns.size ? '' : 'none';
     const footer = document.querySelector('.status-bar');
     if (footer) footer.style.display = '';
     const statsBar = document.querySelector('.stats-bar .stat-cells');
@@ -5825,7 +5794,7 @@
                       <span class="project-hub-card-main">
                         <span class="project-hub-card-name">${escapeHtml(project.name)}</span>
                         <span class="project-hub-card-meta">
-                          <span class="project-hub-pill qym-badge role-badge ${escapeHtml(String(project.role || 'member').toLowerCase())}">${escapeHtml(project.role || '')}</span>
+                          <span class="project-hub-pill qym-tag qym-tag--role role-badge ${escapeHtml(String(project.role || 'member').toLowerCase())}">${escapeHtml(String(project.role || 'MEMBER').toLowerCase().replace(/^./, c => c.toUpperCase()))}</span>
                           <span>${escapeHtml(project.slug || '')}</span>
                         </span>
                       </span>
@@ -5899,6 +5868,8 @@
   }
 
   async function fetchRuns(options = {}) {
+    if (!dashboardActive) return;
+
     const fetchOptions = {
       refreshAllPages: false,
       ...options,
@@ -5949,6 +5920,8 @@
       }
 
       const data = await runsResponse.json();
+      if (!dashboardActive) return;
+
       const totalCount = data.total_count || 0;
       const previousTotalCount = state.runsFetchMeta.totalCount || 0;
       state.runsFetchMeta.totalCount = totalCount;
@@ -5980,6 +5953,7 @@
         state.runsFetchMeta.hasLoadedAllPages = state.flatRuns.length >= totalCount;
       }
     } catch (err) {
+      if (!dashboardActive) return;
       console.error('Failed to fetch runs:', err);
       if (err && err.message === 'Project not found') {
         showProjectNotFound();
@@ -5991,10 +5965,12 @@
       `;
     } finally {
       state.runsFetchMeta.inFlight = false;
-      if (state.runsFetchMeta.pendingOptions) {
+      if (dashboardActive && state.runsFetchMeta.pendingOptions) {
         const pending = state.runsFetchMeta.pendingOptions;
         state.runsFetchMeta.pendingOptions = null;
         fetchRuns(pending);
+      } else if (!dashboardActive) {
+        state.runsFetchMeta.pendingOptions = null;
       }
     }
   }
@@ -6384,24 +6360,11 @@
 
   // Select all checkbox
   el('select-all')?.addEventListener('change', selectAll);
-  el('select-mode-btn')?.addEventListener('click', () => {
-    if (state.selectMode) clearSelection();
-    else setSelectMode(true);
-  });
   // Pass checkboxes live inside re-rendered expansion rows; delegate once.
   document.addEventListener('change', (e) => {
     const cb = e.target.closest?.('.pass-checkbox');
     if (cb) togglePassSelection(cb.dataset.passRef);
   });
-  document.querySelectorAll('[data-table-page="prev"]').forEach(btn => btn.addEventListener('click', () => {
-    setTablePage(state.tablePage - 1, { syncFocus: true });
-    render();
-  }));
-  document.querySelectorAll('[data-table-page="next"]').forEach(btn => btn.addEventListener('click', () => {
-    setTablePage(state.tablePage + 1, { syncFocus: true });
-    render();
-  }));
-
   // Compare actions
   el('compare-view')?.addEventListener('click', openComparison);
   el('cohort-view')?.addEventListener('click', openCohortComparison);
@@ -6413,6 +6376,12 @@
     // Keyboard shortcuts must not take over native interactive controls.
     if (e.target.closest('input, select, textarea, button, a, [contenteditable="true"]')) {
       if (e.key === 'Escape') {
+        const isSelectionControl = !!e.target.closest('#compare-panel, .col-select');
+        if (isSelectionControl && (state.selectedRuns.size || state.cohortAnchorRuns)) {
+          e.preventDefault();
+          clearSelection();
+          return;
+        }
         e.target.blur();
       }
       return;
@@ -6536,7 +6505,7 @@
         <div class="toast-title">${title}</div>
         ${message ? `<div class="toast-message">${message}</div>` : ''}
       </div>
-      <button class="toast-close">×</button>
+      <button class="toast-close qym-icon-action" type="button" aria-label="Close notification">×</button>
     `;
 
     container.appendChild(toast);
@@ -6697,7 +6666,16 @@
   // Save state before navigating away
   window.addEventListener('beforeunload', saveDashboardState);
   window.addEventListener('pagehide', saveDashboardState);
-  document.addEventListener('qym:before-navigate', saveDashboardState);
+  function teardownDashboard() {
+    dashboardActive = false;
+    saveDashboardState();
+    state.runsFetchMeta.pendingOptions = null;
+    if (window.__QYM_DASHBOARD_INTERVAL__) {
+      clearInterval(window.__QYM_DASHBOARD_INTERVAL__);
+      window.__QYM_DASHBOARD_INTERVAL__ = null;
+    }
+  }
+  document.addEventListener('qym:before-navigate', teardownDashboard, { once: true });
 
   // Also save on visibility change (for mobile)
   document.addEventListener('visibilitychange', () => {
@@ -6761,6 +6739,7 @@
     window.__QYM_DASHBOARD_INTERVAL__ = null;
   }
   function updateRunsRefreshCadence() {
+    if (!dashboardActive) return;
     try {
       const intervalMs = hasActiveRuns() ? LIVE_REFRESH_INTERVAL_MS : IDLE_REFRESH_INTERVAL_MS;
       if (window.__QYM_DASHBOARD_INTERVAL__) clearInterval(window.__QYM_DASHBOARD_INTERVAL__);

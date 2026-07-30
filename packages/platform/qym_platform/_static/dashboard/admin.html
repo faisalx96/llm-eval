@@ -5,10 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>قيِّم • Admin</title>
   <link rel="icon" type="image/png" href="/static/qym_icon.png">
-  <link rel="stylesheet" href="/static/dashboard.css">
+  <link rel="stylesheet" href="/static/dashboard.css?v=ui-consistency-20260730-16">
   <link rel="stylesheet" href="/static/shell.css">
   <script src="/static/auth.js"></script>
-  <script src="/static/shell.js"></script>
+  <script src="/static/shell.js?v=ui-consistency-20260730-15"></script>
   <style>
     .admin-page { }
     .admin-header { margin-bottom: var(--space-xl); }
@@ -69,8 +69,7 @@
     .run-link:hover { text-decoration: underline; }
     .row-meta { color: var(--text-muted); font-size: var(--font-sm); margin-top: 2px; font-family: var(--font-mono); }
     .row-actions { display: flex; gap: var(--space-xs); justify-content: flex-end; }
-    .pagination-bar { display: flex; align-items: center; justify-content: flex-end; gap: var(--space-sm); padding: var(--space-md) var(--space-lg); border-top: 1px solid var(--border-subtle); }
-    .pagination-label { color: var(--text-muted); font-size: var(--font-sm); font-family: var(--font-mono); margin-right: var(--space-sm); }
+    .pagination-bar { padding: var(--space-md) var(--space-lg); border-top: 1px solid var(--border-subtle); }
 
     .role-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: var(--font-sm); font-weight: 600; font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.3px; }
     .role-badge.admin { background: rgba(0,212,170,0.12); color: var(--accent-primary); }
@@ -104,8 +103,8 @@
     .edit-user-error { color: var(--error); font-size: var(--font-sm); min-height: 16px; }
     .self-warning { background: var(--bg-elevated); border: 1px solid var(--border-default); border-radius: 6px; padding: var(--space-sm) var(--space-md); font-size: var(--font-sm); color: var(--text-muted); }
   </style>
-  <link rel="stylesheet" href="/static/ui_components.css">
-  <script defer src="/static/ui_components.js"></script>
+  <link rel="stylesheet" href="/static/ui_components.css?v=ui-consistency-20260730-29">
+  <script defer src="/static/ui_components.js?v=ui-consistency-20260730-25"></script>
 </head>
 <body>
   <main class="admin-page">
@@ -153,11 +152,7 @@
             </tbody>
           </table>
         </div>
-        <div class="pagination-bar">
-          <span class="pagination-label" id="recent-runs-page-label">—</span>
-          <button class="btn btn-secondary" id="recent-runs-prev" type="button" style="padding:4px 10px;font-size:var(--font-sm)">Previous</button>
-          <button class="btn btn-secondary" id="recent-runs-next" type="button" style="padding:4px 10px;font-size:var(--font-sm)">Next</button>
-        </div>
+        <div class="pagination-bar qym-pagination" id="recent-runs-pagination" aria-label="Recent runs pagination"></div>
       </div>
     </section>
 
@@ -201,7 +196,7 @@
     <div class="modal-content" style="max-width:440px">
       <div class="modal-header">
         <h2>Edit User</h2>
-        <button class="modal-close" type="button" id="edit-user-close" aria-label="Close">×</button>
+        <button class="modal-close qym-icon-action" type="button" id="edit-user-close" aria-label="Close">×</button>
       </div>
       <div class="modal-body edit-user-body">
         <div class="form-group">
@@ -412,15 +407,23 @@
       function renderRecentRuns(totalCount) {
         const label = document.getElementById('recent-runs-count-label');
         if (label) label.textContent = `${totalCount == null ? state.recentRuns.length : totalCount} total eval runs`;
-        const pageLabel = document.getElementById('recent-runs-page-label');
-        const prevBtn = document.getElementById('recent-runs-prev');
-        const nextBtn = document.getElementById('recent-runs-next');
         const total = totalCount == null ? state.recentRunsTotal : totalCount;
         const start = total && state.recentRuns.length ? state.recentRunsPage * state.recentRunsPageSize + 1 : 0;
         const end = total && state.recentRuns.length ? start + state.recentRuns.length - 1 : 0;
-        if (pageLabel) pageLabel.textContent = total ? `${start}-${end} of ${total}` : '0 of 0';
-        if (prevBtn) prevBtn.disabled = state.recentRunsPage === 0;
-        if (nextBtn) nextBtn.disabled = end >= total;
+        const totalPages = Math.max(1, Math.ceil(total / state.recentRunsPageSize));
+        window.QymUIComponents?.renderPagination(document.getElementById('recent-runs-pagination'), {
+          page: state.recentRunsPage + 1,
+          pageCount: totalPages,
+          pageSize: state.recentRunsPageSize,
+          total,
+          start,
+          end,
+          noun: 'runs',
+          onPageChange: async page => {
+            state.recentRunsPage = page - 1;
+            await loadRecentRuns();
+          },
+        });
         const tbody = document.getElementById('recent-runs-tbody');
         if (!tbody) return;
         if (!state.recentRuns.length) {
@@ -466,7 +469,7 @@
           <tr>
             <td style="font-weight:500;color:var(--text-primary)">${escapeHtml(u.display_name || u.email)}</td>
             <td><span class="row-meta">${escapeHtml(u.email)}</span></td>
-            <td><span class="role-badge qym-badge ${u.role === 'ADMIN' ? 'admin' : 'member'}">${escapeHtml(u.role)}</span></td>
+            <td><span class="role-badge qym-tag qym-tag--role ${u.role === 'ADMIN' ? 'admin' : 'member'}">${escapeHtml(u.role || 'MEMBER')}</span></td>
             <td>${u.is_active ? '<span style="color:var(--success)">Active</span>' : '<span style="color:var(--error)">Disabled</span>'}</td>
             <td><div class="row-actions">
               <button class="btn btn-secondary" style="padding:4px 10px;font-size:var(--font-sm)" data-user-edit="${escapeHtml(u.id)}">Edit</button>
@@ -567,16 +570,6 @@
 
       document.querySelectorAll('[data-admin-tab]').forEach(btn => {
         btn.addEventListener('click', () => setAdminTab(btn.dataset.adminTab));
-      });
-      document.getElementById('recent-runs-prev').addEventListener('click', async () => {
-        if (state.recentRunsPage === 0) return;
-        state.recentRunsPage -= 1;
-        await loadRecentRuns();
-      });
-      document.getElementById('recent-runs-next').addEventListener('click', async () => {
-        if ((state.recentRunsPage + 1) * state.recentRunsPageSize >= state.recentRunsTotal) return;
-        state.recentRunsPage += 1;
-        await loadRecentRuns();
       });
       try {
         setAdminTab(window.sessionStorage.getItem('qym:admin-tab') || 'runs');

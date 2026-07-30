@@ -212,6 +212,487 @@
   box-sizing: border-box;
 }
 
+.qym-inline-action.qym-inline-action--neutral,
+.qym-inline-action.qym-inline-action--accent,
+.qym-inline-action.qym-inline-action--langfuse {
+  gap: var(--space-xs);
+  padding-right: var(--space-md);
+  padding-left: var(--space-md);
+  border: 0;
+  border-radius: var(--control-radius);
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 0.15s, color 0.15s;
+}
+
+.qym-inline-action.qym-inline-action--neutral {
+  background: var(--bg-active);
+  color: var(--text-secondary);
+}
+
+.qym-inline-action.qym-inline-action--neutral:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.qym-inline-action.qym-inline-action--accent {
+  background: rgba(0, 212, 170, 0.14);
+  color: var(--accent-primary);
+}
+
+.qym-inline-action.qym-inline-action--accent:hover {
+  background: rgba(0, 212, 170, 0.22);
+  color: var(--accent-primary);
+}
+
+.qym-inline-action.qym-inline-action--langfuse {
+  border: 0;
+  background: var(--brand-langfuse-surface);
+  color: var(--brand-langfuse);
+  text-decoration: none;
+}
+
+.qym-inline-action.qym-inline-action--langfuse:hover {
+  background: var(--brand-langfuse-surface-hover);
+  color: var(--brand-langfuse);
+}
+
+.qym-inline-action.qym-inline-action--langfuse:focus-visible {
+  outline-color: var(--brand-langfuse);
+}
+
+:is(
+  .add-bar > .btn,
+  .bootstrap-form > .btn,
+  .pg-add-btn,
+  .qym-inline-action,
+  .tv-header-btn,
+  .tv-close
+):focus-visible {
+  outline: 1px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
+/* Compact icon actions — quiet surfaces; only the glyph changes on hover. */
+:is(
+  .qym-icon-action,
+  .action-icon:not(.langfuse-icon),
+  .actions-trigger,
+  .copy-btn,
+  .tv-copy-btn,
+  .tv-expand-btn,
+  .tv-close,
+  .tv-icon-btn,
+  .dsx-trace-icon-btn,
+  .dsx-output-expand-btn,
+  .modal-close,
+  .shell-modal-close,
+  .shell-drawer-header-action,
+  .metric-edit-open,
+  .samples-toggle,
+  .toast-close,
+  .expand-btn
+) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  flex: 0 0 auto;
+  width: var(--control-height);
+  min-width: var(--control-height);
+  height: var(--control-height);
+  padding: 0;
+  border: 0;
+  border-radius: var(--control-radius);
+  background: transparent;
+  color: var(--text-muted);
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: none;
+  transition:
+    color 0.15s ease,
+    opacity 0.15s ease;
+}
+
+:is(
+  .qym-icon-action,
+  .action-icon:not(.langfuse-icon),
+  .actions-trigger,
+  .copy-btn,
+  .tv-copy-btn,
+  .tv-expand-btn,
+  .tv-close,
+  .tv-icon-btn,
+  .dsx-trace-icon-btn,
+  .dsx-output-expand-btn,
+  .modal-close,
+  .shell-modal-close,
+  .shell-drawer-header-action,
+  .metric-edit-open,
+  .samples-toggle,
+  .toast-close,
+  .expand-btn
+):hover {
+  border: 0;
+  background: transparent;
+  color: var(--accent-primary);
+  box-shadow: none;
+  opacity: 1;
+}
+
+:is(
+  .copy,
+  .copy-btn,
+  .docs-copy-btn,
+  .tv-copy-btn,
+).qym-icon-action.copied {
+  color: var(--accent-primary);
+  background: transparent;
+  box-shadow: none;
+}
+
+:is(
+  .qym-icon-action,
+  .action-icon:not(.langfuse-icon),
+  .actions-trigger,
+  .copy-btn,
+  .tv-copy-btn,
+  .tv-expand-btn,
+  .tv-close,
+  .tv-icon-btn,
+  .dsx-trace-icon-btn,
+  .dsx-output-expand-btn,
+  .modal-close,
+  .shell-modal-close,
+  .shell-drawer-header-action,
+  .metric-edit-open,
+  .samples-toggle,
+  .toast-close,
+  .expand-btn
+):focus-visible {
+  outline: 1px solid var(--accent-primary);
+  outline-offset: 2px;
+  background: transparent;
+  color: var(--accent-primary);
+  box-shadow: none;
+}
+
+.action-icon:is(.submit-run, .approve-run),
+.actions-trigger.workflow-trigger {
+  background: transparent;
+  color: var(--accent-primary);
+}
+
+/* Shared pagination — one visual and behavioral contract on every data page. */
+.qym-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  width: 100%;
+  min-height: var(--control-height);
+  height: auto;
+  margin: 0;
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-muted);
+}
+
+.qym-pagination__summary {
+  min-width: 160px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--font-sm);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.qym-pagination__controls {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  height: var(--control-height);
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.qym-pagination .qym-pagination__button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--control-height);
+  min-width: var(--control-height);
+  height: var(--control-height);
+  min-height: var(--control-height);
+  padding: 0;
+  border: 0;
+  border-radius: var(--control-radius);
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: var(--font-sm);
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.qym-pagination .qym-pagination__button:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.qym-pagination .qym-pagination__button svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.qym-pagination .qym-pagination__button:focus-visible,
+.qym-pagination__input:focus-visible,
+.qym-pagination__size:focus-visible {
+  position: relative;
+  z-index: 1;
+  outline: 1px solid var(--accent-primary);
+  outline-offset: -1px;
+}
+
+.qym-pagination .qym-pagination__button:disabled {
+  background: transparent;
+  color: var(--text-dim);
+  cursor: default;
+  opacity: 1;
+}
+
+.qym-pagination__page {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-xs);
+  height: var(--control-height);
+  padding: 0 var(--space-xs);
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--font-sm);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.qym-pagination__input {
+  width: max(28px, calc(var(--qym-page-digits, 1) * 1ch + 8px));
+  height: var(--control-height);
+  padding: 0 2px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--control-radius);
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: var(--font-sm);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  appearance: textfield;
+}
+
+.qym-pagination__input:hover:not(:disabled) {
+  border-color: var(--border-default);
+}
+
+.qym-pagination__input::-webkit-inner-spin-button,
+.qym-pagination__input::-webkit-outer-spin-button {
+  margin: 0;
+  appearance: none;
+}
+
+.qym-pagination__size {
+  height: var(--control-height);
+  min-width: 82px;
+  padding: 0 24px 0 var(--space-sm);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--control-radius);
+  background-color: var(--bg-elevated);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--font-sm);
+  cursor: pointer;
+}
+
+/* Persistent horizontal scrollbar overlaid on the table's bottom edge. */
+.qym-scroll-mirror-target {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.qym-scroll-mirror-target::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+.qym-scroll-mirror {
+  position: fixed;
+  right: auto;
+  bottom: var(--status-bar-height);
+  z-index: 45;
+  height: 14px;
+  padding: var(--space-xs) 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.qym-scroll-mirror[hidden] {
+  display: none;
+}
+
+.qym-scroll-mirror:focus-visible {
+  outline: 1px solid var(--accent-primary);
+  outline-offset: -1px;
+}
+
+.qym-scroll-mirror__track {
+  position: relative;
+  width: 100%;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: transparent;
+}
+
+.qym-scroll-mirror__thumb {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  min-width: 40px;
+  border-radius: 999px;
+  background: rgba(120, 120, 150, 0.55);
+  cursor: grab;
+  transform: translateX(0);
+  transition: background-color 0.15s ease;
+}
+
+.qym-scroll-mirror:hover .qym-scroll-mirror__thumb,
+.qym-scroll-mirror:focus-visible .qym-scroll-mirror__thumb {
+  background: rgba(122, 122, 144, 0.82);
+}
+
+.qym-scroll-mirror__thumb:active {
+  background: rgba(80, 80, 94, 0.92);
+  cursor: grabbing;
+}
+
+@media (max-width: 720px) {
+  .qym-pagination {
+    gap: var(--space-sm);
+  }
+
+  .qym-pagination__summary {
+    width: 100%;
+    min-width: 0;
+    text-align: center;
+  }
+
+  .qym-pagination .qym-pagination__button {
+    padding: 0 var(--space-xs);
+  }
+}
+
+.action-icon:is(.submit-run, .approve-run):hover,
+.action-icon:is(.submit-run, .approve-run):focus-visible,
+.actions-trigger.workflow-trigger:hover,
+.actions-trigger.workflow-trigger:focus-visible {
+  background: transparent;
+  color: var(--accent-primary);
+  box-shadow: none;
+}
+
+.action-icon:is(.reject-run, .delete-run) {
+  background: transparent;
+  color: var(--error);
+}
+
+.action-icon:is(.reject-run, .delete-run):is(:hover, :focus-visible) {
+  background: transparent;
+  color: var(--error);
+  box-shadow: none;
+}
+
+.qym-icon-action.btn-approve {
+  background: transparent;
+  color: var(--success);
+}
+
+.qym-icon-action.btn-approve:is(:hover, :focus-visible) {
+  background: transparent;
+  color: var(--success);
+  box-shadow: none;
+}
+
+.qym-icon-action.btn-reject {
+  background: transparent;
+  color: var(--error);
+}
+
+.qym-icon-action.btn-reject:is(:hover, :focus-visible) {
+  background: transparent;
+  color: var(--error);
+  box-shadow: none;
+}
+
+/* Clearing active filters is destructive context, not a neutral selector. */
+:is(
+  .qym-clear-action,
+  .clear-filters-btn.clear-filters-btn,
+  .btn-clear-filters.btn-clear-filters,
+  .fp-clear-btn.fp-clear-btn
+) {
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  gap: var(--space-xs);
+  min-height: var(--control-height);
+  height: var(--control-height);
+  padding: 0 var(--space-sm);
+  border: 0;
+  border-radius: var(--control-radius);
+  background: rgba(239, 68, 68, 0.12);
+  color: var(--error);
+  font-family: var(--font-sans);
+  font-size: var(--font-sm);
+  font-weight: 600;
+  line-height: 1;
+}
+
+:is(
+  .qym-clear-action,
+  .clear-filters-btn.clear-filters-btn,
+  .btn-clear-filters.btn-clear-filters,
+  .fp-clear-btn.fp-clear-btn
+):hover {
+  border: 0;
+  background: rgba(239, 68, 68, 0.2);
+  color: var(--error);
+}
+
+:is(.filter-count-badge.filter-count-badge, .fp-clear-count.fp-clear-count) {
+  border-radius: var(--control-radius);
+  background: rgba(239, 68, 68, 0.2);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+}
+
 .dsx-hero-actions {
   --dsx-action-h: var(--control-height);
 }
@@ -220,7 +701,38 @@
   padding-left: 26px;
 }
 
-.docs-search > input.qym-search {
+.qym-search-wrap,
+:is(.qym-dropdown__search, .model-search-box) {
+  position: relative;
+}
+
+.qym-search-wrap {
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.qym-search-wrap::before,
+:is(.qym-dropdown__search, .model-search-box):has(> input.qym-search)::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 8px;
+  z-index: 1;
+  width: 14px;
+  height: 14px;
+  transform: translateY(-50%);
+  background: var(--text-muted);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m20 20-4-4'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m20 20-4-4'/%3E%3C/svg%3E") center / contain no-repeat;
+  pointer-events: none;
+}
+
+:is(.qym-dropdown__search, .model-search-box):has(> input.qym-search)::before {
+  left: calc(var(--space-sm) + 8px);
+}
+
+.qym-search-wrap > input,
+:is(.qym-dropdown__search, .model-search-box) > input.qym-search {
   padding-left: 28px;
 }
 
@@ -425,6 +937,20 @@
   .dsx-drawer-tab,
   .chart-dataset-tab,
   .tv-tab
+):focus-visible {
+  outline: 1px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
+:is(
+  .qym-tabs__tab,
+  .admin-tab-btn,
+  .settings-tab,
+  .dsx-tab,
+  .dsx-item-tab,
+  .dsx-drawer-tab,
+  .chart-dataset-tab,
+  .tv-tab
 ).active,
 :is(
   .qym-tabs__tab,
@@ -440,6 +966,132 @@
   border-bottom-color: var(--accent-primary);
   background: transparent;
   font-weight: 600;
+}
+
+/* Chart-card datasets are dense collection tabs, not page-section tabs.
+   Preserve the original filled-sheet selection and persistent count tiles. */
+.chart-dataset-tabs.qym-tabs {
+  align-items: stretch;
+  gap: 0;
+  padding-inline: 0;
+  scroll-padding-inline: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  background: var(--bg-elevated);
+  border-bottom-color: var(--border-default);
+}
+
+.chart-dataset-tabs .chart-dataset-tab.qym-tabs__tab {
+  flex: 0 0 auto;
+  min-height: var(--tab-height);
+  padding: 0 var(--space-md);
+  margin-bottom: -1px;
+  background: transparent;
+  border-bottom: 2px solid transparent;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--font-sm);
+  font-weight: 600;
+}
+
+.chart-dataset-tabs .chart-dataset-tab.qym-tabs__tab:hover:not(.active) {
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+}
+
+.chart-dataset-tabs .chart-dataset-tab.qym-tabs__tab.active,
+.chart-dataset-tabs .chart-dataset-tab.qym-tabs__tab[aria-selected="true"] {
+  background: var(--bg-surface);
+  border-bottom-color: var(--accent-primary);
+  color: var(--accent-primary);
+  font-weight: 650;
+}
+
+.chart-dataset-tabs .chart-dataset-tab .tab-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--badge-height);
+  min-height: var(--badge-height);
+  padding: 0 6px;
+  border: 0;
+  border-radius: var(--control-radius);
+  background: var(--bg-active);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--font-xs);
+  font-weight: 650;
+  line-height: 1;
+}
+
+.chart-dataset-tabs .chart-dataset-tab.active .tab-count {
+  border: 0;
+  background: rgba(0, 212, 170, 0.14);
+  color: var(--accent-primary);
+}
+
+#dsx-detail-tabs.qym-tabs {
+  flex-wrap: nowrap;
+  padding-inline: var(--space-md);
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-padding-inline: var(--space-md);
+  scrollbar-width: thin;
+}
+
+#dsx-detail-tabs.qym-tabs > .dsx-tab.qym-tabs__tab {
+  flex: 0 0 auto;
+}
+
+.dsx-item-tabs.qym-tabs {
+  padding-inline: var(--space-md);
+  scroll-padding-inline: var(--space-md);
+}
+
+.dsx-item-actions > .shell-btn.qym-inline-action {
+  padding-right: var(--space-md);
+  padding-left: var(--space-md);
+  font-weight: 600;
+  box-shadow: none;
+}
+
+.dsx-item-actions > .shell-btn-danger.qym-inline-action {
+  border: 0;
+  background: rgba(239, 68, 68, 0.12);
+  color: var(--error);
+}
+
+.dsx-item-actions > .shell-btn-danger.qym-inline-action:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.2);
+  color: var(--error);
+}
+
+/* Horizontal tab strips keep their gutter stable but reveal the thumb only
+   while the user is hovering the scrollable region. */
+:is(.chart-dataset-tabs.qym-tabs, #dsx-detail-tabs.qym-tabs) {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+
+:is(.chart-dataset-tabs.qym-tabs, #dsx-detail-tabs.qym-tabs):hover {
+  scrollbar-color: var(--border-strong) transparent;
+}
+
+:is(.chart-dataset-tabs.qym-tabs, #dsx-detail-tabs.qym-tabs)::-webkit-scrollbar {
+  height: var(--space-xs);
+}
+
+:is(.chart-dataset-tabs.qym-tabs, #dsx-detail-tabs.qym-tabs)::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+:is(.chart-dataset-tabs.qym-tabs, #dsx-detail-tabs.qym-tabs)::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: var(--control-radius);
+}
+
+:is(.chart-dataset-tabs.qym-tabs, #dsx-detail-tabs.qym-tabs):hover::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
 }
 
 /* 4. In-place switching — approved option A with Qym-green selection. */
@@ -458,11 +1110,56 @@
 ) {
   display: inline-flex;
   align-items: center;
+  box-sizing: border-box;
+  min-height: var(--control-height);
+  height: var(--control-height);
   gap: 2px;
-  padding: 3px;
+  padding: 2px;
   background: var(--bg-elevated);
   border: 1px solid var(--border-default);
-  border-radius: 7px;
+  border-radius: var(--control-radius);
+}
+
+.qym-segmented {
+  position: relative;
+  isolation: isolate;
+}
+
+.qym-segmented.qym-segmented--ready::before {
+  content: "";
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  left: 0;
+  z-index: 0;
+  width: var(--qym-segment-width);
+  border-radius: calc(var(--control-radius) - 2px);
+  background: var(--accent-primary);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.28);
+  pointer-events: none;
+  transform: translateX(var(--qym-segment-x));
+  transition:
+    transform 0.24s cubic-bezier(0.16, 1, 0.3, 1),
+    width 0.24s cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: transform, width;
+}
+
+.compare-mode-tabs.qym-segmented,
+.reviews-source-segmented.qym-segmented {
+  max-width: 100%;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+.compare-mode-tabs.qym-segmented::-webkit-scrollbar,
+.reviews-source-segmented.qym-segmented::-webkit-scrollbar {
+  display: none;
+}
+
+.reviews-source-segmented > .qym-segmented__option {
+  flex: 0 0 auto;
 }
 
 :is(
@@ -477,17 +1174,22 @@
   .metric-tab,
   .category-compare-tab
 ) {
-  min-height: var(--segment-height);
-  padding: 0 12px;
+  box-sizing: border-box;
+  min-height: 0;
+  height: 100%;
+  padding: 0 10px;
   background: transparent;
   border: 0;
-  border-radius: 4px;
+  border-radius: calc(var(--control-radius) - 2px);
   color: var(--text-muted);
   font-family: var(--font-sans);
   font-size: var(--font-sm);
   font-weight: 600;
   box-shadow: none;
   cursor: pointer;
+  position: relative;
+  z-index: 1;
+  transition: color 0.16s ease;
 }
 
 :is(
@@ -503,7 +1205,27 @@
   .category-compare-tab
 ):hover {
   color: var(--text-primary);
-  background: var(--bg-hover);
+  background: transparent;
+}
+
+.chart-segment-control .chart-segment-btn:hover:not([disabled]):not(.active) {
+  background: transparent;
+}
+
+:is(
+  .qym-segmented__option,
+  .filter-btn,
+  .chart-segment-btn,
+  .view-toggle-btn,
+  .samples-metric-tab,
+  .samples-statistic-btn,
+  .samples-view-btn,
+  .compare-mode-tab,
+  .metric-tab,
+  .category-compare-tab
+):focus-visible {
+  outline: 1px solid var(--accent-primary);
+  outline-offset: -1px;
 }
 
 :is(
@@ -554,6 +1276,20 @@
   font-weight: 600;
 }
 
+.qym-segmented.qym-segmented--ready > .qym-segmented__option.active,
+.qym-segmented.qym-segmented--ready > .qym-segmented__option[aria-selected="true"],
+.qym-segmented.qym-segmented--ready > .qym-segmented__option[aria-pressed="true"] {
+  background: transparent;
+  box-shadow: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .qym-segmented.qym-segmented--ready::before,
+  .qym-segmented > .qym-segmented__option {
+    transition: none;
+  }
+}
+
 .samples-view-btn + .samples-view-btn {
   border-left: 0;
 }
@@ -563,24 +1299,17 @@
   cursor: not-allowed;
 }
 
-/* 5. Passive state — approved option A: tinted outline. */
+/* 5. Passive status/outcome state — tinted outline. */
 :is(
   .qym-badge,
   .status-badge,
   .status-pill,
-  .role-badge,
-  .role-pill,
   .dsx-pill,
   .card-status-badge,
   .review-badge,
-  .diff-source-tag,
   .pg-status-badge,
   .sweep-verdict-badge,
-  .version-badge,
-  .rc-status-pill,
-  .meta-badge,
-  .hero-pass-pill,
-  .hero-samples-pill
+  .rc-status-pill
 ) {
   display: inline-flex;
   align-items: center;
@@ -604,8 +1333,6 @@
   .qym-badge,
   .status-badge,
   .status-pill,
-  .role-badge,
-  .role-pill,
   .dsx-pill,
   .card-status-badge,
   .rc-status-pill
@@ -628,8 +1355,6 @@
   .qym-badge,
   .status-badge,
   .status-pill,
-  .role-badge,
-  .role-pill,
   .dsx-pill,
   .card-status-badge,
   .rc-status-pill
@@ -643,8 +1368,6 @@
   .qym-badge,
   .status-badge,
   .status-pill,
-  .role-badge,
-  .role-pill,
   .dsx-pill,
   .card-status-badge,
   .rc-status-pill
@@ -667,8 +1390,6 @@
   .qym-badge,
   .status-badge,
   .status-pill,
-  .role-badge,
-  .role-pill,
   .dsx-pill,
   .card-status-badge,
   .rc-status-pill
@@ -676,25 +1397,6 @@
   color: var(--warning);
   border-color: rgba(245, 158, 11, 0.35);
   background: rgba(245, 158, 11, 0.09);
-}
-
-:is(.role-badge, .role-pill):is(.admin, .manager, .default) {
-  color: var(--accent-primary);
-  border-color: rgba(0, 212, 170, 0.35);
-  background: rgba(0, 212, 170, 0.09);
-}
-
-.role-pill,
-.diff-source-tag.human {
-  color: var(--accent-primary);
-  border-color: rgba(0, 212, 170, 0.35);
-  background: rgba(0, 212, 170, 0.09);
-}
-
-.diff-source-tag.ai {
-  color: var(--accent-tertiary-soft);
-  border-color: rgba(168, 85, 247, 0.35);
-  background: rgba(168, 85, 247, 0.09);
 }
 
 .review-badge,
@@ -734,7 +1436,6 @@
   background: rgba(239, 68, 68, 0.09);
 }
 
-.version-badge,
 .sweep-verdict-badge.qym-badge--neutral {
   color: var(--text-muted);
   border-color: var(--border-default);
@@ -757,12 +1458,151 @@
   font-weight: 650;
 }
 
-:is(.role-badge, .role-pill):is(.member, .neutral),
-:is(.status-badge, .status-pill):is(.status-PENDING, .status-SUBMITTED, .pending, .submitted),
+:is(.qym-badge, .status-badge, .status-pill):is(.status-PENDING, .status-SUBMITTED, .pending, .submitted),
 .qym-badge.qym-badge--neutral {
   color: var(--text-muted);
   border-color: var(--border-default);
   background: var(--bg-elevated);
+}
+
+/* Passive role, provenance, metadata, and count tags — flat rounded squares. */
+.qym-tag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-xs);
+  box-sizing: border-box;
+  min-height: var(--badge-height);
+  padding: 0 var(--space-sm);
+  border: 0;
+  border-radius: var(--control-radius);
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: var(--font-xs);
+  font-weight: 650;
+  line-height: 1;
+}
+
+/* Legacy run-table tags used computed-time-invalid color concatenation
+   (for example `var(--accent-tertiary)18`), which reset the background to
+   transparent. Keep their approved flat metadata treatment explicit. */
+.tag.qym-tag {
+  background: var(--bg-elevated);
+}
+
+.tag.qym-tag.task {
+  background: rgba(168, 85, 247, 0.11);
+}
+
+/* High-specificity migration aliases override page-local geometry while
+   preserving each metadata type's existing semantic color. */
+:is(
+  .role-badge.role-badge,
+  .role-pill.role-pill,
+  .diff-source-tag.diff-source-tag,
+  .version-badge.version-badge,
+  .chart-version-tag.chart-version-tag,
+  .tab-count.tab-count,
+  .meta-badge.meta-badge,
+  .item-metadata-tag.item-metadata-tag,
+  .hero-pass-pill.hero-pass-pill,
+  .hero-samples-pill.hero-samples-pill
+) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-xs);
+  box-sizing: border-box;
+  min-height: var(--badge-height);
+  padding: 0 var(--space-sm);
+  border: 0;
+  border-radius: var(--control-radius);
+  font-size: var(--font-xs);
+  font-weight: 650;
+  line-height: 1;
+}
+
+:is(
+  .qym-tag--role,
+  .qym-tag--count,
+  .qym-tag--data,
+  .qym-tag--version
+),
+:is(
+  .role-badge.role-badge,
+  .role-pill.role-pill,
+  .version-badge.version-badge,
+  .chart-version-tag.chart-version-tag,
+  .tab-count.tab-count,
+  .hero-pass-pill.hero-pass-pill,
+  .hero-samples-pill.hero-samples-pill
+) {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+:is(
+  .role-badge,
+  .role-pill,
+  .qym-tag--role
+) {
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+:is(.qym-tag--count, .tab-count.tab-count) {
+  min-width: var(--badge-height);
+  padding: 0 6px;
+  white-space: nowrap;
+}
+
+:is(
+  .qym-tag--accent,
+  .role-badge.role-badge:is(.admin, .manager, .default),
+  .role-pill.role-pill:is(.admin, .manager, .default),
+  .hero-pass-pill.hero-pass-pill,
+  .hero-samples-pill.hero-samples-pill
+) {
+  background: rgba(0, 212, 170, 0.11);
+  color: var(--accent-primary);
+}
+
+:is(.role-badge.role-badge, .role-pill.role-pill):is(.member, .neutral) {
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+}
+
+.qym-tag--success,
+.diff-source-tag.diff-source-tag.human {
+  background: rgba(0, 212, 170, 0.11);
+  color: var(--accent-primary);
+}
+
+.qym-tag--info {
+  background: rgba(0, 168, 255, 0.11);
+  color: var(--accent-secondary);
+}
+
+.qym-tag--warning {
+  background: rgba(245, 158, 11, 0.11);
+  color: var(--warning);
+}
+
+.qym-tag--danger {
+  background: rgba(239, 68, 68, 0.11);
+  color: var(--error);
+}
+
+.diff-source-tag.diff-source-tag.ai {
+  background: rgba(168, 85, 247, 0.11);
+  color: var(--accent-tertiary-soft);
+}
+
+:is(.version-badge.version-badge, .chart-version-tag.chart-version-tag) {
+  background: var(--bg-elevated);
+  color: var(--text-muted);
 }
 
 /* 6. Interactive filters — approved option A: rounded outline. */
@@ -943,6 +1783,14 @@
   text-transform: none;
 }
 
+/* Score-bearing values use one five-band palette everywhere. Numeric metrics
+   remain neutral because they have no intrinsic good/bad scale. */
+.qym-score-value.score-5 { color: var(--score-5); }
+.qym-score-value.score-4 { color: var(--score-4); }
+.qym-score-value.score-3 { color: var(--score-3); }
+.qym-score-value.score-2 { color: var(--score-2); }
+.qym-score-value.score-1 { color: var(--score-1); }
+
 :is(.overview-summary-text, .compare-run-summary-text) {
   display: flex;
   flex-direction: column;
@@ -1006,50 +1854,12 @@
 }
 
 .trace-pills-row.qym-stat-strip > .trace-pill {
+  align-items: flex-start;
   min-height: var(--stat-strip-min-height);
   padding: 14px 16px;
   border: 0;
   border-radius: 0;
   background: var(--bg-surface);
-}
-
-.model-stats-grid.qym-stat-strip {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 1px;
-  margin-bottom: 10px;
-}
-
-.model-stats-grid.qym-stat-strip > .model-stat-item.qym-stat-strip__item {
-  min-height: var(--stat-strip-min-height);
-  padding: 14px 12px;
-  background: var(--bg-surface);
-  border: 0;
-  border-radius: 0;
-}
-
-.model-stats-grid.qym-stat-strip > .model-stat-item:last-child:nth-child(3n + 1) {
-  grid-column: 1 / -1;
-}
-
-.model-stats-grid .model-stat-item .stat-label.qym-stat-strip__label {
-  min-height: 0;
-  margin-bottom: 0;
-  color: var(--text-muted);
-  font-family: var(--font-sans);
-  font-size: var(--font-md);
-  font-weight: 650;
-  line-height: 1.25;
-  letter-spacing: 0;
-  text-transform: none;
-}
-
-.model-stats-grid .model-stat-item .stat-value.qym-stat-strip__value {
-  margin-top: var(--space-sm);
-  font-family: var(--font-mono);
-  font-size: var(--font-xl);
-  font-weight: 700;
-  line-height: 1.15;
 }
 
 .stats-row.qym-stat-strip > .stat-box.qym-stat-strip__item {

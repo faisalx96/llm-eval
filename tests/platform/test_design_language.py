@@ -62,8 +62,8 @@ FROZEN_HARDCODED_SIZES: dict[str, list[str]] = {
     "compare.html": ["7", "10", "10", "10", "10", "10", "10", "11", "11", "13", "14", "14", "20", "32", "48"],
     "dashboard.css": ["8", "9", "14", "16", "18", "18", "20", "20", "20", "24", "24", "32", "48", "48"],
     "datasets.html": ["10", "13", "13", "14", "32"],
-    "docs.css": ["11", "11", "11", "11", "11", "11", "11", "12", "12", "12", "12", "12", "13", "13", "13", "13", "13", "13", "13", "13", "13", "14", "15", "15", "16", "16", "20", "28"],
-    "reviews.html": ["14", "40"],
+    "docs.css": ["11", "11", "11", "11", "11", "11", "11", "12", "12", "12", "12", "13", "13", "13", "13", "13", "13", "13", "13", "13", "14", "15", "15", "16", "16", "20", "28"],
+    "reviews.html": ["40"],
     "run.html": ["7", "10", "10", "10", "10", "10", "11", "11", "11", "13", "14", "14", "14", "16", "48", "48"],
     "shell.css": ["10", "10", "10", "11", "11", "11", "11", "11", "12", "12", "24"],
     "trace_viewer.js": ["11", "12"],
@@ -200,7 +200,18 @@ class TestSharedComponents:
             ".qym-badge--danger",
             ".qym-badge--warning",
             ".qym-badge--neutral",
+            ".qym-tag",
+            ".qym-tag--role",
+            ".qym-tag--accent",
+            ".qym-tag--count",
+            ".qym-tag--data",
+            ".qym-tag--version",
+            ".qym-tag--success",
+            ".qym-tag--info",
+            ".qym-tag--warning",
+            ".qym-tag--danger",
             ".qym-chip",
+            ".qym-icon-action",
             ".qym-stat-strip",
             ".qym-stat-strip__item",
             ".qym-stat-strip__label",
@@ -215,11 +226,12 @@ class TestSharedComponents:
             "border-radius: var(--control-radius)",
             "min-height: var(--dropdown-option-height)",
             "min-height: var(--tab-height)",
-            "min-height: var(--segment-height)",
+            "height: 100%",
             "background: var(--accent-primary)",
             "min-height: var(--badge-height)",
             "min-height: var(--chip-height)",
             "min-height: var(--stat-strip-min-height)",
+            "align-items: flex-start",
             "width: var(--info-marker-size)",
             "font-family: var(--font-sans)",
             "font-family: var(--font-mono)",
@@ -243,6 +255,50 @@ class TestSharedComponents:
             assert canonical_contract in css, (
                 f"canonical classes must work without a legacy alias: {canonical_contract}"
             )
+
+    def test_badges_tags_and_icon_actions_keep_distinct_silhouettes(self):
+        """Status pills stay outlined; metadata and icon actions stay flat."""
+        css = UI_COMPONENTS.read_text(encoding="utf-8")
+
+        icon_actions = css.split(
+            "/* Compact icon actions — quiet surfaces; only the glyph changes on hover. */",
+            1,
+        )[1].split("/* Clearing active filters", 1)[0]
+        for declaration in (
+            "width: var(--control-height)",
+            "height: var(--control-height)",
+            "border: 0",
+            "border-radius: var(--control-radius)",
+            "background: transparent",
+            "color: var(--accent-primary)",
+        ):
+            assert declaration in icon_actions
+        hover_rule = icon_actions.split("):hover {", 1)[1].split("}", 1)[0]
+        copied_rule = icon_actions.split(").qym-icon-action.copied {", 1)[1].split("}", 1)[0]
+        focus_rule = icon_actions.split("):focus-visible {", 1)[1].split("}", 1)[0]
+        for state_rule in (hover_rule, copied_rule, focus_rule):
+            assert "background: transparent;" in state_rule
+            assert "box-shadow: none;" in state_rule
+            assert "color-mix(" not in state_rule
+        assert "0 0 12px color-mix(in srgb, var(--accent-primary)" not in icon_actions
+
+        statuses = css.split(
+            "/* 5. Passive status/outcome state — tinted outline. */",
+            1,
+        )[1].split(
+            "/* Passive role, provenance, metadata, and count tags",
+            1,
+        )[0]
+        assert "border: 1px solid var(--border-default)" in statuses
+        assert "border-radius: 999px" in statuses
+
+        tags = css.split(
+            "/* Passive role, provenance, metadata, and count tags — flat rounded squares. */",
+            1,
+        )[1].split("/* 6. Interactive filters", 1)[0]
+        assert "min-height: var(--badge-height)" in tags
+        assert "border: 0" in tags
+        assert "border-radius: var(--control-radius)" in tags
 
     def test_compact_control_exceptions_and_alignment_are_preserved(self):
         ui_css = UI_COMPONENTS.read_text(encoding="utf-8")
@@ -327,8 +383,9 @@ class TestSharedComponents:
         """Canonical qym component CSS is defined in one file only."""
         component_rule = re.compile(
             r"\.qym-(?:control|input|select|search|dropdown[\w-]*|tabs[\w-]*|"
-            r"segmented[\w-]*|badge[\w-]*|chip[\w-]*|stat-strip[\w-]*|"
-            r"help[\w-]*)(?:[:.#\[][^,{]*)?\s*(?:,|\{)"
+            r"segmented[\w-]*|badge[\w-]*|tag[\w-]*|chip[\w-]*|"
+            r"icon-action|clear-action|stat-strip[\w-]*|"
+            r"help[\w-]*|pagination[\w-]*)(?:[:.#\[][^,{]*)?\s*(?:,|\{)"
         )
         forks = []
         for path in DASHBOARD_DIR.glob("*.css"):

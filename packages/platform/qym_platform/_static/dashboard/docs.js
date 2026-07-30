@@ -62,9 +62,8 @@
   var ROOT = (window.__QYM_ROOT_PATH__ || '').replace(/\/$/, '');
   function staticUrl(p) { return ROOT + '/static/' + String(p).replace(/^\/+/, ''); }
 
-  var ICON_COPY = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+  var ICON_COPY = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
   var ICON_CHECK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
-  var ICON_SEARCH = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>';
 
   var els = {};
   var partialCache = {};
@@ -114,7 +113,7 @@
   // ── Section nav ──
   function buildNav() {
     var html = ''
-      + '<div class="docs-search">' + ICON_SEARCH
+      + '<div class="docs-search qym-search-wrap">'
       + '<input class="qym-control qym-search" type="text" id="docs-search-input" placeholder="Search docs…" autocomplete="off" spellcheck="false" /></div>';
     SECTIONS.forEach(function (s) {
       html += '<div class="docs-nav-section" data-section="' + s.id + '">'
@@ -217,7 +216,7 @@
       var head = document.createElement('div');
       head.className = 'docs-codeblock-head';
       head.innerHTML = '<span class="docs-codeblock-lang">' + esc(lang) + '</span>'
-        + '<button class="docs-copy-btn" type="button" title="Copy" aria-label="Copy code">' + ICON_COPY + '</button>';
+        + '<button class="docs-copy-btn qym-icon-action" type="button" title="Copy" aria-label="Copy code">' + ICON_COPY + '</button>';
       pre.parentNode.insertBefore(wrap, pre);
       wrap.appendChild(head);
       wrap.appendChild(pre);

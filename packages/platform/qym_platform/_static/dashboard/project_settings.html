@@ -5,10 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>قيِّم • Project Settings</title>
   <link rel="icon" type="image/png" href="/static/qym_icon.png">
-  <link rel="stylesheet" href="/static/dashboard.css">
+  <link rel="stylesheet" href="/static/dashboard.css?v=ui-consistency-20260730-16">
   <link rel="stylesheet" href="/static/shell.css">
   <script src="/static/auth.js"></script>
-  <script src="/static/shell.js"></script>
+  <script src="/static/shell.js?v=ui-consistency-20260730-15"></script>
   <style>
     .settings-page { }
     .settings-header { margin-bottom: var(--space-xl); }
@@ -96,8 +96,8 @@
       animation: spin 0.7s linear infinite;
     }
   </style>
-  <link rel="stylesheet" href="/static/ui_components.css">
-  <script defer src="/static/ui_components.js"></script>
+  <link rel="stylesheet" href="/static/ui_components.css?v=ui-consistency-20260730-29">
+  <script defer src="/static/ui_components.js?v=ui-consistency-20260730-25"></script>
 </head>
 <body>
   <main class="settings-page">
@@ -332,7 +332,7 @@
           <tr>
             <td>
               <span style="font-weight:600;color:var(--text-primary)">${escapeHtml(c.name)}</span>
-              ${c.is_default ? '<span class="role-badge qym-badge default" style="margin-left:10px">default</span>' : ''}
+              ${c.is_default ? '<span class="role-badge qym-tag qym-tag--role default" style="margin-left:10px">Default</span>' : ''}
             </td>
             <td><span style="font-family:var(--font-mono);color:var(--text-secondary)">${escapeHtml(c.llm_model || '—')}</span></td>
             <td><span style="font-family:var(--font-mono);display:inline-block;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle" title="${escapeHtml(c.llm_base_url || '')}">${escapeHtml(c.llm_base_url || '—')}</span></td>
@@ -382,7 +382,7 @@
             <td><span style="font-family:var(--font-mono);font-size:var(--font-sm);color:var(--text-muted)">${escapeHtml(m.email)}</span></td>
             <td>${canManageMembers()
               ? `<select class="form-select" data-member-role="${escapeHtml(m.user_id)}"><option value="MEMBER" ${m.role==='MEMBER'?'selected':''}>Member</option><option value="MANAGER" ${m.role==='MANAGER'?'selected':''}>Manager</option></select>`
-              : `<span class="role-badge qym-badge ${m.role==='MANAGER'?'manager':'member'}">${escapeHtml(m.role)}</span>`}</td>
+              : `<span class="role-badge qym-tag qym-tag--role ${m.role==='MANAGER'?'manager':'member'}">${escapeHtml(m.role || 'MEMBER')}</span>`}</td>
             <td style="font-size:var(--font-sm);color:var(--text-muted)">${ts(m.created_at)}</td>
             <td style="text-align:right">${canManageMembers() ? `<div class="row-actions" style="justify-content:flex-end"><button class="btn btn-secondary" style="padding:4px 10px;font-size:var(--font-sm)" data-member-save="${escapeHtml(m.user_id)}">Save</button><button class="btn btn-danger" style="padding:4px 10px;font-size:var(--font-sm)" data-member-remove="${escapeHtml(m.user_id)}">Remove</button></div>` : ''}</td>
           </tr>`).join('');

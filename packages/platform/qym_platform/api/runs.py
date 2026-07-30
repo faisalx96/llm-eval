@@ -258,10 +258,10 @@ def _project_not_found_page(request: Request, project_slug: str) -> HTMLResponse
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>قيِّم • Project Not Found</title>
   <link rel="icon" type="image/png" href="{static_root}/qym_icon.png">
-  <link rel="stylesheet" href="{static_root}/dashboard.css">
+  <link rel="stylesheet" href="{static_root}/dashboard.css?v=ui-consistency-20260730-10">
   <link rel="stylesheet" href="{static_root}/shell.css">
   <script src="{static_root}/auth.js"></script>
-  <script src="{static_root}/shell.js"></script>
+  <script src="{static_root}/shell.js?v=ui-consistency-20260730-10"></script>
 </head>
 <body>
   <main style="min-height:50vh;display:flex;align-items:center;justify-content:center;padding:32px;color:var(--text-muted);">

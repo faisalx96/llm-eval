@@ -50,7 +50,7 @@
   };
 
   /* ── helpers ── */
-  const COPY_ICON = `<svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M3 10.5V3a1.5 1.5 0 0 1 1.5-1.5H10"/></svg>`;
+  const COPY_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`;
   const CHECK_ICON = `<svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 8.5 6.5 11.5 12.5 4.5"/></svg>`;
   const EXPAND_ICON = `<svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3H3v3"/><path d="M10 3h3v3"/><path d="M13 10v3h-3"/><path d="M3 10v3h3"/><path d="M3 6l4-4"/><path d="M13 6L9 2"/><path d="M3 10l4 4"/><path d="M13 10l-4 4"/></svg>`;
   const EXPAND_ALL_ICON = `<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 4.5 8 9l4.5-4.5"/><path d="M3.5 8.5 8 13l4.5-4.5"/></svg>`;
@@ -59,7 +59,7 @@
   function copyBtn(textOrFn, label) {
     const id = `tv-cb-${++_copyId}`;
     _copyData[id] = textOrFn;
-    return `<button type="button" class="tv-copy-btn" data-copy-id="${id}" title="${label || "Copy"}">${COPY_ICON}</button>`;
+    return `<button type="button" class="tv-copy-btn qym-icon-action" data-copy-id="${id}" title="${label || "Copy"}" aria-label="${label || "Copy"}">${COPY_ICON}</button>`;
   }
   let _copyId = 0;
   const _copyData = {};
@@ -67,7 +67,7 @@
   function expandBtn(payload, label) {
     const id = `tv-xb-${++_expandId}`;
     _expandData[id] = payload;
-    return `<button type="button" class="tv-expand-btn" data-expand-id="${id}" title="${label || "Expand"}">${EXPAND_ICON}</button>`;
+    return `<button type="button" class="tv-expand-btn qym-icon-action" data-expand-id="${id}" title="${label || "Expand"}" aria-label="${label || "Expand"}">${EXPAND_ICON}</button>`;
   }
   let _expandId = 0;
   const _expandData = {};
@@ -701,10 +701,10 @@
 
   function renderDocMetaChips(doc) {
     const chips = summarizeDocMeta(doc.metadata).map(([key, value]) =>
-      `<span class="tv-chip tv-doc-chip qym-badge qym-badge--neutral"><span class="tv-doc-chip-k">${esc(key)}</span><span class="tv-doc-chip-v">${esc(String(value))}</span></span>`
+      `<span class="tv-chip tv-doc-chip qym-tag qym-tag--data"><span class="tv-doc-chip-k">${esc(key)}</span><span class="tv-doc-chip-v">${esc(String(value))}</span></span>`
     );
     const score = formatDocScore(doc.score);
-    if (score) chips.unshift(`<span class="tv-chip tv-doc-chip tv-doc-chip-score qym-badge qym-badge--neutral">Score ${esc(score)}</span>`);
+    if (score) chips.unshift(`<span class="tv-chip tv-doc-chip tv-doc-chip-score qym-tag qym-tag--data">Score ${esc(score)}</span>`);
     return chips.join("");
   }
 
@@ -716,7 +716,7 @@
 
     let html = `<div class="tv-docs-shell">`;
     html += `<div class="tv-docs-head">`;
-    html += `<div class="tv-docs-title-wrap"><div class="tv-docs-title">Retrieved Documents</div><div class="tv-docs-meta"><div class="tv-docs-sub">Context returned by this retriever span</div><span class="tv-chip tv-docs-count qym-badge qym-badge--neutral">${docs.length} retrieved</span></div></div>`;
+    html += `<div class="tv-docs-title-wrap"><div class="tv-docs-title">Retrieved Documents</div><div class="tv-docs-meta"><div class="tv-docs-sub">Context returned by this retriever span</div><span class="tv-chip tv-docs-count qym-tag qym-tag--count">${docs.length} retrieved</span></div></div>`;
     html += actionGroup([
       copyBtn(() => JSON.stringify(docs.map(d => d.raw), null, 2), "Copy documents"),
       expandBtn({
@@ -1194,11 +1194,11 @@
     const rootSpan = tree?.roots?.[0];
     const scores = rootSpan ? extractScores(rootSpan) : [];
 
-    let chips = `<span class="tv-chip qym-badge qym-badge--neutral">${sum.span_count||0} spans</span>`;
-    chips += `<span class="tv-chip qym-badge qym-badge--neutral">${esc(fmtDur(sum.duration_ms))}</span>`;
-    if (stats.totalTokens > 0) chips += `<span class="tv-chip tv-chip-tokens qym-badge qym-badge--info">${fmtTokens(stats.totalTokens)} tokens</span>`;
+    let chips = `<span class="tv-chip qym-tag qym-tag--count">${sum.span_count||0} spans</span>`;
+    chips += `<span class="tv-chip qym-tag qym-tag--data">${esc(fmtDur(sum.duration_ms))}</span>`;
+    if (stats.totalTokens > 0) chips += `<span class="tv-chip tv-chip-tokens qym-tag qym-tag--data qym-tag--info">${fmtTokens(stats.totalTokens)} tokens</span>`;
     const costStr = fmtCost(stats.totalCost);
-    if (costStr) chips += `<span class="tv-chip qym-badge qym-badge--neutral">${costStr}</span>`;
+    if (costStr) chips += `<span class="tv-chip qym-tag qym-tag--data">${costStr}</span>`;
     // Count only spans with an actual exception event (not just inherited ERROR status)
     const realErrorCount = tree ? tree.nodes.filter(n =>
       statusCls(n.status) === "error" && (Array.isArray(n.events) ? n.events : []).some(ev => ev.name === "exception")
@@ -2172,7 +2172,7 @@
             <div class="tv-warning" style="display:none"></div>
           </div>
           <div class="tv-header-right">
-            <button type="button" class="tv-close" data-trace-close="1" aria-label="Close">
+            <button type="button" class="tv-close qym-icon-action" data-trace-close="1" aria-label="Close">
               <svg viewBox="0 0 16 16" width="16" height="16"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
             </button>
           </div>
@@ -2184,7 +2184,7 @@
                 <input type="text" class="tv-search" placeholder="Filter spans..." aria-label="Search spans">
                 <span class="tv-search-icon"><svg viewBox="0 0 16 16" width="14" height="14"><circle cx="7" cy="7" r="4.5" stroke="currentColor" stroke-width="1.5" fill="none"/><path d="m10.5 10.5 3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></span>
               </div>
-              <button type="button" class="tv-header-btn tv-icon-btn" data-tree-toggle-mode="expand" title="Expand spans" aria-label="Expand spans">${EXPAND_ALL_ICON}</button>
+              <button type="button" class="tv-header-btn tv-icon-btn qym-icon-action" data-tree-toggle-mode="expand" title="Expand spans" aria-label="Expand spans">${EXPAND_ALL_ICON}</button>
             </div>
             <div class="tv-list"></div>
           </div>
@@ -2202,7 +2202,7 @@
               <div class="tv-modal-eyebrow">EXPANDED</div>
               <div class="tv-modal-title">Expanded Trace Content</div>
             </div>
-            <button type="button" class="tv-close" data-trace-modal-close="1" aria-label="Close expanded view">
+            <button type="button" class="tv-close qym-icon-action" data-trace-modal-close="1" aria-label="Close expanded view">
               <svg viewBox="0 0 16 16" width="16" height="16"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
             </button>
           </div>
@@ -2324,7 +2324,7 @@
 
     // Loading state
     S.el.title.textContent = meta.itemLabel || "Trace";
-    S.el.meta.innerHTML = `<span class="tv-chip qym-badge qym-badge--neutral">Loading...</span>`;
+    S.el.meta.innerHTML = `<span class="tv-chip qym-tag">Loading...</span>`;
     S.el.list.innerHTML = `<div class="tv-loading">Loading trace...</div>`;
     S.el.detail.innerHTML = "";
     updateTreeToggleButton();

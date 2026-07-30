@@ -5,10 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>قيِّم • Reviews</title>
   <link rel="icon" type="image/png" href="/static/qym_icon.png">
-  <link rel="stylesheet" href="/static/dashboard.css">
+  <link rel="stylesheet" href="/static/dashboard.css?v=ui-consistency-20260730-16">
   <link rel="stylesheet" href="/static/shell.css">
   <script src="/static/auth.js"></script>
-  <script src="/static/shell.js"></script>
+  <script src="/static/shell.js?v=ui-consistency-20260730-15"></script>
   <style>
     /* Typography/color rules: docs/DESIGN_LANGUAGE.md — tokens only (var(--font-*), var(--text-*)). */
     /* ═══════════════════════════════════════════════════
@@ -118,12 +118,6 @@
       flex: 1;
       max-width: 320px;
       min-width: 180px;
-    }
-
-    .reviews-search .search-ico {
-      color: var(--text-dim);
-      font-size: 14px;
-      flex-shrink: 0;
     }
 
     .reviews-search input {
@@ -1039,21 +1033,7 @@
     /* ── Expand toggle ───────────────────────────── */
 
     .expand-btn {
-      background: none;
-      border: none;
-      color: var(--text-dim);
-      cursor: pointer;
-      padding: 2px 6px;
       font-size: var(--font-base);
-      border-radius: 3px;
-      transition: all 0.15s;
-      display: flex;
-      align-items: center;
-      gap: 3px;
-    }
-    .expand-btn:hover {
-      color: var(--text-primary);
-      background: var(--bg-hover);
     }
     .expand-btn .arrow {
       transition: transform 0.2s;
@@ -1079,30 +1059,6 @@
       align-items: center;
       gap: 4px;
       flex-wrap: wrap;
-    }
-
-    .filter-chip {
-      font-size: var(--font-sm);
-      padding: 3px 8px;
-      border-radius: 4px;
-      border: 1px solid var(--border-default);
-      background: var(--bg-elevated);
-      color: var(--text-muted);
-      cursor: pointer;
-      transition: all 0.15s;
-      white-space: nowrap;
-      font-family: var(--font-sans);
-    }
-
-    .filter-chip:hover {
-      border-color: var(--border-strong);
-      color: var(--text-secondary);
-    }
-
-    .filter-chip.active {
-      border-color: var(--accent-primary);
-      color: var(--accent-primary);
-      background: rgba(0, 212, 170, 0.08);
     }
 
     .filter-group-label {
@@ -1188,8 +1144,8 @@
       text-align: right;
     }
   </style>
-  <link rel="stylesheet" href="/static/ui_components.css">
-  <script defer src="/static/ui_components.js"></script>
+  <link rel="stylesheet" href="/static/ui_components.css?v=ui-consistency-20260730-29">
+  <script defer src="/static/ui_components.js?v=ui-consistency-20260730-25"></script>
 </head>
 <body>
   <div class="reviews-layout">
@@ -1225,8 +1181,7 @@
 
       <div class="toolbar-sep"></div>
 
-      <div class="reviews-search">
-        <span class="search-ico">&#x2315;</span>
+      <div class="reviews-search qym-search-wrap">
         <input type="text" id="search-input" placeholder="Search task, item, root cause..." />
       </div>
 
@@ -1254,10 +1209,12 @@
 
       <div class="filter-chips">
         <span class="filter-group-label">Source</span>
-        <button class="filter-chip qym-chip active" data-source="" aria-pressed="true">All</button>
-        <button class="filter-chip qym-chip" data-source="ai_only" aria-pressed="false">AI Only</button>
-        <button class="filter-chip qym-chip" data-source="human_only" aria-pressed="false">Human Only</button>
-        <button class="filter-chip qym-chip" data-source="corrected" aria-pressed="false">AI+Human Corrected</button>
+        <div class="qym-segmented reviews-source-segmented" role="group" aria-label="Source">
+          <button type="button" class="qym-segmented__option active" data-source="" aria-pressed="true">All</button>
+          <button type="button" class="qym-segmented__option" data-source="ai_only" aria-pressed="false">AI Only</button>
+          <button type="button" class="qym-segmented__option" data-source="human_only" aria-pressed="false">Human Only</button>
+          <button type="button" class="qym-segmented__option" data-source="corrected" aria-pressed="false">AI+Human Corrected</button>
+        </div>
       </div>
 
       <div class="toolbar-sep"></div>
@@ -1284,7 +1241,7 @@
         <button class="btn-sm btn-reject" id="bulk-reject">Reject</button>
         <button class="btn-sm btn-reset" id="bulk-reset">Reset</button>
         <button class="btn-sm btn-reject" id="bulk-delete">Delete</button>
-        <button class="btn-ghost" id="bulk-deselect" title="Deselect all">&times;</button>
+        <button class="btn-ghost qym-icon-action" id="bulk-deselect" title="Deselect all" aria-label="Deselect all">&times;</button>
       </div>
 
       <div class="toolbar-right">
@@ -1317,7 +1274,7 @@
     <div class="reviews-modal-content">
       <div class="reviews-modal-header">
         <h3 id="modal-title">Approve Correction</h3>
-        <button class="modal-close" id="modal-close">&times;</button>
+        <button class="modal-close qym-icon-action" id="modal-close" aria-label="Close">&times;</button>
       </div>
       <div class="reviews-modal-body">
         <p id="modal-desc">This correction will be used as a few-shot example for future AI analysis.</p>
@@ -1590,7 +1547,7 @@
           ${message ? `<div class="toast-message">${escapeHtml(message)}</div>` : ''}
         </div>
         ${actions.length ? `<div class="toast-actions">${actions.map((action, idx) => `<button type="button" class="toast-action ${action.className || ''}" data-toast-action="${idx}">${escapeHtml(action.label || 'OK')}</button>`).join('')}</div>` : ''}
-        <button class="toast-close">&times;</button>
+        <button class="toast-close qym-icon-action" type="button" aria-label="Close notification">&times;</button>
       `;
       container.appendChild(toast);
       const closeToast = () => {
@@ -2051,16 +2008,16 @@
             <span class="card-provenance">${corrector ? `by ${escapeHtml(corrector)}` : ''} ${c.created_at ? formatDate(c.created_at) : ''}</span>
             <div class="card-actions">
               ${st === 'pending' ? `
-                <button class="btn-sm btn-approve" data-approve="${c.id}" title="Approve">&#10003;</button>
-                <button class="btn-sm btn-reject" data-reject="${c.id}" title="Reject">&#10007;</button>
+                <button class="btn-sm btn-approve qym-icon-action" data-approve="${c.id}" title="Approve" aria-label="Approve">&#10003;</button>
+                <button class="btn-sm btn-reject qym-icon-action" data-reject="${c.id}" title="Reject" aria-label="Reject">&#10007;</button>
               ` : st === 'approved' ? `
-                <button class="btn-sm btn-reset" data-reset="${c.id}" title="Reset to pending">&#8634;</button>
+                <button class="btn-sm btn-reset qym-icon-action" data-reset="${c.id}" title="Reset to pending" aria-label="Reset to pending">&#8634;</button>
               ` : st === 'rejected' ? `
-                <button class="btn-sm btn-reset" data-reset="${c.id}" title="Reset to pending">&#8634;</button>
+                <button class="btn-sm btn-reset qym-icon-action" data-reset="${c.id}" title="Reset to pending" aria-label="Reset to pending">&#8634;</button>
               ` : ''}
-              <button class="btn-ghost" data-edit="${c.id}" title="Edit correction">&#9998;</button>
+              <button class="btn-ghost qym-icon-action" data-edit="${c.id}" title="Edit correction" aria-label="Edit correction">&#9998;</button>
               <button class="btn-sm btn-reject" data-delete="${c.id}" title="Delete correction">Delete</button>
-              <button class="expand-btn" data-expand="${c.id}" title="Show metadata">
+              <button class="expand-btn qym-icon-action" data-expand="${c.id}" title="Show metadata" aria-label="Show metadata">
                 <span class="arrow">&#x25B6;</span>
               </button>
             </div>
@@ -2077,7 +2034,7 @@
             <!-- AI Column -->
             <div class="diff-col">
               <div class="diff-col-header">
-                <span class="diff-source-tag ai">AI</span>
+                <span class="diff-source-tag qym-tag ai">AI</span>
                 ${c.ai_confidence != null ? `<span class="diff-confidence">${(c.ai_confidence * 100).toFixed(0)}% conf</span>` : ''}
               </div>
               <div class="diff-field">
@@ -2097,7 +2054,7 @@
             <!-- Human Column -->
             <div class="diff-col">
               <div class="diff-col-header">
-                <span class="diff-source-tag human">Human</span>
+                <span class="diff-source-tag qym-tag human">Human</span>
               </div>
               ${isEditing ? renderEditForm(c) : `
                 <div class="diff-field">
