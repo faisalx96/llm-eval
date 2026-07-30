@@ -2428,10 +2428,14 @@
     }
     .item-chevron {
       color: var(--accent-primary);
-      font-size: var(--font-xs);
-      width: 12px;
+      font-size: var(--font-md);
+      width: 18px;
+      text-align: center;
       flex: 0 0 auto;
     }
+    /* Fills the title's slot while the item is open (the full input shows
+       in its own block below, so the header drops the duplicate). */
+    .item-header-spacer { flex: 1 1 auto; }
     .item-title {
       font-family: var(--font-sans);
       font-size: var(--font-md);
@@ -2460,6 +2464,11 @@
       border-radius: 4px;
       white-space: nowrap;
       background: var(--bg-elevated);
+    }
+    /* The pill must name its metric — a bare value reads as noise. */
+    .item-agg-pill .metric-score-name {
+      font-size: var(--font-sm);
+      color: var(--text-muted);
     }
     .item-agg-pill.highlighted { background: var(--bg-hover); }
     .item-pass-note {
@@ -2538,23 +2547,41 @@
       padding: var(--space-sm);
       border-radius: 4px;
     }
+    /* Section identity: every block names itself with a clear 11px label
+       and a colored left rail — Input blue, Expected green, Output accent. */
     .item-input-row .input-label,
     .item-expected-row .expected-label {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      font-size: var(--font-xs);
-      color: var(--text-muted);
-      margin-bottom: 4px;
+      font-size: var(--font-sm);
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      color: var(--accent-secondary);
+      margin-bottom: 6px;
     }
-    .item-input-row .input-text,
+    /* Input is prose, not code: sans at body size so Arabic and long
+       questions stay readable. Expected keeps mono (it is usually code)
+       but at body size, not caption size. */
+    .item-input-row .input-text {
+      font-family: var(--font-sans);
+      font-size: var(--font-md);
+      color: var(--text-primary);
+      line-height: 1.7;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
     .item-expected-row .expected-text {
       font-family: var(--font-mono);
-      font-size: var(--font-sm);
+      font-size: var(--font-base);
       color: var(--text-secondary);
       line-height: 1.6;
       white-space: pre-wrap;
       word-break: break-word;
+    }
+    .item-input-row {
+      border-left: 3px solid var(--accent-secondary);
     }
     .item-expected-row {
       background: var(--success-dim);
@@ -9114,7 +9141,9 @@
           const headerHtml = '<div class="item-header item-header-expand" data-item-expand="' + escapeAttr(itemId) + '" role="button" tabindex="0" aria-expanded="' + isExpanded + '">' +
             '<span class="item-chevron">' + (isExpanded ? '\u25BE' : '\u25B8') + '</span>' +
             '<span class="item-index" title="ID: ' + escapeHtml(itemId) + '">#' + (row.index + 1) + '</span>' +
-            '<span class="item-title" title="' + escapeAttr(displayItemId) + '">' + escapeHtml(titleText) + '</span>' +
+            (isExpanded
+              ? '<span class="item-header-spacer"></span>'
+              : '<span class="item-title" title="' + escapeAttr(displayItemId) + '">' + escapeHtml(titleText) + '</span>') +
             '<span class="item-agg-pills">' + aggPills + '</span>' +
             statusIndicator + passNote +
             '<button class="copy-btn" data-item-id="' + escapeAttr(itemId) + '" title="Copy all fields">' + COPY_ICON + '</button>' +
