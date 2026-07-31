@@ -2665,18 +2665,18 @@
         <div class="chart-table-toolbar">
           <div class="chart-group-controls">
             <span class="chart-control-label">Rows</span>
-            <span class="chart-segment-control qym-segmented chart-row-mode-control" data-card="${cardId}" role="group" aria-label="Chart row mode">
+            <span class="chart-segment-control qym-segmented chart-row-mode-control" data-card="${cardId}" role="group" data-qym-segmented-key="chart-row-${cardId}" aria-label="Chart row mode">
               <button class="chart-segment-btn qym-segmented__option ${groupMode === 'run' ? 'active' : ''}" data-mode="run" aria-pressed="${groupMode === 'run'}">Runs</button>
               <button class="chart-segment-btn qym-segmented__option ${isGrouped ? 'active' : ''}" data-mode="${isGrouped ? groupMode : 'model'}" aria-pressed="${isGrouped}">Grouped</button>
             </span>
             ${isGrouped ? `
               <span class="chart-control-label">Group</span>
-              <span class="chart-segment-control qym-segmented chart-group-axis-control" data-card="${cardId}" role="group" aria-label="Primary grouping">
+              <span class="chart-segment-control qym-segmented chart-group-axis-control" data-card="${cardId}" role="group" data-qym-segmented-key="chart-group-${cardId}" aria-label="Primary grouping">
                 <button class="chart-segment-btn qym-segmented__option ${primaryGroup === 'model' ? 'active' : ''}" data-mode="model" aria-pressed="${primaryGroup === 'model'}">Model</button>
                 <button class="chart-segment-btn qym-segmented__option ${primaryGroup === 'version' ? 'active' : ''}" data-mode="version" aria-pressed="${primaryGroup === 'version'}" ${groupVersionDisabled ? 'disabled title="No version data available"' : ''}>Version</button>
               </span>
               <span class="chart-control-label">Then</span>
-              <span class="chart-segment-control qym-segmented chart-then-axis-control" data-card="${cardId}" role="group" aria-label="Secondary grouping">
+              <span class="chart-segment-control qym-segmented chart-then-axis-control" data-card="${cardId}" role="group" data-qym-segmented-key="chart-then-${cardId}" aria-label="Secondary grouping">
                 <button class="chart-segment-btn qym-segmented__option ${secondaryGroup === 'model' ? 'active' : ''}" data-mode="version-model" aria-pressed="${secondaryGroup === 'model'}" ${thenModelAttrs}>Model</button>
                 <button class="chart-segment-btn qym-segmented__option ${secondaryGroup === 'version' ? 'active' : ''}" data-mode="model-version" aria-pressed="${secondaryGroup === 'version'}" ${thenVersionAttrs}>Version</button>
               </span>
@@ -3140,7 +3140,6 @@
       }).join('');
 
       const status = run.status || '';
-      const langfuseUrl = run.langfuse_url;
       const approval = run.approval || null;
 
       const globalRole = (state.currentUser && state.currentUser.role) || '';
@@ -3294,11 +3293,6 @@
                   <line x1="22" y1="2" x2="11" y2="13"></line>
                   <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
                 </svg>
-              </a>
-            ` : ''}
-            ${langfuseUrl ? `
-              <a href="${langfuseUrl}" target="_blank" class="action-icon langfuse-icon" title="View in Langfuse" onclick="event.stopPropagation()">
-                <img src="/static/langfuse-color.svg" alt="Langfuse" width="16" height="16" />
               </a>
             ` : ''}
             ${canDelete ? `
@@ -3544,9 +3538,9 @@
         const isNum = typeof v === 'number';
         const cls = isNum ? window.QymMetrics.getMetricColorClass(v, 'score') : '';
         const text = isNum ? window.QymMetrics.formatMetricValue(v, 'score') : pendingText('—');
-        return `<span class="samples-summary-stat qym-stat-strip__item" title="${escapeHtml(tooltip)}">` +
-          `<span class="samples-summary-label qym-stat-strip__label">${label}</span>` +
-          `<strong class="samples-summary-value qym-stat-strip__value metric-score ${cls}">${text}</strong></span>`;
+        return `<span class="samples-summary-stat" title="${escapeHtml(tooltip)}">` +
+          `<span class="samples-summary-label">${label}</span>` +
+          `<strong class="samples-summary-value metric-score ${cls}">${text}</strong></span>`;
       };
       // Group avg latency: item-weighted mean over the passes that have one.
       const latPasses = allPasses.filter(p => typeof p.avg_latency_ms === 'number');
@@ -3555,9 +3549,9 @@
       const groupAvgLatency = latPasses.length
         ? latPasses.reduce((sum, p, i) => sum + p.avg_latency_ms * latWeights[i], 0) / latTotal
         : null;
-      const latencyStat = `<span class="samples-summary-stat qym-stat-strip__item" title="Mean item latency across all completed passes.">` +
-        `<span class="samples-summary-label qym-stat-strip__label">Avg latency</span>` +
-        `<strong class="samples-summary-value qym-stat-strip__value">${groupAvgLatency !== null ? formatLatency(groupAvgLatency) : pendingText('—')}</strong></span>`;
+      const latencyStat = `<span class="samples-summary-stat" title="Mean item latency across all completed passes.">` +
+        `<span class="samples-summary-label">Avg latency</span>` +
+        `<strong class="samples-summary-value">${groupAvgLatency !== null ? formatLatency(groupAvgLatency) : pendingText('—')}</strong></span>`;
 
       // Pass rows in the parent table's own grid. Inherited context (task,
       // model, dataset, version, owner) is cloned from the parent row and
@@ -3703,7 +3697,7 @@
                   min="0" max="100" step="5" value="${thrPct}" aria-label="Pass threshold">
                 <span class="threshold-value">${thrPct}%</span>
               </span>
-              <div class="samples-summary-grid qym-stat-strip">
+              <div class="samples-summary-grid">
               ${stat(passAtLabel, group.pass_at_k, reportK
                 ? `Estimated chance that at least one of ${reportK} attempts scores ≥${thrPct}% — the unbiased pass@${reportK} computed from all ${k} stored passes.`
                 : `% of items where at least one of the ${k} passes scored ≥${thrPct}%.`)}

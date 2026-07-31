@@ -31,11 +31,6 @@
   --accent-tertiary: #a855f7;
   --accent-tertiary-soft: #c084fc;
 
-  /* Integration brands */
-  --brand-langfuse: #ff5d5f;
-  --brand-langfuse-surface: rgba(255, 93, 95, 0.14);
-  --brand-langfuse-surface-hover: rgba(255, 93, 95, 0.22);
-
   /* Semantic colors */
   --success: #10b981;
   --success-dim: #064e3b;
@@ -3331,20 +3326,6 @@ body.chart-col-resize-active {
   margin-right: 4px;
 }
 
-/* Langfuse text button in run rows */
-.runs-table .action-btn {
-  display: inline-block;
-  text-decoration: none;
-  font-size: var(--font-sm);
-  font-weight: 600;
-  padding: 4px 10px;
-  border-radius: 4px;
-  transition: all 0.15s;
-  margin-right: 8px;
-  vertical-align: middle;
-}
-
-
 /* Icon buttons for actions */
 .action-icon {
   display: inline-flex;
@@ -3357,59 +3338,6 @@ body.chart-col-resize-active {
   text-decoration: none;
   vertical-align: middle;
   font-size: var(--font-xs);
-}
-
-/* Langfuse icon */
-.action-icon.langfuse-icon {
-  background: transparent;
-}
-
-.action-icon.langfuse-icon:hover {
-  background: transparent;
-  opacity: 0.8;
-}
-
-/* Submit icon - green */
-.action-icon.submit-run {
-  color: var(--accent-primary);
-  background: rgba(0, 212, 170, 0.1);
-}
-
-.action-icon.submit-run:hover {
-  background: rgba(0, 212, 170, 0.2);
-}
-
-/* Approve icon - green */
-.action-icon.approve-run {
-  color: var(--accent-primary);
-  background: rgba(0, 212, 170, 0.1);
-}
-
-.action-icon.approve-run:hover {
-  background: rgba(0, 212, 170, 0.2);
-  color: var(--accent-primary);
-}
-
-/* Reject icon - red */
-.action-icon.reject-run {
-  color: var(--error);
-  background: rgba(239, 68, 68, 0.1);
-}
-
-.action-icon.reject-run:hover {
-  background: rgba(239, 68, 68, 0.2);
-  color: var(--error);
-}
-
-/* Delete icon - red */
-.action-icon.delete-run {
-  color: var(--error);
-  background: rgba(239, 68, 68, 0.1);
-}
-
-.action-icon.delete-run:hover {
-  background: rgba(239, 68, 68, 0.2);
-  color: var(--error);
 }
 
 /* Actions Dropdown Menu */
@@ -3491,14 +3419,6 @@ body.chart-col-resize-active {
 
 .actions-item svg {
   flex-shrink: 0;
-}
-
-.actions-item.langfuse-item {
-  color: var(--text-secondary);
-}
-
-.actions-item.langfuse-item:hover {
-  color: var(--text-primary);
 }
 
 .actions-item.approve {

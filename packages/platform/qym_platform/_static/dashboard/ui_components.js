@@ -14,6 +14,9 @@
   var dropdownId = 0;
   var helpPortal = null;
   var helpPortalMarker = null;
+  var segmentResizeObservers = new WeakMap();
+  var segmentSyncFrames = new WeakMap();
+  var segmentPositions = new Map();
   var PAGINATION_ICONS = {
     first: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m11 17-5-5 5-5"/><path d="m18 17-5-5 5-5"/></svg>',
     prev: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>',
@@ -300,6 +303,35 @@
     });
   }
 
+  function segmentedHistoryKey(segmented) {
+    var explicitKey = segmented.getAttribute('data-qym-segmented-key');
+    if (explicitKey) return explicitKey;
+    if (segmented.id) return 'id:' + segmented.id;
+    return '';
+  }
+
+  function scheduleSegmentedSync(segmented, frames) {
+    if (!segmented || !segmented.matches || !segmented.matches('.qym-segmented')) return;
+    if (segmentSyncFrames.has(segmented)) return;
+    var remainingFrames = Math.max(1, Number(frames) || 1);
+    var schedule = window.requestAnimationFrame || function (callback) {
+      return window.setTimeout(callback, 0);
+    };
+    var run = function () {
+      if (remainingFrames > 1) {
+        remainingFrames -= 1;
+        // Commit the restored position before changing it to the new active
+        // option so replacement renders retain the indicator's motion.
+        void segmented.offsetWidth;
+        segmentSyncFrames.set(segmented, schedule(run));
+        return;
+      }
+      segmentSyncFrames.delete(segmented);
+      syncSegmented(segmented);
+    };
+    segmentSyncFrames.set(segmented, schedule(run));
+  }
+
   function syncSegmented(segmented) {
     if (!segmented || !segmented.matches('.qym-segmented')) return;
     var options = directSegmentOptions(segmented);
@@ -321,15 +353,60 @@
       segmented.style.setProperty('--qym-segment-width', nextWidth);
     }
     segmented.classList.add('qym-segmented--ready');
+    var historyKey = segmentedHistoryKey(segmented);
+    if (historyKey) {
+      segmentPositions.set(historyKey, { x: nextX, width: nextWidth });
+    }
+  }
+
+  function observeSegmented(segmented) {
+    if (!window.ResizeObserver) return;
+    var observer = segmentResizeObservers.get(segmented);
+    if (!observer) {
+      observer = new ResizeObserver(function (entries) {
+        entries.forEach(function (entry) {
+          var target = entry.target.closest && entry.target.closest('.qym-segmented');
+          scheduleSegmentedSync(target || segmented);
+        });
+      });
+      segmentResizeObservers.set(segmented, observer);
+      observer.observe(segmented);
+    }
+    directSegmentOptions(segmented).forEach(function (option) {
+      observer.observe(option);
+    });
+  }
+
+  function cleanupSegmented(root) {
+    if (!root || !root.querySelectorAll) return;
+    var segments = [];
+    if (root.matches && root.matches('.qym-segmented')) segments.push(root);
+    root.querySelectorAll('.qym-segmented').forEach(function (segmented) {
+      segments.push(segmented);
+    });
+    segments.forEach(function (segmented) {
+      var observer = segmentResizeObservers.get(segmented);
+      if (!observer) return;
+      observer.disconnect();
+      segmentResizeObservers.delete(segmented);
+    });
   }
 
   function setupSegmented(segmented) {
-    if (!segmented || segmented.dataset.qymSegmentedReady === 'true') {
-      syncSegmented(segmented);
-      return;
-    }
+    if (!segmented || !segmented.matches || !segmented.matches('.qym-segmented')) return;
+    var isNew = segmented.dataset.qymSegmentedReady !== 'true';
     segmented.dataset.qymSegmentedReady = 'true';
-    syncSegmented(segmented);
+    var historyKey = segmentedHistoryKey(segmented);
+    var previous = isNew && historyKey ? segmentPositions.get(historyKey) : null;
+    if (previous) {
+      segmented.style.setProperty('--qym-segment-x', previous.x);
+      segmented.style.setProperty('--qym-segment-width', previous.width);
+      segmented.classList.add('qym-segmented--ready');
+      scheduleSegmentedSync(segmented, 2);
+    } else {
+      syncSegmented(segmented);
+    }
+    observeSegmented(segmented);
   }
 
   function ensureDropdownButton(button) {
@@ -421,7 +498,7 @@
     var option = event.target.closest('.qym-segmented__option');
     if (!option) return;
     var segmented = option.closest('.qym-segmented');
-    window.setTimeout(function () { syncSegmented(segmented); }, 0);
+    window.setTimeout(function () { scheduleSegmentedSync(segmented); }, 0);
   });
 
   document.addEventListener('click', function () {
@@ -498,7 +575,7 @@
   }
 
   function syncAllSegmented() {
-    document.querySelectorAll('.qym-segmented').forEach(syncSegmented);
+    document.querySelectorAll('.qym-segmented').forEach(scheduleSegmentedSync);
   }
 
   window.addEventListener('resize', dismissHelpOnViewportChange);
@@ -511,13 +588,17 @@
     var observer = new MutationObserver(function (records) {
       records.forEach(function (record) {
         if (record.type === 'childList') {
+          record.removedNodes.forEach(function (node) {
+            if (node.nodeType === 1) cleanupSegmented(node);
+          });
           record.addedNodes.forEach(function (node) {
             if (node.nodeType === 1) refresh(node);
           });
           syncTablist(record.target.closest && record.target.closest('.qym-tabs[role="tablist"]'));
-          syncSegmented(record.target.closest && record.target.closest('.qym-segmented'));
+          setupSegmented(record.target.closest && record.target.closest('.qym-segmented'));
         } else if (record.target.closest) {
           syncTablist(record.target.closest('.qym-tabs[role="tablist"]'));
+          scheduleSegmentedSync(record.target.closest('.qym-segmented'));
           if (record.target.matches('.multi-select-dropdown, .qym-dropdown')) {
             var wrapper = record.target.closest('.multi-select-wrapper');
             ensureDropdownButton(wrapper && wrapper.querySelector('.multi-select-btn'));

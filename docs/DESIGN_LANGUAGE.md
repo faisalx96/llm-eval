@@ -159,8 +159,10 @@ In-place view, metric, repeat, and time switching uses `.qym-segmented` +
 `.qym-segmented__option`. The complete segmented control is 24px high so it
 aligns with adjacent selectors; options fill its inset content box, and only
 the selected option has a Qym-green background. Shared behavior moves one
-sliding selection indicator between options and disables that motion when the
-user prefers reduced motion; pages must not add page-local selection animation.
+sliding selection indicator between options, preserves the prior position across
+keyed re-renders, re-measures controls after async content or visibility
+changes, and disables that motion when the user prefers reduced motion; pages
+must not add page-local selection animation.
 
 ### Badges, tags, and chips
 Status and outcome labels use `.qym-badge`: 20px minimum height, fully rounded,
@@ -200,6 +202,9 @@ Primary summary bands use `.qym-stat-strip` with `.qym-stat-strip__item`,
 `__label`, and `__value`. The strip owns the outer border; equal cells have
 dividers and no individual card borders. Labels are 13px/650 with extra vertical
 space before 18px/700 mono values. Tiny card-footer metadata is not a stat strip.
+The Runs-table repeat-run **Group metrics** header is also not a stat strip: it
+is a compact inline summary within a table group row and intentionally keeps the
+`.samples-summary-*` recipe without `qym-stat-strip` classes.
 When a connected summary accompanies a section heading, use the compact header
 variant: one 34px row, with each icon, label, and value inline. It should match
 the heading block's visual height rather than compete with the section content.

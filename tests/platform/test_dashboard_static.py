@@ -113,7 +113,9 @@ def test_repeat_drawer_follows_mock_option_c() -> None:
     # platform's inline threshold slider (not a static trailing value) and
     # an item-weighted avg-latency stat
     assert "`% of items where at least one of the ${k} passes" in source
-    assert 'class="samples-summary-grid qym-stat-strip"' in source
+    assert 'class="samples-summary-grid"' in source
+    assert "samples-summary-grid qym-stat-strip" not in source
+    assert "samples-summary-stat qym-stat-strip__item" not in source
     assert 'class="threshold-slider-inline samples-threshold-slider"' in source
     assert 'class="samples-metric-select"' in source
     assert source.index('class="samples-metric-select"') < source.index(
@@ -129,7 +131,7 @@ def test_repeat_drawer_follows_mock_option_c() -> None:
     assert "font-size: var(--font-sm);" in metric_select_rule
     assert "line-height: 1;" in metric_select_rule
     assert source.index("samples-threshold-slider") < source.index(
-        'class="samples-summary-grid qym-stat-strip"'
+        'class="samples-summary-grid"'
     )
     assert ">Avg latency</span>" in source
     assert "${latencyStat}" in source
@@ -272,11 +274,24 @@ def test_repeat_run_analysis_uses_shared_visual_language() -> None:
     assert 'class="model-stat-box qym-stat-strip__item"' in source
     assert 'class="samples-group-tiles qym-stat-strip"' in source
     assert 'class="samples-correct-chart"' in source
+    assert 'role="button" tabindex="0" aria-label="' in repeat_analysis
+    assert "data-repeat-distribution-bucket" in repeat_analysis
+    assert "applyRepeatDistributionFilter" in repeat_analysis
+    assert "state.repeatDistFilter = { metric, bucket, samples, threshold };" in repeat_analysis
+    assert "getRepeatDistributionBucket" in source
+    assert "state.repeatDistFilter = null;" in source
     assert "if (samplesCount <= 10)" in source
     assert "Array.from({ length: 11 }" in source
     assert 'class="samples-metric-tabs qym-segmented" role="group"' in source
+    assert 'data-qym-segmented-key="repeat-metric"' in source
     assert "state.samplesMetric = nextMetric;" in source
     assert 'class="threshold-control samples-repeat-threshold"' in source
+    metric_row = source.split("'<div class=\"samples-metric-row\">' +", 1)[1].split(
+        "'<div class=\"samples-group-tiles", 1
+    )[0]
+    assert metric_row.index("'<div class=\"samples-metric-tabs qym-segmented\"") < metric_row.index(
+        "thresholdControlHtml +"
+    )
     assert "justify-content: flex-start;" in _rule(source, ".samples-metric-row {")
     assert ".samples-repeat-threshold {" not in source
     assert 'data-samples-threshold min="0" max="100" step="5"' in source
@@ -428,6 +443,10 @@ def test_repeat_run_analysis_uses_shared_visual_language() -> None:
     assert "height: 260px;" in _rule(source, ".samples-curve {")
     assert "height: 230px;" in _rule(source, ".samples-correct-chart {")
     assert "border-bottom:" not in _rule(source, ".samples-correct-chart {")
+    distribution_col_rule = _rule(source, ".samples-correct-col {")
+    assert "cursor: pointer;" in distribution_col_rule
+    assert "transition: opacity 0.15s, transform 0.15s;" in distribution_col_rule
+    assert ".samples-correct-col:hover" in source
     distribution_panel_rule = _rule(source, ".samples-distribution-panel {")
     assert "display: flex;" in distribution_panel_rule
     assert "flex-direction: column;" in distribution_panel_rule
@@ -463,6 +482,14 @@ def test_repeat_run_analysis_uses_shared_visual_language() -> None:
     assert 'stabilityMapHtml = \'<div class="ri-panel half"' in repeat_analysis
     assert "metric_cis" not in dashboard_js
     assert "metric-ci" not in dashboard_js
+
+
+def test_repeat_run_latency_columns_round_to_whole_seconds() -> None:
+    source = (DASHBOARD_DIR / "run.html").read_text(encoding="utf-8")
+
+    assert "const latCell = v =>" in source
+    assert "Math.round(v / 1000) + 's'" in source
+    assert ".toFixed(2) + 's'" not in source
 
 
 def test_shared_latency_formatter_normalizes_minute_rollover() -> None:
@@ -975,7 +1002,6 @@ def test_switchers_use_pressed_state_and_refresh_visual_selection() -> None:
 
 def test_run_header_status_and_actions_share_one_height() -> None:
     run = (DASHBOARD_DIR / "run.html").read_text(encoding="utf-8")
-    dashboard_css = (DASHBOARD_DIR / "dashboard.css").read_text(encoding="utf-8")
     components = (DASHBOARD_DIR / "ui_components.css").read_text(encoding="utf-8")
 
     assert (
@@ -986,20 +1012,15 @@ def test_run_header_status_and_actions_share_one_height() -> None:
         'class="qym-inline-action qym-inline-action--accent" '
         'id="export-share-btn"'
     ) in run
-    assert 'class="qym-inline-action qym-inline-action--langfuse"' in run
+    assert "qym-inline-action--langfuse" not in run
+    assert "View in Langfuse" not in run
+    assert "langfuseChip" not in run
     assert "export-html-btn" not in run
     assert "hero-link-btn" not in run
-    assert "--brand-langfuse: #ff5d5f;" in dashboard_css
-    langfuse_action = components.rsplit(
-        ".qym-inline-action.qym-inline-action--langfuse {", 1
-    )[1].split("}", 1)[0]
     assert (
-        ".qym-inline-action.qym-inline-action--accent,\n"
-        ".qym-inline-action.qym-inline-action--langfuse {"
+        ".qym-inline-action.qym-inline-action--neutral,\n"
+        ".qym-inline-action.qym-inline-action--accent {"
     ) in components
-    assert "border: 0;" in langfuse_action
-    assert "background: var(--brand-langfuse-surface);" in langfuse_action
-    assert "color: var(--brand-langfuse);" in langfuse_action
     aligned_cluster = run.split(
         ".hero-right .hero-status.qym-badge,\n"
         "    .hero-actions > .qym-inline-action {",
@@ -1014,6 +1035,61 @@ def test_run_header_status_and_actions_share_one_height() -> None:
         "padding-bottom: 0;",
     ):
         assert contract in aligned_cluster
+
+
+def test_langfuse_ctas_are_removed_from_all_user_surfaces() -> None:
+    surfaces = [
+        DASHBOARD_JS,
+        DASHBOARD_DIR / "compare.html",
+        DASHBOARD_DIR / "run.html",
+        DASHBOARD_DIR / "ui_components.css",
+        DASHBOARD_DIR / "dashboard.css",
+        ROOT / "packages" / "platform" / "qym_platform" / "_static" / "ui" / "index.html",
+        ROOT / "packages" / "platform" / "qym_platform" / "_static" / "ui" / "app.js",
+        ROOT / "packages" / "sdk" / "qym" / "_static" / "ui" / "index.html",
+        ROOT / "packages" / "sdk" / "qym" / "_static" / "ui" / "app.js",
+    ]
+    forbidden = (
+        "View in Langfuse",
+        "Open in Langfuse",
+        "qym-inline-action--langfuse",
+        "langfuseChip",
+        "langfuse-icon",
+        "brand-langfuse",
+    )
+    for path in surfaces:
+        source = path.read_text(encoding="utf-8")
+        for token in forbidden:
+            assert token not in source, f"{token!r} remains in {path.name}"
+
+    # Old payload fields remain accepted for migration, but are not rendered as CTAs.
+    for path in (DASHBOARD_DIR / "compare.html", DASHBOARD_DIR / "run.html"):
+        assert "langfuse_host" in path.read_text(encoding="utf-8")
+
+
+def test_semantic_quick_actions_keep_shared_surface_and_hover_states() -> None:
+    components = (DASHBOARD_DIR / "ui_components.css").read_text(encoding="utf-8")
+
+    accent = components.split(
+        ".action-icon:is(.submit-run, .approve-run),\n.actions-trigger.workflow-trigger {",
+        1,
+    )[1].split("}", 1)[0]
+    accent_hover = components.split(
+        ".action-icon:is(.submit-run, .approve-run):hover,", 1
+    )[1].split("}", 1)[0]
+    danger = components.split(
+        ".action-icon:is(.reject-run, .delete-run) {", 1
+    )[1].split("}", 1)[0]
+    danger_hover = components.split(
+        ".action-icon:is(.reject-run, .delete-run):is(:hover, :focus-visible) {",
+        1,
+    )[1].split("}", 1)[0]
+
+    assert "background: rgba(0, 212, 170, 0.1);" in accent
+    assert "background: rgba(0, 212, 170, 0.2);" in accent_hover
+    assert "background: rgba(239, 68, 68, 0.1);" in danger
+    assert "background: rgba(239, 68, 68, 0.2);" in danger_hover
+    assert "background-color 0.15s ease" in components
 
 
 def test_item_table_toolbar_actions_use_shared_inline_action_variants() -> None:
@@ -1034,8 +1110,7 @@ def test_item_table_toolbar_actions_use_shared_inline_action_variants() -> None:
 
     shared_actions = components.split(
         ".qym-inline-action.qym-inline-action--neutral,\n"
-        ".qym-inline-action.qym-inline-action--accent,\n"
-        ".qym-inline-action.qym-inline-action--langfuse {",
+        ".qym-inline-action.qym-inline-action--accent {",
         1,
     )[1].split("}", 1)[0]
     for contract in (
@@ -1052,6 +1127,12 @@ def test_item_table_toolbar_actions_use_shared_inline_action_variants() -> None:
 
 def test_compare_view_uses_current_run_detail_component_contracts() -> None:
     compare = (DASHBOARD_DIR / "compare.html").read_text(encoding="utf-8")
+    overview_controls = compare.split('<div class="comparison-overview-heading">', 1)[1].split(
+        '<div class="comparison-stats"', 1
+    )[0]
+    assert overview_controls.index('id="threshold-control"') < overview_controls.index(
+        'id="overview-metric-tabs"'
+    )
 
     assert '<h1 class="compare-title">Compare Runs</h1>' in compare
     assert 'id="compare-subtitle"' in compare
@@ -1066,8 +1147,11 @@ def test_compare_view_uses_current_run_detail_component_contracts() -> None:
     assert 'class="metric-value-cell"' in compare
     assert "metric-val qym-score-value" in compare
     assert "metric-run-heading" in compare
+    assert "table-layout: fixed;" in compare
+    assert "width: 18%;" in compare
+    assert "display: flex;" in compare.split(".metric-run-heading {", 1)[1].split("}", 1)[0]
     assert "const isBest = mType !== 'numeric'" in compare
-    assert "text-align: right;" in compare.split(
+    assert "text-align: center;" in compare.split(
         ".metrics-table.qdt-table th:not(:first-child),", 1
     )[1].split("}", 1)[0]
 
@@ -1090,10 +1174,8 @@ def test_compare_view_uses_current_run_detail_component_contracts() -> None:
         'id="items-search" class="qym-control qym-search"'
         in compare
     )
-    assert (
-        'class="filter-count qym-tag qym-tag--count" id="filter-count"'
-        in compare
-    )
+    assert 'class="filter-count" id="filter-count"' in compare
+    assert 'class="filter-count qym-tag qym-tag--count"' not in compare
     assert (
         "metadata-fields-btn multi-select-btn qym-inline-action "
         "qym-inline-action--neutral"
@@ -1108,12 +1190,82 @@ def test_compare_view_uses_current_run_detail_component_contracts() -> None:
         "qym-badge--danger",
         "qym-badge--warning",
         "qym-badge--neutral",
-        "qym-inline-action--langfuse",
-        "compare-run-remove qym-inline-action qym-inline-action--neutral",
+        "compare-run-remove qym-icon-action",
         "sweep-table qdt-table",
         "sweep-metadata-table qdt-table",
     ):
         assert contract in compare
+    assert 'class="compare-run-link langfuse' not in compare
+    assert "langfuseChip" not in compare
+
+
+def test_compare_category_breakdown_matches_run_detail_component() -> None:
+    compare = (DASHBOARD_DIR / "compare.html").read_text(encoding="utf-8")
+    breakdown = compare.split("function renderMetadataBreakdown()", 1)[1].split(
+        "function wireChipClicks", 1
+    )[0]
+
+    assert "categoryBreakdownView: 'cards'" in compare
+    assert "categoryCompareKey: null" in compare
+    assert 'data-category-view="cards"' in breakdown
+    assert 'data-category-view="compare"' in breakdown
+    assert 'class="comparison-stats metadata-breakdown-content"' in breakdown
+    assert "Overall metric average score" in breakdown
+    assert "categoryScoreTrack(group.avgScore, overallAverage)" in breakdown
+    assert 'class="category-compare-row"' in breakdown
+    assert '<span class="score-col-label">Average</span>' in breakdown
+    assert '<span class="score-col-label">Items</span>' in breakdown
+    assert '<span class="score-col-label">Latency</span>' in breakdown
+    assert "Avg@" not in breakdown
+    assert "Pass@" not in breakdown
+    assert "Consistency" not in breakdown
+    assert "#metadata-breakdown > .comparison-stats" not in compare
+
+
+def test_category_cards_hug_the_latency_column() -> None:
+    for page in ("run.html", "compare.html"):
+        source = (DASHBOARD_DIR / page).read_text(encoding="utf-8")
+        card_rule = _rule(source, ".breakdown-card {")
+        assert "width: fit-content;" in card_rule
+        assert "min-width: 220px;" not in card_rule
+
+
+def test_clear_filter_control_has_aligned_label_and_soft_count_pill() -> None:
+    components = (DASHBOARD_DIR / "ui_components.css").read_text(encoding="utf-8")
+    aligned_content = _rule(
+        components,
+        ":is(.fp-clear-btn, .clear-filters-btn, .btn-clear-filters)\n"
+        "  :is(.fp-clear-label, .clear-filters-label) {",
+    )
+    count_pill = _rule(
+        components,
+        ":is(.filter-count-badge.filter-count-badge, .fp-clear-count.fp-clear-count) {",
+    )
+
+    for page in ("run.html", "compare.html"):
+        source = (DASHBOARD_DIR / page).read_text(encoding="utf-8")
+        assert '<span class="fp-clear-label">Clear</span>' in source
+        assert '<svg class="fp-clear-x" viewBox="0 0 12 12"' in source
+
+    for page in ("index.html", "models.html", "charts.html"):
+        source = (DASHBOARD_DIR / page).read_text(encoding="utf-8")
+        assert '<span class="clear-filters-label">Clear</span>' in source
+        assert '<svg class="clear-filters-x" viewBox="0 0 12 12"' in source
+
+    reviews = (DASHBOARD_DIR / "reviews.html").read_text(encoding="utf-8")
+    assert '<span class="clear-filters-label">Clear filters</span>' in reviews
+    assert '<svg class="clear-filters-x" viewBox="0 0 12 12"' in reviews
+
+    assert "display: inline-flex;" in aligned_content
+    assert "align-items: center;" in aligned_content
+    assert "border-radius: 999px;" in count_pill
+    assert "background: rgba(239, 68, 68, 0.14);" in count_pill
+    assert "font-family: var(--font-mono);" in components
+
+    for page in DASHBOARD_DIR.glob("*.html"):
+        source = page.read_text(encoding="utf-8")
+        if "ui_components.css?v=" in source:
+            assert "ui_components.css?v=ui-consistency-20260730-32" in source
 
 
 def test_operational_statistics_use_connected_strip_contract() -> None:
@@ -1122,11 +1274,10 @@ def test_operational_statistics_use_connected_strip_contract() -> None:
     datasets = (DASHBOARD_DIR / "datasets.html").read_text(encoding="utf-8")
     run = (DASHBOARD_DIR / "run.html").read_text(encoding="utf-8")
 
-    for contract in (
-        "samples-summary-grid qym-stat-strip",
-        "samples-summary-stat qym-stat-strip__item",
-    ):
-        assert contract in dashboard
+    assert 'class="samples-summary-grid"' in dashboard
+    assert 'class="samples-summary-stat"' in dashboard
+    assert "samples-summary-grid qym-stat-strip" not in dashboard
+    assert "samples-summary-stat qym-stat-strip__item" not in dashboard
     assert 'class="model-stats-grid"' in dashboard
     assert 'class="model-stat-item"' in dashboard
     assert "model-stats-grid qym-stat-strip" not in dashboard
@@ -1163,6 +1314,50 @@ def test_operational_statistics_use_connected_strip_contract() -> None:
     ):
         assert contract in run
     assert "overview-summary-text" not in run
+    assert "compare-run-summary-strip.compare-run-summary-strip.qym-stat-strip" in compare
+    assert "grid-template-columns: repeat(3, max-content);" in compare
+    assert "justify-content: space-between;" in compare.split(
+        ".compare-run-summary-strip.compare-run-summary-strip.qym-stat-strip {", 1
+    )[1].split("}", 1)[0]
+    assert "width: 100%;" in compare.split(
+        ".compare-run-summary-strip.compare-run-summary-strip.qym-stat-strip {", 1
+    )[1].split("}", 1)[0]
+    assert "overflow: visible;" in compare.split(
+        ".compare-run-summary-strip.compare-run-summary-strip.qym-stat-strip {", 1
+    )[1].split("}", 1)[0]
+    assert "background: transparent;" in compare.split(
+        ".compare-run-summary-strip.compare-run-summary-strip.qym-stat-strip {", 1
+    )[1].split("}", 1)[0]
+    assert "border: 0;" in compare.split(
+        ".compare-run-summary-strip.compare-run-summary-strip.qym-stat-strip {", 1
+    )[1].split("}", 1)[0]
+    assert ".compare-run-summary-strip.compare-run-summary-strip > .compare-run-summary-pill.compare-run-summary-pill.qym-stat-strip__item" in compare
+    assert "justify-content: flex-start;" in compare.split(
+        ".compare-run-summary-strip.compare-run-summary-strip > .compare-run-summary-pill.compare-run-summary-pill.qym-stat-strip__item", 1
+    )[1].split("}", 1)[0]
+    assert 'class="compare-run-title-line"' in compare
+    card_template = compare.split('<div class="compare-run-card"', 1)[1].split('</div>', 1)[0]
+    assert "compare-run-title-line" in card_template
+    assert 'class="compare-run-summary-strip qym-stat-strip"' in compare
+    assert compare.index('${summaryHtml}', compare.index('class="compare-run-card"')) < compare.index('class="compare-run-meta-grid"', compare.index('class="compare-run-card"'))
+    assert ".compare-run-summary-strip.compare-run-summary-strip > .compare-run-summary-pill .compare-run-summary-value" in compare
+    summary_builder = compare.split("function renderSummaries()", 1)[1].split(
+        "function renderMetricsTable()", 1
+    )[0]
+    assert "compare-run-link langfuse" not in summary_builder
+    assert "compare-run-remove qym-icon-action" in summary_builder
+    assert 'aria-label="Remove from comparison"' in summary_builder
+    assert 'class="compare-run-remove-icon"' in summary_builder
+    assert "e.currentTarget.dataset.idx" in summary_builder
+    remove_button = _rule(compare, ".compare-run-remove.compare-run-remove {")
+    for contract in (
+        "position: absolute;",
+        "top: 10px;",
+        "right: 10px;",
+        "background: rgba(239, 68, 68, 0.1);",
+        "color: #f87171;",
+    ):
+        assert contract in remove_button
     assert "grid-template-columns: repeat(3, max-content);" in run
     assert "flex: 0 0 auto;" in run
     assert "width: auto;" in run
@@ -1278,9 +1473,20 @@ def test_shared_segmented_controls_use_one_motion_indicator() -> None:
     assert "cubic-bezier(0.16, 1, 0.3, 1)" in components
     assert "@media (prefers-reduced-motion: reduce)" in components
     assert "function syncSegmented(segmented)" in behavior
+    assert "function scheduleSegmentedSync(segmented, frames)" in behavior
+    assert "function observeSegmented(segmented)" in behavior
+    assert "function cleanupSegmented(root)" in behavior
+    assert "function segmentedHistoryKey(segmented)" in behavior
+    assert "var segmentPositions = new Map();" in behavior
+    assert "new ResizeObserver" in behavior
     assert "active.offsetLeft + 'px'" in behavior
     assert "active.offsetWidth + 'px'" in behavior
+    assert "setupSegmented(record.target.closest && record.target.closest('.qym-segmented'))" in behavior
+    assert "scheduleSegmentedSync(record.target.closest('.qym-segmented'))" in behavior
+    assert "record.removedNodes.forEach" in behavior
     assert "attributeFilter: ['aria-selected', 'aria-pressed', 'class']" in behavior
+    assert "background-color 0.24s cubic-bezier(0.16, 1, 0.3, 1)" in components
+    assert ".qym-segmented.qym-segmented--ready > :is(" in components
 
 
 def test_flat_tags_and_shared_icon_actions_are_used_without_flattening_statuses() -> None:
@@ -1411,6 +1617,28 @@ def test_error_filter_cards_match_page_hover_and_keyboard_states() -> None:
         ):
             assert contract in error_styles
         assert "background: var(--bg-hover)" not in error_styles
+
+        if name == "compare.html":
+            surface_rule = source.split(
+                "/* Error Distribution cards use the same analysis surface as run detail. */",
+                1,
+            )[1].split("}", 1)[0]
+            assert "background: var(--bg-surface);" in surface_rule
+            assert "border-radius: 10px;" in surface_rule
+            assert "padding: 10px 12px;" in surface_rule
+            assert "gap: 2px;" in surface_rule
+            assert "min-height: 0;" in surface_rule
+            hover_rule = source.split(
+                ".breakdown-errors .error-card:hover {", 1
+            )[1].split("}", 1)[0]
+            assert "border-top-color: var(--border-strong);" in hover_rule
+            assert "box-shadow: 0 2px 16px rgba(0, 0, 0, 0.12);" in hover_rule
+            empty_state_rule = source.split(
+                ".category-empty-state,\n    .section-empty-state {", 1
+            )[1].split("}", 1)[0]
+            assert "min-height: 80px;" in empty_state_rule
+            assert "background: var(--bg-elevated);" not in empty_state_rule
+            assert "border: 1px dashed var(--border-subtle);" not in empty_state_rule
 
         assert (
             '" role="button" tabindex="0" aria-pressed="'
@@ -1639,6 +1867,7 @@ def test_data_pagination_uses_one_shared_first_last_control() -> None:
     assert 'class="pagination qym-pagination" id="pagination"' in run
     run_filter_panel = run.split('<div class="filter-panel">', 1)[1].split('<div class="items-grid" id="items-grid">', 1)[0]
     assert 'id="pagination"' not in run_filter_panel
+    assert ".items-comparison {\n      margin-bottom: var(--space-xl);\n    }" in run
     assert "renderPagination(paginationEl, {" in run
     assert "onPageChange: page =>" in run
     assert "function scrollItemByItemToTop()" in run
@@ -1651,7 +1880,8 @@ def test_data_pagination_uses_one_shared_first_last_control() -> None:
     assert "paginationEls" not in compare
     assert 'class="pagination qym-pagination" id="pagination"' in compare
     compare_filter_panel = compare.split('<div class="filter-panel">', 1)[1].split('<div class="items-grid" id="items-grid">', 1)[0]
-    assert '<div class="pagination qym-pagination" id="pagination"' in compare_filter_panel
+    assert '<div class="pagination qym-pagination" id="pagination"' not in compare_filter_panel
+    assert '<div class="items-grid" id="items-grid"></div>\n          <div class="pagination qym-pagination" id="pagination"' in compare
     assert "renderPagination(paginationEl, {" in compare
     assert "function scrollItemByItemToTop()" in compare
     assert "requestAnimationFrame(scrollItemByItemToTop);" in compare

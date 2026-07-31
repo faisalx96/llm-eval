@@ -968,6 +968,7 @@
       flex-direction: column;
       align-items: stretch;
       gap: 10px;
+      padding-right: calc(var(--control-height) + var(--space-sm));
       margin-bottom: 12px;
     }
 
@@ -991,6 +992,45 @@
     .compare-run-title-block {
       min-width: 0;
       flex: 1;
+    }
+
+    .compare-run-title-line {
+      line-height: 1.25;
+    }
+
+    .compare-run-title-line .compare-run-status {
+      margin-left: var(--space-sm);
+      vertical-align: middle;
+    }
+
+    .compare-run-remove.compare-run-remove {
+      position: absolute;
+      z-index: 2;
+      top: 10px;
+      right: 10px;
+      background: rgba(239, 68, 68, 0.1);
+      color: #f87171;
+    }
+
+    .compare-run-remove.compare-run-remove:is(:hover, :focus-visible) {
+      background: rgba(239, 68, 68, 0.2);
+      color: #fca5a5;
+      box-shadow: none;
+    }
+
+    .compare-run-remove.compare-run-remove:focus-visible {
+      outline: 2px solid rgba(248, 113, 113, 0.65);
+      outline-offset: 2px;
+    }
+
+    .compare-run-remove-icon {
+      width: 14px;
+      height: 14px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 2;
+      stroke-linecap: round;
+      vector-effect: non-scaling-stroke;
     }
 
     .compare-run-title {
@@ -1066,28 +1106,6 @@
     .compare-run-status.failed .compare-run-status-dot {
       background: var(--error);
       box-shadow: 0 0 8px rgba(239, 68, 68, 0.45);
-    }
-
-    .compare-run-remove {
-      display: inline-flex;
-      align-items: center;
-      gap: 5px;
-      padding: 5px 9px;
-      background: transparent;
-      border: 1px solid var(--border-default);
-      border-radius: var(--radius-md);
-      color: var(--text-muted);
-      font-size: var(--font-xs);
-      font-family: var(--font-sans);
-      cursor: pointer;
-      transition: all 0.15s;
-      white-space: nowrap;
-    }
-
-    .compare-run-remove:hover {
-      background: var(--error-dim);
-      border-color: rgba(239, 68, 68, 0.28);
-      color: #f87171;
     }
 
     .compare-run-meta-grid {
@@ -1261,40 +1279,6 @@
       overflow: hidden;
       text-overflow: ellipsis;
       line-height: 1.3;
-    }
-
-    .compare-run-link {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      padding: 5px 10px;
-      border-radius: var(--radius-md);
-      border: 1px solid var(--border-default);
-      color: var(--text-primary);
-      background: var(--bg-elevated);
-      text-decoration: none;
-      font-size: var(--font-xs);
-      font-weight: 500;
-      line-height: 1;
-      transition: all 0.15s;
-      white-space: nowrap;
-    }
-
-    .compare-run-link:hover {
-      background: var(--bg-hover);
-      border-color: var(--border-strong);
-      transform: translateY(-1px);
-    }
-
-    .compare-run-link.langfuse {
-      color: #fb7185;
-      border-color: rgba(225, 29, 72, 0.28);
-      background: rgba(225, 29, 72, 0.08);
-    }
-
-    .compare-run-link.langfuse:hover {
-      background: rgba(225, 29, 72, 0.14);
-      border-color: rgba(225, 29, 72, 0.4);
     }
 
     /* Comparison Stats Section */
@@ -1498,16 +1482,177 @@
     .category-chip.selected .chip-count {
       opacity: 0.85;
     }
-    .category-empty-state {
-      text-align: center;
-      padding: var(--space-lg) var(--space-md);
+
+    .category-breakdown-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-md);
+      margin-bottom: var(--space-md);
+    }
+
+    .category-breakdown-toolbar .category-chip-bar {
+      flex: 1;
+      min-width: 0;
+      margin-bottom: 0;
+    }
+
+    .category-breakdown-controls {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: var(--space-sm);
+      flex-wrap: wrap;
+    }
+
+    .category-breakdown-view-toggle {
+      flex-shrink: 0;
+    }
+
+    .category-compare-tabs {
+      display: flex;
+      align-items: center;
+      gap: var(--space-xs);
+      margin-bottom: var(--space-md);
+      overflow-x: auto;
+    }
+
+    .category-compare-tab {
+      appearance: none;
+      border: 1px solid var(--border-default);
+      border-radius: 5px;
+      padding: var(--space-xs) var(--space-sm);
+      background: var(--bg-elevated);
+      color: var(--text-muted);
+      font-family: var(--font-sans);
+      font-size: var(--font-sm);
+      font-weight: 600;
+      white-space: nowrap;
+      cursor: pointer;
+    }
+
+    .category-compare-tab:hover {
+      color: var(--text-secondary);
+      background: var(--bg-hover);
+    }
+
+    .category-compare-tab.active {
+      color: var(--accent-primary);
+      background: var(--bg-active);
+      border-color: var(--border-strong);
+    }
+
+    .category-compare-scroll {
+      overflow-x: auto;
+      border: 1px solid var(--border-subtle);
+      border-radius: 6px;
+    }
+
+    .category-compare-head,
+    .category-compare-row {
+      display: grid;
+      grid-template-columns: minmax(140px, 1fr) minmax(220px, 3fr) 68px 54px 78px;
+      column-gap: var(--space-md);
+      align-items: center;
+      min-width: 680px;
+    }
+
+    .category-compare-head {
+      padding: var(--space-sm) var(--space-md);
+      background: var(--bg-elevated);
       color: var(--text-muted);
       font-size: var(--font-sm);
-      background: var(--bg-elevated);
-      border-radius: 8px;
-      border: 1px dashed var(--border-subtle);
+      font-weight: 650;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
     }
-    .category-empty-state strong {
+
+    .category-compare-head span:nth-child(2) { text-align: left; }
+    .category-compare-head span:nth-child(n + 3) { text-align: right; }
+
+    .category-compare-row {
+      appearance: none;
+      width: 100%;
+      min-height: 52px;
+      padding: 0 var(--space-md);
+      border: 0;
+      border-top: 1px solid var(--border-subtle);
+      background: var(--bg-surface);
+      color: var(--text-secondary);
+      font-family: var(--font-sans);
+      font-size: var(--font-base);
+      text-align: left;
+      cursor: pointer;
+    }
+
+    .category-compare-row:hover { background: var(--bg-hover); }
+
+    .category-compare-name {
+      overflow: hidden;
+      color: var(--text-primary);
+      font-weight: 600;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .category-compare-number {
+      text-align: right;
+      font-family: var(--font-mono);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .category-compare-number.muted { color: var(--text-muted); }
+
+    .category-baseline-note {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+      margin-top: var(--space-sm);
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+    }
+
+    .category-baseline-marker {
+      width: 2px;
+      height: 16px;
+      background: var(--text-secondary);
+    }
+
+    .category-baseline-score {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      height: var(--space-lg);
+      padding: 0 var(--space-sm);
+      border: 1px solid var(--category-average-color);
+      border-radius: 999px;
+      background: color-mix(in srgb, var(--category-average-color) 12%, transparent);
+      color: var(--category-average-color);
+      font-family: var(--font-mono);
+      font-size: var(--font-xs);
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .metadata-breakdown-content > .category-baseline-note {
+      margin: 0 0 var(--space-md);
+    }
+
+    .category-empty-state,
+    .section-empty-state {
+      text-align: center;
+      padding: 16px 24px;
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+      min-height: 80px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+    }
+    .category-empty-state strong,
+    .section-empty-state strong {
       display: block;
       color: var(--text-secondary);
       margin-bottom: 4px;
@@ -1565,20 +1710,25 @@
     }
 
     .breakdown-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      display: flex;
+      flex-wrap: wrap;
+      align-items: stretch;
       gap: var(--space-sm);
     }
 
     .breakdown-card {
-      background: var(--bg-elevated);
-      border-radius: 6px;
-      padding: var(--space-sm) var(--space-md);
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: 10px;
+      padding: 10px 12px;
       display: flex;
       flex-direction: column;
-      gap: 3px;
-      border: 1px solid var(--border-subtle);
-      transition: border-color 0.2s, box-shadow 0.2s;
+      gap: 2px;
+      transition: border-color 0.15s;
+      flex: 0 1 auto;
+      width: fit-content;
+      max-width: 100%;
+      min-height: 0;
     }
 
     .breakdown-card:hover {
@@ -1752,6 +1902,25 @@
       color: var(--text-muted);
       line-height: 1.35;
     }
+
+    /* Error Distribution cards use the same analysis surface as run detail. */
+    .breakdown-errors .error-card {
+      background: var(--bg-surface);
+      border-top-color: var(--border-default);
+      border-right-color: var(--border-default);
+      border-bottom-color: var(--border-default);
+      border-radius: 10px;
+      padding: 10px 12px;
+      gap: 2px;
+      min-height: 0;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .breakdown-errors .error-card:hover {
+      border-top-color: var(--border-strong);
+      border-right-color: var(--border-strong);
+      border-bottom-color: var(--border-strong);
+      box-shadow: 0 2px 16px rgba(0, 0, 0, 0.12);
+    }
     .breakdown-custom .breakdown-icon,
     .breakdown-custom .breakdown-header { color: #a78bfa; }
     .breakdown-custom .breakdown-card { border-left: 3px solid rgba(167, 139, 250, 0.3); }
@@ -1781,9 +1950,11 @@
     }
 
     .breakdown-card-scores {
-      display: flex;
-      gap: var(--space-md);
-      margin: 2px 0;
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, max-content));
+      column-gap: 16px;
+      row-gap: 0;
+      margin: 1px 0 0;
     }
     .breakdown-card-scores .score-col {
       display: flex;
@@ -1808,6 +1979,47 @@
     .breakdown-card-scores .score-col-value.score-3 { color: var(--score-3); }
     .breakdown-card-scores .score-col-value.score-2 { color: var(--score-2); }
     .breakdown-card-scores .score-col-value.score-1 { color: var(--score-1); }
+
+    .score-col-performance {
+      display: flex;
+      align-items: baseline;
+      gap: var(--space-xs);
+      flex-wrap: wrap;
+    }
+
+    .category-pass-track {
+      position: relative;
+      height: 8px;
+      margin-top: var(--space-xs);
+      border-radius: 4px;
+      background: var(--bg-elevated);
+      overflow: visible;
+    }
+
+    .category-compare-row .category-pass-track {
+      margin-top: 0;
+      background: var(--bg-elevated);
+    }
+
+    .category-pass-track.has-baseline::after {
+      content: '';
+      position: absolute;
+      z-index: 2;
+      top: -4px;
+      bottom: -4px;
+      left: var(--category-baseline);
+      width: 2px;
+      background: var(--text-secondary);
+      transform: translateX(-1px);
+    }
+
+    .category-pass-fill {
+      position: absolute;
+      inset: 0 auto 0 0;
+      width: var(--category-pass);
+      border-radius: 3px;
+      background: var(--category-pass-color);
+    }
 
     .breakdown-card-count {
       display: inline-flex;
@@ -1842,8 +2054,8 @@
 
     .breakdown-card-details {
       display: flex;
-      gap: var(--space-md);
-      margin-top: 2px;
+      gap: var(--space-sm);
+      margin-top: 0;
     }
 
     .breakdown-detail {
@@ -2280,6 +2492,15 @@
     }
 
     @media (max-width: 900px) {
+      .category-breakdown-toolbar {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+
+      .category-breakdown-controls {
+        justify-content: flex-start;
+      }
+
       .compare-summary {
         grid-template-columns: 1fr;
       }
@@ -2307,6 +2528,13 @@
     }
 
     @media (max-width: 760px) {
+      .breakdown-grid {
+        flex-direction: column;
+      }
+      .breakdown-grid .breakdown-card {
+        width: 100%;
+      }
+
       .fp-group,
       .fp-group.fp-winner-group,
       .fp-pass-rate-group,
@@ -2474,6 +2702,10 @@
       font-weight: 600;
     }
 
+    /* The single pager sits centered under the item list. */
+    .items-grid + .qym-pagination { margin-top: var(--space-md); }
+    .items-grid + .qym-pagination:empty { display: none; }
+
     .items-grid {
       display: flex;
       flex-direction: column;
@@ -2535,7 +2767,7 @@
       flex: 0 0 auto;
       transition: background 0.12s;
     }
-    .item-header-expand:hover .item-chevron { background: var(--bg-active); }
+    .item-comparison-row:not(.item-collapsed) .item-header-expand:hover .item-chevron { background: var(--bg-active); }
     .item-chevron svg {
       width: 15px;
       height: 15px;
@@ -2600,13 +2832,27 @@
       text-align: left;
     }
     .det-toggle:hover { background: var(--bg-hover); border-color: var(--accent-primary); }
-    .det-toggle.open {
-      border-bottom-left-radius: 0;
-      border-bottom-right-radius: 0;
-      border-color: var(--accent-primary);
-      background: var(--bg-elevated);
+    .det-toggle.open { background: var(--bg-elevated); border-color: var(--border-strong); }
+    .det-caret {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 18px;
+      height: 18px;
+      color: var(--accent-primary);
+      flex: 0 0 auto;
     }
-    .det-caret { color: var(--accent-primary); font-size: var(--font-xs); }
+    .det-caret svg {
+      width: 12px;
+      height: 12px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 2.2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      transition: transform 0.15s;
+    }
+    .det-toggle.open .det-caret svg { transform: rotate(90deg); }
     .det-metric {
       font-size: var(--font-sm);
       color: var(--text-secondary);
@@ -2614,11 +2860,10 @@
       flex: 1;
     }
     .det-body {
-      border: 1px solid var(--accent-primary);
-      border-top: none;
-      border-bottom-left-radius: 4px;
-      border-bottom-right-radius: 4px;
-      padding: var(--space-sm);
+      border: 1px solid var(--border-default);
+      border-radius: 6px;
+      margin-top: 4px;
+      padding: var(--space-sm) var(--space-md);
       background: var(--bg-surface);
       overflow-x: auto;
     }
@@ -3273,7 +3518,6 @@
       border: none;
       border-radius: 4px;
       cursor: pointer;
-      transition: all 0.15s;
     }
 
     .metric-tab:hover {
@@ -4478,8 +4722,77 @@
       font-size: var(--font-base);
     }
 
-    .compare-run-summary-strip {
+    .compare-run-summary-strip.compare-run-summary-strip.qym-stat-strip {
+      display: grid;
+      grid-template-columns: repeat(3, max-content);
+      justify-content: space-between;
+      flex: 0 0 auto;
       width: 100%;
+      max-width: 100%;
+      min-width: 0;
+      gap: 0;
+      padding: 0;
+      background: transparent;
+      border: 0;
+      border-radius: 0;
+      overflow: visible;
+      margin-top: 0;
+      margin-bottom: var(--space-md);
+    }
+
+    .compare-run-summary-strip.compare-run-summary-strip > .compare-run-summary-pill.compare-run-summary-pill.qym-stat-strip__item {
+      display: flex;
+      align-items: center;
+      justify-content: flex-start;
+      gap: var(--space-sm);
+      min-height: 34px;
+      height: 34px;
+      padding: 0;
+      min-width: 0;
+      width: auto;
+      background: transparent;
+    }
+
+    @media (max-width: 640px) {
+      .compare-run-summary-strip.compare-run-summary-strip.qym-stat-strip {
+        grid-template-columns: 1fr;
+        justify-content: stretch;
+        row-gap: var(--space-sm);
+      }
+    }
+
+    .compare-run-summary-strip.compare-run-summary-strip > .compare-run-summary-pill .compare-run-summary-icon {
+      width: var(--badge-height);
+      height: var(--badge-height);
+      border-radius: var(--control-radius);
+    }
+
+    .compare-run-summary-strip.compare-run-summary-strip > .compare-run-summary-pill .compare-run-summary-text {
+      flex-direction: row;
+      align-items: center;
+      gap: var(--space-xs);
+      flex: 0 1 auto;
+      min-width: max-content;
+    }
+
+    .compare-run-summary-strip.compare-run-summary-strip > .compare-run-summary-pill .compare-run-summary-label {
+      align-self: center;
+      min-width: max-content;
+      overflow: visible;
+      font-size: var(--font-sm);
+      font-weight: 650;
+      letter-spacing: 0;
+      white-space: nowrap;
+      text-overflow: clip;
+      text-transform: none;
+    }
+
+    .compare-run-summary-strip.compare-run-summary-strip > .compare-run-summary-pill .compare-run-summary-value {
+      margin-top: 0;
+      font-family: var(--font-mono);
+      font-size: var(--font-md);
+      font-weight: 700;
+      line-height: 1;
     }
 
     .compare-run-summary-pill {
@@ -4519,12 +4832,17 @@
       border: 1px solid var(--border-default);
       border-collapse: separate;
       border-spacing: 0;
-      table-layout: auto;
+      table-layout: fixed;
+    }
+
+    .metrics-table.qdt-table th:first-child,
+    .metrics-table.qdt-table td:first-child {
+      width: 18%;
     }
 
     .metrics-table.qdt-table th:not(:first-child),
     .metrics-table.qdt-table td:not(:first-child) {
-      text-align: right;
+      text-align: center;
     }
 
     .metrics-table.qdt-table tbody td {
@@ -4544,9 +4862,18 @@
     }
 
     .metric-run-heading {
-      justify-content: flex-end;
+      display: flex;
+      justify-content: center;
       gap: var(--space-sm);
       max-width: 100%;
+      overflow: hidden;
+      white-space: nowrap;
+    }
+
+    .metric-run-heading > span:last-child {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
 
     .metric-run-marker {
@@ -4557,7 +4884,7 @@
     }
 
     .metric-val {
-      justify-content: flex-end;
+      justify-content: center;
       min-height: var(--badge-height);
       padding: 0 var(--space-sm);
       border-radius: var(--control-radius);
@@ -4591,8 +4918,8 @@
       }
     }
   </style>
-  <link rel="stylesheet" href="./static/ui_components.css?v=ui-consistency-20260730-29">
-  <script defer src="./static/ui_components.js?v=ui-consistency-20260730-25"></script>
+  <link rel="stylesheet" href="./static/ui_components.css?v=ui-consistency-20260730-32">
+  <script defer src="./static/ui_components.js?v=ui-consistency-20260730-27"></script>
 </head>
 <body>
   <main class="compare-container">
@@ -4652,12 +4979,12 @@
           </div>
           <div class="compare-shared-controls" id="compare-shared-controls">
             <div class="metric-tabs-row">
-              <div class="metric-tabs qym-segmented" id="overview-metric-tabs" role="group" aria-label="Overview metric"></div>
               <div class="threshold-control" id="threshold-control" style="display: none;">
                 <span class="threshold-label">Pass if ≥</span>
                 <input type="range" id="threshold-slider" class="threshold-slider" min="0" max="100" step="5" value="80">
                 <span class="threshold-value" id="threshold-value">80%</span>
               </div>
+              <div class="metric-tabs qym-segmented" id="overview-metric-tabs" role="group" aria-label="Overview metric"></div>
             </div>
           </div>
         </div>
@@ -4772,7 +5099,7 @@
               <div class="fp-actions-spacer"></div>
               <div class="fp-actions">
                 <button class="fp-clear-btn qym-clear-action" id="clear-all-btn" title="Clear all active filters">
-                  <span class="fp-clear-x">&times;</span> Clear <span class="fp-clear-count" id="active-filter-count">0</span>
+                  <svg class="fp-clear-x" viewBox="0 0 12 12" aria-hidden="true" focusable="false"><path d="M3 3l6 6M9 3 3 9"/></svg><span class="fp-clear-label">Clear</span><span class="fp-clear-count" id="active-filter-count">0</span>
                 </button>
                 <button class="fp-btn fp-export qym-inline-action qym-inline-action--accent" id="export-filtered-btn" title="Export filtered items as CSV">Export CSV</button>
               </div>
@@ -4783,12 +5110,12 @@
               </div>
             </div>
             <div class="fp-status">
-              <span class="filter-count qym-tag qym-tag--count" id="filter-count"></span>
-              <div class="pagination qym-pagination" id="pagination" aria-label="Compared items pagination"></div>
+              <span class="filter-count" id="filter-count"></span>
             </div>
           </div>
 
           <div class="items-grid" id="items-grid"></div>
+          <div class="pagination qym-pagination" id="pagination" aria-label="Compared items pagination"></div>
         </div>
       </div>
 
@@ -4886,8 +5213,9 @@
         comparisonStats: {},  // Now keyed by metric name
         metricThresholds: {},  // Per-metric threshold for "correct" (0-1 scale)
         metricIsBoolean: {},   // Per-metric flag: true if all scores are 0 or 1
-        langfuseHost: '',      // Langfuse host URL
-        langfuseProjectId: '', // Langfuse project ID
+        // Legacy trace URL inputs only; external Langfuse actions are no longer rendered.
+        langfuseHost: '',
+        langfuseProjectId: '',
         // Group A additions
         searchQuery: '',              // #19: search items by input text
         complexityFilter: null,       // #2: null = all (default), [] = none, [...] = specific values
@@ -4901,6 +5229,8 @@
         allMetadataKeys: [],          // collected metadata keys across all items
         selectedCategories: new Set(),   // which metadata keys to show as breakdowns
         categoryFilters: {},             // custom category filters: key -> null|[values]
+        categoryBreakdownView: 'cards',
+        categoryCompareKey: null,
         visibleMetadataFields: {},    // #6: which metadata fields to show (key -> bool)
         allMetricMetaKeys: [],
         visibleMetricMetaFields: {},
@@ -6998,16 +7328,8 @@
         return totalSeconds + 's';
       }
 
-      function buildCompareLangfuseProjectUrl(runInfo) {
-        const direct = runInfo.metadata?.langfuse_url || '';
-        if (direct) return direct;
-        const host = (runInfo.langfuse_host || '').replace(/\/$/, '');
-        const projectId = runInfo.langfuse_project_id || '';
-        if (!host || !projectId) return '';
-        return `${host}/project/${projectId}`;
-      }
-
       function buildLangfuseTraceUrl(traceId) {
+        // Keep old run payloads usable by the qym trace viewer during migration.
         if (!traceId || !state.langfuseHost || !state.langfuseProjectId) return null;
         const host = state.langfuseHost.replace(/\/$/, '');
         return `${host}/project/${state.langfuseProjectId}/traces/${traceId}`;
@@ -7160,7 +7482,7 @@
           }
           state.langfuseHost = data.langfuse_host || '';
           state.langfuseProjectId = data.langfuse_project_id || '';
-          // Fallback: use per-run Langfuse config if top-level is incomplete
+          // Legacy fallback: use per-run trace config if top-level is incomplete.
           if ((!state.langfuseHost || !state.langfuseProjectId) && data.runs?.length) {
             const firstRun = data.runs[0]?.run || {};
             state.langfuseHost = state.langfuseHost || firstRun.langfuse_host || '';
@@ -7956,7 +8278,7 @@
         return visibleRows;
       }
 
-      // #3: Render complexity/domain metadata breakdown with avg score, avg latency & consistency
+      // Render aggregated metadata breakdowns using the Run Detail category component.
       function getCategoryChipKeys() {
         const EXCLUDED = new Set(['root_cause', 'root_cause_detail', 'root_cause_note', 'root_cause_source', 'root_cause_confidence', 'solution', 'solution_note', 'solution_source', 'task_started_at_ms', 'retry_count', 'analysis_error']);
         const MAX_CARD = 30;
@@ -7976,6 +8298,83 @@
           keys.push({ key: k, count: uniqueVals.size });
         }
         return keys;
+      }
+
+      function categoryScoreColor(value) {
+        if (value >= 0.9) return 'var(--score-5)';
+        if (value >= 0.75) return 'var(--score-4)';
+        if (value >= 0.6) return 'var(--score-3)';
+        if (value >= 0.4) return 'var(--score-2)';
+        return 'var(--score-1)';
+      }
+
+      function categoryScoreTrack(score, baseline) {
+        if (score === null) return '';
+        const baselineStyle = baseline === null ? '' : `--category-baseline:${Math.round(baseline * 100)}%;`;
+        return `<div class="category-pass-track${baseline === null ? '' : ' has-baseline'}" style="--category-pass:${Math.round(score * 100)}%;${baselineStyle}--category-pass-color:${categoryScoreColor(score)}"><span class="category-pass-fill"></span></div>`;
+      }
+
+      function getCompareCategoryGroupStats(categoryKey, selectedMetric, filteredItemIds) {
+        const itemsByGroup = {};
+
+        for (const run of state.runs) {
+          const rows = run.snapshot?.rows || [];
+          const metricNames = run.snapshot?.metric_names || run.run?.metric_names || [];
+          const metricIndex = metricNames.indexOf(selectedMetric);
+
+          for (const row of rows) {
+            const itemId = getRowCompareId(row);
+            if (!itemId || !filteredItemIds.has(itemId)) continue;
+
+            const metadata = row.item_metadata || {};
+            const rawValue = metadata[categoryKey] ?? '';
+            const isListKey = isListCategoryKey(categoryKey);
+            const parsedValues = getMetadataCategoryValues(metadata, categoryKey);
+            const groupValues = parsedValues.length ? parsedValues : [String(rawValue)];
+            if (groupValues.length === 0) groupValues.push('');
+            const domainIsSole = isListKey && groupValues.length === 1;
+
+            for (const groupValue of groupValues) {
+              if (isListKey && state.domainFilter !== null
+                  && state.domainFilter.some(filter => filter.toLowerCase() === groupValue.toLowerCase()) && !domainIsSole) continue;
+              const effective = groupValue || 'unknown';
+              if (!itemsByGroup[effective]) itemsByGroup[effective] = {};
+              if (!itemsByGroup[effective][itemId]) itemsByGroup[effective][itemId] = { scores: [], latencies: [] };
+
+              if (metricIndex >= 0) {
+                const { score } = window.QymMetrics.getRowScore(row, metricIndex);
+                if (score !== null) itemsByGroup[effective][itemId].scores.push(score);
+              }
+              if (row.latency_ms && row.status === 'completed') {
+                itemsByGroup[effective][itemId].latencies.push(row.latency_ms);
+              }
+            }
+          }
+        }
+
+        const stats = Object.entries(itemsByGroup).map(([groupValue, items]) => {
+          const itemIds = Object.keys(items);
+          const scores = itemIds.flatMap(itemId => items[itemId].scores);
+          const latencies = itemIds.flatMap(itemId => items[itemId].latencies);
+          return {
+            groupVal: groupValue,
+            itemCount: itemIds.length,
+            avgScore: scores.length ? scores.reduce((sum, score) => sum + score, 0) / scores.length : 0,
+            avgLatency: latencies.length ? latencies.reduce((sum, latency) => sum + latency, 0) / latencies.length : null,
+          };
+        });
+
+        if (categoryKey === 'complexity') {
+          const order = ['easy', 'medium', 'hard', 'expert'];
+          stats.sort((a, b) => {
+            const aIndex = order.indexOf(a.groupVal.toLowerCase().trim());
+            const bIndex = order.indexOf(b.groupVal.toLowerCase().trim());
+            return (aIndex === -1 ? 999 : aIndex) - (bIndex === -1 ? 999 : bIndex);
+          });
+        } else {
+          stats.sort((a, b) => b.avgScore - a.avgScore);
+        }
+        return stats;
       }
 
       function renderMetadataBreakdown() {
@@ -8003,17 +8402,31 @@
           return;
         }
 
-        const isBoolean = state.metricIsBoolean[selectedMetric];
-        const correctThreshold = isBoolean ? 0.9999 : (state.metricThresholds[selectedMetric] || 0.8);
-        const K = state.runs.length;
-
+        const metricType = state.metricTypes?.[selectedMetric] || 'score';
+        const supportsScoreTrack = metricType !== 'numeric';
         const filteredItems = getFilteredItems();
         const filteredItemIds = new Set(filteredItems.map(item => item.itemId));
 
+        const overallScores = [];
+        for (const run of state.runs) {
+          const rows = run.snapshot?.rows || [];
+          const metricNames = run.snapshot?.metric_names || run.run?.metric_names || [];
+          const metricIndex = metricNames.indexOf(selectedMetric);
+          if (metricIndex < 0) continue;
+          for (const row of rows) {
+            const itemId = getRowCompareId(row);
+            if (!itemId || !filteredItemIds.has(itemId)) continue;
+            const { score } = window.QymMetrics.getRowScore(row, metricIndex);
+            if (score !== null) overallScores.push(score);
+          }
+        }
+        const overallAverage = overallScores.length
+          ? overallScores.reduce((sum, score) => sum + score, 0) / overallScores.length
+          : null;
+
         let html = '<h3 class="section-title">Performance by Category</h3>';
 
-        // Chip selector bar
-        html += '<div class="category-chip-bar">';
+        html += '<div class="category-breakdown-toolbar"><div class="category-chip-bar">';
         html += '<span class="category-chip-bar-label">Categories</span>';
         for (const { key, count } of chipKeys) {
           const selected = state.selectedCategories.has(key);
@@ -8021,167 +8434,124 @@
           html += `<button class="category-chip qym-chip${selected ? ' selected' : ''}" data-chip-key="${escapeAttr(key)}" aria-pressed="${selected}">${escapeHtml(displayName)} <span class="chip-count qym-chip__count">${count}</span></button>`;
         }
         html += '</div>';
+        html += '<div class="category-breakdown-controls">' +
+          '<span class="samples-view-toggle qym-segmented category-breakdown-view-toggle" role="group" data-qym-segmented-key="category-breakdown-view" aria-label="Category view">' +
+            `<button type="button" class="samples-view-btn qym-segmented__option category-breakdown-view-btn${state.categoryBreakdownView === 'cards' ? ' active' : ''}" data-category-view="cards" aria-pressed="${state.categoryBreakdownView === 'cards'}">Cards</button>` +
+            `<button type="button" class="samples-view-btn qym-segmented__option category-breakdown-view-btn${state.categoryBreakdownView === 'compare' ? ' active' : ''}" data-category-view="compare" aria-pressed="${state.categoryBreakdownView === 'compare'}">Compare</button>` +
+          '</span></div></div>';
 
         const breakdownKeys = chipKeys.filter(c => state.selectedCategories.has(c.key)).map(c => c.key);
 
         if (breakdownKeys.length === 0) {
-          html += '<div class="category-empty-state"><strong>Select categories above to see performance breakdowns</strong>Choose from your item metadata fields to analyze scores by group</div>';
+          html += '<div class="comparison-stats"><div class="section-empty-state">' +
+            '<div class="section-empty-copy"><strong>Select categories above to see performance breakdowns</strong><span>Choose from your item metadata fields to analyze scores by group</span></div>' +
+          '</div></div>';
           existingSection.innerHTML = html;
           wireChipClicks(existingSection);
           return;
         }
 
-        html += '<div class="comparison-stats">';
+        const statsByKey = new Map(breakdownKeys.map(key => [
+          key,
+          getCompareCategoryGroupStats(key, selectedMetric, filteredItemIds),
+        ]));
 
-        for (const bdKey of breakdownKeys) {
-          const itemsByGroup = {};
+        html += '<div class="comparison-stats metadata-breakdown-content">';
+        if (supportsScoreTrack && overallAverage !== null) {
+          html += `<div class="category-baseline-note"><span class="category-baseline-marker"></span><span>Overall metric average score</span><strong class="category-baseline-score" style="--category-average-color:${categoryScoreColor(overallAverage)}">${window.QymMetrics.formatMetricValue(overallAverage, metricType, 0)}</strong></div>`;
+        }
 
-          for (let runIdx = 0; runIdx < state.runs.length; runIdx++) {
-            const run = state.runs[runIdx];
-            const rows = run.snapshot?.rows || [];
-            const metricNames = run.snapshot?.metric_names || run.run?.metric_names || [];
-            const mIdx = metricNames.indexOf(selectedMetric);
+        if (state.categoryBreakdownView === 'compare') {
+          if (!breakdownKeys.includes(state.categoryCompareKey)) state.categoryCompareKey = breakdownKeys[0];
+          html += '<div class="category-compare-tabs qym-segmented" role="group" data-qym-segmented-key="category-compare" aria-label="Category dimension">';
+          for (const key of breakdownKeys) {
+            html += `<button type="button" class="category-compare-tab qym-segmented__option${state.categoryCompareKey === key ? ' active' : ''}" data-category-compare-key="${escapeAttr(key)}" aria-pressed="${state.categoryCompareKey === key}">${escapeHtml(key)}</button>`;
+          }
+          html += '</div>';
 
-            for (const row of rows) {
-              const itemId = getRowCompareId(row);
-              if (!itemId) continue;
-              if (!filteredItemIds.has(itemId)) continue;
+          const compareStats = statsByKey.get(state.categoryCompareKey) || [];
+          html += '<div class="category-compare-scroll"><div class="category-compare-head"><span>Category</span><span>Score</span><span>Average</span><span>Items</span><span>Latency</span></div>';
+          for (const group of compareStats) {
+            const averageDisplay = window.QymMetrics.formatMetricValue(group.avgScore, metricType, 0);
+            const latencyDisplay = group.avgLatency !== null ? formatLatency(group.avgLatency) : '&mdash;';
+            html += `<button type="button" class="category-compare-row" data-bd-category="${escapeAttr(state.categoryCompareKey)}" data-bd-value="${escapeAttr(group.groupVal)}" title="Click to filter by ${escapeAttr(group.groupVal)}">` +
+              `<span class="category-compare-name" title="${escapeAttr(group.groupVal)}">${escapeHtml(group.groupVal)}</span>` +
+              `<span>${supportsScoreTrack ? categoryScoreTrack(group.avgScore, overallAverage) : ''}</span>` +
+              `<span class="category-compare-number muted">${averageDisplay}</span>` +
+              `<span class="category-compare-number muted">${group.itemCount}</span>` +
+              `<span class="category-compare-number muted">${latencyDisplay}</span></button>`;
+          }
+          html += '</div>';
+        } else {
+          for (const bdKey of breakdownKeys) {
+            const groupStats = statsByKey.get(bdKey) || [];
+            if (groupStats.length === 0) continue;
 
-              const md = row.item_metadata || {};
-              const rawVal = md[bdKey] ?? '';
-              const isListKey = isListCategoryKey(bdKey);
-              const normalizedVals = getMetadataCategoryValues(md, bdKey);
-              const groupVals = normalizedVals.length ? normalizedVals : [String(rawVal)];
-              if (groupVals.length === 0) groupVals.push('');
-              const domainIsSole = isListKey && groupVals.length === 1;
-              for (const groupVal of groupVals) {
-                if (isListKey && state.domainFilter !== null
-                    && state.domainFilter.some(f => f.toLowerCase() === groupVal.toLowerCase()) && !domainIsSole) continue;
-                const effectiveGroup = groupVal || 'unknown';
+            const icon = bdKey === 'complexity' ? '\u2666' : (bdKey === 'domain' ? '\u25C6' : '\u25CB');
+            const colorClass = bdKey === 'complexity' ? 'breakdown-complexity' : (bdKey === 'domain' ? 'breakdown-domain' : 'breakdown-custom');
+            html += `<div class="breakdown-section ${colorClass}">`;
+            html += `<div class="breakdown-header"><span class="breakdown-icon">${icon}</span> ${escapeHtml(bdKey)} <span class="breakdown-metric">${escapeHtml(selectedMetric)}</span></div>`;
+            html += '<div class="breakdown-grid">';
 
-                if (!itemsByGroup[effectiveGroup]) itemsByGroup[effectiveGroup] = {};
-                if (!itemsByGroup[effectiveGroup][itemId]) itemsByGroup[effectiveGroup][itemId] = { scores: [], latencies: [], runCount: 0 };
-                itemsByGroup[effectiveGroup][itemId].runCount++;
-
-                if (mIdx >= 0) {
-                  const { score } = window.QymMetrics.getRowScore(row, mIdx);
-                  if (score !== null) itemsByGroup[effectiveGroup][itemId].scores.push(score);
-                }
-                if (row.latency_ms && row.status === 'completed') {
-                  itemsByGroup[effectiveGroup][itemId].latencies.push(row.latency_ms);
-                }
+            for (const group of groupStats) {
+              const latencyDisplay = group.avgLatency !== null ? formatLatency(group.avgLatency) : '&mdash;';
+              let cardValueClass = '';
+              if (bdKey === 'complexity') {
+                const value = group.groupVal.toLowerCase().trim();
+                if (['easy', 'simple', 'basic', 'low'].includes(value)) cardValueClass = ' complexity-easy';
+                else if (['medium', 'moderate', 'intermediate', 'mid'].includes(value)) cardValueClass = ' complexity-medium';
+                else if (['hard', 'difficult', 'advanced', 'high', 'complex'].includes(value)) cardValueClass = ' complexity-hard';
+                else if (['very hard', 'very_hard', 'expert', 'extreme'].includes(value)) cardValueClass = ' complexity-expert';
               }
+
+              const colorClassName = window.QymMetrics.getMetricColorClass(group.avgScore, metricType);
+              const averageDisplay = window.QymMetrics.formatMetricValue(group.avgScore, metricType, 0);
+              const performanceValueHtml = `<span class="score-col-value qym-score-value ${colorClassName}">${averageDisplay}</span>`;
+              html += `<div class="breakdown-card${cardValueClass}" data-bd-category="${escapeAttr(bdKey)}" data-bd-value="${escapeAttr(group.groupVal)}" style="cursor:pointer;" title="Click to filter by ${escapeAttr(group.groupVal)}">` +
+                `<div class="breakdown-card-label">${escapeHtml(group.groupVal)}</div>` +
+                '<div class="breakdown-card-scores">' +
+                  `<div class="score-col"><span class="score-col-label">Average</span><span class="score-col-performance">${performanceValueHtml}</span></div>` +
+                  `<div class="score-col"><span class="score-col-label">Items</span><span class="score-col-value" style="color:var(--text-muted);">${group.itemCount}</span></div>` +
+                  `<div class="score-col"><span class="score-col-label">Latency</span><span class="score-col-value" style="color:var(--text-secondary); font-weight:500;">${latencyDisplay}</span></div>` +
+                '</div>' +
+                (supportsScoreTrack ? categoryScoreTrack(group.avgScore, overallAverage) : '') +
+              '</div>';
             }
+            html += '</div></div>';
           }
-
-          const groupStats = [];
-          for (const [groupVal, items] of Object.entries(itemsByGroup)) {
-            const itemIds = Object.keys(items);
-            let totalScoreSum = 0, totalScoreCount = 0;
-            let totalLatSum = 0, totalLatCount = 0;
-            let consistencySum = 0, consistencyCount = 0;
-            let passAtKCount = 0;
-
-            for (const itemId of itemIds) {
-              const { scores, latencies } = items[itemId];
-              for (const s of scores) { totalScoreSum += s; totalScoreCount++; }
-              for (const l of latencies) { totalLatSum += l; totalLatCount++; }
-              if (scores.some(s => s >= correctThreshold)) passAtKCount++;
-              if (scores.length > 1) {
-                const numCorrect = scores.filter(s => s >= correctThreshold).length;
-                const numFail = scores.length - numCorrect;
-                const maxAgreement = Math.max(numCorrect, numFail);
-                const itemConsistency = (2 * maxAgreement / scores.length) - 1;
-                consistencySum += itemConsistency;
-                consistencyCount++;
-              }
-            }
-
-            const avgScore = totalScoreCount > 0 ? totalScoreSum / totalScoreCount : 0;
-            const avgLatency = totalLatCount > 0 ? totalLatSum / totalLatCount : null;
-            const consistency = consistencyCount > 0 ? consistencySum / consistencyCount : null;
-            const passAtK = itemIds.length > 0 ? passAtKCount / itemIds.length : 0;
-
-            groupStats.push({ groupVal, itemCount: itemIds.length, avgScore, passAtK, avgLatency, consistency });
-          }
-
-          if (bdKey === 'complexity') {
-            const cOrder = ['easy', 'medium', 'hard'];
-            groupStats.sort((a, b) => {
-              const ai = cOrder.indexOf(a.groupVal.toLowerCase().trim());
-              const bi = cOrder.indexOf(b.groupVal.toLowerCase().trim());
-              return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
-            });
-          } else {
-            groupStats.sort((a, b) => b.avgScore - a.avgScore);
-          }
-          if (groupStats.length === 0) continue;
-
-          const icon = bdKey === 'complexity' ? '\u2666' : (bdKey === 'domain' ? '\u25C6' : '\u25CB');
-          const colorClass = bdKey === 'complexity' ? 'breakdown-complexity' : (bdKey === 'domain' ? 'breakdown-domain' : 'breakdown-custom');
-          const displayName = bdKey;
-
-          html += `<div class="breakdown-section ${colorClass}">`;
-          html += `<div class="breakdown-header"><span class="breakdown-icon">${icon}</span> ${escapeHtml(displayName)} <span class="breakdown-metric">${escapeHtml(selectedMetric)}</span></div>`;
-          html += '<div class="breakdown-grid">';
-
-          for (const g of groupStats) {
-            const latStr = g.avgLatency !== null ? formatLatency(g.avgLatency) : '—';
-            const consStr = g.consistency !== null
-              ? window.QymMetrics.formatMetricValue(g.consistency, 'score', 0)
-              : '—';
-            const consClass = g.consistency !== null
-              ? window.QymMetrics.getMetricColorClass(g.consistency, 'score')
-              : '';
-
-            let cardValClass = '';
-            if (bdKey === 'complexity') {
-              const cv = g.groupVal.toLowerCase().trim();
-              if (['easy', 'simple', 'basic', 'low'].includes(cv)) cardValClass = ' complexity-easy';
-              else if (['medium', 'moderate', 'intermediate', 'mid'].includes(cv)) cardValClass = ' complexity-medium';
-              else if (['hard', 'difficult', 'advanced', 'high', 'complex'].includes(cv)) cardValClass = ' complexity-hard';
-              else if (['very hard', 'very_hard', 'expert', 'extreme'].includes(cv)) cardValClass = ' complexity-expert';
-            }
-
-            const passAtKStr = formatPercent(g.passAtK, 0);
-            const passAtKClass = scoreColorClass(g.passAtK);
-
-            const bdMType = state.metricTypes?.[selectedMetric] || 'score';
-            const bdColorCls = window.QymMetrics.getMetricColorClass(g.avgScore, bdMType);
-            const bdDisplay = window.QymMetrics.formatMetricValue(g.avgScore, bdMType, 0);
-            const bdIsNumeric = bdMType === 'numeric';
-            html += `<div class="breakdown-card${cardValClass}" data-bd-category="${escapeAttr(bdKey)}" data-bd-value="${escapeAttr(g.groupVal)}" style="cursor:pointer;" title="Click to filter by ${escapeAttr(g.groupVal)}">
-              <div class="breakdown-card-label">${escapeHtml(g.groupVal)}</div>
-              <div class="breakdown-card-scores">
-                <div class="score-col">
-                  <span class="score-col-label">${bdIsNumeric ? 'Avg' : `Avg@${K}`}</span>
-                  <span class="score-col-value qym-score-value ${bdColorCls}">${bdDisplay}</span>
-                </div>
-                ${bdIsNumeric ? '' : `<div class="score-col">
-                  <span class="score-col-label">Pass@${K}</span>
-                  <span class="score-col-value qym-score-value ${passAtKClass}">${passAtKStr}</span>
-                </div>`}
-                <div class="score-col" style="margin-left:auto;">
-                  <span class="score-col-label">Items</span>
-                  <span class="score-col-value" style="color:var(--text-muted);">${g.itemCount}</span>
-                </div>
-              </div>
-              <div class="breakdown-card-details">
-                <span class="breakdown-detail"><span class="breakdown-detail-label">Latency</span> ${latStr}</span>
-                ${bdIsNumeric ? '' : `<span class="breakdown-detail"><span class="breakdown-detail-label">Consistency</span> <span class="breakdown-detail-value qym-score-value ${consClass}">${consStr}</span></span>`}
-              </div>
-            </div>`;
-          }
-
-          html += '</div></div>';
         }
 
         html += '</div>';
         existingSection.innerHTML = html;
         wireChipClicks(existingSection);
 
+        existingSection.querySelectorAll('.category-breakdown-view-btn[data-category-view]').forEach(button => {
+          button.addEventListener('click', () => {
+            const nextView = button.dataset.categoryView;
+            state.categoryBreakdownView = nextView;
+            renderMetadataBreakdown();
+            window.setTimeout(() => {
+              document.querySelector(`.category-breakdown-view-btn[data-category-view="${nextView}"]`)?.focus({ preventScroll: true });
+            }, 0);
+          });
+        });
+
+        existingSection.querySelectorAll('.category-compare-tab[data-category-compare-key]').forEach(button => {
+          button.addEventListener('click', () => {
+            const nextKey = button.dataset.categoryCompareKey;
+            state.categoryCompareKey = nextKey;
+            renderMetadataBreakdown();
+            window.setTimeout(() => {
+              const replacement = Array.from(document.querySelectorAll('.category-compare-tab[data-category-compare-key]')).find(candidate =>
+                candidate.dataset.categoryCompareKey === nextKey
+              );
+              replacement?.focus({ preventScroll: true });
+            }, 0);
+          });
+        });
+
         // Wire breakdown card click-to-filter
-        existingSection.querySelectorAll('.breakdown-card[data-bd-category]').forEach(card => {
+        existingSection.querySelectorAll('.breakdown-card[data-bd-category], .category-compare-row[data-bd-category]').forEach(card => {
           card.addEventListener('click', () => {
             const cat = card.dataset.bdCategory;
             const val = card.dataset.bdValue;
@@ -8508,7 +8878,6 @@
           }
           const runtimeText = formatDurationMs(runtimeMs);
           const versionText = [info.git_branch, info.git_commit].filter(Boolean).join(' • ');
-          const langfuseUrl = buildCompareLangfuseProjectUrl(info);
           const stats = run.snapshot?.stats || {};
           const summaryItem = (kind, label, valueHtml, iconHtml) => `
             <div class="compare-run-summary-pill qym-stat-strip__item ${kind}">
@@ -8567,23 +8936,22 @@
 
           return `
             <div class="compare-run-card" style="--run-accent:${color}">
+              ${canRemove ? `<button type="button" class="compare-run-remove qym-icon-action" data-idx="${idx}" aria-label="Remove from comparison" title="Remove this run from comparison"><svg class="compare-run-remove-icon" viewBox="0 0 14 14" aria-hidden="true" focusable="false"><path d="M3.5 3.5l7 7M10.5 3.5l-7 7"/></svg></button>` : ''}
               <div class="compare-run-card-top">
                 <div class="compare-run-card-head">
                   <span class="compare-run-marker"></span>
                   <div class="compare-run-title-block">
-                    <div class="compare-run-title">${escapeHtml(info.run_name || ('Run ' + (idx + 1)))}</div>
+                    <div class="compare-run-title-line">
+                      <span class="compare-run-title">${escapeHtml(info.run_name || ('Run ' + (idx + 1)))}</span>
+                      <span class="compare-run-status qym-badge ${statusClass} ${statusToneClass}">
+                        <span class="compare-run-status-dot"></span>${statusText}
+                      </span>
+                    </div>
                   </div>
-                </div>
-                <div class="compare-run-actions">
-                  <div class="compare-run-status qym-badge ${statusClass} ${statusToneClass}">
-                    <span class="compare-run-status-dot"></span>${statusText}
-                  </div>
-                  ${langfuseUrl ? `<a href="${escapeAttr(langfuseUrl)}" target="_blank" rel="noopener" class="compare-run-link langfuse qym-inline-action qym-inline-action--langfuse">Langfuse &#8599;</a>` : ''}
-                  ${canRemove ? `<button class="compare-run-remove qym-inline-action qym-inline-action--neutral" data-idx="${idx}" title="Remove from comparison">Remove</button>` : ''}
                 </div>
               </div>
-              <div class="compare-run-meta-grid">${metaHtml}</div>
               ${summaryHtml}
+              <div class="compare-run-meta-grid">${metaHtml}</div>
               ${contextHtml}
             </div>
           `;
@@ -8592,7 +8960,7 @@
         // Add click handlers for remove buttons
         container.querySelectorAll('.compare-run-remove').forEach(btn => {
           btn.addEventListener('click', (e) => {
-            const idx = parseInt(e.target.dataset.idx, 10);
+            const idx = parseInt(e.currentTarget.dataset.idx, 10);
             removeRun(idx);
           });
         });
@@ -9700,7 +10068,7 @@
             badge = `<span class="metric-score-value qym-score-value ${cls}">${window.QymMetrics.formatMetricObservation(v, mType, state.metricSpecs?.[name])}</span>`;
           }
           const bid = `det_${safeId}_${i}`;
-          return `<div class="metric-det"><button type="button" class="det-toggle" data-det-target="${bid}" aria-expanded="false"><span class="det-caret">▸</span><span class="det-metric">${escapeHtml(name)}</span>${badge}</button><div class="det-body hidden" id="${bid}">${formatObjectAsHtml(obj)}</div></div>`;
+          return `<div class="metric-det"><button type="button" class="det-toggle" data-det-target="${bid}" aria-expanded="false"><span class="det-caret"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m5.5 3.5 5 4.5-5 4.5"/></svg></span><span class="det-metric">${escapeHtml(name)}</span>${badge}</button><div class="det-body hidden" id="${bid}">${formatObjectAsHtml(obj)}</div></div>`;
         }).filter(Boolean).join('');
         return blocks ? `<div class="metric-det-zone">${blocks}</div>` : '';
       }
@@ -9742,7 +10110,7 @@
             const taskStartedAtMs = row.task_started_at_ms;
             const traceId = row.trace_id;
             const runItemId = row.item_id || itemId;
-            // Use direct trace_url if available, otherwise build from trace_id (global or per-run config)
+            // Preserve legacy trace_url/trace_id compatibility for the qym trace viewer.
             const traceUrl = row.trace_url || buildLangfuseTraceUrl(traceId) || buildLangfuseTraceUrlFromRun(traceId, runInfo);
 
             // Get metric values and metadata
@@ -9823,8 +10191,6 @@
               ? `<button type="button" class="action-chip trace-drawer-btn" data-trace-endpoint="${escapeAttr(traceEndpoint)}" data-trace-item-label="${escapeAttr((runInfo.run_name || ('Run ' + (runIdx + 1))) + ' · ' + runItemId)}" data-trace-id="${escapeAttr(traceId || '')}" data-trace-url="${escapeAttr(traceUrl || '')}" title="Open trace viewer"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M2.5 4h11M2.5 8h7M2.5 12h9"/><circle cx="12.5" cy="8" r="1.2" fill="currentColor" stroke="none" opacity=".5"/><circle cx="13.5" cy="12" r="1.2" fill="currentColor" stroke="none" opacity=".5"/></svg>Trace</button>`
               : '';
             const copyBtn = `<button class="copy-btn qym-icon-action" data-copy-text="${escapeAttr(typeof output === 'object' ? JSON.stringify(output, null, 2) : String(output))}" title="Copy output">${COPY_ICON}</button>`;
-            const langfuseChip = traceUrl ? `<a class="action-chip" href="${escapeAttr(traceUrl)}" target="_blank" title="View in Langfuse"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3.5H4A1.5 1.5 0 0 0 2.5 5v7A1.5 1.5 0 0 0 4 13.5h7A1.5 1.5 0 0 0 12.5 12v-2"/><path d="M9.5 2.5h4v4"/><path d="M13.25 2.75 7.5 8.5"/></svg>Langfuse</a>` : '';
-
             // Metric details for this run: closed toggles inside the cell
             const detBlocksHtml = renderMetricDetailBlocksForRun(metricMeta, metricNames, metricVals, `${safeId}_r${runIdx}`);
 
@@ -9936,7 +10302,7 @@
                 </div>
                 <div class="output-header">
                   <span class="output-status-cluster"><span class="run-label">OUTPUT</span>${statusIndicator}${durationPart}${timePart}</span>
-                  <span class="output-actions">${copyBtn}${traceButton}${langfuseChip}</span>
+                  <span class="output-actions">${copyBtn}${traceButton}</span>
                 </div>
                 <div class="output-text ${status === 'error' ? 'score-1' : ''}">${renderMarkdownSafe(output)}</div>
                 <div class="metric-scores-inline">${metricScoresHtml}</div>
@@ -10033,7 +10399,6 @@
                 <span class="item-index" title="ID: ${escapeHtml(itemId)}">${escapeHtml(displayItemId)}</span>
                 <span class="item-title">${escapeHtml(titleText)}</span>
                 <span class="item-agg-pills">${headerPills}</span>
-                <button class="copy-btn qym-icon-action" data-item-id="${escapeAttr(itemId)}" title="Copy all fields">${COPY_ICON}</button>
               </div>`;
 
           if (!isExpanded) {
@@ -11051,8 +11416,6 @@
           const open = !body.classList.toggle('hidden');
           det.classList.toggle('open', open);
           det.setAttribute('aria-expanded', open ? 'true' : 'false');
-          const caret = det.querySelector('.det-caret');
-          if (caret) caret.textContent = open ? '▾' : '▸';
           return;
         }
         const header = e.target.closest('[data-item-expand]');

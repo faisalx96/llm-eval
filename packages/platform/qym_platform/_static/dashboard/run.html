@@ -1848,7 +1848,6 @@
       transition: border-color 0.15s;
       flex: 0 1 auto;
       width: fit-content;
-      min-width: 220px;
       max-width: 100%;
       min-height: 0;
     }
@@ -2336,7 +2335,7 @@
       flex: 0 0 auto;
       transition: background 0.12s;
     }
-    .item-header-expand:hover .item-chevron { background: var(--bg-active); }
+    .item-card:not(.item-collapsed) .item-header-expand:hover .item-chevron { background: var(--bg-active); }
     .item-chevron svg {
       width: 15px;
       height: 15px;
@@ -2414,33 +2413,56 @@
     .metric-det-zone {
       display: flex;
       flex-direction: column;
-      gap: 4px;
-      max-width: 680px;
+      gap: 6px;
       border-top: 1px solid var(--border-subtle);
       padding-top: var(--space-sm);
       margin-top: var(--space-sm);
+    }
+    /* Compact chip per metric in one wrapping row; an opened detail panel
+       takes the full width below the row. */
+    .metric-det-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
     }
     .metric-det { display: flex; flex-direction: column; }
     .det-toggle {
       display: flex;
       align-items: center;
-      gap: 6px;
+      gap: 7px;
       width: 100%;
       background: var(--bg-surface);
       border: 1px solid var(--border-subtle);
-      border-radius: 4px;
-      padding: 4px 8px;
+      border-radius: 5px;
+      padding: 4px 10px;
       cursor: pointer;
       font-family: var(--font-sans);
       text-align: left;
     }
+    .metric-det-chips .det-toggle { width: auto; }
     .det-toggle:hover { background: var(--bg-hover); border-color: var(--border-strong); }
-    .det-toggle.open {
-      border-bottom-left-radius: 0;
-      border-bottom-right-radius: 0;
-      background: var(--bg-elevated);
+    .det-toggle.open { background: var(--bg-elevated); border-color: var(--border-strong); }
+    /* Same stroked-chevron language as the item control, scaled down */
+    .det-caret {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 18px;
+      height: 18px;
+      color: var(--accent-primary);
+      flex: 0 0 auto;
     }
-    .det-caret { color: var(--accent-primary); font-size: var(--font-xs); }
+    .det-caret svg {
+      width: 12px;
+      height: 12px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 2.2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      transition: transform 0.15s;
+    }
+    .det-toggle.open .det-caret svg { transform: rotate(90deg); }
     .det-caret-none { visibility: hidden; }
     /* Strip rows without judge meta read, but do not toggle */
     .det-toggle.static { cursor: default; }
@@ -2452,6 +2474,45 @@
       font-weight: 700;
     }
     .det-toggle .metric-edit-open { flex: 0 0 auto; }
+    /* Inline chip editor: value swaps for input + check */
+    .det-toggle.editing .metric-score-value { display: none; }
+    .chip-edit { display: inline-flex; align-items: center; gap: 5px; }
+    .chip-edit.hidden { display: none; }
+    .chip-edit .metric-edit-input {
+      width: 60px;
+      height: 20px;
+      padding: 0 6px;
+      background: var(--bg-base);
+      border: 1px solid var(--border-default);
+      border-radius: 4px;
+      color: var(--text-primary);
+      font-family: var(--font-mono);
+      font-size: var(--font-sm);
+    }
+    .chip-edit .metric-edit-input:focus-visible { outline: none; border-color: var(--accent-primary); }
+    .chip-edit .metric-edit-save {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 20px;
+      height: 20px;
+      border: none;
+      border-radius: 4px;
+      background: transparent;
+      color: var(--score-5);
+      cursor: pointer;
+    }
+    .chip-edit .metric-edit-save:hover { background: var(--bg-hover); }
+    .chip-edit .metric-edit-save svg {
+      width: 12px;
+      height: 12px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 2.2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+    .chip-edit .metric-edit-status { font-size: var(--font-xs); color: var(--text-muted); }
     .det-metric {
       font-size: var(--font-sm);
       color: var(--text-secondary);
@@ -2460,10 +2521,8 @@
     }
     .det-body {
       border: 1px solid var(--border-default);
-      border-top: none;
-      border-bottom-left-radius: 4px;
-      border-bottom-right-radius: 4px;
-      padding: var(--space-sm);
+      border-radius: 6px;
+      padding: var(--space-sm) var(--space-md);
       background: var(--bg-surface);
       overflow-x: auto;
     }
@@ -3353,6 +3412,10 @@
     .formatted-row:hover > .copy-btn:hover { opacity: 1; }
     .formatted-row > .copy-btn.copied { opacity: 1; }
 
+    .items-comparison {
+      margin-bottom: var(--space-xl);
+    }
+
     /* The single pager sits centered under the item list. */
     .items-grid + .qym-pagination { margin-top: var(--space-md); }
     .items-grid + .qym-pagination:empty { display: none; }
@@ -3375,21 +3438,6 @@
       animation: spin 0.8s linear infinite;
       margin-bottom: var(--space-md);
     }
-
-    .langfuse-link {
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      padding: 3px 10px;
-      background: rgba(225, 29, 72, 0.1);
-      color: #e11d48;
-      border-radius: 100px;
-      font-size: var(--font-xs);
-      font-weight: 500;
-      text-decoration: none;
-      transition: background 0.15s;
-    }
-    .langfuse-link:hover { background: rgba(225, 29, 72, 0.2); }
 
     /* Export Column Selector Modal */
     .export-modal-overlay {
@@ -3792,6 +3840,9 @@
       margin-bottom: var(--space-md);
       flex-wrap: wrap;
     }
+    .samples-metric-row > .threshold-control {
+      flex: 0 0 auto;
+    }
     .samples-metric-tabs {
       display: flex;
       gap: 2px;
@@ -3810,7 +3861,6 @@
       cursor: pointer;
       font-family: var(--font-mono);
       font-size: var(--font-sm);
-      transition: color 0.15s, background 0.15s;
     }
     .samples-metric-tab:hover {
       color: var(--text-secondary);
@@ -4169,6 +4219,15 @@
       justify-content: center;
       height: 100%;
       min-width: 24px;
+      cursor: pointer;
+      user-select: none;
+      transition: opacity 0.15s, transform 0.15s;
+    }
+    .samples-correct-col:hover { opacity: 0.8; }
+    .samples-correct-col:focus-visible {
+      outline: 2px solid var(--accent-primary);
+      outline-offset: 4px;
+      border-radius: 4px;
     }
     .samples-correct-bar {
       position: relative;
@@ -4642,8 +4701,8 @@
     .pass-cmp-vtable td.score-1 { color: var(--score-1); }
     .pass-cmp-actions { display: flex; gap: 6px; }
   </style>
-  <link rel="stylesheet" href="/static/ui_components.css?v=ui-consistency-20260730-29">
-  <script defer src="/static/ui_components.js?v=ui-consistency-20260730-25"></script>
+  <link rel="stylesheet" href="/static/ui_components.css?v=ui-consistency-20260730-32">
+  <script defer src="/static/ui_components.js?v=ui-consistency-20260730-27"></script>
 </head>
 <body>
   <main class="run-container">
@@ -4773,7 +4832,7 @@
             <div class="fp-actions-spacer"></div>
             <div class="fp-actions">
               <button class="fp-clear-btn" id="clear-all-btn" title="Clear all active filters">
-                <span class="fp-clear-x">&times;</span> Clear <span class="fp-clear-count" id="active-filter-count">0</span>
+                <svg class="fp-clear-x" viewBox="0 0 12 12" aria-hidden="true" focusable="false"><path d="M3 3l6 6M9 3 3 9"/></svg><span class="fp-clear-label">Clear</span><span class="fp-clear-count" id="active-filter-count">0</span>
               </button>
               <button class="qym-inline-action qym-inline-action--accent" id="export-filtered-btn" title="Export filtered items as CSV">Export CSV</button>
             </div>
@@ -4894,6 +4953,7 @@
         metricThresholds: {},
         metricIsBoolean: {},
         scoreDistFilter: null,
+        repeatDistFilter: null,
         latencyDistFilter: null,
         complexityFilter: null,
         domainFilter: null,
@@ -4919,6 +4979,7 @@
         visibleMetadataFields: {},
         visibleMetricMetaFields: {},
         allMetricMetaKeys: [],
+        // Legacy trace URL inputs only; external Langfuse actions are not rendered.
         langfuseHost: '',
         langfuseProjectId: '',
         hasRenderedItems: false,
@@ -5128,6 +5189,7 @@
       }
 
       function buildLangfuseTraceUrl(traceId) {
+        // Keep old run payloads usable by the qym trace viewer during migration.
         if (!traceId || !state.langfuseHost || !state.langfuseProjectId) return null;
         const host = state.langfuseHost.replace(/\/$/, '');
         return host + '/project/' + state.langfuseProjectId + '/traces/' + traceId;
@@ -5655,11 +5717,6 @@
         const runtimeText = runtimeMs != null ? formatDurationMs(runtimeMs) : '—';
         const versionText = [run.git_branch, run.git_commit].filter(Boolean).join(' • ');
 
-        let langfuseUrl = metadata?.langfuse_url || '';
-        if (!langfuseUrl && state.langfuseHost && state.langfuseProjectId) {
-          langfuseUrl = state.langfuseHost.replace(/\/$/, '') + '/project/' + state.langfuseProjectId;
-        }
-
         function metaItem(label, value, options) {
           const opts = options || {};
           if (value == null || value === '') return '';
@@ -5683,10 +5740,6 @@
             '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>' +
             'Share' +
           '</button>';
-        if (langfuseUrl) {
-          actionsHtml += '<a href="' + escapeAttr(langfuseUrl) + '" target="_blank" rel="noopener" class="qym-inline-action qym-inline-action--langfuse">Langfuse &#8599;</a>';
-        }
-
         let ingestWarningHtml = '';
         const ingestIncomplete = metadata.ingest_incomplete;
         if (ingestIncomplete && ingestIncomplete.expected_items != null) {
@@ -5883,7 +5936,7 @@
           const metricCols = passes.metrics || [];
           const visible = passRows;
           const queued = passes.passes.length - visible.length;
-          const latCell = v => (typeof v === 'number' ? (v / 1000).toFixed(2) + 's' : '—');
+          const latCell = v => (typeof v === 'number' && Number.isFinite(v) ? Math.round(v / 1000) + 's' : '—');
           const winnersFor = (valueOf, direction) => {
             const values = visible
               .map(p => ({ pass: p.pass_number, value: valueOf(p) }))
@@ -6115,9 +6168,9 @@
             : '';
           return '<div class="samples-curve-head">' +
               '<div class="samples-chart-heading"><div class="samples-zone-title">Performance Across Attempts</div></div>' +
-              '<div class="samples-statistic-tabs qym-segmented" role="group" aria-label="Repeat performance view">' + statisticOptions.map(option => '<button type="button" class="samples-statistic-btn qym-segmented__option' + (option.key === selected.key ? ' active' : '') + '" data-samples-statistic="' + option.key + '" aria-pressed="' + (option.key === selected.key) + '">' + escapeHtml(option.label) + '</button>').join('') + '</div>' +
+              '<div class="samples-statistic-tabs qym-segmented" role="group" data-qym-segmented-key="repeat-statistic" aria-label="Repeat performance view">' + statisticOptions.map(option => '<button type="button" class="samples-statistic-btn qym-segmented__option' + (option.key === selected.key ? ' active' : '') + '" data-samples-statistic="' + option.key + '" aria-pressed="' + (option.key === selected.key) + '">' + escapeHtml(option.label) + '</button>').join('') + '</div>' +
               legend +
-              '<div class="samples-view-toggle qym-segmented" role="group" aria-label="Repeat performance display">' +
+              '<div class="samples-view-toggle qym-segmented" role="group" data-qym-segmented-key="repeat-display" aria-label="Repeat performance display">' +
                 '<button type="button" class="samples-view-btn qym-segmented__option' + (mode === 'chart' ? ' active' : '') + '" data-view="chart" aria-pressed="' + (mode === 'chart') + '">Chart</button>' +
                 '<button type="button" class="samples-view-btn qym-segmented__option' + (mode === 'table' ? ' active' : '') + '" data-view="table" aria-pressed="' + (mode === 'table') + '">Table</button>' +
               '</div>' +
@@ -6186,6 +6239,7 @@
         // Pass-count distribution — exact correctness for binary metrics and
         // thresholded passes for richer score metrics.
         const dist = Array.isArray(group.distribution) ? group.distribution : null;
+        const distributionThreshold = Number(group.threshold != null ? group.threshold : requestedThreshold);
         function distChartHtml() {
           let buckets;
           if (samplesCount <= 10) {
@@ -6199,13 +6253,13 @@
             buckets = grouped;
           }
           const maximum = Math.max(1, ...buckets.map(bucket => bucket.count));
-          return '<div class="samples-correct-chart" role="img" aria-label="Distribution of items by passing attempts">' + buckets.map((bucket, index) => {
+          return '<div class="samples-correct-chart" role="group" aria-label="Distribution of items by passing attempts">' + buckets.map((bucket, index) => {
             const edgeClass = index === 0 ? ' zero' : (index === buckets.length - 1 ? ' all' : '');
             const height = Math.max(bucket.count ? 3 : 0, Math.round((bucket.count / maximum) * 100));
             const title = samplesCount <= 10
               ? bucket.correct + ' of ' + samplesCount + ' attempts passed: ' + bucket.count + ' items'
               : bucket.label + ' passing attempts: ' + bucket.count + ' items';
-            return '<div class="samples-correct-col"><div class="samples-correct-bar' + edgeClass + '" style="--samples-correct-height:' + height + '%" title="' + escapeAttr(title) + '"><span class="samples-correct-count">' + bucket.count + '</span><span class="samples-correct-label">' + bucket.label + '</span></div></div>';
+            return '<div class="samples-correct-col" role="button" tabindex="0" aria-label="' + escapeAttr(title + '. Click to filter the item table.') + '" data-repeat-distribution-metric="' + escapeAttr(groupMetric) + '" data-repeat-distribution-bucket="' + index + '" data-repeat-distribution-samples="' + samplesCount + '" data-repeat-distribution-threshold="' + distributionThreshold + '" title="' + escapeAttr(title + ' — Click to filter') + '"><div class="samples-correct-bar' + edgeClass + '" style="--samples-correct-height:' + height + '%"><span class="samples-correct-count">' + bucket.count + '</span><span class="samples-correct-label">' + bucket.label + '</span></div></div>';
           }).join('') + '</div>';
         }
         const distributionTitle = isBool ? 'Correct Distribution' : 'Pass Distribution';
@@ -6235,7 +6289,7 @@
             '<div class="overview-header-hint">Every item was evaluated ' + samplesCount + 'x in this run. Select the metric summarized across all ' + samplesCount + ' passes.</div></div>' +
           '</div>' +
           '<div class="samples-metric-row">' +
-            '<div class="samples-metric-tabs qym-segmented" role="group" aria-label="Repeat run aggregate metric">' + metricTabsHtml + '</div>' +
+            '<div class="samples-metric-tabs qym-segmented" role="group" data-qym-segmented-key="repeat-metric" aria-label="Repeat run aggregate metric">' + metricTabsHtml + '</div>' +
             thresholdControlHtml +
           '</div>' +
           '<div class="samples-group-tiles qym-stat-strip">' + tilesHtml + '</div>' +
@@ -6262,12 +6316,38 @@
             const nextMetric = btn.dataset.samplesMetric;
             if (!nextMetric || nextMetric === groupMetric) return;
             state.samplesMetric = nextMetric;
+            state.repeatDistFilter = null;
             await renderSamplesAnalysis();
             renderMetadataBreakdown();
             const replacement = Array.from(document.querySelectorAll('.samples-metric-tab')).find(candidate =>
               candidate.dataset.samplesMetric === nextMetric
             );
             replacement?.focus({ preventScroll: true });
+          });
+        });
+        const applyRepeatDistributionFilter = (col) => {
+          const metric = col.dataset.repeatDistributionMetric;
+          const bucket = Number(col.dataset.repeatDistributionBucket);
+          const samples = Number(col.dataset.repeatDistributionSamples) || samplesCount;
+          const threshold = Number(col.dataset.repeatDistributionThreshold);
+          if (!metric || !Number.isFinite(bucket) || !Number.isFinite(threshold)) return;
+          if (metric !== state.selectedMetric) {
+            state.selectedMetric = metric;
+            const sel = el('items-metric-select');
+            if (sel) sel.value = metric;
+            updateThresholdControl();
+          }
+          state.scoreDistFilter = null;
+          state.repeatDistFilter = { metric, bucket, samples, threshold };
+          state.page = 1;
+          renderItems();
+        };
+        container.querySelectorAll('.samples-correct-col[data-repeat-distribution-bucket]').forEach(col => {
+          col.addEventListener('click', () => applyRepeatDistributionFilter(col));
+          col.addEventListener('keydown', event => {
+            if (event.key !== 'Enter' && event.key !== ' ') return;
+            event.preventDefault();
+            applyRepeatDistributionFilter(col);
           });
         });
         const samplesThreshold = container.querySelector('[data-samples-threshold]');
@@ -6280,6 +6360,7 @@
             const value = parseFloat(event.target.value);
             if (isNaN(value) || value < 0 || value > 100) return;
             state.metricThresholds[groupMetric] = value / 100;
+            state.repeatDistFilter = null;
             if (state.selectedMetric === groupMetric) {
               updateThresholdControl();
               state.page = 1;
@@ -6425,6 +6506,7 @@
             const v = parseFloat(e.target.value);
             if (!isNaN(v) && v >= 0 && v <= 100) {
               state.metricThresholds[state.selectedMetric] = v / 100;
+              state.repeatDistFilter = null;
               renderOverview();
               state.page = 1;
               renderItems();
@@ -6449,6 +6531,7 @@
             sel.addEventListener('change', (e) => {
               state.selectedMetric = e.target.value;
               state.scoreDistFilter = null;
+              state.repeatDistFilter = null;
               state.page = 1;
               updateThresholdControl();
               renderItems();
@@ -7366,6 +7449,7 @@
               if (sel) sel.value = metric;
               updateThresholdControl();
             }
+            state.repeatDistFilter = null;
             state.scoreDistFilter = { min, max };
             state.page = 1;
             renderItems();
@@ -7393,6 +7477,7 @@
               updateThresholdControl();
             }
             state.scoreDistFilter = null;
+            state.repeatDistFilter = null;
             state.itemFilter = boolFilter || 'all';
             const itemFilter = el('item-filter');
             if (itemFilter) itemFilter.value = state.itemFilter;
@@ -7833,7 +7918,7 @@
         }
         html += '</div>';
         html += '<div class="category-breakdown-controls">' +
-          '<span class="samples-view-toggle qym-segmented category-breakdown-view-toggle" role="group" aria-label="Category view">' +
+          '<span class="samples-view-toggle qym-segmented category-breakdown-view-toggle" role="group" data-qym-segmented-key="category-breakdown-view" aria-label="Category view">' +
             '<button type="button" class="samples-view-btn qym-segmented__option category-breakdown-view-btn' + (state.categoryBreakdownView === 'cards' ? ' active' : '') + '" data-category-view="cards" aria-pressed="' + (state.categoryBreakdownView === 'cards') + '">Cards</button>' +
             '<button type="button" class="samples-view-btn qym-segmented__option category-breakdown-view-btn' + (state.categoryBreakdownView === 'compare' ? ' active' : '') + '" data-category-view="compare" aria-pressed="' + (state.categoryBreakdownView === 'compare') + '">Compare</button>' +
           '</span></div></div>';
@@ -7857,7 +7942,7 @@
 
         if (state.categoryBreakdownView === 'compare') {
           if (!breakdownKeys.includes(state.categoryCompareKey)) state.categoryCompareKey = breakdownKeys[0];
-          html += '<div class="category-compare-tabs qym-segmented" role="group" aria-label="Category dimension">';
+          html += '<div class="category-compare-tabs qym-segmented" role="group" data-qym-segmented-key="category-compare" aria-label="Category dimension">';
           for (const key of breakdownKeys) {
             html += '<button type="button" class="category-compare-tab qym-segmented__option' + (state.categoryCompareKey === key ? ' active' : '') + '" data-category-compare-key="' + escapeAttr(key) + '" aria-pressed="' + (state.categoryCompareKey === key) + '">' + escapeHtml(key) + '</button>';
           }
@@ -8389,6 +8474,17 @@
         });
       }
 
+      function getRepeatDistributionBucket(row, metric, samples, threshold) {
+        const scores = row?.pass_scores?.[metric];
+        if (!Array.isArray(scores)) return null;
+        const correct = scores.reduce((count, raw) => {
+          const score = window.QymMetrics.parseScoreValue(raw);
+          return count + (score !== null && score >= threshold ? 1 : 0);
+        }, 0);
+        if (samples <= 10) return Math.min(correct, samples);
+        return correct === samples ? 10 : Math.min(9, Math.floor((correct / samples) * 10));
+      }
+
       function getFilteredItems() {
         const rows = state.snapshot.rows || [];
         const metric = state.selectedMetric;
@@ -8486,6 +8582,21 @@
           if (state.scoreDistFilter) {
             if (score === null) continue;
             if (score < state.scoreDistFilter.min || score >= state.scoreDistFilter.max) continue;
+          }
+
+          // Repeat-run pass-count distribution filter. The bucket calculation
+          // mirrors the API's distribution grouping so the selected bar and
+          // the item table always agree, including percentage bands for runs
+          // with more than ten passes.
+          if (state.repeatDistFilter) {
+            const repeatFilter = state.repeatDistFilter;
+            const bucket = getRepeatDistributionBucket(
+              row,
+              repeatFilter.metric,
+              repeatFilter.samples,
+              repeatFilter.threshold,
+            );
+            if (bucket === null || bucket !== repeatFilter.bucket) continue;
           }
 
           // Latency distribution filter
@@ -8799,7 +8910,7 @@
             badge = '<span class="metric-score-value ' + cls + '">' + window.QymMetrics.formatMetricObservation(v, mType, state.metricSpecs?.[name]) + '</span>';
           }
           const bid = 'det_' + safeId + '_' + i;
-          return '<div class="metric-det"><button type="button" class="det-toggle" data-det-target="' + bid + '" aria-expanded="false"><span class="det-caret">▸</span><span class="det-metric">' + escapeHtml(name) + '</span>' + badge + '</button><div class="det-body hidden" id="' + bid + '">' + formatObjectAsHtml(obj) + '</div></div>';
+          return '<div class="metric-det"><button type="button" class="det-toggle" data-det-target="' + bid + '" aria-expanded="false"><span class="det-caret"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m5.5 3.5 5 4.5-5 4.5"/></svg></span><span class="det-metric">' + escapeHtml(name) + '</span>' + badge + '</button><div class="det-body hidden" id="' + bid + '">' + formatObjectAsHtml(obj) + '</div></div>';
         }).filter(Boolean).join('');
         return blocks ? '<div class="metric-det-zone">' + blocks + '</div>' : '';
       }
@@ -8828,25 +8939,37 @@
             badge = '<span class="metric-score-value ' + cls + '">' + display + '</span>';
           }
           const editBtn = '<button class="metric-edit-open qym-icon-action" data-row-index="' + escapeAttr(String(rowIndex ?? 0)) + '" data-metric="' + escapeAttr(name) + '" title="Edit" aria-label="Edit ' + escapeAttr(name) + '">✎</button>';
+          // Inline edit: the chip's value swaps for an input + check icon.
+          const rawValue = ((metricVals || [])[i] == null || (metricVals || [])[i] === '') ? '' : String((metricVals || [])[i]);
+          const inlineEdit = '<span class="metric-edit-controls chip-edit hidden">'
+            + '<input class="metric-edit-input" type="text" value="' + escapeAttr(rawValue) + '" data-row-index="' + escapeAttr(String(rowIndex ?? 0)) + '" data-metric="' + escapeAttr(name) + '" aria-label="New score" />'
+            + '<button class="metric-edit-save qym-icon-action" data-row-index="' + escapeAttr(String(rowIndex ?? 0)) + '" data-metric="' + escapeAttr(name) + '" title="Save"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m3 8.5 3.5 3.5 6.5-7"/></svg></button>'
+            + '<span class="metric-edit-status"></span></span>';
           const modified = String(((fullMeta || {})[name] || {}).modified || '').toLowerCase() === 'true';
           const editedBadge = modified ? '<span class="metric-edit-badge">Edited</span>' : '';
           const bid = 'det_' + safeId + '_' + i;
           let bodyHtml = '';
-          let caret = '<span class="det-caret det-caret-none">▸</span>';
+          let caret = '<span class="det-caret det-caret-none"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m5.5 3.5 5 4.5-5 4.5"/></svg></span>';
           let toggleAttrs = '';
           if (metaKeys.length) {
             const obj = {};
             metaKeys.forEach(k => { obj[k] = _parseMetaDeep(meta[k]); });
             bodyHtml = '<div class="det-body hidden" id="' + bid + '">' + formatObjectAsHtml(obj) + '</div>';
-            caret = '<span class="det-caret">▸</span>';
+            caret = '<span class="det-caret"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m5.5 3.5 5 4.5-5 4.5"/></svg></span>';
             toggleAttrs = ' role="button" tabindex="0" data-det-target="' + bid + '" aria-expanded="false"';
           }
           const hl = name === state.selectedMetric ? ' highlighted' : '';
-          return '<div class="metric-det"><div class="det-toggle' + hl + (metaKeys.length ? '' : ' static') + '"' + toggleAttrs + '>'
-            + caret + '<span class="det-metric">' + escapeHtml(name) + '</span>' + badge + editBtn + editedBadge
-            + '</div>' + bodyHtml + '</div>';
-        }).filter(Boolean).join('');
-        return rows ? '<div class="metric-det-zone">' + rows + '</div>' : '';
+          const chip = '<div class="det-toggle' + hl + (metaKeys.length ? '' : ' static') + '"' + toggleAttrs + '>'
+            + caret + '<span class="det-metric">' + escapeHtml(name) + '</span>' + badge + inlineEdit + editBtn + editedBadge
+            + '</div>';
+          return { chip: chip, body: bodyHtml };
+        }).filter(Boolean);
+        if (!rows.length) return '';
+        // Compact chip per metric; an opened detail panel takes the full
+        // card width below the chip row — rows stay short, content gets room.
+        return '<div class="metric-det-zone"><div class="metric-det-chips">'
+          + rows.map(r => r.chip).join('') + '</div>'
+          + rows.map(r => r.body).join('') + '</div>';
       }
 
       function renderItems(scrollToTop) {
@@ -8919,17 +9042,6 @@
           const itemMatch = itemId.match(/^item_(\d+)$/);
           if (itemMatch) displayItemId = 'Item ' + (parseInt(itemMatch[1], 10) + 1);
 
-          // Metric edit blocks
-          let metricEditHtml = state.allMetrics.map((name, i) => {
-            const rawScore = metricVals[i];
-            const rawValue = (rawScore == null || rawScore === '') ? '' : String(rawScore);
-            const meta = metricMeta[name] || {};
-            const originalRaw = meta.original_score;
-            const hasOriginal = !(originalRaw == null || originalRaw === '');
-            const modifiedNote = hasOriginal ? '<div class="metric-edit-meta">Original: ' + escapeHtml(String(originalRaw)) + '</div>' : '';
-            return '<div class="metric-edit-block hidden" data-row-index="' + escapeAttr(String(row.index ?? 0)) + '" data-metric="' + escapeAttr(name) + '"><div class="metric-edit-title">Edit ' + escapeHtml(name) + '_score' + (state.viewPass ? ' (pass ' + state.viewPass + ')' : '') + '</div><div class="metric-edit-controls"><input class="metric-edit-input" type="text" value="' + escapeAttr(rawValue) + '" data-row-index="' + escapeAttr(String(row.index ?? 0)) + '" data-metric="' + escapeAttr(name) + '" /><button class="metric-edit-save" data-row-index="' + escapeAttr(String(row.index ?? 0)) + '" data-metric="' + escapeAttr(name) + '">Save</button><span class="metric-edit-status"></span></div>' + modifiedNote + '</div>';
-          }).join('');
-
           // Status left cluster
           const startInfo = formatTaskStart(taskStartedAtMs);
           const clockIcon = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="8" cy="8" r="6.25"/><path d="M8 4.5V8l2.5 1.5"/></svg>';
@@ -8942,8 +9054,6 @@
           const traceChip = !IS_EXPORT
             ? '<button type="button" class="action-chip trace-drawer-btn" data-trace-endpoint="' + escapeAttr(traceEndpoint) + '" data-trace-item-label="' + escapeAttr((state.run.run_name || 'Run') + ' \u00B7 ' + displayItemId) + '" data-trace-id="' + escapeAttr(traceId || '') + '" data-trace-url="' + escapeAttr(traceUrl || '') + '" title="Open trace viewer"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M2.5 4h11M2.5 8h7M2.5 12h9"/><circle cx="12.5" cy="8" r="1.2" fill="currentColor" stroke="none" opacity=".5"/><circle cx="13.5" cy="12" r="1.2" fill="currentColor" stroke="none" opacity=".5"/></svg>Trace</button>'
             : '';
-          const langfuseChip = traceUrl ? '<a class="action-chip" href="' + escapeAttr(traceUrl) + '" target="_blank" title="View in Langfuse"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3.5H4A1.5 1.5 0 0 0 2.5 5v7A1.5 1.5 0 0 0 4 13.5h7A1.5 1.5 0 0 0 12.5 12v-2"/><path d="M9.5 2.5h4v4"/><path d="M13.25 2.75 7.5 8.5"/></svg>Langfuse</a>' : '';
-
           // Pass/fail status indicator (skip for numeric metrics — threshold doesn't apply)
           let statusIndicator = '';
           const pfMType = metric ? (state.metricTypes[metric] || 'score') : 'score';
@@ -9108,10 +9218,10 @@
           let outputBlockHtml = '';
           if (isRepeatItem) {
             outputBlockHtml = renderAnswerColumns(baseRow, itemId, displayItemId, metric, threshold)
-              + _renderTraceChips(row.trace_stats, row.retry_count) + metricStripHtml + metricEditHtml + rootCauseHtml;
+              + _renderTraceChips(row.trace_stats, row.retry_count) + metricStripHtml + rootCauseHtml;
           }
           if (!outputBlockHtml) {
-            outputBlockHtml = '<div class="item-run-output"><div class="output-header"><span class="output-status-cluster"><span class="run-label">' + outputLabel + '</span>' + durationPart + timePart + '</span><span class="output-actions">' + copyBtn + traceChip + langfuseChip + '</span></div><div class="output-text ' + (status === 'error' ? 'score-1' : '') + '">' + renderMarkdownSafe(output) + '</div>' + _renderTraceChips(row.trace_stats, row.retry_count) + metricStripHtml + metricEditHtml + rootCauseHtml + '</div>';
+            outputBlockHtml = '<div class="item-run-output"><div class="output-header"><span class="output-status-cluster"><span class="run-label">' + outputLabel + '</span>' + durationPart + timePart + '</span><span class="output-actions">' + copyBtn + traceChip + '</span></div><div class="output-text ' + (status === 'error' ? 'score-1' : '') + '">' + renderMarkdownSafe(output) + '</div>' + _renderTraceChips(row.trace_stats, row.retry_count) + metricStripHtml + rootCauseHtml + '</div>';
           }
 
           // Collapsed header: the input itself is the title; aggregates live
@@ -9143,7 +9253,7 @@
               : '<span class="item-title" title="' + escapeAttr(displayItemId) + '">' + escapeHtml(titleText) + '</span>') +
             '<span class="item-agg-pills">' + aggPills + '</span>' +
             passNote +
-            '<button class="copy-btn qym-icon-action" data-item-id="' + escapeAttr(itemId) + '" title="Copy all fields">' + COPY_ICON + '</button>' +
+
           '</div>';
 
           if (!isExpanded) {
@@ -9225,12 +9335,10 @@
             const open = !body.classList.toggle('hidden');
             btn.classList.toggle('open', open);
             btn.setAttribute('aria-expanded', open ? 'true' : 'false');
-            const caret = btn.querySelector('.det-caret');
-            if (caret) caret.textContent = open ? '▾' : '▸';
           };
           btn.addEventListener('click', (e) => {
-            // The pencil inside the strip row edits; it must not toggle.
-            if (e.target.closest('.metric-edit-open')) return;
+            // Edit controls inside the chip must not toggle the panel.
+            if (e.target.closest('.metric-edit-open, .metric-edit-controls')) return;
             toggle();
           });
           btn.addEventListener('keydown', (e) => {
@@ -9309,13 +9417,19 @@
       function wireMetricEditHandlers() {
         document.querySelectorAll('.metric-edit-open').forEach(btn => {
           btn.onclick = () => {
-            const rowIndex = btn.dataset.rowIndex;
-            const metric = btn.dataset.metric;
-            const block = document.querySelector('.metric-edit-block[data-row-index="' + rowIndex + '"][data-metric="' + metric + '"]');
-            if (!block) return;
-            const isHidden = block.classList.contains('hidden');
-            block.classList.toggle('hidden');
-            btn.textContent = isHidden ? '\u2715' : '\u270E';
+            const chip = btn.closest('.det-toggle');
+            const inline = chip ? chip.querySelector('.chip-edit') : null;
+            if (!inline) return;
+            const opening = inline.classList.contains('hidden');
+            inline.classList.toggle('hidden');
+            chip.classList.toggle('editing', opening);
+            btn.textContent = opening ? '\u2715' : '\u270E';
+            if (opening) inline.querySelector('.metric-edit-input')?.focus();
+          };
+        });
+        document.querySelectorAll('.chip-edit .metric-edit-input').forEach(input => {
+          input.onkeydown = (e) => {
+            if (e.key === 'Enter') input.parentElement.querySelector('.metric-edit-save')?.click();
           };
         });
         document.querySelectorAll('.metric-edit-save').forEach(btn => {
@@ -10322,6 +10436,7 @@
         if (state.traceErrorFilter !== null) n++;
         if (state.analysisErrorFilter !== null) n++;
         if (state.scoreDistFilter) n++;
+        if (state.repeatDistFilter) n++;
         if (state.latencyDistFilter) n++;
         n += Object.values(state.categoryFilters).filter(v => v !== null).length;
         return n;
@@ -10351,6 +10466,7 @@
         state.traceErrorFilter = null;
         state.analysisErrorFilter = null;
         state.scoreDistFilter = null;
+        state.repeatDistFilter = null;
         state.latencyDistFilter = null;
         state.categoryFilters = {};
         state.page = 1;
