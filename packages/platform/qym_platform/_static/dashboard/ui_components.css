@@ -2189,3 +2189,623 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* Expanded item shell ---------------------------------------------------
+   Run, repeat, and compare pages share the same compact open header and
+   content-block hierarchy. Input is prose (sans/blue); expected output is
+   usually structured data or code (mono/green). */
+.item-header-spacer { flex: 1 1 auto; }
+
+.item-pass-note {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  min-height: 20px;
+  padding: 0 6px;
+  border-radius: 3px;
+  background: var(--bg-active);
+  color: var(--text-muted);
+  font-size: var(--font-xs);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.item-input-row,
+.item-expected-row {
+  padding: var(--space-sm);
+  border-radius: 4px;
+  background: var(--bg-elevated);
+}
+
+.item-input-row { border-left: 3px solid var(--accent-secondary); }
+
+.item-expected-row {
+  border-left: 3px solid var(--success);
+  background: var(--success-dim);
+}
+
+.item-input-row .input-label,
+.item-expected-row .expected-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+  color: var(--accent-secondary);
+  font-size: var(--font-sm);
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.item-expected-row .expected-label { color: var(--success); }
+
+.item-input-row .input-text {
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: var(--font-base);
+  line-height: 1.7;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.item-expected-row .expected-text {
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--font-base);
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* Grouped outputs ---------------------------------------------------------
+   Repeat and compare views share one output heading, independent visibility
+   toggles, one card per execution, and a synchronized metric-detail band. */
+.qym-output-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  min-width: 0;
+}
+
+.qym-output-group__header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  min-height: var(--control-height);
+}
+
+.qym-output-group__title {
+  color: var(--accent-primary);
+  font-size: var(--font-sm);
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.qym-output-group__summary {
+  color: var(--text-muted);
+  font-size: var(--font-sm);
+}
+
+.qym-output-toggles {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-xs);
+  min-width: 0;
+}
+
+.qym-output-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-xs);
+  height: var(--control-height);
+  padding: 0 var(--space-sm);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--control-radius);
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+  font-family: var(--font-sans);
+  font-size: var(--font-sm);
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color 0.16s ease, background-color 0.16s ease, border-color 0.16s ease;
+}
+
+.qym-output-toggle:hover {
+  border-color: var(--border-strong);
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.qym-output-toggle[aria-pressed="true"] {
+  border-color: color-mix(in srgb, var(--accent-primary) 35%, transparent);
+  background: color-mix(in srgb, var(--accent-primary) 10%, transparent);
+  color: var(--accent-primary);
+}
+
+.qym-output-swatch {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 auto;
+  border-radius: 2px;
+  opacity: 0.45;
+  transition: opacity 0.16s ease;
+}
+
+.qym-output-toggle[aria-pressed="true"] .qym-output-swatch { opacity: 1; }
+
+.qym-output-grid,
+.qym-metric-compare__grid {
+  display: grid;
+  gap: var(--space-sm);
+  min-width: 0;
+  overflow-x: auto;
+  padding-bottom: var(--space-xs);
+}
+
+.qym-output-grid.visible-1,
+.qym-metric-compare__grid.visible-1 {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.qym-output-grid.visible-2,
+.qym-metric-compare__grid.visible-2 {
+  grid-template-columns: repeat(2, minmax(320px, 1fr));
+}
+
+.qym-output-grid.visible-3,
+.qym-metric-compare__grid.visible-3 {
+  grid-template-columns: repeat(3, minmax(320px, 1fr));
+}
+
+.qym-output-grid.visible-many,
+.qym-metric-compare__grid.visible-many {
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(320px, 1fr);
+  justify-content: start;
+}
+
+.qym-output-card.item-run-output {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  min-width: 0;
+  padding: 0;
+  overflow: hidden;
+  border-left-width: 3px;
+  border-left-style: solid;
+  border-radius: 0 6px 6px 0;
+  background: var(--bg-elevated);
+}
+
+.qym-output-card.is-hidden,
+.qym-metric-compare__cell.is-hidden { display: none; }
+
+.qym-output-card__header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  min-height: 38px;
+  padding: var(--space-sm);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.qym-output-card__identity {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  color: var(--text-secondary);
+  font-size: var(--font-sm);
+  font-weight: 600;
+}
+
+.qym-output-card__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.qym-output-card__link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  min-width: 0;
+  color: inherit;
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+
+.qym-output-card__link:is(:hover, :focus-visible) { color: var(--accent-primary); }
+
+.qym-output-card__link svg {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.45;
+  transition: opacity 0.15s ease;
+}
+
+.qym-output-card__link:is(:hover, :focus-visible) svg { opacity: 1; }
+
+.qym-output-card__duration {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  margin-left: auto;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--font-xs);
+  white-space: nowrap;
+}
+
+.qym-output-card__duration svg {
+  width: 12px;
+  height: 12px;
+  color: var(--text-muted);
+}
+
+.qym-output-card__actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.qym-output-card > .output-text {
+  min-height: 250px;
+  padding: var(--space-sm);
+}
+
+.item-run-output > .metric-det-zone,
+.qym-output-card .metric-det-zone {
+  margin: 0;
+  padding: var(--space-sm);
+  background: var(--bg-elevated);
+}
+
+/* Item metric rows -------------------------------------------------------
+   Single-run, repeat, and compare outputs use the same row anatomy. The
+   grid changes column count with available card width; the component itself
+   keeps identical geometry, spacing, disclosure, score, and edit actions. */
+.metric-det-chips,
+.qym-output-card .metric-det-chips {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--space-xs);
+  width: 100%;
+}
+
+.metric-det-chips > .det-toggle,
+.qym-output-card .metric-compare-row {
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  min-width: 0;
+  width: 100%;
+  min-height: calc(var(--control-height) + var(--space-xs));
+  padding: var(--space-xs) var(--space-sm);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--control-radius);
+  background: var(--bg-surface);
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.metric-det-chips > .det-toggle:hover {
+  border-color: var(--border-strong);
+  background: var(--bg-hover);
+}
+
+.det-toggle .det-caret {
+  color: var(--text-muted);
+  transition: color 0.15s ease;
+}
+
+.det-toggle:is(:hover, :focus-within, .open) .det-caret,
+.metric-compare-row:has(> .metric-compare-trigger.active) .det-caret {
+  color: var(--accent-primary);
+}
+
+.metric-compare-row > .metric-compare-trigger,
+.qym-output-card .metric-compare-row > .metric-compare-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  flex: 1 1 auto;
+  min-width: 0;
+  width: auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.metric-compare-row.static > .metric-compare-trigger {
+  cursor: default;
+}
+
+.metric-compare-row > .metric-compare-trigger:focus {
+  outline: none;
+}
+
+.metric-compare-row > .metric-compare-trigger:focus-visible {
+  border-radius: var(--control-radius);
+  outline: 1px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
+.metric-compare-row > .metric-compare-trigger .det-metric {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.metric-compare-row > .metric-edit-open {
+  margin-left: var(--space-xs);
+}
+
+.metric-compare-row.open,
+.metric-compare-row:has(> .metric-compare-trigger.active) {
+  border-color: color-mix(in srgb, var(--accent-primary) 35%, transparent);
+  background: color-mix(in srgb, var(--accent-primary) 8%, transparent);
+}
+
+.metric-compare-row.open .det-caret svg,
+.metric-compare-row:has(> .metric-compare-trigger.active) .det-caret svg { transform: rotate(90deg); }
+
+.qym-output-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 96px;
+  border: 1px dashed var(--border-default);
+  border-radius: 6px;
+  background: var(--bg-surface);
+  color: var(--text-muted);
+  font-size: var(--font-sm);
+}
+
+.qym-output-empty.hidden { display: none; }
+
+.qym-metric-compare {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  margin-top: calc(0px - var(--space-sm));
+  overflow: visible;
+  border: 0;
+  background: transparent;
+}
+
+.qym-metric-compare.hidden,
+.qym-metric-compare.no-visible { display: none; }
+
+.qym-metric-compare__grid {
+  gap: var(--space-sm);
+  padding-bottom: var(--space-xs);
+}
+
+.qym-metric-compare__cell {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: var(--space-sm);
+  border: 1px solid var(--border-default);
+  border-left: 3px solid var(--border-strong);
+  border-radius: 0 6px 6px 0;
+  background: var(--bg-surface);
+}
+
+.qym-metric-compare__cell + .qym-metric-compare__cell {
+  border-left-width: 3px;
+}
+
+.qym-metric-compare__cell-header {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 7px;
+  min-height: var(--control-height);
+}
+
+.qym-metric-compare__cell .metric-score-value {
+  margin-left: 0;
+  font-family: var(--font-mono);
+  font-size: var(--font-sm);
+  font-weight: 700;
+}
+
+.qym-metric-compare__cell.editing .metric-score-value,
+.qym-metric-compare__cell.editing .metric-edit-open { display: none; }
+
+/* Inline metric editing swaps the resting value/action for one stable row.
+   Using the full chip width prevents long metric names from pushing the
+   input or semantic actions outside narrow output cards. */
+.metric-det-chips .det-toggle.editing {
+  width: 100%;
+  max-width: 100%;
+  cursor: default;
+}
+
+.det-toggle.editing > .det-caret,
+.det-toggle.editing > .metric-score-value,
+.det-toggle.editing > .metric-edit-open,
+.det-toggle.editing > .metric-edit-badge { display: none; }
+
+.det-toggle.editing > .det-metric {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.det-toggle.editing > .qym-metric-edit-controls {
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+
+.metric-compare-row.editing > .metric-compare-trigger {
+  flex: 1 1 auto;
+  pointer-events: none;
+  cursor: default;
+}
+
+.metric-compare-row.editing > .metric-compare-trigger .det-caret,
+.metric-compare-row.editing > .metric-compare-trigger .metric-score-value { display: none; }
+
+.metric-compare-row.editing > .metric-compare-trigger .det-metric {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.metric-edit-open svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.qym-metric-compare__content {
+  min-width: 0;
+  padding-top: var(--space-xs);
+  color: var(--text-secondary);
+  font-size: var(--font-sm);
+  line-height: 1.55;
+}
+
+.qym-metric-compare__empty {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.qym-metric-compare__cell--aggregate { grid-column: 1 / -1; }
+
+.qym-metric-compare__notice {
+  padding-bottom: var(--space-xs);
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-muted);
+  font-size: var(--font-sm);
+  line-height: 1.45;
+}
+
+.qym-metric-compare__content > .formatted-object {
+  display: grid;
+  gap: var(--space-xs);
+}
+
+.qym-metric-compare__content .formatted-row {
+  grid-template-columns: minmax(110px, 0.34fr) minmax(0, 1fr) auto;
+}
+
+.qym-metric-edit-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.qym-metric-edit-controls.hidden { display: none; }
+
+.qym-metric-edit-controls .metric-edit-input {
+  box-sizing: border-box;
+  width: 64px;
+  height: var(--control-height);
+  min-height: 0;
+  margin: 0;
+  padding: 0 var(--space-xs);
+  border: 1px solid var(--border-default);
+  border-radius: var(--control-radius);
+  background: var(--bg-base);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: var(--font-sm);
+  box-shadow: none;
+}
+
+.det-toggle .qym-metric-edit-controls .metric-edit-input {
+  width: 64px;
+  height: var(--control-height);
+  min-height: 0;
+  padding: 0 var(--space-xs);
+  border-radius: var(--control-radius);
+  font-size: var(--font-sm);
+}
+
+.qym-metric-edit-controls .metric-edit-input:focus {
+  border-color: var(--accent-primary);
+  box-shadow: none;
+}
+
+.qym-metric-edit-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: var(--control-height);
+  min-width: var(--control-height);
+  height: var(--control-height);
+  padding: 0;
+  border: 0;
+  border-radius: var(--control-radius);
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.qym-metric-edit-action svg {
+  width: 13px;
+  height: 13px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.qym-metric-edit-action.metric-edit-save {
+  background: color-mix(in srgb, var(--accent-primary) 10%, transparent);
+  color: var(--accent-primary);
+}
+
+.qym-metric-edit-action.metric-edit-save:hover {
+  background: color-mix(in srgb, var(--accent-primary) 18%, transparent);
+}
+
+.qym-metric-edit-action.metric-edit-cancel {
+  background: color-mix(in srgb, var(--error) 10%, transparent);
+  color: var(--error);
+}
+
+.qym-metric-edit-action.metric-edit-cancel:hover {
+  background: color-mix(in srgb, var(--error) 18%, transparent);
+}
+
+.qym-metric-edit-action:disabled { opacity: 0.6; cursor: default; }
+
+@media (max-width: 760px) {
+  .qym-output-grid.visible-2,
+  .qym-output-grid.visible-3,
+  .qym-metric-compare__grid.visible-2,
+  .qym-metric-compare__grid.visible-3 {
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(300px, 86vw);
+    grid-template-columns: none;
+  }
+}

@@ -4969,7 +4969,7 @@
     .pass-cmp-vtable td.score-1 { color: var(--score-1); }
     .pass-cmp-actions { display: flex; gap: 6px; }
   </style>
-  <link rel="stylesheet" href="/static/ui_components.css?v=ui-consistency-20260730-32">
+  <link rel="stylesheet" href="/static/ui_components.css?v=ui-consistency-20260801-43">
   <script defer src="/static/ui_components.js?v=ui-consistency-20260730-27"></script>
 </head>
 <body>
@@ -5170,6 +5170,10 @@
 
       const COPY_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
       const CHECK_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+      const EDIT_ICON = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 11.5-.5 2 2-.5 7.8-7.8-1.5-1.5L3 11.5Z"/><path d="m9.8 4.7 1.5 1.5"/></svg>';
+      const SAVE_ICON = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m3 8.5 3.5 3.5 6.5-7"/></svg>';
+      const CLOSE_ICON = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 4 8 8M12 4l-8 8"/></svg>';
+      const CLOCK_ICON = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><circle cx="8" cy="8" r="6.25"/><path d="M8 4.5V8l2.5 1.5"/></svg>';
 
       const formatPercent = window.QymMetrics.formatPercent;
       const formatLatency = window.QymMetrics.formatLatency;
@@ -5220,6 +5224,8 @@
         visibleMetadataFields: {},
         visibleMetricMetaFields: {},
         allMetricMetaKeys: [],
+        itemHiddenOutputs: {},
+        itemComparedMetric: {},
         // Legacy trace URL inputs only; external Langfuse actions are not rendered.
         langfuseHost: '',
         langfuseProjectId: '',
@@ -5820,7 +5826,19 @@
         for (const metricName of state.allMetrics) {
           const mIdx = state.allMetrics.indexOf(metricName);
           const metricSpec = state.metricSpecs[metricName];
-          const inferredType = window.QymMetrics.detectMetricType(snap.rows || [], mIdx);
+          // Legacy repeat artifacts do not carry metric specs. Infer their
+          // observation type from the unreduced pass scores, not from the
+          // item mean: [0, 1, 1] is a boolean observation series whose 0.67
+          // reduction is a rate, not a percentage-valued observation.
+          const passObservationRows = state.viewPass ? [] : (snap.rows || []).flatMap(row => {
+            const scores = row.pass_scores?.[metricName];
+            return Array.isArray(scores)
+              ? scores.map(score => ({ metric_values: [score] }))
+              : [];
+          });
+          const inferredType = passObservationRows.length
+            ? window.QymMetrics.detectMetricType(passObservationRows, 0)
+            : window.QymMetrics.detectMetricType(snap.rows || [], mIdx);
           const mType = metricSpec
             ? window.QymMetrics.metricTypeFromSpec(metricSpec)
             : inferredType;
@@ -9186,39 +9204,63 @@
         return (!tied && best) ? best : null;
       }
 
-      // One item, N answers — the expanded item's unified columns view.
-      // Identical outputs fold into one variant column, the strip picks
-      // which columns show, and the block scrolls horizontally at a fixed
-      // readable column width (columns never squeeze to fit).
+      // One item, N answers — a shared output heading, independently visible
+      // pass cards, and one synchronized metric-detail band below them.
       function renderAnswerColumns(baseRow, itemId, displayItemId, metric, threshold) {
         const passAttempts = Array.isArray(baseRow.pass_attempts) ? baseRow.pass_attempts : [];
         const attempts = passAttempts
           .map((att, i) => att ? { ...att, pass_number: att.pass_number || i + 1 } : null)
           .filter(Boolean);
         if (attempts.length < 2) return '';
-        const pendingCount = passAttempts.length - attempts.length;
-        const bestPass = _passCompareBest(baseRow, metric);
-        const metricIsNumeric = metric ? (state.metricTypes[metric] || 'score') === 'numeric' : true;
+        const groups = _passCompareGroups(attempts);
+        const hidden = (state.itemHiddenOutputs || {})[itemId] || new Set();
+        const activeMetric = (state.itemComparedMetric || {})[itemId] || '';
+        const visibleCount = attempts.filter(att => !hidden.has(att.pass_number)).length;
+        const visibleClass = visibleCount > 3 ? 'visible-many' : 'visible-' + Math.max(1, visibleCount);
+        const colors = ['var(--accent-primary)', 'var(--accent-secondary)', 'var(--accent-tertiary)', 'var(--warning)'];
+        const safeBase = String(itemId).replace(/[^A-Za-z0-9_-]/g, '_') || 'item';
+        const passMeta = baseRow.pass_metric_meta || {};
 
-        const scoreFor = (name, passNo) => {
+        const rawScoreFor = (name, passNo) => {
           const scores = (baseRow.pass_scores || {})[name];
-          return window.QymMetrics.parseScoreValue(Array.isArray(scores) ? scores[passNo - 1] : null);
+          return Array.isArray(scores) ? scores[passNo - 1] : null;
         };
-        const passState = (att) => {
-          if (att.status === 'error') return 'fail';
-          if (!metric || metricIsNumeric) return '';
-          const v = scoreFor(metric, att.pass_number);
-          if (v === null) return '';
-          return v >= threshold ? 'pass' : 'fail';
+        const scoreFor = (name, passNo) => window.QymMetrics.parseScoreValue(rawScoreFor(name, passNo));
+        const metaFor = (name, passNo) => {
+          const values = passMeta[name];
+          const meta = Array.isArray(values) ? values[passNo - 1] : null;
+          return meta && typeof meta === 'object' ? meta : {};
         };
-        const pillsFor = (passNo) => state.allMetrics.map(name => {
+        const metricDisplayFor = (name, passNo) => {
           const v = scoreFor(name, passNo);
-          if (v === null) return '';
+          if (v === null) return { cls: '', display: '\u2014' };
           const mType = state.metricTypes[name] || 'score';
           const cls = window.QymMetrics.getMetricColorClass(v, mType);
           const display = window.QymMetrics.formatMetricObservation(v, mType, state.metricSpecs?.[name]);
-          return '<div class="metric-score-row ' + (name === metric ? 'highlighted' : '') + '"><span class="metric-score-name">' + escapeHtml(name) + '</span><span class="metric-score-value ' + cls + '">' + display + '</span></div>';
-        }).join('');
+          return { cls, display };
+        };
+        const metricStripFor = (att) => {
+          const buttons = state.allMetrics.map(name => {
+            const value = metricDisplayFor(name, att.pass_number);
+            const passMetricMeta = metaFor(name, att.pass_number);
+            const hasMeta = Object.keys(passMetricMeta).some(key =>
+              !['modified', 'original_score'].includes(key)
+              && state.visibleMetricMetaFields[key] !== false
+              && passMetricMeta[key] !== undefined
+              && passMetricMeta[key] !== null
+              && passMetricMeta[key] !== '');
+            if (value.display === '\u2014' && !hasMeta) return '';
+            const isActive = activeMetric === name;
+            const raw = rawScoreFor(name, att.pass_number);
+            const edited = String(passMetricMeta.modified || '').toLowerCase() === 'true';
+            return '<div class="det-toggle metric-compare-row' + (isActive ? ' active' : '') + '">' +
+              '<button type="button" class="metric-compare-trigger' + (isActive ? ' active' : '') + '" data-output-metric="' + escapeAttr(name) + '" aria-expanded="' + isActive + '"><span class="det-caret"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m5.5 3.5 5 4.5-5 4.5"/></svg></span><span class="det-metric">' + escapeHtml(name) + '</span><span class="metric-score-value ' + value.cls + '">' + value.display + '</span></button>' +
+              '<span class="metric-edit-controls qym-metric-edit-controls hidden"><input class="metric-edit-input" type="text" value="' + escapeAttr(raw == null ? '' : String(raw)) + '" data-row-index="' + escapeAttr(String(baseRow.index ?? 0)) + '" data-metric="' + escapeAttr(name) + '" data-pass-number="' + att.pass_number + '" aria-label="New Pass ' + att.pass_number + ' ' + escapeAttr(name) + ' score"><button class="metric-edit-save qym-metric-edit-action" data-row-index="' + escapeAttr(String(baseRow.index ?? 0)) + '" data-metric="' + escapeAttr(name) + '" data-pass-number="' + att.pass_number + '" title="Save" aria-label="Save Pass ' + att.pass_number + ' ' + escapeAttr(name) + '">' + SAVE_ICON + '</button><button class="metric-edit-cancel qym-metric-edit-action" type="button" title="Cancel" aria-label="Cancel editing">' + CLOSE_ICON + '</button><span class="metric-edit-status" aria-live="polite"></span></span>' +
+              '<button class="metric-edit-open qym-icon-action" type="button" aria-label="Edit Pass ' + att.pass_number + ' ' + escapeAttr(name) + '" title="Edit">' + EDIT_ICON + '</button>' +
+              (edited ? '<span class="metric-edit-badge">Edited</span>' : '') + '</div>';
+          }).filter(Boolean).join('');
+          return buttons ? '<div class="metric-det-zone"><div class="metric-det-chips">' + buttons + '</div></div>' : '';
+        };
         const traceBtnFor = (att) => {
           if (IS_EXPORT) return '';
           const attTraceUrl = att.trace_url || buildLangfuseTraceUrl(att.trace_id);
@@ -9226,91 +9268,60 @@
           const traceEndpoint = apiUrl('api/runs/' + encodeURIComponent(state.run.file_path || '') + '/items/' + encodeURIComponent(itemId) + '/trace');
           return '<button type="button" class="trace-drawer-btn qym-inline-action qym-inline-action--neutral qym-trace-action" data-trace-endpoint="' + escapeAttr(traceEndpoint) + '" data-trace-item-label="' + escapeAttr((state.run.run_name || 'Run') + ' · ' + displayItemId + ' · Pass ' + att.pass_number) + '" data-trace-id="' + escapeAttr(att.trace_id || '') + '" data-trace-url="' + escapeAttr(attTraceUrl || '') + '" title="Open trace viewer for pass ' + att.pass_number + '"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M2.5 4h11M2.5 8h7M2.5 12h9"/><circle cx="12.5" cy="8" r="1.2" fill="currentColor" stroke="none" opacity=".5"/><circle cx="13.5" cy="12" r="1.2" fill="currentColor" stroke="none" opacity=".5"/></svg>Trace</button>';
         };
-        const outputTextHtml = (att) => '<div class="output-text' + (att.status === 'error' ? ' score-1' : '') + '">' + renderMarkdownSafe(att.output ?? '—') + '</div>';
+        const copyBtnFor = (att) => '<button class="copy-btn qym-icon-action" data-copy-text="' + escapeAttr(typeof att.output === 'object' ? JSON.stringify(att.output, null, 2) : String(att.output ?? '')) + '" title="Copy output">' + COPY_ICON + '</button>';
+        const toggles = attempts.map((att, index) => {
+          const on = !hidden.has(att.pass_number);
+          const color = colors[index % colors.length];
+          return '<button type="button" class="qym-output-toggle" data-output-toggle="pass-' + att.pass_number + '" aria-pressed="' + on + '"><span class="qym-output-swatch" style="background:' + color + '"></span>Pass ' + att.pass_number + '</button>';
+        }).join('');
+        const cards = attempts.map((att, index) => {
+          const color = colors[index % colors.length];
+          const outputId = 'pass-' + att.pass_number;
+          const actions = traceBtnFor(att) + copyBtnFor(att);
+          return '<article class="item-run-output qym-output-card' + (hidden.has(att.pass_number) ? ' is-hidden' : '') + '" data-output-card="' + outputId + '" style="border-left-color:' + color + '">' +
+            '<div class="qym-output-card__header"><span class="qym-output-card__identity"><span class="qym-output-swatch" style="background:' + color + '"></span><span class="qym-output-card__name">Pass ' + att.pass_number + '</span></span>' +
+            (att.latency_ms ? '<span class="qym-output-card__duration">' + CLOCK_ICON + '<span>' + formatLatency(att.latency_ms) + '</span></span>' : '<span class="qym-output-card__duration">\u2014</span>') +
+            '<span class="qym-output-card__actions">' + actions + '</span></div>' +
+            '<div class="output-text' + (att.status === 'error' ? ' score-1' : '') + '">' + renderMarkdownSafe(att.output ?? '\u2014') + '</div>' +
+            metricStripFor(att) +
+          '</article>';
+        }).join('');
+        const panels = state.allMetrics.map(name => {
+          const detailForMeta = (meta) => {
+            const detail = {};
+            Object.keys(meta || {}).forEach(key => {
+              if (!['modified', 'original_score'].includes(key)
+                  && state.visibleMetricMetaFields[key] !== false
+                  && meta[key] !== undefined && meta[key] !== null && meta[key] !== '') {
+                detail[key] = _parseMetaDeep(meta[key]);
+              }
+            });
+            return detail;
+          };
+          const passDetails = attempts.map(att => detailForMeta(metaFor(name, att.pass_number)));
+          const hasPassDetails = passDetails.some(detail => Object.keys(detail).length);
+          const cells = hasPassDetails ? attempts.map((att, index) => {
+            const color = colors[index % colors.length];
+            const detail = passDetails[index];
+            const content = Object.keys(detail).length
+              ? formatObjectAsHtml(detail)
+              : '<span class="qym-metric-compare__empty">No details available.</span>';
+            return '<article class="qym-metric-compare__cell' + (hidden.has(att.pass_number) ? ' is-hidden' : '') + '" data-panel-item="pass-' + att.pass_number + '" style="border-left-color:' + color + '">' +
+              '<div class="qym-metric-compare__content">' + content + '</div></article>';
+          }).join('') : (() => {
+            const aggregateDetail = detailForMeta((baseRow.metric_meta || {})[name] || {});
+            const aggregateContent = Object.keys(aggregateDetail).length
+              ? formatObjectAsHtml(aggregateDetail)
+              : '<span class="qym-metric-compare__empty">No details available for this metric.</span>';
+            return '<article class="qym-metric-compare__cell qym-metric-compare__cell--aggregate" style="border-left-color:var(--accent-primary)"><div class="qym-metric-compare__notice">Pass-specific details were not recorded for this run; showing the run-level result.</div><div class="qym-metric-compare__content">' + aggregateContent + '</div></article>';
+          })();
+          const panelGridClass = hasPassDetails ? visibleClass : 'visible-1';
+          return '<section class="qym-metric-compare' + (activeMetric === name ? '' : ' hidden') + (visibleCount ? '' : ' no-visible') + '" data-metric-panel="' + escapeAttr(name) + '" aria-label="' + escapeAttr(name) + ' metric details"><div class="qym-metric-compare__grid ' + panelGridClass + '" data-metric-compare-grid>' + cells + '</div></section>';
+        }).join('');
+        const pendingCount = passAttempts.length - attempts.length;
+        const summaryTitle = groups.length + ' distinct output' + (groups.length === 1 ? '' : 's') + ' across ' + attempts.length + ' passes' + (pendingCount ? ' · ' + pendingCount + ' pending' : '');
 
-        const groups = _passCompareGroups(attempts);
-        const hidden = (state.itemHiddenVariants || {})[itemId] || new Set();
-        const passLabelFor = (group) => group.map(a => a.pass_number).sort((x, y) => x - y).join(' · ');
-
-        // Per-pass metric details: each pass's judge output renders inside
-        // its own column, next to the output it judged.
-        const safeColId = btoa(itemId).replace(/[+/=]/g, '_');
-        const passMeta = baseRow.pass_metric_meta || null;
-        const metaFor = (passNo) => {
-          if (!passMeta) return null;
-          const perMetric = {};
-          state.allMetrics.forEach(name => {
-            const arr = passMeta[name];
-            const m = Array.isArray(arr) ? arr[passNo - 1] : null;
-            if (m && typeof m === 'object') perMetric[name] = m;
-          });
-          return Object.keys(perMetric).length ? perMetric : null;
-        };
-        const detZoneFor = (att) => {
-          const pm = metaFor(att.pass_number);
-          if (!pm) return '';
-          const vals = state.allMetrics.map(name => {
-            const v = scoreFor(name, att.pass_number);
-            return v === null ? '' : v;
-          });
-          return renderMetricDetailBlocks(pm, vals, safeColId + '_p' + att.pass_number);
-        };
-
-        // Variant strip: one chip per distinct output; a chip toggles its column.
-        const stripHtml = groups.length > 1
-          ? '<div class="variant-strip"><span class="variant-strip-label">Showing</span>' +
-            groups.map((group, gi) => {
-              const on = !hidden.has(gi);
-              return '<button type="button" class="variant-chip qym-chip' + (on ? ' active' : '') + '" data-variant-item="' + escapeAttr(itemId) + '" data-variant-idx="' + gi + '" aria-pressed="' + on + '">Pass ' + passLabelFor(group) + ' <span class="chip-count qym-chip__count">' + group.length + '</span></button>';
-            }).join('') + '</div>'
-          : '';
-
-        const headCells = '<th></th>' + state.allMetrics.map(n => '<th>' + escapeHtml(n) + '</th>').join('') + '<th>latency</th>';
-        const cols = groups.map((group, gi) => {
-          if (hidden.has(gi)) return '';
-          const isBestG = bestPass != null && group.some(att => att.pass_number === bestPass);
-          const allFailed = group.every(att => att.status === 'error');
-          const first = group[0];
-          const single = group.length === 1;
-          const caption = single
-            ? '<div class="pass-cmp-caption"><span class="pass-cmp-sdot ' + passState(first) + '"></span><span class="pass-cmp-pname">Pass ' + first.pass_number + '</span>' + (isBestG ? '<span class="pass-cmp-best">★ Best</span>' : '') + (first.latency_ms ? '<span class="pass-cmp-latency">' + formatLatency(first.latency_ms) + '</span>' : '') + '</div>'
-            : '<div class="pass-cmp-caption"><span class="pass-cmp-pname">Pass ' + passLabelFor(group) + '</span><span class="pass-cmp-summary">identical output · ' + group.length + '/' + attempts.length + '</span>' + (isBestG ? '<span class="pass-cmp-best">★ Best</span>' : '') + '</div>';
-          // One pass → metric pills; several identical passes → the per-pass
-          // score table (judge noise can differ inside one output variant).
-          const scoresHtml = single
-            ? '<div class="metric-scores-inline">' + pillsFor(first.pass_number) + '</div>'
-            : '<div class="pass-cmp-vwrap"><table class="pass-cmp-vtable"><thead><tr>' + headCells + '</tr></thead><tbody>' +
-              group.map(att => {
-                const cells = state.allMetrics.map(name => {
-                  const v = scoreFor(name, att.pass_number);
-                  if (v === null) return '<td class="num">—</td>';
-                  const mType = state.metricTypes[name] || 'score';
-                  const cls = window.QymMetrics.getMetricColorClass(v, mType);
-                  return '<td class="num ' + cls + '">' + window.QymMetrics.formatMetricObservation(v, mType, state.metricSpecs?.[name]) + '</td>';
-                }).join('');
-                return '<tr><td class="pass-cmp-vpass">pass ' + att.pass_number + '</td>' + cells + '<td class="num">' + (att.latency_ms ? formatLatency(att.latency_ms) : '—') + '</td></tr>';
-              }).join('') + '</tbody></table></div>';
-          // Details: one zone per pass in the column (identical outputs can
-          // still carry different judge explanations).
-          const detsHtml = group.map(att => {
-            const zone = detZoneFor(att);
-            if (!zone) return '';
-            return (single ? '' : '<div class="det-pass-label">pass ' + att.pass_number + '</div>') + zone;
-          }).join('');
-          return '<div class="pass-cmp-col' + (isBestG ? ' best' : '') + (allFailed ? ' failed' : '') + '">' +
-            caption + outputTextHtml(first) + scoresHtml + detsHtml +
-            (traceBtnFor(first) ? '<div class="pass-cmp-actions">' + traceBtnFor(first) + '</div>' : '') +
-          '</div>';
-        }).filter(Boolean);
-
-        let summary = attempts.length + ' passes · ' + (groups.length === 1 ? 'identical output' : groups.length + ' distinct outputs');
-        if (pendingCount > 0) summary += ' · ' + pendingCount + ' pending';
-
-        return '<div class="item-run-output pass-cmp">' +
-          '<div class="output-header"><span class="output-status-cluster"><span class="run-label">OUTPUT · ALL PASSES</span><span class="pass-cmp-summary">' + summary + '</span></span></div>' +
-          stripHtml +
-          '<div class="pass-cmp-grid">' + cols.join('') + '</div>' +
-        '</div>';
+        return '<section class="qym-output-group" data-output-group data-output-item="' + escapeAttr(itemId) + '"><div class="qym-output-group__header"><span class="qym-output-group__title">Output</span><div class="qym-output-toggles" role="group" aria-label="Visible passes">' + toggles + '</div><span class="qym-output-group__summary" title="' + escapeAttr(summaryTitle) + '">' + groups.length + ' unique</span></div><div class="qym-output-grid ' + visibleClass + '" data-output-grid>' + cards + '</div>' + panels + '<div class="qym-output-empty' + (visibleCount ? ' hidden' : '') + '" data-output-empty>Turn on at least one pass to view its output.</div></section>';
       }
 
       // Task 5: metric meta behind one closed toggle per metric, rendered
@@ -9368,34 +9379,40 @@
           if (v !== null) {
             const mType = state.metricTypes[name] || 'score';
             const cls = window.QymMetrics.getMetricColorClass(v, mType);
-            const isReducedBoolean = mType === 'boolean' && Number(state.run?.samples || 1) > 1;
+            const isReducedBoolean = mType === 'boolean'
+              && Number(state.run?.samples || 1) > 1
+              && !state.viewPass;
             const display = isReducedBoolean
               ? window.QymMetrics.formatMetricValue(v, 'score')
               : window.QymMetrics.formatMetricObservation(v, mType, state.metricSpecs?.[name]);
             badge = '<span class="metric-score-value ' + cls + '">' + display + '</span>';
           }
-          const editBtn = '<button class="metric-edit-open qym-icon-action" data-row-index="' + escapeAttr(String(rowIndex ?? 0)) + '" data-metric="' + escapeAttr(name) + '" title="Edit" aria-label="Edit ' + escapeAttr(name) + '">✎</button>';
-          // Inline edit: the chip's value swaps for an input + check icon.
+          const editBtn = '<button class="metric-edit-open qym-icon-action" data-row-index="' + escapeAttr(String(rowIndex ?? 0)) + '" data-metric="' + escapeAttr(name) + '" title="Edit" aria-label="Edit ' + escapeAttr(name) + '">' + EDIT_ICON + '</button>';
+          // Inline edit: the chip's value swaps for an input plus explicit
+          // save and cancel actions.
           const rawValue = ((metricVals || [])[i] == null || (metricVals || [])[i] === '') ? '' : String((metricVals || [])[i]);
-          const inlineEdit = '<span class="metric-edit-controls chip-edit hidden">'
+          const inlineEdit = '<span class="metric-edit-controls chip-edit qym-metric-edit-controls hidden">'
             + '<input class="metric-edit-input" type="text" value="' + escapeAttr(rawValue) + '" data-row-index="' + escapeAttr(String(rowIndex ?? 0)) + '" data-metric="' + escapeAttr(name) + '" aria-label="New score" />'
-            + '<button class="metric-edit-save qym-icon-action" data-row-index="' + escapeAttr(String(rowIndex ?? 0)) + '" data-metric="' + escapeAttr(name) + '" title="Save"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m3 8.5 3.5 3.5 6.5-7"/></svg></button>'
+            + '<button class="metric-edit-save qym-metric-edit-action" data-row-index="' + escapeAttr(String(rowIndex ?? 0)) + '" data-metric="' + escapeAttr(name) + '" title="Save" aria-label="Save ' + escapeAttr(name) + '">' + SAVE_ICON + '</button>'
+            + '<button class="metric-edit-cancel qym-metric-edit-action" type="button" title="Cancel" aria-label="Cancel editing">' + CLOSE_ICON + '</button>'
             + '<span class="metric-edit-status"></span></span>';
           const modified = String(((fullMeta || {})[name] || {}).modified || '').toLowerCase() === 'true';
           const editedBadge = modified ? '<span class="metric-edit-badge">Edited</span>' : '';
           const bid = 'det_' + safeId + '_' + i;
           let bodyHtml = '';
           let caret = '<span class="det-caret det-caret-none"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m5.5 3.5 5 4.5-5 4.5"/></svg></span>';
-          let toggleAttrs = '';
+          let triggerAttrs = ' aria-disabled="true" tabindex="-1"';
           if (metaKeys.length) {
             const obj = {};
             metaKeys.forEach(k => { obj[k] = _parseMetaDeep(meta[k]); });
             bodyHtml = '<div class="det-body hidden" id="' + bid + '">' + formatObjectAsHtml(obj) + '</div>';
             caret = '<span class="det-caret"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m5.5 3.5 5 4.5-5 4.5"/></svg></span>';
-            toggleAttrs = ' role="button" tabindex="0" data-det-target="' + bid + '" aria-expanded="false"';
+            triggerAttrs = ' data-det-target="' + bid + '" aria-expanded="false"';
           }
-          const chip = '<div class="det-toggle' + (metaKeys.length ? '' : ' static') + '"' + toggleAttrs + '>'
-            + caret + '<span class="det-metric">' + escapeHtml(name) + '</span>' + badge + inlineEdit + editBtn + editedBadge
+          const chip = '<div class="det-toggle metric-compare-row' + (metaKeys.length ? '' : ' static') + '">'
+            + '<button type="button" class="metric-compare-trigger"' + triggerAttrs + '>'
+            + caret + '<span class="det-metric">' + escapeHtml(name) + '</span>' + badge + '</button>'
+            + inlineEdit + editBtn + editedBadge
             + '</div>';
           return { chip: chip, body: bodyHtml };
         }).filter(Boolean);
@@ -9656,7 +9673,7 @@
           let outputBlockHtml = '';
           if (isRepeatItem) {
             outputBlockHtml = renderAnswerColumns(baseRow, itemId, displayItemId, metric, threshold)
-              + _renderTraceChips(row.trace_stats, row.retry_count) + metricStripHtml + rootCauseHtml;
+              + _renderTraceChips(row.trace_stats, row.retry_count) + rootCauseHtml;
           }
           if (!outputBlockHtml) {
             outputBlockHtml = '<div class="item-run-output"><div class="output-header"><span class="output-status-cluster"><span class="run-label">' + outputLabel + '</span>' + durationPart + timePart + '</span><span class="output-actions">' + traceChip + copyBtn + '</span></div><div class="output-text ' + (status === 'error' ? 'score-1' : '') + '">' + renderMarkdownSafe(output) + '</div>' + _renderTraceChips(row.trace_stats, row.retry_count) + metricStripHtml + rootCauseHtml + '</div>';
@@ -9672,7 +9689,9 @@
             if (v === null) return '';
             const mType = state.metricTypes[name] || 'score';
             const cls = window.QymMetrics.getMetricColorClass(v, mType);
-            const isReducedBoolean = mType === 'boolean' && Number(state.run?.samples || 1) > 1;
+            const isReducedBoolean = mType === 'boolean'
+              && Number(state.run?.samples || 1) > 1
+              && !state.viewPass;
             const display = isReducedBoolean
               ? window.QymMetrics.formatMetricValue(v, 'score')
               : window.QymMetrics.formatMetricObservation(v, mType, state.metricSpecs?.[name]);
@@ -9728,6 +9747,7 @@
 
         state.hasRenderedItems = true;
 
+        wireOutputGroupHandlers(container);
         wireMetricEditHandlers();
         wireRootCauseHandlers();
         wireSolutionHandlers();
@@ -9752,40 +9772,90 @@
           });
         });
 
-        // Variant strip: a chip shows or hides its output column.
-        container.querySelectorAll('.variant-chip').forEach(btn => {
-          btn.addEventListener('click', () => {
-            const id = btn.dataset.variantItem;
-            const gi = parseInt(btn.dataset.variantIdx, 10);
-            if (!Number.isFinite(gi)) return;
-            state.itemHiddenVariants = state.itemHiddenVariants || {};
-            const set = state.itemHiddenVariants[id] || (state.itemHiddenVariants[id] = new Set());
-            if (set.has(gi)) set.delete(gi); else set.add(gi);
-            renderItems();
-          });
-        });
-
         // Metric detail toggles: pure DOM show/hide, no re-render.
-        container.querySelectorAll('.det-toggle').forEach(btn => {
+        container.querySelectorAll('[data-det-target]').forEach(control => {
+          const row = control.closest('.det-toggle') || control;
           const toggle = () => {
-            const body = document.getElementById(btn.dataset.detTarget);
+            const body = document.getElementById(control.dataset.detTarget);
             if (!body) return;
             const open = !body.classList.toggle('hidden');
-            btn.classList.toggle('open', open);
-            btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+            row.classList.toggle('open', open);
+            control.setAttribute('aria-expanded', open ? 'true' : 'false');
           };
-          btn.addEventListener('click', (e) => {
+          control.addEventListener('click', (e) => {
             // Edit controls inside the chip must not toggle the panel.
             if (e.target.closest('.metric-edit-open, .metric-edit-controls')) return;
             toggle();
           });
-          btn.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); }
-          });
+          if (control.tagName !== 'BUTTON') {
+            control.addEventListener('keydown', (e) => {
+              if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); }
+            });
+          }
         });
       }
 
       // ── Metric edit handlers ──
+
+      function wireOutputGroupHandlers(scope) {
+        (scope || document).querySelectorAll('[data-output-group]').forEach(group => {
+          const itemId = group.dataset.outputItem || '';
+          const grid = group.querySelector('[data-output-grid]');
+          const empty = group.querySelector('[data-output-empty]');
+          const cards = Array.from(group.querySelectorAll('[data-output-card]'));
+          const setActiveMetric = (name) => {
+            state.itemComparedMetric = state.itemComparedMetric || {};
+            if (name) state.itemComparedMetric[itemId] = name;
+            else delete state.itemComparedMetric[itemId];
+            group.querySelectorAll('[data-output-metric]').forEach(trigger => {
+              const active = trigger.dataset.outputMetric === name;
+              trigger.classList.toggle('active', active);
+              trigger.setAttribute('aria-expanded', String(active));
+            });
+            group.querySelectorAll('[data-metric-panel]').forEach(panel => {
+              panel.classList.toggle('hidden', panel.dataset.metricPanel !== name);
+            });
+          };
+          const syncVisibility = () => {
+            const visibleIds = new Set();
+            group.querySelectorAll('[data-output-toggle]').forEach(toggle => {
+              if (toggle.getAttribute('aria-pressed') === 'true') visibleIds.add(toggle.dataset.outputToggle);
+            });
+            cards.forEach(card => card.classList.toggle('is-hidden', !visibleIds.has(card.dataset.outputCard)));
+            group.querySelectorAll('[data-panel-item]').forEach(cell => cell.classList.toggle('is-hidden', !visibleIds.has(cell.dataset.panelItem)));
+            const count = visibleIds.size;
+            const sizeClass = count > 3 ? 'visible-many' : 'visible-' + Math.max(1, count);
+            [grid, ...group.querySelectorAll('[data-metric-compare-grid]')].filter(Boolean).forEach(node => {
+              node.classList.remove('visible-1', 'visible-2', 'visible-3', 'visible-many');
+              node.classList.add(sizeClass);
+            });
+            group.querySelectorAll('[data-metric-panel]').forEach(panel => panel.classList.toggle('no-visible', count === 0));
+            if (empty) empty.classList.toggle('hidden', count > 0);
+          };
+
+          group.querySelectorAll('[data-output-toggle]').forEach(toggle => {
+            toggle.addEventListener('click', () => {
+              const on = toggle.getAttribute('aria-pressed') !== 'true';
+              toggle.setAttribute('aria-pressed', String(on));
+              const passNumber = Number(String(toggle.dataset.outputToggle || '').replace('pass-', ''));
+              state.itemHiddenOutputs = state.itemHiddenOutputs || {};
+              const hidden = state.itemHiddenOutputs[itemId] || (state.itemHiddenOutputs[itemId] = new Set());
+              if (Number.isFinite(passNumber)) {
+                if (on) hidden.delete(passNumber);
+                else hidden.add(passNumber);
+              }
+              syncVisibility();
+            });
+          });
+          group.querySelectorAll('[data-output-metric]').forEach(trigger => {
+            trigger.addEventListener('click', () => {
+              const name = trigger.dataset.outputMetric || '';
+              setActiveMetric((state.itemComparedMetric || {})[itemId] === name ? '' : name);
+            });
+          });
+          syncVisibility();
+        });
+      }
 
       async function updateMetricScore(filePath, rowIndex, metricName, newScore, passNumber) {
         if (IS_EXPORT) {
@@ -9854,26 +9924,42 @@
 
       function wireMetricEditHandlers() {
         document.querySelectorAll('.metric-edit-open').forEach(btn => {
-          btn.onclick = () => {
-            const chip = btn.closest('.det-toggle');
-            const inline = chip ? chip.querySelector('.chip-edit') : null;
-            if (!inline) return;
-            const opening = inline.classList.contains('hidden');
-            inline.classList.toggle('hidden');
-            chip.classList.toggle('editing', opening);
-            btn.textContent = opening ? '\u2715' : '\u270E';
-            if (opening) inline.querySelector('.metric-edit-input')?.focus();
+          btn.onclick = (event) => {
+            event.stopPropagation();
+            const chip = btn.closest('.det-toggle, .qym-metric-compare__cell');
+            const controls = chip ? chip.querySelector('.metric-edit-controls') : null;
+            const input = controls ? controls.querySelector('.metric-edit-input') : null;
+            if (!chip || !controls || !input) return;
+            input.dataset.originalValue = input.value;
+            controls.classList.remove('hidden');
+            chip.classList.add('editing');
+            input.focus();
+            input.select();
           };
         });
-        document.querySelectorAll('.chip-edit .metric-edit-input').forEach(input => {
+        document.querySelectorAll('.metric-edit-controls .metric-edit-input').forEach(input => {
           input.onkeydown = (e) => {
             if (e.key === 'Enter') input.parentElement.querySelector('.metric-edit-save')?.click();
+            else if (e.key === 'Escape') input.parentElement.querySelector('.metric-edit-cancel')?.click();
+          };
+        });
+        document.querySelectorAll('.metric-edit-cancel').forEach(btn => {
+          btn.onclick = (event) => {
+            event.stopPropagation();
+            const controls = btn.closest('.metric-edit-controls');
+            const chip = btn.closest('.det-toggle, .qym-metric-compare__cell');
+            const input = controls ? controls.querySelector('.metric-edit-input') : null;
+            if (input && input.dataset.originalValue !== undefined) input.value = input.dataset.originalValue;
+            controls?.classList.add('hidden');
+            chip?.classList.remove('editing');
           };
         });
         document.querySelectorAll('.metric-edit-save').forEach(btn => {
-          btn.onclick = async () => {
+          btn.onclick = async (event) => {
+            event.stopPropagation();
             const rowIndex = Number(btn.dataset.rowIndex);
             const metricName = btn.dataset.metric || '';
+            const passNumber = Number(btn.dataset.passNumber) || state.viewPass || null;
             const controls = btn.closest('.metric-edit-controls');
             const input = controls ? controls.querySelector('.metric-edit-input') : null;
             const statusEl = controls ? controls.querySelector('.metric-edit-status') : null;
@@ -9882,7 +9968,7 @@
             btn.disabled = true;
             if (statusEl) statusEl.textContent = 'Saving...';
             try {
-              const result = await updateMetricScore(filePath, rowIndex, metricName, input.value, state.viewPass);
+              const result = await updateMetricScore(filePath, rowIndex, metricName, input.value, passNumber);
               if (result && result.row) {
                 applyUpdatedRow(result.row);
                 renderOverview();

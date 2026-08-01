@@ -4880,7 +4880,7 @@
       }
     }
   </style>
-  <link rel="stylesheet" href="./static/ui_components.css?v=ui-consistency-20260730-32">
+  <link rel="stylesheet" href="./static/ui_components.css?v=ui-consistency-20260801-43">
   <script defer src="./static/ui_components.js?v=ui-consistency-20260730-27"></script>
 </head>
 <body>
@@ -5197,6 +5197,8 @@
         allMetricMetaKeys: [],
         visibleMetricMetaFields: {},
         itemExpanded: {},             // itemId -> true while the item card is open
+        itemHiddenOutputs: {},        // itemId -> Set of hidden run indexes
+        itemComparedMetric: {},       // itemId -> synchronized metric detail
         rootCauseFilter: null,        // null = all, [] = none, [...] = specific values
         taskErrorFilter: null,
         traceErrorFilter: null,
@@ -10035,6 +10037,99 @@
         return blocks ? `<div class="metric-det-zone">${blocks}</div>` : '';
       }
 
+      function renderCompareOutputGroup(itemId, rowData) {
+        const hidden = (state.itemHiddenOutputs || {})[itemId] || new Set();
+        const activeMetric = (state.itemComparedMetric || {})[itemId] || '';
+        const visibleCount = rowData.filter((_, runIdx) => !hidden.has(runIdx)).length;
+        const visibleClass = visibleCount > 3 ? 'visible-many' : `visible-${Math.max(1, visibleCount)}`;
+        const scoreData = (row, runIdx, name) => {
+          if (!row) return { raw: null, parsed: null, cls: '', display: '\u2014', meta: {} };
+          const runData = state.runs[runIdx];
+          const names = runData?.snapshot?.metric_names || runData?.run?.metric_names || [];
+          const metricIndex = names.indexOf(name);
+          const raw = metricIndex >= 0 ? (row.metric_values || [])[metricIndex] : null;
+          const parsed = window.QymMetrics.parseScoreValue(raw);
+          const type = state.metricTypes?.[name] || 'score';
+          return {
+            raw,
+            parsed,
+            cls: parsed === null ? '' : window.QymMetrics.getMetricColorClass(parsed, type),
+            display: parsed === null ? '\u2014' : window.QymMetrics.formatMetricObservation(parsed, type, state.metricSpecs?.[name]),
+            meta: (row.metric_meta || {})[name] || {},
+          };
+        };
+        const metricStripFor = (row, runIdx) => {
+          if (!row) return '';
+          const buttons = state.allMetrics.map(name => {
+            const score = scoreData(row, runIdx, name);
+            const hasMeta = Object.keys(score.meta).some(key =>
+              !['modified', 'original_score'].includes(key)
+              && state.visibleMetricMetaFields[key] !== false
+              && score.meta[key] !== undefined && score.meta[key] !== null && score.meta[key] !== '');
+            if (score.parsed === null && !hasMeta) return '';
+            const active = activeMetric === name;
+            const edited = String(score.meta.modified || '').toLowerCase() === 'true';
+            return `<div class="det-toggle metric-compare-row${active ? ' active' : ''}"><button type="button" class="metric-compare-trigger${active ? ' active' : ''}" data-output-metric="${escapeAttr(name)}" aria-expanded="${active}"><span class="det-caret"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m5.5 3.5 5 4.5-5 4.5"/></svg></span><span class="det-metric">${escapeHtml(name)}</span><span class="metric-score-value qym-score-value ${score.cls}">${score.display}</span></button><span class="metric-edit-controls qym-metric-edit-controls hidden"><input class="metric-edit-input" type="text" value="${escapeAttr(score.raw == null ? '' : String(score.raw))}" data-run-idx="${runIdx}" data-row-index="${escapeAttr(String(row.index ?? 0))}" data-metric="${escapeAttr(name)}" aria-label="New Run ${runIdx + 1} ${escapeAttr(name)} score"><button class="metric-edit-save qym-metric-edit-action" data-run-idx="${runIdx}" data-row-index="${escapeAttr(String(row.index ?? 0))}" data-metric="${escapeAttr(name)}" title="Save" aria-label="Save Run ${runIdx + 1} ${escapeAttr(name)}">${SAVE_ICON}</button><button class="metric-edit-cancel qym-metric-edit-action" type="button" title="Cancel" aria-label="Cancel editing">${CLOSE_ICON}</button><span class="metric-edit-status" aria-live="polite"></span></span><button class="metric-edit-open qym-icon-action" type="button" aria-label="Edit Run ${runIdx + 1} ${escapeAttr(name)}" title="Edit">${EDIT_ICON}</button>${edited ? '<span class="metric-edit-badge">Edited</span>' : ''}</div>`;
+          }).filter(Boolean).join('');
+          return buttons ? `<div class="metric-det-zone"><div class="metric-det-chips">${buttons}</div></div>` : '';
+        };
+        const canonicalRunUrl = (filePath) => {
+          if (!filePath) return '';
+          const base = passRefBase(filePath);
+          const passNumber = base === filePath ? null : parseInt(filePath.slice(base.length + PASS_REF_SEP.length), 10);
+          const path = apiUrl(`run/${encodeURIComponent(base)}`);
+          return Number.isFinite(passNumber) ? `${path}?pass=${passNumber}` : path;
+        };
+        const toggles = rowData.map((row, runIdx) => {
+          const on = !hidden.has(runIdx);
+          const color = COLORS[runIdx % COLORS.length];
+          return `<button type="button" class="qym-output-toggle" data-output-toggle="run-${runIdx}" aria-pressed="${on}"><span class="qym-output-swatch" style="background:${color}"></span>Run ${runIdx + 1}</button>`;
+        }).join('');
+        const cards = rowData.map((row, runIdx) => {
+          const runInfo = state.runs[runIdx]?.run || {};
+          const color = COLORS[runIdx % COLORS.length];
+          const outputId = `run-${runIdx}`;
+          const identity = runInfo.run_name || runInfo.run_id || `Run ${runIdx + 1}`;
+          const runUrl = canonicalRunUrl(runInfo.file_path || '');
+          const identityHtml = runUrl
+            ? `<a class="qym-output-card__link" href="${escapeAttr(runUrl)}" title="Open in run"><span class="qym-output-card__name">${escapeHtml(identity)}</span>${OPEN_LINK_ICON}</a>`
+            : `<span class="qym-output-card__name">${escapeHtml(identity)}</span>`;
+          if (!row) {
+            return `<article class="item-run-output qym-output-card${hidden.has(runIdx) ? ' is-hidden' : ''}" data-output-card="${outputId}" style="border-left-color:${color}"><div class="qym-output-card__header"><span class="qym-output-card__identity"><span class="qym-output-swatch" style="background:${color}"></span>${identityHtml}</span></div><div class="output-text qym-metric-compare__empty">No data</div></article>`;
+          }
+          const output = row.output_full || row.output || '\u2014';
+          const runItemId = row.item_id || itemId;
+          const traceId = row.trace_id;
+          const traceUrl = row.trace_url || buildLangfuseTraceUrl(traceId) || buildLangfuseTraceUrlFromRun(traceId, runInfo);
+          const traceEndpoint = apiUrl(`api/runs/${encodeURIComponent(runInfo.file_path || '')}/items/${encodeURIComponent(runItemId)}/trace`);
+          const traceButton = !IS_COMPARE_EXPORT
+            ? `<button type="button" class="trace-drawer-btn qym-inline-action qym-inline-action--neutral qym-trace-action" data-trace-endpoint="${escapeAttr(traceEndpoint)}" data-trace-item-label="${escapeAttr(identity + ' · ' + runItemId)}" data-trace-id="${escapeAttr(traceId || '')}" data-trace-url="${escapeAttr(traceUrl || '')}" title="Open trace viewer"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M2.5 4h11M2.5 8h7M2.5 12h9"/><circle cx="12.5" cy="8" r="1.2" fill="currentColor" stroke="none" opacity=".5"/><circle cx="13.5" cy="12" r="1.2" fill="currentColor" stroke="none" opacity=".5"/></svg>Trace</button>`
+            : '';
+          const copyButton = `<button class="copy-btn qym-icon-action" data-copy-text="${escapeAttr(typeof output === 'object' ? JSON.stringify(output, null, 2) : String(output))}" title="Copy output">${COPY_ICON}</button>`;
+          return `<article class="item-run-output qym-output-card${hidden.has(runIdx) ? ' is-hidden' : ''}" data-output-card="${outputId}" style="border-left-color:${color}"><div class="qym-output-card__header"><span class="qym-output-card__identity"><span class="qym-output-swatch" style="background:${color}"></span>${identityHtml}</span>${row.latency_ms ? `<span class="qym-output-card__duration">${CLOCK_ICON}<span>${formatLatency(row.latency_ms)}</span></span>` : '<span class="qym-output-card__duration">\u2014</span>'}<span class="qym-output-card__actions">${traceButton}${copyButton}</span></div><div class="output-text ${row.status === 'error' ? 'score-1' : ''}">${renderMarkdownSafe(output)}</div>${metricStripFor(row, runIdx)}</article>`;
+        }).join('');
+        const panels = state.allMetrics.map(name => {
+          const cells = rowData.map((row, runIdx) => {
+            const color = COLORS[runIdx % COLORS.length];
+            const score = scoreData(row, runIdx, name);
+            const detail = {};
+            Object.keys(score.meta).forEach(key => {
+              if (!['modified', 'original_score'].includes(key)
+                  && state.visibleMetricMetaFields[key] !== false
+                  && score.meta[key] !== undefined && score.meta[key] !== null && score.meta[key] !== '') {
+                detail[key] = _parseMetaDeep(score.meta[key]);
+              }
+            });
+            const content = Object.keys(detail).length
+              ? formatObjectAsHtml(detail)
+              : '<span class="qym-metric-compare__empty">No details available.</span>';
+            return `<article class="qym-metric-compare__cell${hidden.has(runIdx) ? ' is-hidden' : ''}" data-panel-item="run-${runIdx}" style="border-left-color:${color}"><div class="qym-metric-compare__content">${content}</div></article>`;
+          }).join('');
+          return `<section class="qym-metric-compare${activeMetric === name ? '' : ' hidden'}${visibleCount ? '' : ' no-visible'}" data-metric-panel="${escapeAttr(name)}" aria-label="${escapeAttr(name)} metric details"><div class="qym-metric-compare__grid ${visibleClass}" data-metric-compare-grid>${cells}</div></section>`;
+        }).join('');
+        return `<section class="qym-output-group" data-output-group data-output-item="${escapeAttr(itemId)}"><div class="qym-output-group__header"><span class="qym-output-group__title">Output</span><div class="qym-output-toggles" role="group" aria-label="Visible runs">${toggles}</div></div><div class="qym-output-grid ${visibleClass}" data-output-grid>${cards}</div>${panels}<div class="qym-output-empty${visibleCount ? ' hidden' : ''}" data-output-empty>Turn on at least one run to view its output.</div></section>`;
+      }
+
       function renderItemComparisonCard(itemId, rowData, options = {}) {
           // Get input and expected from any available row
           const inputRow = rowData.find(r => r);
@@ -10045,7 +10140,10 @@
           const safeBaseId = makeSafeDomId(itemId);
           const safeId = options.idSuffix ? `${safeBaseId}_${options.idSuffix}` : safeBaseId;
           const isExpanded = !!options.forceExpanded || !!(state.itemExpanded || {})[itemId];
-          const outputCells = rowData.map((row, runIdx) => {
+          // Keep the pre-unification renderer inert while the surrounding item
+          // card logic is progressively retired. The visible output is rendered
+          // exclusively by renderCompareOutputGroup below.
+          const outputCells = false ? rowData.map((row, runIdx) => {
             const color = COLORS[runIdx % COLORS.length];
             const runInfo = state.runs[runIdx]?.run || {};
             const runFilePath = runInfo.file_path || '';
@@ -10274,7 +10372,7 @@
                 ${rootCauseHtml}
               </div>
             `;
-          }).join('');
+          }).join('') : '';
 
           // Format item ID for display (e.g., "item_5" -> "Item 6", or keep original if not matching pattern)
           let displayItemId = itemId;
@@ -10282,6 +10380,10 @@
           if (itemMatch) {
             displayItemId = `Item ${parseInt(itemMatch[1], 10) + 1}`;
           }
+          const sourceRowIndex = Number(inputRow?.index);
+          const compactItemLabel = Number.isFinite(sourceRowIndex)
+            ? `#${sourceRowIndex + 1}`
+            : displayItemId;
 
           // #5/#6: Build item metadata row — complexity & domain as first-class badges
           let itemMetadataHtml = '';
@@ -10355,12 +10457,14 @@
           }).join('');
           const expandable = !options.forceExpanded;
           const expandAttrs = ` data-item-expand="${escapeAttr(itemId)}" role="button" tabindex="0" aria-expanded="${isExpanded}"`;
+          const visibleRunCount = rowData.filter(Boolean).length;
           const headerHtml = `
               <div class="item-header${expandable ? ' item-header-expand' : ''}"${expandable && isExpanded ? expandAttrs : ''}>
                 ${expandable ? `<span class="item-chevron${isExpanded ? ' open' : ''}"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m5.5 3.5 5 4.5-5 4.5"/></svg></span>` : ''}
-                <span class="item-index" title="ID: ${escapeHtml(itemId)}">${escapeHtml(displayItemId)}</span>
-                <span class="item-title">${escapeHtml(titleText)}</span>
-                <span class="item-agg-pills">${headerPills}</span>
+                <span class="item-index" title="ID: ${escapeHtml(itemId)}">${escapeHtml(compactItemLabel)}</span>
+                ${isExpanded
+                  ? `<span class="item-header-spacer"></span><span class="item-pass-note">${visibleRunCount} run${visibleRunCount === 1 ? '' : 's'}</span>`
+                  : `<span class="item-title">${escapeHtml(titleText)}</span><span class="item-agg-pills">${headerPills}</span>`}
               </div>`;
 
           if (!isExpanded) {
@@ -10372,19 +10476,17 @@
             <div class="item-comparison-row">
               ${headerHtml}
               <div class="item-input-row">
-                <div class="input-label">Input <button class="copy-btn qym-icon-action" data-copy-text="${escapeAttr(typeof input === 'object' ? JSON.stringify(input, null, 2) : String(input))}" title="Copy input">${COPY_ICON}</button></div>
+                <div class="input-label">INPUT <button class="copy-btn qym-icon-action" data-copy-text="${escapeAttr(typeof input === 'object' ? JSON.stringify(input, null, 2) : String(input))}" title="Copy input">${COPY_ICON}</button></div>
                 <div class="input-text">${renderMarkdownSafe(input)}</div>
               </div>
               ${expected ? `
               <div class="item-expected-row">
-                <div class="expected-label">Expected Output <button class="copy-btn qym-icon-action" data-copy-text="${escapeAttr(typeof expected === 'object' ? JSON.stringify(expected, null, 2) : String(expected))}" title="Copy expected output">${COPY_ICON}</button></div>
+                <div class="expected-label">EXPECTED OUTPUT <button class="copy-btn qym-icon-action" data-copy-text="${escapeAttr(typeof expected === 'object' ? JSON.stringify(expected, null, 2) : String(expected))}" title="Copy expected output">${COPY_ICON}</button></div>
                 <div class="expected-text collapsed">${renderMarkdownSafe(expected)}</div>
                 <button class="expected-toggle" onclick="this.previousElementSibling.classList.toggle('collapsed'); this.textContent = this.previousElementSibling.classList.contains('collapsed') ? 'Show more \u25BC' : 'Show less \u25B2';">Show more \u25BC</button>
               </div>` : ''}
               ${itemMetadataHtml}
-              <div class="item-outputs-row">
-                ${outputCells}
-              </div>
+              ${renderCompareOutputGroup(itemId, rowData)}
             </div>
           `;
 
@@ -10484,6 +10586,7 @@
         if (title) title.textContent = `Item Comparison · ${itemId}`;
         if (body) {
           body.innerHTML = renderItemComparisonCard(itemId, rowData, { idSuffix: 'modal', forceExpanded: true });
+          wireOutputGroupHandlers(body);
           wireMetricEditHandlers(body);
           wireRootCauseHandlers(body);
           wireSolutionHandlers(body);
@@ -10595,6 +10698,7 @@
 
         state.hasRenderedItems = true;
 
+        wireOutputGroupHandlers(container);
         wireMetricEditHandlers();
         wireRootCauseHandlers();
         wireSolutionHandlers();
@@ -10700,6 +10804,11 @@
       }
       const COPY_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
       const CHECK_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+      const EDIT_ICON = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 11.5-.5 2 2-.5 7.8-7.8-1.5-1.5L3 11.5Z"/><path d="m9.8 4.7 1.5 1.5"/></svg>';
+      const SAVE_ICON = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m3 8.5 3.5 3.5 6.5-7"/></svg>';
+      const CLOSE_ICON = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 4 8 8M12 4l-8 8"/></svg>';
+      const OPEN_LINK_ICON = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3h7v7M13 3 7 9"/><path d="M11 9v4H3V5h4"/></svg>';
+      const CLOCK_ICON = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><circle cx="8" cy="8" r="6.25"/><path d="M8 4.5V8l2.5 1.5"/></svg>';
       const MODEL_REASONING_BADGE_TITLE = 'Reasoning model';
       const MODEL_REASONING_BADGE_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18h6" /><path d="M10 21h4" /><path d="M12 2a7 7 0 0 0-4.2 12.6c.7.5 1.2 1.4 1.2 2.3V18h6v-1.1c0-.9.5-1.8 1.2-2.3A7 7 0 0 0 12 2Z" /></svg>';
 
@@ -10766,7 +10875,7 @@
 
       function alignOutputHeights() {
         try {
-          const rows = document.querySelectorAll('.item-outputs-row');
+          const rows = document.querySelectorAll('.item-outputs-row, .qym-output-grid');
           rows.forEach(row => {
             const outputs = row.querySelectorAll('.item-run-output .output-text');
             if (!outputs.length) return;
@@ -10784,15 +10893,82 @@
         } catch {}
       }
 
+      function wireOutputGroupHandlers(scope = document) {
+        const root = scope || document;
+        root.querySelectorAll('[data-output-group]').forEach(group => {
+          const itemId = group.dataset.outputItem || '';
+          const grid = group.querySelector('[data-output-grid]');
+          const empty = group.querySelector('[data-output-empty]');
+          const cards = Array.from(group.querySelectorAll('[data-output-card]'));
+          const setActiveMetric = (name) => {
+            state.itemComparedMetric = state.itemComparedMetric || {};
+            if (name) state.itemComparedMetric[itemId] = name;
+            else delete state.itemComparedMetric[itemId];
+            group.querySelectorAll('[data-output-metric]').forEach(trigger => {
+              const active = trigger.dataset.outputMetric === name;
+              trigger.classList.toggle('active', active);
+              trigger.setAttribute('aria-expanded', String(active));
+            });
+            group.querySelectorAll('[data-metric-panel]').forEach(panel => {
+              panel.classList.toggle('hidden', panel.dataset.metricPanel !== name);
+            });
+          };
+          const syncVisibility = () => {
+            const visibleIds = new Set();
+            group.querySelectorAll('[data-output-toggle]').forEach(toggle => {
+              if (toggle.getAttribute('aria-pressed') === 'true') visibleIds.add(toggle.dataset.outputToggle);
+            });
+            cards.forEach(card => card.classList.toggle('is-hidden', !visibleIds.has(card.dataset.outputCard)));
+            group.querySelectorAll('[data-panel-item]').forEach(cell => cell.classList.toggle('is-hidden', !visibleIds.has(cell.dataset.panelItem)));
+            const count = visibleIds.size;
+            const sizeClass = count > 3 ? 'visible-many' : `visible-${Math.max(1, count)}`;
+            [grid, ...group.querySelectorAll('[data-metric-compare-grid]')].filter(Boolean).forEach(node => {
+              node.classList.remove('visible-1', 'visible-2', 'visible-3', 'visible-many');
+              node.classList.add(sizeClass);
+            });
+            group.querySelectorAll('[data-metric-panel]').forEach(panel => panel.classList.toggle('no-visible', count === 0));
+            if (empty) empty.classList.toggle('hidden', count > 0);
+          };
+
+          group.querySelectorAll('[data-output-toggle]').forEach(toggle => {
+            toggle.addEventListener('click', () => {
+              const on = toggle.getAttribute('aria-pressed') !== 'true';
+              toggle.setAttribute('aria-pressed', String(on));
+              const runIdx = Number(String(toggle.dataset.outputToggle || '').replace('run-', ''));
+              state.itemHiddenOutputs = state.itemHiddenOutputs || {};
+              const hidden = state.itemHiddenOutputs[itemId] || (state.itemHiddenOutputs[itemId] = new Set());
+              if (Number.isFinite(runIdx)) {
+                if (on) hidden.delete(runIdx);
+                else hidden.add(runIdx);
+              }
+              syncVisibility();
+              alignOutputHeights();
+            });
+          });
+          group.querySelectorAll('[data-output-metric]').forEach(trigger => {
+            trigger.addEventListener('click', () => {
+              const name = trigger.dataset.outputMetric || '';
+              setActiveMetric((state.itemComparedMetric || {})[itemId] === name ? '' : name);
+            });
+          });
+          syncVisibility();
+        });
+      }
+
       async function updateMetricScore(filePath, rowIndex, metricName, newScore) {
+        const baseFilePath = passRefBase(filePath);
+        const passNumber = baseFilePath === filePath
+          ? null
+          : parseInt(filePath.slice(baseFilePath.length + PASS_REF_SEP.length), 10);
         const res = await fetch(apiUrl('api/runs/update_metric'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            file_path: filePath,
+            file_path: baseFilePath,
             row_index: rowIndex,
             metric_name: metricName,
             new_score: newScore,
+            ...(Number.isFinite(passNumber) ? { pass_number: passNumber } : {}),
           }),
         });
         const data = await res.json().catch(() => ({}));
@@ -10806,13 +10982,53 @@
         try {
           const run = state.runs[runIdx];
           if (!run || !run.snapshot) return;
+          const ref = run.run?.file_path || '';
+          const base = passRefBase(ref);
+          const passNumber = base === ref
+            ? null
+            : parseInt(ref.slice(base.length + PASS_REF_SEP.length), 10);
+          let nextRow = updatedRow;
+          if (Number.isFinite(passNumber)) {
+            const metricNames = run.snapshot.metric_names || run.run?.metric_names || [];
+            const passIndex = passNumber - 1;
+            const passMeta = {};
+            metricNames.forEach((name) => {
+              const values = updatedRow.pass_metric_meta?.[name];
+              const value = Array.isArray(values) ? values[passIndex] : null;
+              if (value && typeof value === 'object') passMeta[name] = value;
+            });
+            const attempt = Array.isArray(updatedRow.pass_attempts)
+              ? updatedRow.pass_attempts[passIndex]
+              : null;
+            nextRow = {
+              ...updatedRow,
+              metric_values: metricNames.map((name, metricIndex) => {
+                const values = updatedRow.pass_scores?.[name];
+                if (Array.isArray(values)) return values[passIndex] == null ? '' : values[passIndex];
+                return updatedRow.metric_values?.[metricIndex] ?? '';
+              }),
+              metric_meta: Object.keys(passMeta).length ? passMeta : updatedRow.metric_meta,
+              pass_scores: null,
+              pass_attempts: null,
+              pass_metric_meta: null,
+            };
+            if (attempt) {
+              nextRow.status = attempt.status;
+              nextRow.error = attempt.error || '';
+              nextRow.output = attempt.output;
+              nextRow.output_full = attempt.output;
+              nextRow.latency_ms = attempt.latency_ms || 0;
+              nextRow.trace_id = attempt.trace_id || '';
+              nextRow.trace_url = attempt.trace_url || '';
+            }
+          }
           const rows = run.snapshot.rows || [];
-          const idx = Number(updatedRow.index) || 0;
+          const idx = Number(nextRow.index) || 0;
           if (idx >= 0 && idx < rows.length) {
-            rows[idx] = updatedRow;
+            rows[idx] = nextRow;
           } else {
             const pos = rows.findIndex(r => Number(r.index) === idx);
-            if (pos >= 0) rows[pos] = updatedRow;
+            if (pos >= 0) rows[pos] = nextRow;
           }
         } catch {}
       }
@@ -10834,21 +11050,39 @@
       function wireMetricEditHandlers(scope = document) {
         const root = scope || document;
         root.querySelectorAll('.metric-edit-open').forEach(btn => {
-          btn.onclick = () => {
-            const runIdx = btn.dataset.runIdx;
-            const rowIndex = btn.dataset.rowIndex;
-            const metric = btn.dataset.metric;
-            const block = root.querySelector(`.metric-edit-block[data-run-idx="${runIdx}"][data-row-index="${rowIndex}"][data-metric="${metric}"]`);
-            if (!block) return;
-            const isHidden = block.classList.contains('hidden');
-            block.classList.toggle('hidden');
-            btn.textContent = isHidden ? '✕' : '✎';
-            btn.setAttribute('title', isHidden ? 'Close' : 'Edit');
-            btn.setAttribute('aria-label', isHidden ? 'Close edit' : 'Edit');
+          btn.onclick = (event) => {
+            event.stopPropagation();
+            const cell = btn.closest('.metric-compare-row, .qym-metric-compare__cell');
+            const controls = cell?.querySelector('.metric-edit-controls');
+            const input = controls?.querySelector('.metric-edit-input');
+            if (!cell || !controls || !input) return;
+            input.dataset.originalValue = input.value;
+            controls.classList.remove('hidden');
+            cell.classList.add('editing');
+            input.focus();
+            input.select();
+          };
+        });
+        root.querySelectorAll('.metric-edit-input').forEach(input => {
+          input.onkeydown = (event) => {
+            if (event.key === 'Enter') input.closest('.metric-edit-controls')?.querySelector('.metric-edit-save')?.click();
+            else if (event.key === 'Escape') input.closest('.metric-edit-controls')?.querySelector('.metric-edit-cancel')?.click();
+          };
+        });
+        root.querySelectorAll('.metric-edit-cancel').forEach(btn => {
+          btn.onclick = (event) => {
+            event.stopPropagation();
+            const controls = btn.closest('.metric-edit-controls');
+            const cell = btn.closest('.metric-compare-row, .qym-metric-compare__cell');
+            const input = controls?.querySelector('.metric-edit-input');
+            if (input && input.dataset.originalValue !== undefined) input.value = input.dataset.originalValue;
+            controls?.classList.add('hidden');
+            cell?.classList.remove('editing');
           };
         });
         root.querySelectorAll('.metric-edit-save').forEach(btn => {
-          btn.onclick = async () => {
+          btn.onclick = async (event) => {
+            event.stopPropagation();
             const runIdx = Number(btn.dataset.runIdx);
             const rowIndex = Number(btn.dataset.rowIndex);
             const metricName = btn.dataset.metric || '';

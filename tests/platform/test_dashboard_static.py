@@ -227,7 +227,8 @@ def test_run_page_supports_single_pass_scope() -> None:
     assert source.count("const repeatSeries = state.viewPass ? [] :") == 1
     assert "!state.viewPass && passAttempts" in source
     # edits are allowed and routed to the viewed pass
-    assert "updateMetricScore(filePath, rowIndex, metricName, input.value, state.viewPass)" in source
+    assert "const passNumber = Number(btn.dataset.passNumber) || state.viewPass || null;" in source
+    assert "updateMetricScore(filePath, rowIndex, metricName, input.value, passNumber)" in source
     assert "...(passNumber ? { pass_number: passNumber } : {})," in source
     # applying the server row keeps per-pass fields and re-applies the lens
     assert "let next = { ...rows[pos], ...updatedRow };" in source
@@ -247,13 +248,18 @@ def test_run_page_supports_single_pass_scope() -> None:
     assert "row.pass_attempts[state.viewPass - 1]" in source
 
     # the lens and its All/pass dot switcher are gone: expanded repeat items
-    # show every pass side by side as variant columns instead
+    # use independently visible output cards and one synchronized detail band
     assert "state.itemPassLens" not in source
     assert "pass-dot-switch" not in source
     assert "pass-lensed" not in source
     assert "renderAnswerColumns" in source
-    assert 'class="variant-chip' in source
-    assert "OUTPUT · ALL PASSES" in source
+    assert 'class="qym-output-toggle"' in source
+    assert 'class="qym-output-group__title">Output' in source
+    assert 'data-output-metric="' in source
+    assert 'data-metric-panel="' in source
+    assert 'data-pass-number="' in source
+    assert "itemHiddenOutputs" in source
+    assert "itemComparedMetric" in source
     assert 'aria-pressed="' in source
 
     # the API ships per-pass attempts on run-detail rows, and update_metric
@@ -263,6 +269,152 @@ def test_run_page_supports_single_pass_scope() -> None:
     assert "RunItemAttempt.is_last_attempt.is_(True)" in api
     assert 'pass_number = request.get("pass_number")' in api
     assert "Re-reduce: run-level score = mean over all stored passes" in api
+
+
+def test_repeat_and_compare_share_grouped_output_interaction() -> None:
+    run = (DASHBOARD_DIR / "run.html").read_text(encoding="utf-8")
+    compare = (DASHBOARD_DIR / "compare.html").read_text(encoding="utf-8")
+    components = (DASHBOARD_DIR / "ui_components.css").read_text(encoding="utf-8")
+
+    for source in (run, compare):
+        assert 'class="qym-output-group"' in source
+        assert 'class="qym-output-toggle"' in source
+        assert 'data-output-card="' in source
+        assert 'data-output-metric="' in source
+        assert 'data-metric-panel="' in source
+        assert 'class="qym-metric-compare' in source
+        assert "wireOutputGroupHandlers" in source
+        assert "itemHiddenOutputs" in source
+        assert "itemComparedMetric" in source
+
+    # Repeat edits address a pass. Compare edits address a run. Both expose
+    # explicit soft save/cancel actions in the aligned comparison band.
+    assert 'data-pass-number="' in run
+    assert 'data-run-idx="' in compare
+    assert 'class="metric-edit-cancel qym-metric-edit-action"' in run
+    assert 'class="metric-edit-cancel qym-metric-edit-action"' in compare
+    assert "renderCompareOutputGroup(itemId, rowData)" in compare
+    assert '<span class="qym-output-group__title">Output</span><div class="qym-output-toggles"' in run
+    assert '<span class="qym-output-group__title">Output</span><div class="qym-output-toggles"' in compare
+    assert "qym-metric-compare__header" not in run.split("function renderAnswerColumns", 1)[1].split("function _parseMetaDeep", 1)[0]
+    assert "qym-metric-compare__header" not in compare.split("function renderCompareOutputGroup", 1)[1].split("function renderItemComparisonCard", 1)[0]
+    assert "qym-metric-compare__cell-name" not in components
+    assert 'class="det-toggle metric-compare-row' in run
+    assert 'class="det-toggle metric-compare-row' in compare
+    assert "const hasPassDetails = passDetails.some" in run
+    assert "Pass-specific details were not recorded for this run; showing the run-level result." in run
+    assert "(baseRow.metric_meta || {})[name]" in run
+    # Comparing repeat passes preserves pass-aware editing instead of writing
+    # the aggregate run score or replacing the sliced row with aggregate data.
+    assert "const baseFilePath = passRefBase(filePath);" in compare
+    assert "...(Number.isFinite(passNumber) ? { pass_number: passNumber } : {})," in compare
+    assert "updatedRow.pass_scores?.[name]" in compare
+
+    for selector in (
+        ".qym-output-group",
+        ".qym-output-toggle",
+        ".qym-output-grid",
+        ".qym-output-card.item-run-output",
+        ".qym-metric-compare",
+        ".qym-metric-compare__grid",
+        ".qym-metric-edit-action",
+    ):
+        assert selector in components
+
+    # Editing is a true swap state: the resting score/edit icon disappear,
+    # while long metric names and the semantic actions remain contained.
+    assert ".det-toggle.editing > .metric-edit-open" in components
+    assert ".metric-det-chips .det-toggle.editing" in components
+    assert 'const EDIT_ICON = \'<svg viewBox="0 0 16 16" fill="none" stroke="currentColor"' in run
+    assert 'const EDIT_ICON = \'<svg viewBox="0 0 16 16" fill="none" stroke="currentColor"' in compare
+
+
+def test_boolean_metric_observations_stay_boolean_across_item_views() -> None:
+    """Legacy repeat artifacts infer from pass observations, while only the
+    unreduced repeat item aggregate is rendered as a percentage rate."""
+    run = (DASHBOARD_DIR / "run.html").read_text(encoding="utf-8")
+    compare = (DASHBOARD_DIR / "compare.html").read_text(encoding="utf-8")
+
+    assert "const passObservationRows = state.viewPass ? []" in run
+    assert "row.pass_scores?.[metricName]" in run
+    assert "window.QymMetrics.detectMetricType(passObservationRows, 0)" in run
+
+    # Repeat output cards and compare output cards both show one execution,
+    # so a boolean score is True/False in both places.
+    repeat_outputs = run.split("function renderAnswerColumns", 1)[1].split(
+        "function _parseMetaDeep", 1
+    )[0]
+    compare_outputs = compare.split("function renderCompareOutputGroup", 1)[1].split(
+        "function renderItemComparisonCard", 1
+    )[0]
+    assert "formatMetricObservation(v, mType" in repeat_outputs
+    assert "formatMetricObservation(parsed, type" in compare_outputs
+
+    # The all-passes item mean is still a rate; a ?pass=N page is an
+    # observation and must not be forced back to percent formatting.
+    assert run.count("&& !state.viewPass;") >= 2
+
+
+def test_item_metric_rows_share_one_responsive_component() -> None:
+    run = (DASHBOARD_DIR / "run.html").read_text(encoding="utf-8")
+    compare = (DASHBOARD_DIR / "compare.html").read_text(encoding="utf-8")
+    components = (DASHBOARD_DIR / "ui_components.css").read_text(encoding="utf-8")
+    single_strip = run.split("function renderMetricStrip", 1)[1].split(
+        "function renderItems", 1
+    )[0]
+
+    # Single, repeat, and compare use the same row/trigger anatomy; only the
+    # detail synchronization behavior differs.
+    assert 'class="det-toggle metric-compare-row' in single_strip
+    assert 'class="metric-compare-trigger"' in single_strip
+    assert 'class="det-toggle metric-compare-row' in run
+    assert 'class="det-toggle metric-compare-row' in compare
+    assert "querySelectorAll('[data-det-target]')" in run
+
+    metric_grid = _rule(components, ".metric-det-chips,")
+    assert "display: grid;" in metric_grid
+    assert "repeat(auto-fit, minmax(220px, 1fr))" in metric_grid
+    metric_row = _rule(components, ".metric-det-chips > .det-toggle,")
+    assert "width: 100%;" in metric_row
+    assert "border-radius: var(--control-radius);" in metric_row
+    assert "min-height: calc(var(--control-height) + var(--space-xs));" in metric_row
+    metric_zone = _rule(components, ".item-run-output > .metric-det-zone,")
+    assert ".qym-output-card .metric-det-zone" in metric_zone
+    assert "background: var(--bg-elevated);" in metric_zone
+    caret = _rule(components, ".det-toggle .det-caret {")
+    caret_active = _rule(
+        components,
+        ".det-toggle:is(:hover, :focus-within, .open) .det-caret,",
+    )
+    assert "color: var(--text-muted);" in caret
+    assert "color: var(--accent-primary);" in caret_active
+    assert ".metric-compare-trigger.active" in caret_active
+
+
+def test_compare_expanded_item_shell_matches_run_detail() -> None:
+    compare = (DASHBOARD_DIR / "compare.html").read_text(encoding="utf-8")
+    components = (DASHBOARD_DIR / "ui_components.css").read_text(encoding="utf-8")
+
+    # Expanded comparison rows use the same compact orientation header as
+    # run/repeat rows: item number + scope count, without repeating input or
+    # selected-metric pills that are visible directly below.
+    assert "const compactItemLabel = Number.isFinite(sourceRowIndex)" in compare
+    assert '${isExpanded\n                  ? `<span class="item-header-spacer"></span><span class="item-pass-note">${visibleRunCount} run' in compare
+    assert ': `<span class="item-title">${escapeHtml(titleText)}</span><span class="item-agg-pills">${headerPills}</span>`}' in compare
+    assert '<div class="input-label">INPUT ' in compare
+    assert '<div class="expected-label">EXPECTED OUTPUT ' in compare
+
+    shell = components.split("/* Expanded item shell", 1)[1].split(
+        "/* Grouped outputs", 1
+    )[0]
+    assert ".item-header-spacer { flex: 1 1 auto; }" in shell
+    assert ".item-pass-note" in shell
+    assert ".item-input-row { border-left: 3px solid var(--accent-secondary); }" in shell
+    assert "font-family: var(--font-sans);" in shell
+    assert "font-family: var(--font-mono);" in shell
+    assert "font-size: var(--font-sm);" in shell
+    assert "letter-spacing: 0.5px;" in shell
+    assert "text-transform: uppercase;" in shell
 
 
 def test_repeat_run_analysis_uses_shared_visual_language() -> None:
@@ -1265,7 +1417,7 @@ def test_clear_filter_control_has_aligned_label_and_soft_count_pill() -> None:
     for page in DASHBOARD_DIR.glob("*.html"):
         source = page.read_text(encoding="utf-8")
         if "ui_components.css?v=" in source:
-            assert "ui_components.css?v=ui-consistency-20260730-32" in source
+            assert "ui_components.css?v=ui-consistency-20260801-43" in source
 
 
 def test_operational_statistics_use_connected_strip_contract() -> None:
