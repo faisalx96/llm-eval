@@ -2013,40 +2013,331 @@
       gap: 3px;
       min-width: 0;
     }
-    /* Multi-metric filter chips: a chip cycles any -> passed -> failed */
-    .metric-filter-chips {
+    /* ── The instrument rail: one 40px strip, segments joined by
+       hairlines; the bottom edge carries the filter meter. ── */
+    .lens-rail {
+      display: flex;
+      align-items: stretch;
+      height: 40px;
+      position: relative;
+      border-radius: 7px 7px 0 0;
+      overflow: visible;
+    }
+    .lens-rail > * + * { border-left: 1px solid var(--border-subtle); }
+    .rail-search {
       display: flex;
       align-items: center;
-      gap: 6px;
-      flex-wrap: wrap;
+      gap: 8px;
+      flex: 1 1 240px;
+      min-width: 190px;
+      padding: 0 14px;
     }
-    .metric-filter-chip {
+    .rail-search-icon {
+      width: 13px;
+      height: 13px;
+      fill: none;
+      stroke: var(--text-muted);
+      stroke-width: 1.5;
+      stroke-linecap: round;
+      flex: 0 0 auto;
+    }
+    .rail-search input {
+      border: none;
+      background: transparent;
+      outline: none;
+      box-shadow: none;
+      color: var(--text-primary);
+      font-family: var(--font-mono);
+      font-size: var(--font-base);
+      width: 100%;
+    }
+    .rail-search input::placeholder { color: var(--text-muted); }
+    .rseg {
       display: inline-flex;
       align-items: center;
-      gap: 4px;
-      padding: 3px 10px;
-      border-radius: 100px;
-      font-size: var(--font-xs);
-      font-weight: 500;
+      gap: 7px;
+      padding: 0 14px;
+      border: none;
+      background: transparent;
+      color: var(--text-secondary);
+      font-size: var(--font-sm);
+      font-weight: 600;
       font-family: var(--font-sans);
+      cursor: pointer;
+      transition: background 0.12s, color 0.12s;
+      white-space: nowrap;
+    }
+    .rseg:hover { background: var(--bg-hover); color: var(--text-primary); }
+    .rseg.on { color: var(--accent-primary); background: var(--bg-elevated); }
+    .rseg-chev {
+      font-size: var(--font-xs);
+      color: var(--text-muted);
+      transition: transform 0.15s;
+      display: inline-block;
+    }
+    .rseg.on .rseg-chev { transform: rotate(180deg); color: var(--accent-primary); }
+    .rail-facet { position: relative; display: inline-flex; align-items: stretch; }
+    .rail-facet > .rseg { height: 100%; }
+    /* Filters: the rail's one loud cell — funnel icon, accent + underline
+       while rules are live */
+    .rseg-filters { color: var(--text-primary); }
+    .funnel {
+      width: 13px;
+      height: 13px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 1.4;
+      stroke-linejoin: round;
+      flex: 0 0 auto;
+    }
+    .rseg-filters.has-rules {
+      color: var(--accent-primary);
+      background: rgba(0, 212, 170, 0.08);
+      box-shadow: inset 0 -2px 0 var(--accent-primary);
+    }
+    .rseg-filters.has-rules .funnel { fill: rgba(0, 212, 170, 0.25); }
+    .rseg-filters.has-rules:hover { background: rgba(0, 212, 170, 0.14); }
+    .fbadge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 17px;
+      height: 17px;
+      border-radius: 9px;
+      background: var(--accent-primary);
+      color: var(--bg-void);
+      font-size: var(--font-xs);
+      font-weight: 700;
+      padding: 0 5px;
+      font-family: var(--font-mono);
+    }
+    .fbadge.zero { display: none; }
+    .rcount-seg {
+      display: inline-flex;
+      align-items: center;
+      padding: 0 14px;
+      cursor: default;
+    }
+    .rcount-seg .filter-count {
+      font-family: var(--font-mono);
+      font-size: var(--font-sm);
+      color: var(--text-muted);
+      white-space: nowrap;
+    }
+    .rcount-seg .count-num { color: var(--accent-primary); font-weight: 700; }
+    /* Ambient filter meter: width = share of items surviving the query */
+    .fmeter {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      width: 100%;
+      height: 2px;
+      pointer-events: none;
+    }
+    .fmeter i {
+      display: block;
+      height: 100%;
+      width: 100%;
+      background: linear-gradient(90deg, var(--accent-primary), rgba(0, 212, 170, 0.25));
+      transition: width 0.35s ease;
+    }
+    /* Display popover */
+    .rail-pop {
+      position: absolute;
+      top: 44px;
+      right: 0;
+      z-index: 30;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-strong);
+      border-radius: 8px;
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+      padding: 6px;
+      min-width: 300px;
+      display: none;
+    }
+    .rail-pop.show { display: block; }
+    .rail-pop .pop-sec {
+      font-size: var(--font-xs);
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      font-weight: 600;
+      padding: 8px 9px 3px;
+    }
+    .rail-pop .pop-line {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      font-size: var(--font-base);
+      color: var(--text-secondary);
+      padding: 7px 9px;
+    }
+    .rail-pop .pop-line .filter-select { min-width: 130px; }
+
+    /* ── The query builder: inline expansion, no modal ── */
+    .item-filter-builder {
+      border-top: 1px solid var(--border-subtle);
+      background: var(--bg-base);
+      padding: 10px 14px 12px;
+      border-radius: 0 0 7px 7px;
+      animation: fb-in 0.16s ease;
+    }
+    .item-filter-builder[hidden] { display: none; }
+    @keyframes fb-in { from { opacity: 0; transform: translateY(-3px); } }
+    @media (prefers-reduced-motion: reduce) { .item-filter-builder { animation: none; } }
+    .fb-head {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 2px 2px 8px;
+      border-bottom: 1px solid var(--border-subtle);
+      margin-bottom: 8px;
+    }
+    .fb-title {
+      font-size: var(--font-sm);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      color: var(--text-muted);
+    }
+    .fb-count {
+      font-family: var(--font-mono);
+      font-size: var(--font-sm);
+      color: var(--accent-primary);
+      font-weight: 700;
+    }
+    .fb-spacer { flex: 1 1 auto; }
+    .fb-clear {
+      border: none;
+      background: transparent;
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+      cursor: pointer;
+      font-family: var(--font-sans);
+    }
+    .fb-clear:hover { color: var(--error); }
+    .fb-grp { padding: 2px 0; margin: 4px 0; }
+    .fb-grp .fb-grp {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-left: 2px solid rgba(0, 168, 255, 0.4);
+      border-radius: 8px;
+      padding: 8px 10px;
+      margin: 8px 0 8px 2px;
+    }
+    .fb-grp-head { display: flex; align-items: center; gap: 8px; margin: 2px 0 6px; }
+    .fb-conj {
+      display: inline-flex;
+      border: 1px solid var(--border-default);
+      border-radius: 5px;
+      overflow: hidden;
+      height: 24px;
+    }
+    .fb-conj button {
+      border: none;
+      background: transparent;
+      color: var(--text-muted);
+      font-size: var(--font-xs);
+      font-weight: 700;
+      letter-spacing: 0.6px;
+      padding: 0 10px;
+      cursor: pointer;
+      font-family: var(--font-mono);
+      transition: color 0.12s, background 0.12s;
+    }
+    .fb-conj button:hover { color: var(--text-primary); }
+    .fb-conj button.on { background: rgba(0, 168, 255, 0.14); color: var(--accent-secondary); }
+    .fb-grp-lab { font-size: var(--font-sm); color: var(--text-muted); }
+    .fb-cond { display: flex; align-items: center; gap: 8px; margin: 5px 0; flex-wrap: wrap; }
+    /* One rule reads as one connected token: field | operator | value */
+    .fb-token {
+      display: inline-flex;
+      align-items: stretch;
+      border: 1px solid var(--border-default);
+      border-radius: 7px;
+      background: var(--bg-surface);
+      overflow: hidden;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    .fb-token:hover { border-color: var(--border-strong); }
+    .fb-token:focus-within {
+      border-color: var(--accent-primary);
+      box-shadow: 0 0 0 1px rgba(0, 212, 170, 0.25);
+    }
+    .fb-token > * + * { border-left: 1px solid var(--border-subtle); }
+    .fb-token select, .fb-token input[type=number], .fb-token input[type=text] {
+      background: transparent;
+      border: none;
+      color: var(--text-primary);
+      font-size: var(--font-base);
+      padding: 0 10px;
+      height: 30px;
+      min-height: 0;
+      font-family: var(--font-sans);
+      outline: none;
+      box-shadow: none;
+      transition: background 0.12s;
+    }
+    .fb-token select:hover, .fb-token input:hover { background: var(--bg-hover); }
+    .fb-token select[data-fb-k=field] { min-width: 150px; font-weight: 600; }
+    .fb-token select[data-fb-k=oper] { min-width: 88px; color: var(--text-secondary); }
+    .fb-token input[type=number] { width: 74px; font-family: var(--font-mono); }
+    .fb-token input[type=text] { width: 150px; font-family: var(--font-mono); }
+    .fb-token select.fb-val-passed { color: var(--score-5); font-weight: 600; }
+    .fb-token select.fb-val-failed { color: var(--score-1); font-weight: 600; }
+    .fb-vchips { display: inline-flex; gap: 4px; flex-wrap: wrap; align-items: center; padding: 0 8px; }
+    .fb-vchip {
+      display: inline-flex;
+      align-items: center;
+      height: 22px;
+      padding: 0 9px;
+      border-radius: 100px;
+      font-size: var(--font-sm);
+      font-weight: 500;
       border: 1px solid var(--border-subtle);
       background: var(--bg-elevated);
       color: var(--text-secondary);
       cursor: pointer;
-      user-select: none;
-      transition: all 0.15s;
+      font-family: var(--font-sans);
+      transition: all 0.12s;
     }
-    .metric-filter-chip:hover { border-color: var(--border-default); color: var(--text-primary); }
-    .metric-filter-chip.passed {
-      border-color: rgba(16, 185, 129, 0.5);
-      background: rgba(16, 185, 129, 0.12);
-      color: var(--score-5);
+    .fb-vchip:hover { border-color: var(--border-strong); color: var(--text-primary); }
+    .fb-vchip.on {
+      background: rgba(0, 212, 170, 0.14);
+      border-color: rgba(0, 212, 170, 0.5);
+      color: var(--accent-primary);
+      font-weight: 600;
     }
-    .metric-filter-chip.failed {
-      border-color: rgba(239, 68, 68, 0.5);
-      background: rgba(239, 68, 68, 0.12);
-      color: var(--score-1);
+    .fb-rm {
+      border: none;
+      background: transparent;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: var(--font-md);
+      padding: 2px 6px;
+      border-radius: 4px;
+      opacity: 0;
+      transition: opacity 0.12s, color 0.12s;
     }
+    .fb-cond:hover .fb-rm, .fb-grp-head:hover .fb-rm { opacity: 1; }
+    .fb-rm:hover { color: var(--error); background: var(--bg-hover); }
+    .fb-add-row { display: flex; gap: 6px; margin-top: 6px; }
+    .fb-add {
+      border: 1px dashed transparent;
+      background: transparent;
+      color: var(--accent-primary);
+      font-size: var(--font-sm);
+      font-weight: 600;
+      cursor: pointer;
+      padding: 3px 8px;
+      border-radius: 5px;
+      font-family: var(--font-sans);
+      transition: border-color 0.12s, background 0.12s;
+    }
+    .fb-add-muted { color: var(--text-muted); }
+    .fb-add:hover { border-color: var(--border-strong); background: var(--bg-surface); }
+
     .fp-label {
       font-size: var(--font-xs);
       font-family: var(--font-sans);
@@ -2317,7 +2608,7 @@
       border: none;
     }
     .items-grid > .item-card.item-collapsed:nth-child(even) {
-      background: color-mix(in srgb, var(--bg-surface) 55%, var(--bg-base));
+      background: color-mix(in srgb, var(--bg-surface) 25%, var(--bg-elevated));
     }
     .items-grid > .item-card.item-collapsed:hover {
       background: var(--bg-hover);
@@ -2397,6 +2688,12 @@
       font-size: var(--font-sm);
       color: var(--text-muted);
     }
+    .item-agg-pill .metric-score-value,
+    .det-toggle .metric-score-value {
+      font-family: var(--font-mono);
+      font-size: var(--font-sm);
+      font-weight: 700;
+    }
     .item-agg-pill.highlighted { background: var(--bg-hover); }
     .item-pass-note {
       flex: 0 0 auto;
@@ -2468,28 +2765,37 @@
     .det-toggle.static { cursor: default; }
     .det-toggle.static:hover { background: var(--bg-surface); border-color: var(--border-subtle); }
     .det-toggle.highlighted { background: var(--bg-hover); }
-    .det-toggle .metric-score-value {
-      font-family: var(--font-mono);
-      font-size: var(--font-sm);
-      font-weight: 700;
-    }
     .det-toggle .metric-edit-open { flex: 0 0 auto; }
     /* Inline chip editor: value swaps for input + check */
     .det-toggle.editing .metric-score-value { display: none; }
     .chip-edit { display: inline-flex; align-items: center; gap: 5px; }
     .chip-edit.hidden { display: none; }
-    .chip-edit .metric-edit-input {
-      width: 60px;
+    /* qym control geometry: quiet 1px border, 4px radius, mono value —
+       no glow, no ring; focus is a 1px accent border only. Overrides the
+       shared input skin, which is sized for forms, not for chips. */
+    .det-toggle .chip-edit .metric-edit-input {
+      width: 56px;
       height: 20px;
+      min-height: 0;
       padding: 0 6px;
+      margin: 0;
       background: var(--bg-base);
       border: 1px solid var(--border-default);
       border-radius: 4px;
+      box-shadow: none;
+      outline: none;
       color: var(--text-primary);
       font-family: var(--font-mono);
       font-size: var(--font-sm);
+      line-height: 1;
     }
-    .chip-edit .metric-edit-input:focus-visible { outline: none; border-color: var(--accent-primary); }
+    .det-toggle .chip-edit .metric-edit-input:hover { border-color: var(--border-strong); }
+    .det-toggle .chip-edit .metric-edit-input:focus,
+    .det-toggle .chip-edit .metric-edit-input:focus-visible {
+      outline: none;
+      box-shadow: none;
+      border-color: var(--accent-primary);
+    }
     .chip-edit .metric-edit-save {
       display: inline-flex;
       align-items: center;
@@ -2700,44 +3006,6 @@
       font-size: var(--font-xs);
       color: var(--text-muted);
       cursor: default;
-    }
-    /* ── Output toolbar: right action chips ── */
-    .item-run-output .output-actions {
-      display: flex;
-      align-items: center;
-      gap: 5px;
-    }
-    .item-run-output .action-chip {
-      display: inline-flex;
-      align-items: center;
-      gap: 5px;
-      height: 24px;
-      padding: 0 8px;
-      border: none;
-      border-radius: 4px;
-      background: var(--bg-surface);
-      color: var(--text-muted);
-      font-family: var(--font-sans);
-      font-size: var(--font-sm);
-      font-weight: 500;
-      letter-spacing: 0.01em;
-      cursor: pointer;
-      text-decoration: none;
-      transition: background 0.15s, color 0.15s;
-      white-space: nowrap;
-    }
-    .item-run-output .action-chip:hover {
-      background: var(--bg-hover);
-      color: var(--text-primary);
-    }
-    .item-run-output .action-chip svg {
-      width: 12px;
-      height: 12px;
-      flex-shrink: 0;
-      opacity: 0.7;
-    }
-    .item-run-output .action-chip:hover svg {
-      opacity: 1;
     }
     /* ── Metric badges (kept for score display) ── */
     .item-run-output .metric-badge {
@@ -4744,106 +5012,76 @@
       <div class="items-comparison">
         <h3 class="section-title">Item-by-Item Detail</h3>
         <div class="filter-panel">
-          <div class="fp-filter-row">
-            <div class="fp-group" id="fp-metric-group">
-              <span class="fp-label">Metric</span>
-              <select id="items-metric-select" class="filter-select"></select>
-            </div>
-            <div class="fp-group">
-              <span class="fp-label">Show</span>
-              <select id="item-filter" class="filter-select">
-                <option value="all">All Items</option>
-                <option value="passed">Passed</option>
-                <option value="failed">Failed</option>
-                <option value="errors">With Errors</option>
-                <option value="edited_metrics">With Edited Metrics</option>
-                <option value="retries">With Retries</option>
-                <option value="trace_errors">With Trace Errors</option>
-              </select>
-            </div>
-            <!-- Per-metric passed/failed conditions, AND-combined. A chip
-                 cycles any -> passed -> failed. -->
-            <div class="fp-group" id="fp-metric-filters" style="display:none;">
-              <span class="fp-label">Metrics</span>
-              <div class="metric-filter-chips" id="metric-filter-chips"></div>
-            </div>
-            <div class="fp-group" id="fp-threshold-group" style="display:none;">
-              <span class="fp-label">Pass if &ge;</span>
-              <div class="threshold-control" id="threshold-control">
-                <input type="range" id="threshold-slider" class="threshold-slider" min="0" max="100" step="5" value="80">
-                <span class="threshold-value" id="threshold-value">80%</span>
-              </div>
-            </div>
-            <div class="fp-group">
-              <span class="fp-label">Sort</span>
-              <select id="sort-select" class="filter-select">
-                <option value="index">Index</option>
-                <option value="score_asc">Score &uarr;</option>
-                <option value="score_desc">Score &darr;</option>
-                <option value="latency_asc">Latency &uarr;</option>
-                <option value="latency_desc">Latency &darr;</option>
-              </select>
-            </div>
-            <div class="fp-group fp-cat-group" id="fp-cat-complexity" style="display:none;">
-              <span class="fp-label">Complexity</span>
-              <div class="multi-select-wrapper">
-                <button class="multi-select-btn" id="complexity-ms-btn">All Complexity</button>
-                <div class="multi-select-dropdown" id="complexity-ms-dropdown"></div>
-              </div>
-            </div>
-            <div class="fp-group fp-cat-group" id="fp-cat-domain" style="display:none;">
-              <span class="fp-label">Domain</span>
-              <div class="multi-select-wrapper">
-                <button class="multi-select-btn" id="domain-ms-btn">All Domains</button>
-                <div class="multi-select-dropdown" id="domain-ms-dropdown"></div>
-              </div>
-            </div>
-            <div class="fp-group fp-cat-group" id="fp-cat-root_cause" style="display:none;">
-              <span class="fp-label">Root Cause</span>
-              <div class="multi-select-wrapper">
-                <button class="multi-select-btn" id="root_cause-ms-btn">All Root Causes</button>
-                <div class="multi-select-dropdown" id="root_cause-ms-dropdown"></div>
-              </div>
-            </div>
-            <div class="fp-group" id="fp-cat-approval">
-              <span class="fp-label">Approval</span>
-              <select id="filter-approval" class="filter-select">
-                <option value="">All</option>
-                <option value="approved">Approved</option>
-                <option value="not_approved">Not Approved</option>
-              </select>
-            </div>
-            <div class="fp-gear-wrapper" id="fp-meta-fields" style="display:none;">
-              <div class="metadata-fields-selector multi-select-wrapper" style="position:relative;">
-                <button type="button" class="qym-inline-action qym-inline-action--neutral" id="metadata-fields-btn" title="Choose which item metadata fields to display">&#9881; Item</button>
-                <div class="metadata-fields-dropdown qym-dropdown" id="metadata-fields-dropdown"></div>
-              </div>
-            </div>
-            <div class="fp-gear-wrapper" id="fp-metric-meta-fields" style="display:none;">
-              <div class="metadata-fields-selector multi-select-wrapper" style="position:relative;">
-                <button type="button" class="qym-inline-action qym-inline-action--neutral" id="metric-meta-fields-btn" title="Choose which metric metadata fields to display">&#9881; Metric</button>
-                <div class="metadata-fields-dropdown qym-dropdown" id="metric-meta-fields-dropdown"></div>
-              </div>
-            </div>
-            <div class="samples-view-toggle qym-segmented items-view-toggle" role="group" aria-label="Item detail view">
-              <button type="button" class="samples-view-btn qym-segmented__option active" data-items-view="cards" aria-pressed="true">Cards</button>
-              <button type="button" class="samples-view-btn qym-segmented__option" data-items-view="heatmap" aria-pressed="false">Heatmap</button>
-            </div>
-            <div class="fp-actions-spacer"></div>
-            <div class="fp-actions">
-              <button class="fp-clear-btn" id="clear-all-btn" title="Clear all active filters">
-                <svg class="fp-clear-x" viewBox="0 0 12 12" aria-hidden="true" focusable="false"><path d="M3 3l6 6M9 3 3 9"/></svg><span class="fp-clear-label">Clear</span><span class="fp-clear-count" id="active-filter-count">0</span>
-              </button>
-              <button class="qym-inline-action qym-inline-action--accent" id="export-filtered-btn" title="Export filtered items as CSV">Export CSV</button>
-            </div>
-          </div>
-          <div class="fp-search-row">
-            <div class="fp-search qym-search-wrap">
+          <!-- The instrument rail: search / Filters / count / Display / CSV.
+               Segments joined by hairlines; the bottom edge carries the
+               filter meter (share of items surviving the query). -->
+          <div class="lens-rail">
+            <div class="rail-search">
+              <svg class="rail-search-icon" viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3 3"/></svg>
               <input type="text" id="items-search" placeholder="Search inputs / outputs..." />
             </div>
+            <button type="button" class="rseg rseg-filters" id="btn-item-filters" aria-expanded="false">
+              <svg class="funnel" viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 2.5h13l-5 6v4.5l-3 1.5v-6l-5-6z"/></svg>
+              Filters <span class="fbadge zero" id="active-filter-count">0</span>
+              <span class="rseg-chev" aria-hidden="true">&#9662;</span>
+            </button>
+            <span class="rcount-seg"><span class="filter-count" id="filter-count"></span></span>
+            <span class="rail-facet">
+              <button type="button" class="rseg" id="btn-item-display" aria-expanded="false"><span aria-hidden="true">&#8801;</span> Display <span class="rseg-chev" aria-hidden="true">&#9662;</span></button>
+              <div class="rail-pop" id="item-display-pop">
+                <div class="pop-sec">View</div>
+                <div class="pop-line"><span>Layout</span>
+                  <span class="samples-view-toggle qym-segmented items-view-toggle" role="group" aria-label="Item detail view">
+                    <button type="button" class="samples-view-btn qym-segmented__option active" data-items-view="cards" aria-pressed="true">Cards</button>
+                    <button type="button" class="samples-view-btn qym-segmented__option" data-items-view="heatmap" aria-pressed="false">Heatmap</button>
+                  </span>
+                </div>
+                <div class="pop-line"><span>Sort</span>
+                  <select id="sort-select" class="filter-select">
+                    <option value="index">Index</option>
+                    <option value="score_asc">Score &uarr;</option>
+                    <option value="score_desc">Score &darr;</option>
+                    <option value="latency_asc">Latency &uarr;</option>
+                    <option value="latency_desc">Latency &darr;</option>
+                  </select>
+                </div>
+                <div class="pop-sec">Analysis metric</div>
+                <div class="pop-line" id="fp-metric-group"><span>Metric</span>
+                  <select id="items-metric-select" class="filter-select"></select>
+                </div>
+                <div class="pop-line" id="fp-threshold-group" style="display:none;"><span>Pass if &ge;</span>
+                  <div class="threshold-control" id="threshold-control">
+                    <input type="range" id="threshold-slider" class="threshold-slider" min="0" max="100" step="5" value="80">
+                    <span class="threshold-value" id="threshold-value">80%</span>
+                  </div>
+                </div>
+                <div class="pop-sec">Columns</div>
+                <div class="pop-line" id="fp-meta-fields" style="display:none;"><span>Item fields</span>
+                  <div class="metadata-fields-selector multi-select-wrapper" style="position:relative;">
+                    <button type="button" class="qym-inline-action qym-inline-action--neutral" id="metadata-fields-btn" title="Choose which item metadata fields to display">&#9881; Item</button>
+                    <div class="metadata-fields-dropdown qym-dropdown" id="metadata-fields-dropdown"></div>
+                  </div>
+                </div>
+                <div class="pop-line" id="fp-metric-meta-fields" style="display:none;"><span>Metric fields</span>
+                  <div class="metadata-fields-selector multi-select-wrapper" style="position:relative;">
+                    <button type="button" class="qym-inline-action qym-inline-action--neutral" id="metric-meta-fields-btn" title="Choose which metric metadata fields to display">&#9881; Metric</button>
+                    <div class="metadata-fields-dropdown qym-dropdown" id="metric-meta-fields-dropdown"></div>
+                  </div>
+                </div>
+              </div>
+            </span>
+            <button type="button" class="rseg" id="export-filtered-btn" title="Export filtered items as CSV">&#8595; CSV</button>
+            <div class="fmeter"><i id="items-fmeter"></i></div>
           </div>
-          <div class="fp-status">
-            <span class="filter-count" id="filter-count"></span>
+          <!-- The query builder opens inline as part of the same surface -->
+          <div class="item-filter-builder" id="item-filter-builder" hidden>
+            <div class="fb-head">
+              <span class="fb-title">Filters</span>
+              <span class="fb-count" id="builder-rule-count"></span>
+              <span class="fb-spacer"></span>
+              <button type="button" class="fb-clear" id="clear-all-btn" title="Clear all filters">Clear all</button>
+            </div>
+            <div id="filter-builder-body"></div>
           </div>
         </div>
         <div class="items-grid" id="items-grid"></div>
@@ -4943,7 +5181,10 @@
         selectedMetric: null,
         samplesMetric: null,
         itemFilter: 'all',
-        metricFilters: {},   // metric name -> 'passed' | 'failed' (AND-combined)
+        // Item filter query: a tree of {op:'and'|'or', children:[...]} groups
+        // and {field, oper, value} conditions, edited by the inline builder.
+        filterRoot: { op: 'and', children: [] },
+        filterBuilderOpen: false,
         approvalFilter: null,
         approvalValues: ['approved', 'not_approved'],
         sortBy: 'index',
@@ -5589,7 +5830,6 @@
             state.metricThresholds[metricName] = metricSpec?.pass_threshold ?? 0.8;
           }
         }
-        renderMetricFilterChips();
 
         // Collect metadata
         const metaKeySet = new Set();
@@ -6516,6 +6756,7 @@
           });
         }
         updateThresholdControl();
+        renderFilterBuilder();
 
         // Items metric select
         const sel = el('items-metric-select');
@@ -8424,65 +8665,260 @@
 
       // ── Filtering & Items ──
 
-      // Multi-metric filter: one passed/failed condition per metric, all
-      // conditions must hold. Each metric judges against its own threshold.
-      function rowMatchesMetricFilters(row) {
-        const filters = state.metricFilters || {};
-        for (const [name, cond] of Object.entries(filters)) {
-          if (cond !== 'passed' && cond !== 'failed') continue;
-          const i = state.allMetrics.indexOf(name);
-          if (i < 0) continue;
+      // ═══ Item filter rules ═══
+      // Field registry: every filterable thing on the page. Built per call
+      // so metric lists and category values stay fresh.
+      function itemFilterFieldDefs() {
+        const defs = [];
+        state.allMetrics.forEach((name, i) => {
           const mType = state.metricTypes[name] || 'score';
-          if (mType === 'numeric') continue; // no pass direction
-          const isB = state.metricIsBoolean[name];
-          const thr = isB ? 0.9999 : (state.metricThresholds[name] || 0.8);
-          const v = window.QymMetrics.parseScoreValue((row.metric_values || [])[i]);
-          if (cond === 'passed') {
-            if (v === null || v < thr) return false;
-          } else if (v === null || v >= thr) {
-            return false;
+          defs.push({
+            id: 'metric:' + name, label: name, group: 'Metrics',
+            kind: mType === 'numeric' ? 'number' : 'metric',
+            get: row => window.QymMetrics.parseScoreValue((row.metric_values || [])[i]),
+            threshold: () => state.metricIsBoolean[name] ? 0.9999 : (state.metricThresholds[name] ?? 0.8),
+          });
+        });
+        [['complexity', 'Complexity'], ['domain', 'Domain'], ['root_cause', 'Root cause']].forEach(([cat, label]) => {
+          const values = (getCatValues(cat) || []).map(String);
+          if (!values.length) return;
+          defs.push({
+            id: 'cat:' + cat, label: label, group: 'Item', kind: 'enum', values: values,
+            get: row => {
+              const md = (typeof row.item_metadata === 'object' && row.item_metadata) || {};
+              return cat === 'domain' ? parseMetaList(md.domain) : String(md[cat] ?? '');
+            },
+          });
+        });
+        defs.push({ id: 'approval', label: 'Approval', group: 'Item', kind: 'enum',
+          values: ['approved', 'not_approved'],
+          get: row => (matchesApprovalFilter(row, 'approved') ? 'approved' : 'not_approved') });
+        defs.push({ id: 'output', label: 'Output text', group: 'Item', kind: 'text',
+          get: row => stringify(row.output_full || row.output || '') });
+        defs.push({ id: 'error', label: 'Has error', group: 'State', kind: 'bool',
+          get: row => window.QymMetrics.isErrorRow(row) });
+        defs.push({ id: 'edited', label: 'Edited metrics', group: 'State', kind: 'bool',
+          get: row => rowHasEditedMetric(row) });
+        defs.push({ id: 'retries', label: 'Retries', group: 'State', kind: 'number',
+          get: row => row.retry_count || 0 });
+        defs.push({ id: 'traceerr', label: 'Trace errors', group: 'State', kind: 'number',
+          get: row => getRowTraceErrorCount(row) });
+        defs.push({ id: 'latency', label: 'Latency (ms)', group: 'State', kind: 'number',
+          get: row => row.latency_ms || 0 });
+        return defs;
+      }
+      function itemFilterFieldById(id) {
+        return itemFilterFieldDefs().find(d => d.id === id) || null;
+      }
+
+      const _isFilterGroup = node => Array.isArray(node.children);
+      function filterRuleCount(node) {
+        return _isFilterGroup(node)
+          ? node.children.reduce((sum, c) => sum + filterRuleCount(c), 0)
+          : 1;
+      }
+      function _numCompare(oper, v, target) {
+        if (v === null || v === undefined || isNaN(v)) return false;
+        const t = Number(target) || 0;
+        if (oper === 'gte') return v >= t;
+        if (oper === 'gt') return v > t;
+        if (oper === 'lte') return v <= t;
+        if (oper === 'lt') return v < t;
+        if (oper === 'eq') return v === t;
+        if (oper === 'neq') return v !== t;
+        return true;
+      }
+      function evalFilterNode(node, row) {
+        if (_isFilterGroup(node)) {
+          if (!node.children.length) return true;
+          return node.op === 'or'
+            ? node.children.some(c => evalFilterNode(c, row))
+            : node.children.every(c => evalFilterNode(c, row));
+        }
+        const f = itemFilterFieldById(node.field);
+        if (!f) return true;
+        const v = f.get(row);
+        if (f.kind === 'metric') {
+          if (node.oper === 'is') {
+            if (v === null) return false;
+            const thr = f.threshold();
+            return node.value === 'passed' ? v >= thr : v < thr;
           }
+          return _numCompare(node.oper, v, node.value);
+        }
+        if (f.kind === 'number') return _numCompare(node.oper, v, node.value);
+        if (f.kind === 'enum') {
+          const wanted = (Array.isArray(node.value) ? node.value : [node.value]).map(x => String(x).toLowerCase());
+          const have = (Array.isArray(v) ? v : [v]).map(x => String(x).toLowerCase());
+          const hit = have.some(x => wanted.includes(x));
+          return node.oper === 'notin' ? !hit : hit;
+        }
+        if (f.kind === 'bool') return node.oper === 'isnot' ? !v : !!v;
+        if (f.kind === 'text') {
+          const hit = String(v).toLowerCase().includes(String(node.value || '').toLowerCase());
+          return node.oper === 'notcontains' ? !hit : hit;
         }
         return true;
       }
 
-      function renderMetricFilterChips() {
-        const group = el('fp-metric-filters');
-        const wrap = el('metric-filter-chips');
-        if (!group || !wrap) return;
-        const names = state.allMetrics.filter(n => (state.metricTypes[n] || 'score') !== 'numeric');
-        if (names.length < 2) { group.style.display = 'none'; return; }
-        group.style.display = '';
-        wrap.innerHTML = names.map(name => {
-          const cond = (state.metricFilters || {})[name] || '';
-          const stateLabel = cond === 'passed' ? ' · passed' : (cond === 'failed' ? ' · failed' : '');
-          const cls = cond ? ' ' + cond : '';
-          return '<button type="button" class="metric-filter-chip' + cls + '" data-metric-filter="' + escapeAttr(name) + '" aria-pressed="' + (cond ? 'true' : 'false') + '" title="Click to cycle: any → passed → failed">' + escapeHtml(name) + stateLabel + '</button>';
-        }).join('');
-        wrap.querySelectorAll('[data-metric-filter]').forEach(btn => {
-          btn.addEventListener('click', () => {
-            const name = btn.dataset.metricFilter;
-            state.metricFilters = state.metricFilters || {};
-            const current = state.metricFilters[name] || '';
-            if (current === '') state.metricFilters[name] = 'passed';
-            else if (current === 'passed') state.metricFilters[name] = 'failed';
-            else delete state.metricFilters[name];
-            state.page = 1;
-            renderMetricFilterChips();
-            renderItems();
-          });
-        });
+      function _newFilterCondition() {
+        const first = itemFilterFieldDefs()[0];
+        if (!first) return null;
+        return _defaultCondFor(first);
+      }
+      function _defaultCondFor(f) {
+        if (f.kind === 'metric') return { field: f.id, oper: 'is', value: 'failed' };
+        if (f.kind === 'enum') return { field: f.id, oper: 'in', value: [f.values[0]] };
+        if (f.kind === 'number') return { field: f.id, oper: 'gte', value: f.id === 'latency' ? 1000 : 1 };
+        if (f.kind === 'bool') return { field: f.id, oper: 'is', value: null };
+        return { field: f.id, oper: 'contains', value: '' };
+      }
+      function _filterNodeAt(path) {
+        if (path === '') return state.filterRoot;
+        return path.split('.').reduce((n, i) => n.children[+i], state.filterRoot);
+      }
+      function _filterParentOf(path) {
+        const parts = path.split('.');
+        const idx = +parts.pop();
+        return { parent: _filterNodeAt(parts.join('.')), idx: idx };
       }
 
-      function getRepeatDistributionBucket(row, metric, samples, threshold) {
-        const scores = row?.pass_scores?.[metric];
-        if (!Array.isArray(scores)) return null;
-        const correct = scores.reduce((count, raw) => {
-          const score = window.QymMetrics.parseScoreValue(raw);
-          return count + (score !== null && score >= threshold ? 1 : 0);
-        }, 0);
-        if (samples <= 10) return Math.min(correct, samples);
-        return correct === samples ? 10 : Math.min(9, Math.floor((correct / samples) * 10));
+      function _fbOperSelect(path, node, opers) {
+        return '<select data-fb-p="' + path + '" data-fb-k="oper">'
+          + opers.map(([v, l]) => '<option value="' + v + '"' + (v === node.oper ? ' selected' : '') + '>' + l + '</option>').join('')
+          + '</select>';
+      }
+      function _fbCondHtml(node, path) {
+        const defs = itemFilterFieldDefs();
+        const f = itemFilterFieldById(node.field) || defs[0];
+        const groups = {};
+        defs.forEach(d => (groups[d.group] = groups[d.group] || []).push(d));
+        const fieldSel = '<select data-fb-p="' + path + '" data-fb-k="field">'
+          + Object.entries(groups).map(([g, ds]) =>
+            '<optgroup label="' + escapeAttr(g) + '">' + ds.map(d =>
+              '<option value="' + escapeAttr(d.id) + '"' + (d.id === f.id ? ' selected' : '') + '>' + escapeHtml(d.label) + '</option>'
+            ).join('') + '</optgroup>').join('')
+          + '</select>';
+        const NUM_OPERS = [['gte', '\u2265'], ['gt', '>'], ['lte', '\u2264'], ['lt', '<'], ['eq', '='], ['neq', '\u2260']];
+        let operSel = '', valueInp = '';
+        if (f.kind === 'metric') {
+          operSel = _fbOperSelect(path, node, [['is', 'is']].concat(NUM_OPERS));
+          if (node.oper === 'is') {
+            valueInp = '<select data-fb-p="' + path + '" data-fb-k="value" class="fb-val-' + (node.value === 'passed' ? 'passed' : 'failed') + '">'
+              + ['passed', 'failed'].map(v => '<option' + (v === node.value ? ' selected' : '') + '>' + v + '</option>').join('')
+              + '</select>';
+          } else {
+            valueInp = '<input type="number" min="0" max="1" step="0.05" value="' + escapeAttr(String(node.value ?? 0.5)) + '" data-fb-p="' + path + '" data-fb-k="value">';
+          }
+        } else if (f.kind === 'number') {
+          operSel = _fbOperSelect(path, node, NUM_OPERS);
+          valueInp = '<input type="number" min="0" step="1" value="' + escapeAttr(String(node.value ?? 0)) + '" data-fb-p="' + path + '" data-fb-k="value">';
+        } else if (f.kind === 'enum') {
+          operSel = _fbOperSelect(path, node, [['in', 'is any of'], ['notin', 'is none of']]);
+          const arr = Array.isArray(node.value) ? node.value : [node.value];
+          valueInp = '<span class="fb-vchips">' + f.values.map(v =>
+            '<button type="button" class="fb-vchip' + (arr.includes(v) ? ' on' : '') + '" data-fb-vt="' + path + '" data-fb-val="' + escapeAttr(v) + '" aria-pressed="' + arr.includes(v) + '">' + escapeHtml(v) + '</button>'
+          ).join('') + '</span>';
+        } else if (f.kind === 'bool') {
+          operSel = _fbOperSelect(path, node, [['is', 'true'], ['isnot', 'false']]);
+        } else {
+          operSel = _fbOperSelect(path, node, [['contains', 'contains'], ['notcontains', 'does not contain']]);
+          valueInp = '<input type="text" value="' + escapeAttr(String(node.value ?? '')) + '" data-fb-p="' + path + '" data-fb-k="value" placeholder="text...">';
+        }
+        return '<div class="fb-cond"><span class="fb-token">' + fieldSel + operSel + valueInp
+          + '</span><button type="button" class="fb-rm" data-fb-rm="' + path + '" title="Remove condition">\u00d7</button></div>';
+      }
+      function _fbGroupHtml(node, path, depth) {
+        const conj = '<span class="fb-conj">'
+          + '<button type="button" data-fb-conj="' + path + '" data-fb-op="and" class="' + (node.op === 'and' ? 'on' : '') + '">AND</button>'
+          + '<button type="button" data-fb-conj="' + path + '" data-fb-op="or" class="' + (node.op === 'or' ? 'on' : '') + '">OR</button></span>';
+        const head = '<div class="fb-grp-head">' + conj
+          + '<span class="fb-grp-lab">' + (node.op === 'and' ? 'every rule below must match' : 'any rule below may match') + '</span>'
+          + (depth > 0 ? '<button type="button" class="fb-rm" data-fb-rm="' + path + '" title="Remove group">\u00d7</button>' : '')
+          + '</div>';
+        const kids = node.children.map((c, i) => {
+          const cp = path ? path + '.' + i : String(i);
+          return _isFilterGroup(c) ? _fbGroupHtml(c, cp, depth + 1) : _fbCondHtml(c, cp);
+        }).join('');
+        const adds = '<div class="fb-add-row"><button type="button" class="fb-add" data-fb-addc="' + path + '">+ Condition</button>'
+          + '<button type="button" class="fb-add fb-add-muted" data-fb-addg="' + path + '">+ Group</button></div>';
+        return '<div class="fb-grp' + (depth === 0 ? ' fb-root' : '') + '">' + head + kids + adds + '</div>';
+      }
+
+      function renderFilterBuilder() {
+        const holder = el('item-filter-builder');
+        const body = el('filter-builder-body');
+        if (!holder || !body) return;
+        holder.hidden = !state.filterBuilderOpen;
+        const btn = el('btn-item-filters');
+        if (btn) {
+          btn.classList.toggle('on', state.filterBuilderOpen);
+          btn.setAttribute('aria-expanded', state.filterBuilderOpen ? 'true' : 'false');
+        }
+        const n = filterRuleCount(state.filterRoot);
+        const badge = el('active-filter-count');
+        if (badge) { badge.textContent = n; badge.classList.toggle('zero', n === 0); }
+        if (btn) btn.classList.toggle('has-rules', n > 0);
+        const countEl = el('builder-rule-count');
+        if (countEl) countEl.textContent = n ? n + ' rule' + (n === 1 ? '' : 's') : 'no rules yet';
+        if (!state.filterBuilderOpen) return;
+        body.innerHTML = _fbGroupHtml(state.filterRoot, '', 0);
+
+        body.querySelectorAll('select[data-fb-p],input[data-fb-p]').forEach(inp => {
+          inp.onchange = () => {
+            const node = _filterNodeAt(inp.dataset.fbP);
+            if (inp.dataset.fbK === 'field') {
+              const f = itemFilterFieldById(inp.value);
+              Object.assign(node, _defaultCondFor(f));
+            } else if (inp.dataset.fbK === 'oper') {
+              const wasIs = node.oper === 'is';
+              node.oper = inp.value;
+              const f = itemFilterFieldById(node.field);
+              if (f && f.kind === 'metric') {
+                if (node.oper === 'is' && !['passed', 'failed'].includes(node.value)) node.value = 'failed';
+                if (node.oper !== 'is' && wasIs) node.value = 0.5;
+              }
+            } else {
+              node.value = inp.type === 'number' ? +inp.value : inp.value;
+            }
+            state.page = 1;
+            renderFilterBuilder();
+            renderItems();
+          };
+        });
+        body.querySelectorAll('[data-fb-vt]').forEach(b => b.onclick = () => {
+          const node = _filterNodeAt(b.dataset.fbVt);
+          const arr = Array.isArray(node.value) ? node.value : [node.value];
+          const v = b.dataset.fbVal;
+          node.value = arr.includes(v) ? arr.filter(x => x !== v) : arr.concat([v]);
+          state.page = 1;
+          renderFilterBuilder();
+          renderItems();
+        });
+        body.querySelectorAll('[data-fb-rm]').forEach(b => b.onclick = () => {
+          const loc = _filterParentOf(b.dataset.fbRm);
+          loc.parent.children.splice(loc.idx, 1);
+          state.page = 1;
+          renderFilterBuilder();
+          renderItems();
+        });
+        body.querySelectorAll('[data-fb-conj]').forEach(b => b.onclick = () => {
+          _filterNodeAt(b.dataset.fbConj).op = b.dataset.fbOp;
+          state.page = 1;
+          renderFilterBuilder();
+          renderItems();
+        });
+        body.querySelectorAll('[data-fb-addc]').forEach(b => b.onclick = () => {
+          const cond = _newFilterCondition();
+          if (!cond) return;
+          _filterNodeAt(b.dataset.fbAddc).children.push(cond);
+          renderFilterBuilder();
+        });
+        body.querySelectorAll('[data-fb-addg]').forEach(b => b.onclick = () => {
+          const cond = _newFilterCondition();
+          _filterNodeAt(b.dataset.fbAddg).children.push({ op: 'or', children: cond ? [cond] : [] });
+          renderFilterBuilder();
+        });
       }
 
       function getFilteredItems() {
@@ -8575,8 +9011,8 @@
             if (getRowTraceErrorCount(row) <= 0) continue;
           }
 
-          // Multi-metric conditions: every set metric must match (AND).
-          if (!rowMatchesMetricFilters(row)) continue;
+          // The filter query: the builder's rule tree, AND/OR, nested.
+          if (!evalFilterNode(state.filterRoot, row)) continue;
 
           // Score distribution filter
           if (state.scoreDistFilter) {
@@ -8659,7 +9095,7 @@
           renderErrorDistributionSection();
           renderRootCauseSection();
           if (anchorTop != null) {
-            requestAnimationFrame(() => restoreItemsGridTop(anchorTop));
+            restoreItemsGridTop(anchorTop);
           } else if (typeof afterRender === 'function') {
             requestAnimationFrame(afterRender);
           }
@@ -8788,7 +9224,7 @@
           const attTraceUrl = att.trace_url || buildLangfuseTraceUrl(att.trace_id);
           if (!att.trace_id && !attTraceUrl) return '';
           const traceEndpoint = apiUrl('api/runs/' + encodeURIComponent(state.run.file_path || '') + '/items/' + encodeURIComponent(itemId) + '/trace');
-          return '<button type="button" class="action-chip trace-drawer-btn" data-trace-endpoint="' + escapeAttr(traceEndpoint) + '" data-trace-item-label="' + escapeAttr((state.run.run_name || 'Run') + ' · ' + displayItemId + ' · Pass ' + att.pass_number) + '" data-trace-id="' + escapeAttr(att.trace_id || '') + '" data-trace-url="' + escapeAttr(attTraceUrl || '') + '" title="Open trace viewer for pass ' + att.pass_number + '"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M2.5 4h11M2.5 8h7M2.5 12h9"/><circle cx="12.5" cy="8" r="1.2" fill="currentColor" stroke="none" opacity=".5"/><circle cx="13.5" cy="12" r="1.2" fill="currentColor" stroke="none" opacity=".5"/></svg>Trace</button>';
+          return '<button type="button" class="trace-drawer-btn qym-inline-action qym-inline-action--neutral qym-trace-action" data-trace-endpoint="' + escapeAttr(traceEndpoint) + '" data-trace-item-label="' + escapeAttr((state.run.run_name || 'Run') + ' · ' + displayItemId + ' · Pass ' + att.pass_number) + '" data-trace-id="' + escapeAttr(att.trace_id || '') + '" data-trace-url="' + escapeAttr(attTraceUrl || '') + '" title="Open trace viewer for pass ' + att.pass_number + '"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M2.5 4h11M2.5 8h7M2.5 12h9"/><circle cx="12.5" cy="8" r="1.2" fill="currentColor" stroke="none" opacity=".5"/><circle cx="13.5" cy="12" r="1.2" fill="currentColor" stroke="none" opacity=".5"/></svg>Trace</button>';
         };
         const outputTextHtml = (att) => '<div class="output-text' + (att.status === 'error' ? ' score-1' : '') + '">' + renderMarkdownSafe(att.output ?? '—') + '</div>';
 
@@ -8958,8 +9394,7 @@
             caret = '<span class="det-caret"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m5.5 3.5 5 4.5-5 4.5"/></svg></span>';
             toggleAttrs = ' role="button" tabindex="0" data-det-target="' + bid + '" aria-expanded="false"';
           }
-          const hl = name === state.selectedMetric ? ' highlighted' : '';
-          const chip = '<div class="det-toggle' + hl + (metaKeys.length ? '' : ' static') + '"' + toggleAttrs + '>'
+          const chip = '<div class="det-toggle' + (metaKeys.length ? '' : ' static') + '"' + toggleAttrs + '>'
             + caret + '<span class="det-metric">' + escapeHtml(name) + '</span>' + badge + inlineEdit + editBtn + editedBadge
             + '</div>';
           return { chip: chip, body: bodyHtml };
@@ -8988,7 +9423,10 @@
         const threshold = isBoolean ? 0.9999 : (state.metricThresholds[metric] || 0.8);
         renderOverview(items);
 
-        filterCountEl.innerHTML = 'Showing <span class="count-num">' + items.length + '</span> items';
+        const totalRows = (state.snapshot.rows || []).length;
+        filterCountEl.innerHTML = '<span class="count-num">' + items.length + '</span> / ' + totalRows + ' items';
+        const meter = el('items-fmeter');
+        if (meter) meter.style.width = (totalRows ? (items.length / totalRows) * 100 : 0) + '%';
         updateClearButton();
 
         const totalPages = Math.max(1, Math.ceil(items.length / state.pageSize));
@@ -9000,14 +9438,14 @@
           container.classList.remove('heatmap-mode');
           container.innerHTML = '<div style="text-align:center;padding:2rem;color:var(--text-muted);">No items match the current filter</div>';
           if (paginationEl) paginationEl.innerHTML = '';
-          if (anchorTop != null) requestAnimationFrame(() => restoreItemsGridTop(anchorTop));
+          if (anchorTop != null) restoreItemsGridTop(anchorTop);
           return;
         }
 
         if (state.itemDetailView === 'heatmap') {
           if (paginationEl) paginationEl.innerHTML = '';
           renderItemsHeatmap(container, items, metric, mIdx);
-          if (!scrollToTop && anchorTop != null) requestAnimationFrame(() => restoreItemsGridTop(anchorTop));
+          if (!scrollToTop && anchorTop != null) restoreItemsGridTop(anchorTop);
           state.hasRenderedItems = true;
           return;
         }
@@ -9052,7 +9490,7 @@
           const copyBtn = '<button class="copy-btn qym-icon-action" data-copy-text="' + escapeAttr(typeof output === 'object' ? JSON.stringify(output,null,2) : String(output)) + '" title="Copy output">' + COPY_ICON + '</button>';
           const traceEndpoint = apiUrl('api/runs/' + encodeURIComponent(state.run.file_path || '') + '/items/' + encodeURIComponent(itemId) + '/trace');
           const traceChip = !IS_EXPORT
-            ? '<button type="button" class="action-chip trace-drawer-btn" data-trace-endpoint="' + escapeAttr(traceEndpoint) + '" data-trace-item-label="' + escapeAttr((state.run.run_name || 'Run') + ' \u00B7 ' + displayItemId) + '" data-trace-id="' + escapeAttr(traceId || '') + '" data-trace-url="' + escapeAttr(traceUrl || '') + '" title="Open trace viewer"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M2.5 4h11M2.5 8h7M2.5 12h9"/><circle cx="12.5" cy="8" r="1.2" fill="currentColor" stroke="none" opacity=".5"/><circle cx="13.5" cy="12" r="1.2" fill="currentColor" stroke="none" opacity=".5"/></svg>Trace</button>'
+            ? '<button type="button" class="trace-drawer-btn qym-inline-action qym-inline-action--neutral qym-trace-action" data-trace-endpoint="' + escapeAttr(traceEndpoint) + '" data-trace-item-label="' + escapeAttr((state.run.run_name || 'Run') + ' \u00B7 ' + displayItemId) + '" data-trace-id="' + escapeAttr(traceId || '') + '" data-trace-url="' + escapeAttr(traceUrl || '') + '" title="Open trace viewer"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M2.5 4h11M2.5 8h7M2.5 12h9"/><circle cx="12.5" cy="8" r="1.2" fill="currentColor" stroke="none" opacity=".5"/><circle cx="13.5" cy="12" r="1.2" fill="currentColor" stroke="none" opacity=".5"/></svg>Trace</button>'
             : '';
           // Pass/fail status indicator (skip for numeric metrics — threshold doesn't apply)
           let statusIndicator = '';
@@ -9221,7 +9659,7 @@
               + _renderTraceChips(row.trace_stats, row.retry_count) + metricStripHtml + rootCauseHtml;
           }
           if (!outputBlockHtml) {
-            outputBlockHtml = '<div class="item-run-output"><div class="output-header"><span class="output-status-cluster"><span class="run-label">' + outputLabel + '</span>' + durationPart + timePart + '</span><span class="output-actions">' + copyBtn + traceChip + '</span></div><div class="output-text ' + (status === 'error' ? 'score-1' : '') + '">' + renderMarkdownSafe(output) + '</div>' + _renderTraceChips(row.trace_stats, row.retry_count) + metricStripHtml + rootCauseHtml + '</div>';
+            outputBlockHtml = '<div class="item-run-output"><div class="output-header"><span class="output-status-cluster"><span class="run-label">' + outputLabel + '</span>' + durationPart + timePart + '</span><span class="output-actions">' + traceChip + copyBtn + '</span></div><div class="output-text ' + (status === 'error' ? 'score-1' : '') + '">' + renderMarkdownSafe(output) + '</div>' + _renderTraceChips(row.trace_stats, row.retry_count) + metricStripHtml + rootCauseHtml + '</div>';
           }
 
           // Collapsed header: the input itself is the title; aggregates live
@@ -9238,7 +9676,7 @@
             const display = isReducedBoolean
               ? window.QymMetrics.formatMetricValue(v, 'score')
               : window.QymMetrics.formatMetricObservation(v, mType, state.metricSpecs?.[name]);
-            return '<span class="item-agg-pill' + (name === metric ? ' highlighted' : '') + '"><span class="metric-score-name">' + escapeHtml(name) + '</span><span class="metric-score-value ' + cls + '">' + display + '</span></span>';
+            return '<span class="item-agg-pill"><span class="metric-score-name">' + escapeHtml(name) + '</span><span class="metric-score-value ' + cls + '">' + display + '</span></span>';
           }).join('');
           const passNote = isRepeatItem
             ? '<span class="item-pass-note">' + passAttempts.filter(Boolean).length + ' passes</span>'
@@ -9285,7 +9723,7 @@
         });
 
         if (!scrollToTop && anchorTop != null) {
-          requestAnimationFrame(() => restoreItemsGridTop(anchorTop));
+          restoreItemsGridTop(anchorTop);
         }
 
         state.hasRenderedItems = true;
@@ -10085,12 +10523,12 @@
         const hasDomain = state.domainValues.length > 0;
         const hasRootCause = state.rootCauseValues.length > 0;
         const hasMeta = hasComplexity || hasDomain || hasRootCause;
-        el('fp-cat-complexity').style.display = hasComplexity ? '' : 'none';
-        el('fp-cat-domain').style.display = hasDomain ? '' : 'none';
-        el('fp-cat-root_cause').style.display = hasRootCause ? '' : 'none';
-        el('fp-meta-fields').style.display = hasMeta ? '' : 'none';
-        el('fp-metric-meta-fields').style.display = state.allMetricMetaKeys.length > 0 ? '' : 'none';
-        // Approval is a simple <select>, no multi-select build needed
+        // The category multiselects were absorbed into the filter builder;
+        // only the Display-popover column pickers remain as elements.
+        const metaFields = el('fp-meta-fields');
+        if (metaFields) metaFields.style.display = hasMeta ? '' : 'none';
+        const metricMetaFields = el('fp-metric-meta-fields');
+        if (metricMetaFields) metricMetaFields.style.display = state.allMetricMetaKeys.length > 0 ? '' : 'none';
         if (hasComplexity) buildMultiselectOptions('complexity', state.complexityValues);
         if (hasDomain) buildMultiselectOptions('domain', state.domainValues);
         if (hasRootCause) buildMultiselectOptions('root_cause', state.rootCauseValues);
@@ -10425,7 +10863,7 @@
       function countActiveFilters() {
         let n = 0;
         if (state.itemFilter !== 'all') n++;
-        n += Object.keys(state.metricFilters || {}).length;
+        n += filterRuleCount(state.filterRoot);
         if (state.approvalFilter !== null) n++;
         if (state.sortBy !== 'index') n++;
         if (state.searchQuery) n++;
@@ -10444,16 +10882,14 @@
 
       function updateClearButton() {
         const clearBtn = el('clear-all-btn');
-        const countBadge = el('active-filter-count');
         const n = countActiveFilters();
         if (clearBtn) clearBtn.classList.toggle('visible', n > 0);
-        if (countBadge) countBadge.textContent = n;
+        // The rail badge counts builder rules only; renderFilterBuilder owns it.
       }
 
       function clearAllFilters() {
         state.itemFilter = 'all';
-        state.metricFilters = {};
-        renderMetricFilterChips();
+        state.filterRoot = { op: 'and', children: [] };
         state.approvalFilter = null;
         state.sortBy = 'index';
         state.searchQuery = '';
@@ -10470,11 +10906,11 @@
         state.latencyDistFilter = null;
         state.categoryFilters = {};
         state.page = 1;
-        el('item-filter').value = 'all';
-        el('sort-select').value = 'index';
-        el('items-search').value = '';
-        const approvalSelect = el('filter-approval');
-        if (approvalSelect) approvalSelect.value = '';
+        const sortSel = el('sort-select');
+        if (sortSel) sortSel.value = 'index';
+        const searchInp = el('items-search');
+        if (searchInp) searchInp.value = '';
+        renderFilterBuilder();
         syncMultiselectUI('complexity');
         syncMultiselectUI('domain');
         syncMultiselectUI('root_cause');
@@ -10485,13 +10921,32 @@
 
       // ── Event listeners ──
 
-      el('item-filter').addEventListener('change', (e) => {
-        state.itemFilter = e.target.value;
-        state.page = 1;
-        renderItems();
+      // ── Rail wiring ──
+      el('btn-item-filters')?.addEventListener('click', () => {
+        state.filterBuilderOpen = !state.filterBuilderOpen;
+        renderFilterBuilder();
       });
+      {
+        const dispBtn = el('btn-item-display');
+        const dispPop = el('item-display-pop');
+        if (dispBtn && dispPop) {
+          dispBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const open = dispPop.classList.toggle('show');
+            dispBtn.classList.toggle('on', open);
+            dispBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+          });
+          dispPop.addEventListener('click', (e) => e.stopPropagation());
+          document.addEventListener('click', (e) => {
+            if (e.target.closest('.multi-select-dropdown, .metadata-fields-dropdown')) return;
+            dispPop.classList.remove('show');
+            dispBtn.classList.remove('on');
+            dispBtn.setAttribute('aria-expanded', 'false');
+          });
+        }
+      }
 
-      el('sort-select').addEventListener('change', (e) => {
+      el('sort-select')?.addEventListener('change', (e) => {
         state.sortBy = e.target.value;
         state.page = 1;
         renderItems();

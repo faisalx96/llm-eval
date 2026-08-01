@@ -2749,7 +2749,7 @@
       border: none;
     }
     .items-grid > .item-comparison-row.item-collapsed:nth-child(even) {
-      background: color-mix(in srgb, var(--bg-surface) 55%, var(--bg-base));
+      background: color-mix(in srgb, var(--bg-surface) 25%, var(--bg-elevated));
     }
     .items-grid > .item-comparison-row.item-collapsed:hover {
       background: var(--bg-hover);
@@ -3045,44 +3045,6 @@
       color: var(--text-muted);
       cursor: default;
     }
-    .item-run-output .output-actions {
-      display: flex;
-      align-items: center;
-      gap: 5px;
-    }
-    .item-run-output .action-chip {
-      display: inline-flex;
-      align-items: center;
-      gap: 5px;
-      height: 24px;
-      padding: 0 8px;
-      border: none;
-      border-radius: 4px;
-      background: var(--bg-surface);
-      color: var(--text-muted);
-      font-family: var(--font-sans);
-      font-size: var(--font-sm);
-      font-weight: 500;
-      letter-spacing: 0.01em;
-      cursor: pointer;
-      text-decoration: none;
-      transition: background 0.15s, color 0.15s;
-      white-space: nowrap;
-    }
-    .item-run-output .action-chip:hover {
-      background: var(--bg-hover);
-      color: var(--text-primary);
-    }
-    .item-run-output .action-chip svg {
-      width: 12px;
-      height: 12px;
-      flex-shrink: 0;
-      opacity: 0.7;
-    }
-    .item-run-output .action-chip:hover svg {
-      opacity: 1;
-    }
-
     .item-run-output .output-text {
       font-family: var(--font-mono);
       font-size: var(--font-base);
@@ -10188,7 +10150,7 @@
 
             const traceEndpoint = apiUrl('api/runs/' + encodeURIComponent(runFilePath) + '/items/' + encodeURIComponent(runItemId) + '/trace');
             const traceButton = !IS_COMPARE_EXPORT
-              ? `<button type="button" class="action-chip trace-drawer-btn" data-trace-endpoint="${escapeAttr(traceEndpoint)}" data-trace-item-label="${escapeAttr((runInfo.run_name || ('Run ' + (runIdx + 1))) + ' · ' + runItemId)}" data-trace-id="${escapeAttr(traceId || '')}" data-trace-url="${escapeAttr(traceUrl || '')}" title="Open trace viewer"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M2.5 4h11M2.5 8h7M2.5 12h9"/><circle cx="12.5" cy="8" r="1.2" fill="currentColor" stroke="none" opacity=".5"/><circle cx="13.5" cy="12" r="1.2" fill="currentColor" stroke="none" opacity=".5"/></svg>Trace</button>`
+              ? `<button type="button" class="trace-drawer-btn qym-inline-action qym-inline-action--neutral qym-trace-action" data-trace-endpoint="${escapeAttr(traceEndpoint)}" data-trace-item-label="${escapeAttr((runInfo.run_name || ('Run ' + (runIdx + 1))) + ' · ' + runItemId)}" data-trace-id="${escapeAttr(traceId || '')}" data-trace-url="${escapeAttr(traceUrl || '')}" title="Open trace viewer"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M2.5 4h11M2.5 8h7M2.5 12h9"/><circle cx="12.5" cy="8" r="1.2" fill="currentColor" stroke="none" opacity=".5"/><circle cx="13.5" cy="12" r="1.2" fill="currentColor" stroke="none" opacity=".5"/></svg>Trace</button>`
               : '';
             const copyBtn = `<button class="copy-btn qym-icon-action" data-copy-text="${escapeAttr(typeof output === 'object' ? JSON.stringify(output, null, 2) : String(output))}" title="Copy output">${COPY_ICON}</button>`;
             // Metric details for this run: closed toggles inside the cell
@@ -10302,7 +10264,7 @@
                 </div>
                 <div class="output-header">
                   <span class="output-status-cluster"><span class="run-label">OUTPUT</span>${statusIndicator}${durationPart}${timePart}</span>
-                  <span class="output-actions">${copyBtn}${traceButton}</span>
+                  <span class="output-actions">${traceButton}${copyBtn}</span>
                 </div>
                 <div class="output-text ${status === 'error' ? 'score-1' : ''}">${renderMarkdownSafe(output)}</div>
                 <div class="metric-scores-inline">${metricScoresHtml}</div>

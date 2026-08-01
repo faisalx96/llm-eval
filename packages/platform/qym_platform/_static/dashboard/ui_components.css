@@ -235,6 +235,33 @@
   color: var(--text-primary);
 }
 
+/* Trace is a text-and-icon companion action. Keep it on the same 24px
+   geometry as every other inline control, with a quiet surface at rest and
+   the platform accent reserved for interaction. */
+.qym-trace-action {
+  gap: var(--space-xs);
+  min-width: 64px;
+  padding-right: var(--space-sm);
+  padding-left: var(--space-sm);
+}
+
+.qym-trace-action svg {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+}
+
+.qym-inline-action.qym-inline-action--neutral.qym-trace-action:is(:hover, :focus-visible) {
+  background: var(--bg-hover);
+  color: var(--accent-primary);
+}
+
+.item-run-output .output-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
 .qym-inline-action.qym-inline-action--accent {
   background: rgba(0, 212, 170, 0.14);
   color: var(--accent-primary);

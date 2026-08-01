@@ -1101,10 +1101,8 @@ def test_item_table_toolbar_actions_use_shared_inline_action_variants() -> None:
             'class="qym-inline-action qym-inline-action--neutral" '
             f'id="{control_id}"'
         ) in run
-    assert (
-        'class="qym-inline-action qym-inline-action--accent" '
-        'id="export-filtered-btn"'
-    ) in run
+    # The export control is a rail segment now, not an inline action
+    assert 'class="rseg" id="export-filtered-btn"' in run
     assert "fp-gear-btn metadata-fields-btn multi-select-btn qym-control" not in run
     assert 'class="fp-btn fp-export"' not in run
 
@@ -1242,10 +1240,12 @@ def test_clear_filter_control_has_aligned_label_and_soft_count_pill() -> None:
         ":is(.filter-count-badge.filter-count-badge, .fp-clear-count.fp-clear-count) {",
     )
 
-    for page in ("run.html", "compare.html"):
-        source = (DASHBOARD_DIR / page).read_text(encoding="utf-8")
-        assert '<span class="fp-clear-label">Clear</span>' in source
-        assert '<svg class="fp-clear-x" viewBox="0 0 12 12"' in source
+    # run.html: the clear control moved into the filter builder head
+    run_source = (DASHBOARD_DIR / "run.html").read_text(encoding="utf-8")
+    assert 'class="fb-clear" id="clear-all-btn"' in run_source
+    compare_source = (DASHBOARD_DIR / "compare.html").read_text(encoding="utf-8")
+    assert '<span class="fp-clear-label">Clear</span>' in compare_source
+    assert '<svg class="fp-clear-x" viewBox="0 0 12 12"' in compare_source
 
     for page in ("index.html", "models.html", "charts.html"):
         source = (DASHBOARD_DIR / page).read_text(encoding="utf-8")
@@ -1598,6 +1598,25 @@ def test_quick_actions_share_the_same_icon_only_green_treatment() -> None:
         assert "box-shadow: none;" in state_rule
         assert "color-mix(" not in state_rule
     assert "0 0 12px color-mix(in srgb, var(--accent-primary)" not in icon_action_rule
+
+
+def test_trace_actions_use_shared_inline_treatment_and_precede_copy() -> None:
+    run = (DASHBOARD_DIR / "run.html").read_text(encoding="utf-8")
+    compare = (DASHBOARD_DIR / "compare.html").read_text(encoding="utf-8")
+    components = (DASHBOARD_DIR / "ui_components.css").read_text(encoding="utf-8")
+
+    assert ".qym-trace-action" in components
+    assert ".qym-inline-action.qym-inline-action--neutral.qym-trace-action:is(:hover, :focus-visible)" in components
+    assert ".item-run-output .output-actions" in components
+    assert 'class="action-chip trace-drawer-btn"' not in run
+    assert 'class="action-chip trace-drawer-btn"' not in compare
+    assert "qym-inline-action qym-inline-action--neutral qym-trace-action" in run
+    assert "qym-inline-action qym-inline-action--neutral qym-trace-action" in compare
+    assert (
+        '<span class="output-actions">' + "' + traceChip + copyBtn + '" + '</span>'
+        in run
+    )
+    assert '<span class="output-actions">${traceButton}${copyBtn}</span>' in compare
 
 
 def test_error_filter_cards_match_page_hover_and_keyboard_states() -> None:
