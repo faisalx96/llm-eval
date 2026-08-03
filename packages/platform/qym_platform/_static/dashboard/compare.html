@@ -4880,7 +4880,7 @@
       }
     }
   </style>
-  <link rel="stylesheet" href="./static/ui_components.css?v=ui-consistency-20260801-43">
+  <link rel="stylesheet" href="./static/ui_components.css?v=ui-consistency-20260801-44">
   <script defer src="./static/ui_components.js?v=ui-consistency-20260730-27"></script>
 </head>
 <body>
@@ -4968,12 +4968,68 @@
           </div>
           <div class="compare-empty" id="alignment-warning" style="display:none;margin-bottom:var(--space-lg);"></div>
 
-          <div class="filter-panel">
-            <div class="fp-filter-row">
-              <div class="fp-group">
-                <span class="fp-label">Metric</span>
-                <select id="items-metric-select" class="filter-select qym-control qym-select"></select>
+          <div class="filter-panel qym-item-control-center">
+            <div class="qym-item-toolbar">
+              <div class="qym-item-query">
+                <label class="qym-item-search qym-search-wrap">
+                  <input type="text" id="items-search" class="qym-control qym-search" placeholder="Search inputs / outputs / expected..." aria-label="Search inputs, outputs, and expected values" />
+                </label>
+                <button type="button" class="qym-item-dropdown qym-item-filter qym-control" id="btn-item-filters" aria-expanded="false" aria-controls="item-filter-builder">
+                  <svg class="qym-item-control-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 2.5h13l-5 6v4.5l-3 1.5v-6l-5-6z"/></svg>
+                  Filters <span class="qym-item-filter-count is-empty" id="filter-trigger-count">0</span>
+                  <svg class="qym-item-chevron" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 6.25 8 9.75l3.5-3.5"/></svg>
+                </button>
+                <button type="button" class="fp-clear-btn qym-clear-action qym-item-clear" id="clear-all-btn" title="Clear all active filters">
+                  <svg class="fp-clear-x" viewBox="0 0 12 12" aria-hidden="true" focusable="false"><path d="M3 3l6 6M9 3 3 9"/></svg>
+                  <span class="fp-clear-label">Clear</span>
+                  <span class="fp-clear-count" id="active-filter-count">0</span>
+                </button>
               </div>
+              <div class="qym-item-actions">
+                <span class="qym-item-count"><span class="filter-count" id="filter-count"></span></span>
+                <span class="qym-item-popover-host">
+                  <button type="button" class="qym-item-dropdown qym-control" id="btn-item-display" aria-expanded="false" aria-controls="item-display-pop" aria-haspopup="true">
+                    <svg class="qym-item-control-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4h11M2.5 8h11M2.5 12h11"/></svg>
+                    <span id="item-display-label">Display</span>
+                    <svg class="qym-item-chevron" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 6.25 8 9.75l3.5-3.5"/></svg>
+                  </button>
+                  <div class="qym-item-popover" id="item-display-pop">
+                    <div class="pop-sec" id="items-metric-heading">Analysis metric</div>
+                    <div class="pop-line" data-items-metric-group><span>Metric</span>
+                      <select id="items-metric-select" class="filter-select qym-control qym-select"></select>
+                    </div>
+                    <div class="pop-sec">View</div>
+                    <div class="pop-line"><span>Sort</span>
+                      <select id="sort-select" class="filter-select qym-control qym-select">
+                        <option value="index">Index</option>
+                        <option value="score_asc">Score &uarr;</option>
+                        <option value="score_desc">Score &darr;</option>
+                        <option value="latency_asc">Latency &uarr;</option>
+                        <option value="latency_desc">Latency &darr;</option>
+                      </select>
+                    </div>
+                    <div class="pop-sec">Columns</div>
+                    <div class="pop-line" id="fp-meta-fields" style="display:none;"><span>Item fields</span>
+                      <div class="metadata-fields-selector multi-select-wrapper" style="position:relative;">
+                        <button type="button" class="fp-gear-btn metadata-fields-btn multi-select-btn qym-inline-action qym-inline-action--neutral" id="metadata-fields-btn" title="Choose which item metadata fields to display">&#9881; Item</button>
+                        <div class="metadata-fields-dropdown qym-dropdown" id="metadata-fields-dropdown"></div>
+                      </div>
+                    </div>
+                    <div class="pop-line" id="fp-metric-meta-fields" style="display:none;"><span>Metric fields</span>
+                      <div class="metadata-fields-selector multi-select-wrapper" style="position:relative;">
+                        <button type="button" class="fp-gear-btn metadata-fields-btn multi-select-btn qym-inline-action qym-inline-action--neutral" id="metric-meta-fields-btn" title="Choose which metric metadata fields to display">&#9881; Metric</button>
+                        <div class="metadata-fields-dropdown qym-dropdown" id="metric-meta-fields-dropdown"></div>
+                      </div>
+                    </div>
+                  </div>
+                </span>
+                <button type="button" class="fp-btn fp-export qym-inline-action qym-inline-action--accent" id="export-filtered-btn" title="Export filtered items as CSV">
+                  <svg class="qym-item-control-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2v8"/><path d="m4.5 7 3.5 3.5L11.5 7"/><path d="M3 13.5h10"/></svg>
+                  CSV
+                </button>
+              </div>
+            </div>
+            <div class="fp-filter-row qym-item-builder" id="item-filter-builder" hidden>
               <div class="fp-group">
                 <span class="fp-label">Show</span>
                 <select id="item-filter" class="filter-select qym-control qym-select">
@@ -5007,16 +5063,6 @@
                   <span class="fp-pass-rate-suffix" id="pass-rate-suffix" style="display:none;">of <span id="pass-rate-k">0</span> runs</span>
                 </div>
               </div>
-              <div class="fp-group">
-                <span class="fp-label">Sort</span>
-                <select id="sort-select" class="filter-select qym-control qym-select">
-                  <option value="index">Index</option>
-                  <option value="score_asc">Score &uarr;</option>
-                  <option value="score_desc">Score &darr;</option>
-                  <option value="latency_asc">Latency &uarr;</option>
-                  <option value="latency_desc">Latency &darr;</option>
-                </select>
-              </div>
               <div class="fp-group fp-cat-group" id="fp-cat-complexity" style="display:none;">
                 <span class="fp-label">Complexity</span>
                 <div class="multi-select-wrapper">
@@ -5046,38 +5092,14 @@
                   <option value="not_approved">Not Approved</option>
                 </select>
               </div>
-              <div class="fp-gear-wrapper" id="fp-meta-fields" style="display:none;">
-                <div class="metadata-fields-selector multi-select-wrapper" style="position:relative;">
-                  <button type="button" class="fp-gear-btn metadata-fields-btn multi-select-btn qym-inline-action qym-inline-action--neutral" id="metadata-fields-btn" title="Choose which item metadata fields to display">&#9881; Item</button>
-                  <div class="metadata-fields-dropdown qym-dropdown" id="metadata-fields-dropdown"></div>
-                </div>
-              </div>
-              <div class="fp-gear-wrapper" id="fp-metric-meta-fields" style="display:none;">
-                <div class="metadata-fields-selector multi-select-wrapper" style="position:relative;">
-                  <button type="button" class="fp-gear-btn metadata-fields-btn multi-select-btn qym-inline-action qym-inline-action--neutral" id="metric-meta-fields-btn" title="Choose which metric metadata fields to display">&#9881; Metric</button>
-                  <div class="metadata-fields-dropdown qym-dropdown" id="metric-meta-fields-dropdown"></div>
-                </div>
-              </div>
-              <div class="fp-actions-spacer"></div>
-              <div class="fp-actions">
-                <button class="fp-clear-btn qym-clear-action" id="clear-all-btn" title="Clear all active filters">
-                  <svg class="fp-clear-x" viewBox="0 0 12 12" aria-hidden="true" focusable="false"><path d="M3 3l6 6M9 3 3 9"/></svg><span class="fp-clear-label">Clear</span><span class="fp-clear-count" id="active-filter-count">0</span>
-                </button>
-                <button class="fp-btn fp-export qym-inline-action qym-inline-action--accent" id="export-filtered-btn" title="Export filtered items as CSV">Export CSV</button>
-              </div>
-            </div>
-            <div class="fp-search-row">
-              <div class="fp-search qym-search-wrap">
-                <input type="text" id="items-search" class="qym-control qym-search" placeholder="Search inputs / outputs / expected..." />
-              </div>
-            </div>
-            <div class="fp-status">
-              <span class="filter-count" id="filter-count"></span>
             </div>
           </div>
 
-          <div class="items-grid" id="items-grid"></div>
-          <div class="pagination qym-pagination" id="pagination" aria-label="Compared items pagination"></div>
+          <div class="qym-item-results">
+            <div class="qym-item-result-meter" aria-hidden="true"><i id="items-fmeter"></i></div>
+            <div class="items-grid" id="items-grid"></div>
+            <div class="pagination qym-pagination" id="pagination" aria-label="Compared items pagination"></div>
+          </div>
         </div>
       </div>
 
@@ -7683,11 +7705,14 @@
         // Items metric selector dropdown — hide when single metric
         const itemsMetricSelect = el('items-metric-select');
         if (itemsMetricSelect) {
-          const metricGroup = itemsMetricSelect.closest('.fp-group');
+          const metricGroup = itemsMetricSelect.closest('[data-items-metric-group]');
+          const metricHeading = el('items-metric-heading');
           if (singleMetric) {
             if (metricGroup) metricGroup.style.display = 'none';
+            if (metricHeading) metricHeading.style.display = 'none';
           } else {
             if (metricGroup) metricGroup.style.display = '';
+            if (metricHeading) metricHeading.style.display = '';
             itemsMetricSelect.innerHTML = state.allMetrics.map(metric =>
               `<option value="${metric}" ${metric === state.selectedItemsMetric ? 'selected' : ''}>${metric}</option>`
             ).join('');
@@ -10636,12 +10661,14 @@
         const filterCountEl = el('filter-count');
         const warningEl = el('alignment-warning');
         const filterPanel = document.querySelector('.items-comparison .filter-panel');
+        const resultsShell = document.querySelector('.items-comparison .qym-item-results');
         if (!canRenderItemComparison()) {
           if (warningEl) {
             warningEl.innerHTML = getAlignmentWarningHtml('Item-by-Item Comparison Unavailable');
             warningEl.style.display = 'flex';
           }
           if (filterPanel) filterPanel.style.display = 'none';
+          if (resultsShell) resultsShell.style.display = 'none';
           if (filterCountEl) filterCountEl.textContent = '';
           container.innerHTML = '';
           paginationEl.innerHTML = '';
@@ -10650,11 +10677,17 @@
         }
         if (warningEl) warningEl.style.display = 'none';
         if (filterPanel) filterPanel.style.display = '';
+        if (resultsShell) resultsShell.style.display = '';
         const items = getFilteredItems();
         renderComparisonStats(items);
 
         // Update filter count & clear button
-        filterCountEl.innerHTML = `Showing <span class="count-num">${items.length}</span> items`;
+        const totalItems = (state.compareItemIds || []).length;
+        filterCountEl.innerHTML = `<span class="count-num">${items.length}</span> of ${totalItems} items`;
+        const displayLabel = el('item-display-label');
+        if (displayLabel) displayLabel.textContent = `Display · ${formatFieldName(state.selectedItemsMetric || 'Outcome')}`;
+        const meter = el('items-fmeter');
+        if (meter) meter.style.width = (totalItems ? (items.length / totalItems) * 100 : 0) + '%';
         updateClearButton();
 
         // Set CSS variable for grid columns
@@ -12049,12 +12082,34 @@
         return n;
       }
 
+      function countExpandedItemFilters() {
+        let n = 0;
+        if (state.itemFilter !== 'all') n++;
+        if (state.winnerFilter !== 'any') n++;
+        if (state.approvalFilter !== null) n++;
+        if (state.complexityFilter !== null) n++;
+        if (state.domainFilter !== null) n++;
+        if (state.rootCauseFilter !== null) n++;
+        if (state.taskErrorFilter !== null) n++;
+        if (state.traceErrorFilter !== null) n++;
+        if (state.analysisErrorFilter !== null) n++;
+        if (state.passRateOp) n++;
+        n += Object.values(state.categoryFilters).filter(v => v !== null).length;
+        return n;
+      }
+
       function updateClearButton() {
         const clearBtn = el('clear-all-btn');
         const countBadge = el('active-filter-count');
+        const filterBadge = el('filter-trigger-count');
         const n = countActiveFilters();
+        const filterCount = countExpandedItemFilters();
         if (clearBtn) clearBtn.classList.toggle('visible', n > 0);
         if (countBadge) countBadge.textContent = n;
+        if (filterBadge) {
+          filterBadge.textContent = filterCount;
+          filterBadge.classList.toggle('is-empty', filterCount === 0);
+        }
       }
 
       function clearAllFilters() {
@@ -12090,6 +12145,39 @@
         syncMultiselectUI('root_cause');
 
         renderItems();
+      }
+
+      {
+        const filterBtn = el('btn-item-filters');
+        const filterBuilder = el('item-filter-builder');
+        if (filterBtn && filterBuilder) {
+          filterBtn.addEventListener('click', () => {
+            const open = filterBuilder.hidden;
+            filterBuilder.hidden = !open;
+            filterBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+          });
+        }
+
+        const displayBtn = el('btn-item-display');
+        const displayPop = el('item-display-pop');
+        if (displayBtn && displayPop) {
+          displayBtn.addEventListener('click', (event) => {
+            event.stopPropagation();
+            const open = displayPop.classList.toggle('show');
+            displayBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+          });
+          displayPop.addEventListener('click', event => event.stopPropagation());
+          document.addEventListener('click', (event) => {
+            if (event.target.closest('.multi-select-dropdown, .metadata-fields-dropdown')) return;
+            displayPop.classList.remove('show');
+            displayBtn.setAttribute('aria-expanded', 'false');
+          });
+          document.addEventListener('keydown', (event) => {
+            if (event.key !== 'Escape') return;
+            displayPop.classList.remove('show');
+            displayBtn.setAttribute('aria-expanded', 'false');
+          });
+        }
       }
 
       el('clear-all-btn').addEventListener('click', clearAllFilters);

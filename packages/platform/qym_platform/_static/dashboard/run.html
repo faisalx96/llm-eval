@@ -4969,7 +4969,7 @@
     .pass-cmp-vtable td.score-1 { color: var(--score-1); }
     .pass-cmp-actions { display: flex; gap: 6px; }
   </style>
-  <link rel="stylesheet" href="/static/ui_components.css?v=ui-consistency-20260801-43">
+  <link rel="stylesheet" href="/static/ui_components.css?v=ui-consistency-20260801-44">
   <script defer src="/static/ui_components.js?v=ui-consistency-20260730-27"></script>
 </head>
 <body>
@@ -5011,24 +5011,32 @@
 
       <div class="items-comparison">
         <h3 class="section-title">Item-by-Item Detail</h3>
-        <div class="filter-panel">
-          <!-- The instrument rail: search / Filters / count / Display / CSV.
-               Segments joined by hairlines; the bottom edge carries the
-               filter meter (share of items surviving the query). -->
-          <div class="lens-rail">
-            <div class="rail-search">
-              <svg class="rail-search-icon" viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3 3"/></svg>
-              <input type="text" id="items-search" placeholder="Search inputs / outputs..." />
+        <div class="filter-panel qym-item-control-center">
+          <div class="qym-item-toolbar">
+            <div class="qym-item-query">
+              <label class="qym-item-search qym-search-wrap">
+                <input type="text" id="items-search" class="qym-control qym-search" placeholder="Search inputs / outputs..." aria-label="Search inputs and outputs" />
+              </label>
+              <button type="button" class="qym-item-dropdown qym-item-filter qym-control" id="btn-item-filters" aria-expanded="false" aria-controls="item-filter-builder">
+                <svg class="qym-item-control-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 2.5h13l-5 6v4.5l-3 1.5v-6l-5-6z"/></svg>
+                Filters <span class="qym-item-filter-count zero" id="active-filter-count">0</span>
+                <svg class="qym-item-chevron" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 6.25 8 9.75l3.5-3.5"/></svg>
+              </button>
+              <button type="button" class="fp-clear-btn qym-clear-action qym-item-clear" id="clear-all-btn" title="Clear all active filters">
+                <svg class="fp-clear-x" viewBox="0 0 12 12" aria-hidden="true" focusable="false"><path d="M3 3l6 6M9 3 3 9"/></svg>
+                <span class="fp-clear-label">Clear</span>
+                <span class="fp-clear-count" id="clear-filter-count">0</span>
+              </button>
             </div>
-            <button type="button" class="rseg rseg-filters" id="btn-item-filters" aria-expanded="false">
-              <svg class="funnel" viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 2.5h13l-5 6v4.5l-3 1.5v-6l-5-6z"/></svg>
-              Filters <span class="fbadge zero" id="active-filter-count">0</span>
-              <span class="rseg-chev" aria-hidden="true">&#9662;</span>
-            </button>
-            <span class="rcount-seg"><span class="filter-count" id="filter-count"></span></span>
-            <span class="rail-facet">
-              <button type="button" class="rseg" id="btn-item-display" aria-expanded="false"><span aria-hidden="true">&#8801;</span> Display <span class="rseg-chev" aria-hidden="true">&#9662;</span></button>
-              <div class="rail-pop" id="item-display-pop">
+            <div class="qym-item-actions">
+              <span class="qym-item-count filter-count" id="filter-count"></span>
+              <span class="qym-item-popover-host">
+                <button type="button" class="qym-item-dropdown qym-control" id="btn-item-display" aria-expanded="false" aria-controls="item-display-pop" aria-haspopup="true">
+                  <svg class="qym-item-control-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4h11M2.5 8h11M2.5 12h11"/></svg>
+                  <span id="item-display-label">Display</span>
+                  <svg class="qym-item-chevron" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 6.25 8 9.75l3.5-3.5"/></svg>
+                </button>
+                <div class="qym-item-popover" id="item-display-pop">
                 <div class="pop-sec">View</div>
                 <div class="pop-line"><span>Layout</span>
                   <span class="samples-view-toggle qym-segmented items-view-toggle" role="group" aria-label="Item detail view">
@@ -5037,7 +5045,7 @@
                   </span>
                 </div>
                 <div class="pop-line"><span>Sort</span>
-                  <select id="sort-select" class="filter-select">
+                  <select id="sort-select" class="filter-select qym-control qym-select">
                     <option value="index">Index</option>
                     <option value="score_asc">Score &uarr;</option>
                     <option value="score_desc">Score &darr;</option>
@@ -5045,9 +5053,9 @@
                     <option value="latency_desc">Latency &darr;</option>
                   </select>
                 </div>
-                <div class="pop-sec">Analysis metric</div>
+                <div class="pop-sec" id="items-metric-heading">Analysis metric</div>
                 <div class="pop-line" id="fp-metric-group"><span>Metric</span>
-                  <select id="items-metric-select" class="filter-select"></select>
+                  <select id="items-metric-select" class="filter-select qym-control qym-select"></select>
                 </div>
                 <div class="pop-line" id="fp-threshold-group" style="display:none;"><span>Pass if &ge;</span>
                   <div class="threshold-control" id="threshold-control">
@@ -5069,23 +5077,26 @@
                   </div>
                 </div>
               </div>
-            </span>
-            <button type="button" class="rseg" id="export-filtered-btn" title="Export filtered items as CSV">&#8595; CSV</button>
-            <div class="fmeter"><i id="items-fmeter"></i></div>
+              </span>
+              <button type="button" class="qym-inline-action qym-inline-action--accent" id="export-filtered-btn" title="Export filtered items as CSV">
+                <svg class="qym-item-control-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2v8"/><path d="m4.5 7 3.5 3.5L11.5 7"/><path d="M3 13.5h10"/></svg>
+                CSV
+              </button>
+            </div>
           </div>
-          <!-- The query builder opens inline as part of the same surface -->
-          <div class="item-filter-builder" id="item-filter-builder" hidden>
+          <div class="item-filter-builder qym-item-builder" id="item-filter-builder" hidden>
             <div class="fb-head">
               <span class="fb-title">Filters</span>
               <span class="fb-count" id="builder-rule-count"></span>
-              <span class="fb-spacer"></span>
-              <button type="button" class="fb-clear" id="clear-all-btn" title="Clear all filters">Clear all</button>
             </div>
             <div id="filter-builder-body"></div>
           </div>
         </div>
-        <div class="items-grid" id="items-grid"></div>
-        <div class="pagination qym-pagination" id="pagination" aria-label="Run items pagination"></div>
+        <div class="qym-item-results">
+          <div class="qym-item-result-meter" aria-hidden="true"><i id="items-fmeter"></i></div>
+          <div class="items-grid" id="items-grid"></div>
+          <div class="pagination qym-pagination" id="pagination" aria-label="Run items pagination"></div>
+        </div>
       </div>
     </div>
   </main>
@@ -6779,11 +6790,14 @@
         // Items metric select
         const sel = el('items-metric-select');
         const grp = el('fp-metric-group');
+        const heading = el('items-metric-heading');
         if (sel) {
           if (singleMetric) {
             if (grp) grp.style.display = 'none';
+            if (heading) heading.style.display = 'none';
           } else {
             if (grp) grp.style.display = '';
+            if (heading) heading.style.display = '';
             sel.innerHTML = state.allMetrics.map(m =>
               '<option value="' + escapeAttr(m) + '" ' + (m === state.selectedMetric ? 'selected' : '') + '>' + escapeHtml(m) + '</option>'
             ).join('');
@@ -6797,6 +6811,12 @@
             });
           }
         }
+      }
+
+      function formatItemControlMetric(metric) {
+        return String(metric || 'Outcome')
+          .replace(/_/g, ' ')
+          .replace(/\b\w/g, c => c.toUpperCase());
       }
 
       function updateThresholdControl() {
@@ -9441,7 +9461,9 @@
         renderOverview(items);
 
         const totalRows = (state.snapshot.rows || []).length;
-        filterCountEl.innerHTML = '<span class="count-num">' + items.length + '</span> / ' + totalRows + ' items';
+        filterCountEl.innerHTML = '<span><span class="count-num">' + items.length + '</span> of ' + totalRows + ' items</span>';
+        const displayLabel = el('item-display-label');
+        if (displayLabel) displayLabel.textContent = 'Display · ' + formatItemControlMetric(metric);
         const meter = el('items-fmeter');
         if (meter) meter.style.width = (totalRows ? (items.length / totalRows) * 100 : 0) + '%';
         updateClearButton();
@@ -10968,8 +10990,10 @@
 
       function updateClearButton() {
         const clearBtn = el('clear-all-btn');
+        const clearCount = el('clear-filter-count');
         const n = countActiveFilters();
         if (clearBtn) clearBtn.classList.toggle('visible', n > 0);
+        if (clearCount) clearCount.textContent = n;
         // The rail badge counts builder rules only; renderFilterBuilder owns it.
       }
 

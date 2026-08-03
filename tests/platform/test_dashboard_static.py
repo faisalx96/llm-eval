@@ -1253,8 +1253,11 @@ def test_item_table_toolbar_actions_use_shared_inline_action_variants() -> None:
             'class="qym-inline-action qym-inline-action--neutral" '
             f'id="{control_id}"'
         ) in run
-    # The export control is a rail segment now, not an inline action
-    assert 'class="rseg" id="export-filtered-btn"' in run
+    # Export is the shared borderless green action in the item toolbar.
+    assert (
+        'class="qym-inline-action qym-inline-action--accent" '
+        'id="export-filtered-btn"'
+    ) in run
     assert "fp-gear-btn metadata-fields-btn multi-select-btn qym-control" not in run
     assert 'class="fp-btn fp-export"' not in run
 
@@ -1392,12 +1395,24 @@ def test_clear_filter_control_has_aligned_label_and_soft_count_pill() -> None:
         ":is(.filter-count-badge.filter-count-badge, .fp-clear-count.fp-clear-count) {",
     )
 
-    # run.html: the clear control moved into the filter builder head
+    # Run/repeat and compare keep the unified clear control beside Filters,
+    # outside the expanded filter content.
     run_source = (DASHBOARD_DIR / "run.html").read_text(encoding="utf-8")
-    assert 'class="fb-clear" id="clear-all-btn"' in run_source
+    assert (
+        'class="fp-clear-btn qym-clear-action qym-item-clear" '
+        'id="clear-all-btn"'
+    ) in run_source
+    run_builder = run_source.split('id="item-filter-builder"', 1)[1].split(
+        'id="filter-builder-body"', 1
+    )[0]
+    assert 'id="clear-all-btn"' not in run_builder
     compare_source = (DASHBOARD_DIR / "compare.html").read_text(encoding="utf-8")
     assert '<span class="fp-clear-label">Clear</span>' in compare_source
     assert '<svg class="fp-clear-x" viewBox="0 0 12 12"' in compare_source
+    compare_builder = compare_source.split('id="item-filter-builder"', 1)[1].split(
+        'id="items-grid"', 1
+    )[0]
+    assert 'id="clear-all-btn"' not in compare_builder
 
     for page in ("index.html", "models.html", "charts.html"):
         source = (DASHBOARD_DIR / page).read_text(encoding="utf-8")
@@ -1417,7 +1432,7 @@ def test_clear_filter_control_has_aligned_label_and_soft_count_pill() -> None:
     for page in DASHBOARD_DIR.glob("*.html"):
         source = page.read_text(encoding="utf-8")
         if "ui_components.css?v=" in source:
-            assert "ui_components.css?v=ui-consistency-20260801-43" in source
+            assert "ui_components.css?v=ui-consistency-20260801-44" in source
 
 
 def test_operational_statistics_use_connected_strip_contract() -> None:
@@ -2036,7 +2051,9 @@ def test_data_pagination_uses_one_shared_first_last_control() -> None:
     assert 'id="pagination-top"' not in run
     assert "paginationEls" not in run
     assert 'class="pagination qym-pagination" id="pagination"' in run
-    run_filter_panel = run.split('<div class="filter-panel">', 1)[1].split('<div class="items-grid" id="items-grid">', 1)[0]
+    run_filter_panel = run.split(
+        '<div class="filter-panel qym-item-control-center">', 1
+    )[1].split('<div class="items-grid" id="items-grid">', 1)[0]
     assert 'id="pagination"' not in run_filter_panel
     assert ".items-comparison {\n      margin-bottom: var(--space-xl);\n    }" in run
     assert "renderPagination(paginationEl, {" in run
@@ -2050,9 +2067,11 @@ def test_data_pagination_uses_one_shared_first_last_control() -> None:
     assert 'id="pagination-top"' not in compare
     assert "paginationEls" not in compare
     assert 'class="pagination qym-pagination" id="pagination"' in compare
-    compare_filter_panel = compare.split('<div class="filter-panel">', 1)[1].split('<div class="items-grid" id="items-grid">', 1)[0]
+    compare_filter_panel = compare.split(
+        '<div class="filter-panel qym-item-control-center">', 1
+    )[1].split('<div class="items-grid" id="items-grid">', 1)[0]
     assert '<div class="pagination qym-pagination" id="pagination"' not in compare_filter_panel
-    assert '<div class="items-grid" id="items-grid"></div>\n          <div class="pagination qym-pagination" id="pagination"' in compare
+    assert compare.index('id="items-grid"') < compare.index('id="pagination"')
     assert "renderPagination(paginationEl, {" in compare
     assert "function scrollItemByItemToTop()" in compare
     assert "requestAnimationFrame(scrollItemByItemToTop);" in compare
