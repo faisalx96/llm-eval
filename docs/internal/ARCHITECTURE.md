@@ -4,8 +4,9 @@
 
 - **SDK (`packages/sdk/qym/`)**: runs evaluations locally (TUI), streams events and/or uploads artifacts to the platform.
 - **Platform (`packages/platform/qym_platform/`)**: FastAPI service + Postgres schema hosting:
-  - historical dashboard (`/`)
-  - run detail UI (`/run/<run_id>`)
+  - project dashboard (`/projects/<project_slug>`)
+  - project-scoped run, chart, model, dataset, review, and settings views
+  - run detail UI (`/projects/<project_slug>/runs/<run_id>`)
   - ingestion APIs (`/v1/...`)
 
 ## Live streaming
@@ -27,7 +28,10 @@ per-pass scores in `run_item_pass_scores`, keeps the reduced mean in
 `run_item_scores` (compatibility contract: one row per item/metric), and
 serves per-pass slices (`/api/runs/{id}/passes`) plus on-demand group
 metrics and the full accuracy-vs-k band (`/api/runs/{id}/group-metrics`).
-The dashboard renders repeat runs as one row (×k pill, ±CI, expandable
-passes) — the old timestamp-grouping heuristic applies to legacy runs only.
-
+The dashboard renders every repeat as one ordinary `×k` row with expandable
+pass rows and group metrics. It does not infer run groups from timestamps.
+Whole repeats contribute `k` execution units to comparisons; a completed pass
+can also be selected directly as one execution through a `::passN` reference.
+Run detail stores and renders each pass's output, score, label, metric metadata,
+error, and judge explanation; identical outputs fold into variant columns.
 

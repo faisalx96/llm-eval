@@ -1,12 +1,12 @@
 <p class="docs-eyebrow">SDK GUIDE</p>
 <h1>Multi-model, multi-run &amp; group analysis</h1>
-<p class="docs-lead">One run rarely settles a question. When you need to compare models, repeat the same task several times to measure stability, or compute Pass@K-style statistics over a group of runs, qym gives you three building blocks: multi-model evaluation, multi-run specs, and the group-analysis helpers that mirror the platform dashboard's cohort math in plain Python.</p>
+<p class="docs-lead">One execution rarely settles a question. qym combines multi-model evaluation, multi-run specs, native repeat runs, and offline group-analysis helpers. The same item-aligned math powers estimator-aware Pass@K metrics and noise-aware cohort comparisons in the platform.</p>
 
 <p>This page covers, in order:</p>
 <ul>
   <li><strong>Multi-model</strong> &mdash; same task, same dataset, same metrics, only the model changes (<code>model=[...]</code>).</li>
   <li><strong>Multi-run</strong> &mdash; tasks, datasets, metrics, or configs differ between runs (<code>Evaluator.run_parallel(...)</code> / <code>RunSpec</code>).</li>
-  <li><strong>Group analysis</strong> &mdash; compute Pass@K, Pass^K, Avg@K, Max@K, consistency, and reliability over a list of <code>EvaluationResult</code> objects (<code>analyze_group_runs</code> / <code>compare_group_runs</code>).</li>
+  <li><strong>Group analysis</strong> &mdash; compute Pass@K, Pass^K, Avg@K, Max@K, consistency, reliability, and comparison noise over <code>EvaluationResult</code> objects (<code>analyze_group_runs</code> / <code>compare_group_runs</code>).</li>
 </ul>
 
 <div class="docs-callout tip">
@@ -275,7 +275,10 @@ results = Evaluator.run_parallel(
     metric: str,                # required
     threshold: float = 0.8,
     track_distribution: bool = False,
+    report_k: Optional[int] = None,
 ) -&gt; dict</pre>
+
+<p><code>k</code> is the number of executions supplied. Set <code>report_k</code> below that count to publish Pass@k and Pass^k as unbiased estimates from the complete execution pool. For an item with <code>n</code> usable scores and <code>c</code> passes, the helper uses <code>1 - C(n-c, k) / C(n, k)</code> and <code>C(c, k) / C(n, k)</code>. Omitting <code>report_k</code> preserves the observed any/all behavior.</p>
 
 <pre data-lang="python">from qym import Evaluator, analyze_group_runs
 
@@ -286,7 +289,12 @@ results = Evaluator(
     model=["gpt-4o-mini", "gpt-4.1-mini", "gpt-4o"],
 ).run(show_tui=False)
 
-summary = analyze_group_runs(results, metric="correctness", threshold=0.8)
+summary = analyze_group_runs(
+    results,
+    metric="correctness",
+    threshold=0.8,
+    report_k=2,
+)
 
 print(summary["pass_at_k"], summary["pass_hat_k"], summary["avg_at_k"])</pre>
 
@@ -295,13 +303,13 @@ print(summary["pass_at_k"], summary["pass_hat_k"], summary["avg_at_k"])</pre>
 <table>
   <thead><tr><th>Key</th><th>Meaning</th></tr></thead>
   <tbody>
-    <tr><td><code>metric</code>, <code>threshold</code></td><td>Echo of the inputs.</td></tr>
+    <tr><td><code>metric</code>, <code>threshold</code>, <code>report_k</code></td><td>Echo of the analysis inputs.</td></tr>
     <tr><td><code>k</code></td><td>Number of runs in the group (<code>len(results)</code>).</td></tr>
     <tr><td><code>total_items</code></td><td>Items that had at least one usable score across the group.</td></tr>
     <tr><td><code>total_score_count</code>, <code>total_score_sum</code></td><td>Count and sum of all included item&times;run scores.</td></tr>
     <tr><td><code>failed_count</code></td><td>Number of error rows counted across the group.</td></tr>
-    <tr><td><code>pass_at_k</code></td><td><strong>Pass@K</strong> &mdash; fraction of items where <em>at least one</em> run scored <code>&gt;= threshold</code>.</td></tr>
-    <tr><td><code>pass_hat_k</code></td><td><strong>Pass^K</strong> &mdash; fraction of items where <em>every included</em> run passed.</td></tr>
+    <tr><td><code>pass_at_k</code></td><td><strong>Pass@K</strong> &mdash; mean probability that at least one of k selected executions passes. With no <code>report_k</code>, this is the observed fraction with any pass.</td></tr>
+    <tr><td><code>pass_hat_k</code></td><td><strong>Pass^K</strong> &mdash; mean probability that all k selected executions pass. With no <code>report_k</code>, this is the observed fraction where all usable executions pass.</td></tr>
     <tr><td><code>avg_at_k</code> / <code>avg_score</code></td><td><strong>Avg@K</strong> &mdash; mean over all included item&times;run scores. (Both keys carry the same value.)</td></tr>
     <tr><td><code>max_at_k</code></td><td><strong>Max@K</strong> &mdash; mean of the best score per item.</td></tr>
     <tr><td><code>consistency</code></td><td>Average agreement across runs (see formula below). <code>None</code> if no item had &gt;1 score.</td></tr>
@@ -314,13 +322,13 @@ print(summary["pass_at_k"], summary["pass_hat_k"], summary["avg_at_k"])</pre>
 </table>
 
 <h3>The metric definitions</h3>
-<p>These are the exact formulas the helper computes per item, then averages. Let <code>score_count</code> be the number of usable runs for an item, <code>pass_count</code> the number scoring <code>&gt;= threshold</code>, and <code>fail_count = score_count - pass_count</code>.</p>
+<p>These are the exact formulas the helper computes per item, then averages. Let <code>score_count</code> be the usable execution count, <code>pass_count</code> the number scoring <code>&gt;= threshold</code>, <code>fail_count = score_count - pass_count</code>, and <code>k_eff</code> the smaller of <code>report_k</code> and <code>score_count</code>. Without <code>report_k</code>, <code>k_eff = score_count</code>.</p>
 
 <table>
   <thead><tr><th>Metric</th><th>Per item</th><th>Reported as</th></tr></thead>
   <tbody>
-    <tr><td><strong>Pass@K</strong> (<code>pass_at_k</code>)</td><td><code>pass_count &gt; 0</code></td><td>fraction of items that are true</td></tr>
-    <tr><td><strong>Pass^K</strong> (<code>pass_hat_k</code>)</td><td><code>pass_count == score_count</code> (and <code>score_count &gt; 0</code>)</td><td>fraction of items that are true</td></tr>
+    <tr><td><strong>Pass@K</strong> (<code>pass_at_k</code>)</td><td><code>1 - C(score_count-pass_count, k_eff) / C(score_count, k_eff)</code></td><td>mean of per-item subset probabilities</td></tr>
+    <tr><td><strong>Pass^K</strong> (<code>pass_hat_k</code>)</td><td><code>C(pass_count, k_eff) / C(score_count, k_eff)</code></td><td>mean of per-item subset probabilities</td></tr>
     <tr><td><strong>Avg@K</strong> (<code>avg_at_k</code>)</td><td>&mdash;</td><td><code>total_score_sum / total_score_count</code></td></tr>
     <tr><td><strong>Max@K</strong> (<code>max_at_k</code>)</td><td><code>max(scores)</code></td><td>mean of per-item max</td></tr>
     <tr><td><strong>Consistency</strong></td><td><code>2 * max(pass_count, fail_count) / score_count - 1</code> (only for items with <code>score_count &gt; 1</code>)</td><td>mean over multi-run items</td></tr>
@@ -347,6 +355,14 @@ overlap = group.metric("contains", threshold=1.0)
 # compare_to(other, *, metric, threshold=0.8)
 delta = group.compare_to(other_results, metric="correctness", threshold=0.8)</pre>
 
+<p>The wrapper exposes the historical defaults. Call <code>analyze_group_runs</code> or <code>compare_group_runs</code> directly when you need <code>report_k</code> or a non-default confidence level.</p>
+
+<h3>Execution-balanced cohorts in the platform</h3>
+
+<p>The Runs view balances cohort sides by <strong>execution count</strong>, not row count. An ordinary run contributes one execution, a repeat run with <code>samples=9</code> contributes nine, and an expanded completed pass contributes one. This allows one repeat experiment to be compared fairly with nine ordinary runs or with any other nine-execution mix.</p>
+
+<p>Selecting a pass creates a reference such as <code>&lt;file_path&gt;::pass3</code>. Compare loads the base repeat run and slices its output, scores, judge metadata, latency, and trace to that pass before analysis. A whole run and one of its own passes cannot overlap across cohort sides. Exact execution references must be disjoint and execution-balanced; different passes from the same repeat run may appear on opposing sides.</p>
+
 <h3><code>compare_group_runs</code> &mdash; comparing two groups</h3>
 
 <p>Use this to compare a baseline cohort against a candidate cohort (for example, prompt v1 across 3 seeds vs prompt v2 across 3 seeds). It uses <strong>stricter cohort semantics</strong> than <code>analyze_group_runs</code>.</p>
@@ -357,11 +373,13 @@ delta = group.compare_to(other_results, metric="correctness", threshold=0.8)</pr
     *,
     metric: str,                # required
     threshold: float = 0.8,
+    report_k: Optional[int] = None,
+    confidence: float = 0.95,
 ) -&gt; dict</pre>
 
 <div class="docs-callout warn">
   <svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-  <p><span class="docs-callout-title">Eligibility is all-or-nothing.</span> An item is <strong>eligible</strong> only when <em>every</em> run on <em>both</em> sides has a non-null score for it. If any single run on either side is missing that item, the item is dropped from the comparison entirely. This keeps the two sides perfectly aligned, but it means an item that errored in even one run is excluded.</p>
+  <p><span class="docs-callout-title">Eligibility is all-or-nothing.</span> An item is eligible only when every execution on both sides has a non-null score. Missing or null scores remove the item from the comparison. A declared-metric execution error is normalized to <code>0</code>, so it remains eligible and counts as a failure.</p>
 </div>
 
 <pre data-lang="python">from qym import compare_group_runs
@@ -371,9 +389,12 @@ comparison = compare_group_runs(
     candidate_results,
     metric="correctness",
     threshold=0.8,
+    report_k=2,
+    confidence=0.95,
 )
 
 print(comparison["deltas"]["pass_at_k"])      # candidate minus baseline
+print(comparison["noise"]["pass_at_k"])
 print(comparison["summary"]["improved_count"])
 print(comparison["buckets"]["b_sweeps_a"]["item_ids"])</pre>
 
@@ -382,16 +403,34 @@ print(comparison["buckets"]["b_sweeps_a"]["item_ids"])</pre>
 <table>
   <thead><tr><th>Key</th><th>Meaning</th></tr></thead>
   <tbody>
-    <tr><td><code>metric</code>, <code>threshold</code>, <code>k</code></td><td>Inputs and the left run count.</td></tr>
+    <tr><td><code>metric</code>, <code>threshold</code>, <code>k</code>, <code>report_k</code>, <code>confidence</code></td><td>Inputs, published k, confidence level, and the left execution count.</td></tr>
     <tr><td><code>eligible_items</code></td><td>Items scored by every run on both sides.</td></tr>
     <tr><td><code>left_run_count</code>, <code>right_run_count</code></td><td>Runs per side.</td></tr>
     <tr><td><code>left</code>, <code>right</code></td><td>Aggregates per side: <code>pass_at_k</code>, <code>pass_hat_k</code>, <code>avg_at_k</code>, <code>consistency</code>, <code>reliability</code>, <code>avg_attempts</code>.</td></tr>
     <tr><td><code>deltas</code></td><td><code>right - left</code> for <code>pass_at_k</code>, <code>pass_hat_k</code>, <code>avg_at_k</code>, <code>consistency</code>, <code>reliability</code>.</td></tr>
+    <tr><td><code>noise</code></td><td>Per-metric <code>delta</code>, luck-band <code>half_width</code>, two-sided <code>p_value</code>, and <code>verdict</code>. Reliability is <code>None</code> because its conditional item set makes this band invalid.</td></tr>
     <tr><td><code>summary</code></td><td><code>improved_count</code>, <code>regressed_count</code>, <code>unchanged_count</code> (by per-item pass-count move), and <code>avg_attempts_delta</code>.</td></tr>
     <tr><td><code>buckets</code></td><td>Four swing buckets (see below), each with <code>count</code>, <code>percentage</code>, and <code>item_ids</code>.</td></tr>
     <tr><td><code>items</code></td><td>Per-item rows, sorted so the biggest swings toward the candidate appear first.</td></tr>
   </tbody>
 </table>
+
+<h3>Noise bands, p-values, and verdicts</h3>
+
+<p>The observed delta alone does not distinguish a real change from favorable executions. For each paired item, qym pools the two cohorts under a no-change hypothesis and estimates how far the right-minus-left metric could move through execution luck. Pass@k, Pass^k, and Consistency use exact binomial estimator variance; Avg@k uses pooled within-item score variance.</p>
+
+<table>
+  <thead><tr><th>Field</th><th>Interpretation</th></tr></thead>
+  <tbody>
+    <tr><td><code>half_width</code></td><td>The symmetric luck band at <code>confidence</code>; the default display is <code>&plusmn;half_width</code> at 95%.</td></tr>
+    <tr><td><code>p_value</code></td><td>Two-sided normal probability of a delta at least this extreme under the no-change model.</td></tr>
+    <tr><td><code>improved</code></td><td>The delta is above the positive edge of the luck band.</td></tr>
+    <tr><td><code>regressed</code></td><td>The delta is below the negative edge of the luck band.</td></tr>
+    <tr><td><code>within_noise</code></td><td>The delta remains inside the band; it is not distinguishable from execution luck at this confidence level.</td></tr>
+  </tbody>
+</table>
+
+<p>The platform's <strong>Sweep</strong> view shows the corresponding <strong>Improved</strong>, <strong>Regressed</strong>, or <strong>Within noise</strong> verdict for its primary metric, plus each metric's band and p-value. “Within noise” means insufficient evidence of change, not proof that both cohorts are equal.</p>
 
 <h3>Swing buckets</h3>
 <p>For each eligible item, <code>compare_group_runs</code> classifies it into one of four buckets when the result is unambiguous (all runs on a side agree). "A" is the left/baseline group, "B" is the right/candidate group:</p>
@@ -442,7 +481,7 @@ print("regressions:", diff["buckets"]["a_sweeps_b"]["item_ids"])</pre>
 
 <div class="docs-callout tip">
   <svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-  <p><span class="docs-callout-title">Pass@K from repetition, not just models.</span> The group helpers don't care whether the K runs came from K different models or K repeats of one config. To measure how flaky a single model is on a task, run the same config K times (each <code>run()</code> returns one result; collect them into a list) and pass that list to <code>analyze_group_runs</code>. <code>consistency</code> and <code>reliability</code> then describe run-to-run stability for that one model.</p>
+  <p><span class="docs-callout-title">Use native repeats for new stability experiments.</span> Group helpers can still analyze separate historical results, regardless of whether they came from models, prompts, or earlier repetitions. For a new same-config experiment, prefer <code>samples=n</code>: it preserves all executions inside one logical run and exposes <code>result.group_stats()</code> directly.</p>
 </div>
 
 <h2>Common pitfalls</h2>
@@ -453,6 +492,7 @@ print("regressions:", diff["buckets"]["a_sweeps_b"]["item_ids"])</pre>
     <tr><td>Unstable item IDs</td><td>Group metrics look noisy; <code>compare_group_runs</code> reports few <code>eligible_items</code>.</td><td>Give every dataset row a stable <code>id</code> so runs align by identity, not row order.</td></tr>
     <tr><td>One-element model list</td><td>Expected a list, got a single <code>EvaluationResult</code>.</td><td>Multi-model needs &gt;1 model. Use 2+ entries, or wrap the single result in a list yourself.</td></tr>
     <tr><td>Mismatched metric names across runs</td><td><code>analyze_group_runs(metric=...)</code> finds no scores for some runs.</td><td>Keep the metric you analyze in every run's <code>metrics</code> list, under the same name.</td></tr>
+    <tr><td>Balanced rows, unequal executions</td><td>The platform will not open the cohort.</td><td>Balance execution units: a repeat row contributes its <code>samples</code>; a selected pass contributes one.</td></tr>
     <tr><td>Provider throttling</td><td>Timeouts and sporadic failures under multi-model load.</td><td>Lower <code>max_parallel_runs</code> and/or per-run <code>max_concurrency</code>.</td></tr>
     <tr><td>Forgotten artifacts</td><td><code>run_parallel</code> produced no saved files.</td><td><code>run_parallel</code> defaults <code>auto_save=False</code> &mdash; pass <code>auto_save=True</code> or set <code>output_path</code> per run.</td></tr>
   </tbody>

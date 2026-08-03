@@ -4,7 +4,7 @@
 
 <p>A judge is just a metric. It plugs into the same <code>metrics=[...]</code> list as <code>exact_match</code> and your custom callables, returns a <a href="#sdk-guide/metrics">MetricResult</a>, and writes a numeric <code>score</code> plus a human-readable <code>label</code> and <code>explanation</code> to every item. The difference is that the score comes from an LLM verdict instead of code, which makes judges more expensive, non-deterministic, and dependent on an external provider. Reach for them only where rules genuinely fall short — and keep deterministic metrics in the same run as cheap, stable guardrails.</p>
 
-<div class="docs-callout tip"><svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg><p><span class="docs-callout-title">Judges need the optional extra.</span> The judge names below only appear in the metric registry when the <code>openai</code> package is installed. Install with <code>pip install qym[judges]</code>. Without it, asking for a judge by name raises <code>ValueError: Metric '&lt;name&gt;' not found. Available metrics: ...</code>.</p></div>
+<div class="docs-callout tip"><svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg><p><span class="docs-callout-title">Install the optional client.</span> Judge names are always registered, but execution imports the <code>openai</code> package lazily. Run <code>pip install openai</code>; there is no <code>qym[judges]</code> extra.</p></div>
 
 <h2>Configure the judge provider</h2>
 <p>Every judge call talks to an OpenAI-compatible chat-completions endpoint (OpenAI, vLLM, Ollama, OpenRouter, and similar). Configuration is read from environment variables — there is <strong>no default model</strong>, so you must supply one.</p>
@@ -264,7 +264,8 @@ evaluator = Evaluator(
 <ul>
 <li><strong>Sample first.</strong> Validate prompts and config on a handful of items before a full run — it surfaces the <code>RuntimeError</code> config check and any unfilled <code>{placeholders}</code> immediately.</li>
 <li><strong><code>max_metric_concurrency</code></strong> (default <code>1</code>) controls how many metrics run in parallel <em>per item</em>. Raise it to fan out multiple judge calls on the same item; keep it low when your provider's rate limits are strict.</li>
-<li><strong><code>metric_timeout</code></strong> (default <code>60.0</code>s) is the wall-clock budget per metric. A judge that legitimately needs longer is cancelled and recorded as a timeout — raise this (or set it to <code>None</code>) for slow models.</li>
+<li><strong><code>metric_timeout</code></strong> (default <code>60.0</code>s) is the wall-clock budget per judge attempt. Raise it (or set it to <code>None</code>) for slow models.</li>
+<li><strong><code>metric_max_retries</code></strong> (default <code>2</code>) retries attempts that reach that wall-clock limit. Exhausted timeouts become ordinary metric errors and are excluded from the mean.</li>
 <li><strong>Tier your judges.</strong> Use a cheap model for smoke tests and a stronger one for release gates via per-judge <code>judge_model</code> overrides.</li>
 <li><strong>Record provenance.</strong> Store the judge model and prompt version in your run metadata so scores stay comparable across runs.</li>
 </ul>
@@ -275,10 +276,10 @@ evaluator = Evaluator(
 <thead><tr><th>Symptom</th><th>Likely cause</th><th>Fix</th></tr></thead>
 <tbody>
 <tr><td><code>RuntimeError: LLM judge metrics require configuration. Missing: ...</code></td><td>Model or API key unset.</td><td>Set <code>QYM_JUDGE_MODEL</code> and <code>QYM_JUDGE_API_KEY</code> (or <code>OPENAI_API_KEY</code>).</td></tr>
-<tr><td><code>ImportError: The 'openai' package is required...</code></td><td>Judges extra not installed.</td><td><code>pip install qym[judges]</code>.</td></tr>
-<tr><td><code>ValueError: Metric '&lt;name&gt;' not found. Available metrics: ...</code></td><td>Judge name requested but <code>openai</code> missing, so it's not in the registry.</td><td>Install the extra, or check the name's spelling.</td></tr>
+<tr><td><code>ImportError: The 'openai' package is required...</code></td><td>Optional client not installed.</td><td><code>pip install openai</code>.</td></tr>
+<tr><td><code>ValueError: Metric '&lt;name&gt;' not found. Available metrics: ...</code></td><td>The name is misspelled or a custom registration module was not imported.</td><td>Check the name or import the module that registers it.</td></tr>
 <tr><td>All scores are 0.0</td><td>An unfilled <code>{placeholder}</code>, an ambiguous prompt, or repeated parse/transport failures.</td><td>Verify every variable is filled on a sample item; inspect per-item <code>error</code> metadata.</td></tr>
-<tr><td>Many items recorded as timeout</td><td>Judge calls exceeding <code>metric_timeout</code>.</td><td>Raise <code>metric_timeout</code> or use a faster model.</td></tr>
+<tr><td>Many timeout errors</td><td>Judge attempts keep exceeding <code>metric_timeout</code>, including retries.</td><td>Raise <code>metric_timeout</code>, tune <code>metric_max_retries</code>, or use a faster model.</td></tr>
 <tr><td>Inconsistent labels</td><td>Choices or rubric too vague.</td><td>Use sharper labels and a clearer rubric in the prompt.</td></tr>
 </tbody>
 </table>
@@ -287,5 +288,5 @@ evaluator = Evaluator(
 <ul>
 <li><a href="#sdk-guide/metrics">Metrics</a> — the built-in code metrics and the <code>MetricResult</code> contract.</li>
 <li><a href="#sdk-guide/custom-metrics">Custom metrics</a> — the task-output envelope and reading <code>input_data</code>.</li>
-<li><a href="#sdk-guide/config">Configs &amp; options</a> — <code>metric_timeout</code>, <code>max_metric_concurrency</code>, and the full field reference.</li>
+<li><a href="#sdk-guide/config">Configs &amp; options</a> — <code>metric_timeout</code>, <code>metric_max_retries</code>, <code>max_metric_concurrency</code>, and the full field reference.</li>
 </ul>

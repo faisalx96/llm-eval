@@ -1,0 +1,72 @@
+<p class="docs-eyebrow">PLATFORM GUIDE</p>
+<h1>Projects, data &amp; review</h1>
+<p class="docs-lead">Projects are the platform's access and data boundary. Their settings connect people and automation; datasets define the evidence; reviews turn analysis into reusable corrections.</p>
+
+<h2>Projects</h2>
+<p>The Projects page lists projects you can access, with your role and activity summary. Platform admins can create projects. A project manager can also create another project; its creator becomes its first manager.</p>
+
+<p>Project Settings contains five areas:</p>
+<table>
+  <thead><tr><th>Tab</th><th>Purpose</th></tr></thead>
+  <tbody>
+    <tr><td><strong>General</strong></td><td>Name, slug, description, current role, member count, and status.</td></tr>
+    <tr><td><strong>Members</strong></td><td>Add people and assign MEMBER or MANAGER. Only managers/admins can change membership, and the final manager cannot be removed or demoted.</td></tr>
+    <tr><td><strong>API Keys</strong></td><td>Create project-bound Bearer keys, identify them by name/prefix, and revoke eligible keys.</td></tr>
+    <tr><td><strong>LLM Connections</strong></td><td>Add, edit, test, choose a default, or remove providers used by AI-assisted root-cause analysis.</td></tr>
+    <tr><td><strong>Danger Zone</strong></td><td>Archive or request deletion of the project.</td></tr>
+  </tbody>
+</table>
+
+<div class="docs-callout warn">
+  <svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+  <p><span class="docs-callout-title">Projects with runs are archived, not hard-deleted.</span> Their history remains intact and the project disappears from active navigation. Only an empty project can be removed physically.</p>
+</div>
+
+<h2>API keys</h2>
+<p>Any project member may create a key. The raw token is shown once; save it immediately. Later lists show only metadata and the first eight-character prefix. A key is fixed to one project, so use a different key for every project and environment.</p>
+
+<pre data-lang="bash">QYM_BASE_URL=https://qym.example.com
+QYM_API_KEY=&lt;token-shown-once&gt;</pre>
+
+<p>A key's creator, a project manager, or a platform admin may revoke it. Stored scope labels are informational today and are not enforced; project membership is the security boundary.</p>
+
+<h2>LLM connections</h2>
+<p>Project members can manage connections used by root-cause analysis. Give each connection a provider, model, endpoint where applicable, and secret key; test it before setting it as default. Secrets are encrypted at rest when the operator has configured the platform encryption key.</p>
+
+<p>The analyzer uses the project's default connection, or the first available connection when no default is set. Approved corrections from Reviews provide reusable examples for later analysis.</p>
+
+<h2>Datasets</h2>
+<p>The dataset catalog is project-scoped. Import CSV or JSONL to create a dataset, then work through its version lifecycle:</p>
+<ol>
+  <li>Create or clone a <strong>draft</strong>.</li>
+  <li>Add, edit, bulk upsert, or remove items while it is a draft.</li>
+  <li><strong>Publish</strong> the nonempty version to make its content immutable.</li>
+  <li>Assign an alias such as <code>production</code> to a published version.</li>
+</ol>
+
+<p>Inside a dataset, use:</p>
+<ul>
+  <li><strong>Items</strong> for search, labels, item editing, revision history, neighboring items, and each item's linked runs;</li>
+  <li><strong>Runs</strong> for evaluations that used the dataset or selected version;</li>
+  <li><strong>Lineage</strong> for version ancestry and change counts; and</li>
+  <li><strong>Compare</strong> for item-level differences between two versions.</li>
+</ul>
+
+<p>Downloads are JSONL. To change published content, create a new draft from that version rather than editing it in place.</p>
+
+<h2>Reviews and corrections</h2>
+<p>Reviews collects root-cause and solution corrections from manual work and AI analysis. Filter by status, source, project context, task, dataset, model, run, text, and other facets. Open a correction to inspect its revision and review history.</p>
+
+<table>
+  <thead><tr><th>Status</th><th>Meaning</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Pending</strong></td><td>Waiting for a human decision.</td></tr>
+    <tr><td><strong>Approved</strong></td><td>Accepted and available as a few-shot example for future analysis.</td></tr>
+    <tr><td><strong>Rejected</strong></td><td>Retained for audit, but excluded from analyzer examples.</td></tr>
+  </tbody>
+</table>
+
+<p>You can edit a correction, approve or reject it with a comment, reset it to pending, or delete it. Select several corrections for bulk approve, reject, reset, or delete.</p>
+
+<h2>Deleted runs</h2>
+<p>Deleting a run is soft-delete: it leaves active views but keeps its data and deletion audit details. <strong>Deleted Runs</strong> is visible only to platform admins, who can restore a run to its project.</p>

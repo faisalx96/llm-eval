@@ -19,7 +19,7 @@
 <tr><td><code>qym run compare &lt;run_id&gt; &lt;run_id&gt; ...</code></td><td>Compare two or more runs side by side.</td></tr>
 <tr><td><code>qym run tasks</code></td><td>List distinct task names known to the platform.</td></tr>
 <tr><td><code>qym metric list</code></td><td>List the metrics registered in the SDK.</td></tr>
-<tr><td><code>qym analyze run &lt;run_id&gt;</code></td><td>Trigger AI root-cause analysis on a run's items.</td></tr>
+<tr><td><code>qym analyze run &lt;run_id&gt;</code></td><td>Known client-route mismatch in this build; use the run page's <strong>Auto-Analyze</strong> action.</td></tr>
 <tr><td><code>qym analyze summary &lt;run_id&gt;</code></td><td>Aggregate root-cause categories for a run.</td></tr>
 <tr><td><code>qym config show</code></td><td>Print the resolved platform configuration (URL, key status, TLS).</td></tr>
 <tr><td><code>qym config check</code></td><td>Validate connectivity and auth against the platform API.</td></tr>
@@ -53,6 +53,7 @@
 <tr><td><code>--task-function</code></td><td>—</td><td>Name of the function to evaluate inside the task file. <strong>Required</strong> (single run).</td></tr>
 <tr><td><code>--metrics</code></td><td>—</td><td>Comma-separated metric names, e.g. <code>exact_match,fuzzy_match</code>. <strong>Required</strong> (single run).</td></tr>
 <tr><td><code>--model</code></td><td>—</td><td>Model name, or comma-separated list. Multiple models trigger a multi-model run.</td></tr>
+<tr><td><code>--samples</code></td><td><code>1</code></td><td>Evaluate every item k times as sequential passes inside one logical run. Use <code>--config '{"report_k":3}'</code> when the reported k should be smaller than the collected sample count.</td></tr>
 <tr><td><code>--task-name</code></td><td>auto-derived</td><td>Override the auto-derived task name (sets <code>config.task_name</code>).</td></tr>
 </tbody>
 </table>
@@ -201,17 +202,16 @@ qym run failed a1b2c3d4 --json | jq '.failed_items[].item_id'
 qym run compare a1b2c3d4 e5f6a7b8</pre>
 
 <h2><code>qym metric list</code></h2>
-<p>Prints every metric registered in the SDK (built-ins plus anything registered at import time), each with the first line of its docstring. The built-in code metrics that ship without extras are <code>exact_match</code>, <code>contains</code>, <code>fuzzy_match</code>, <code>response_time</code>, <code>token_count</code>, <code>correctness</code>, and <code>faithfulness</code>. The LLM judges appear only when the <code>[judges]</code> extra is installed.</p>
+<p>Prints every metric registered in the SDK (built-ins plus anything registered at import time), each with the first line of its docstring. The dependency-free code metrics are <code>exact_match</code>, <code>contains</code>, <code>fuzzy_match</code>, <code>response_time</code>, <code>token_count</code>, <code>correctness</code>, and <code>faithfulness</code>. The seven judge names are also registered; executing one requires <code>pip install openai</code> and judge-provider configuration.</p>
 <pre data-lang="bash">qym --json metric list | jq -r '.metrics[].name'</pre>
 <p>See <a href="#sdk-guide/metrics">Metrics</a> for signatures and return-type contracts.</p>
 
 <h2><code>qym analyze</code></h2>
 <ul>
-<li><code>qym analyze run &lt;run_id&gt;</code> — triggers AI root-cause analysis on the run's items via <code>POST /v1/runs/{run_id}/analyze</code>. Accepts <code>--concurrency</code> (default <code>20</code>) controlling parallel analysis threads. Reports the count analyzed plus a category breakdown.</li>
+<li><code>qym analyze run &lt;run_id&gt;</code> — currently targets a removed legacy <code>/v1</code> route and is not compatible with this platform build. Use <strong>Auto-Analyze</strong> in run detail, whose supported endpoint is <code>POST /api/runs/{run_id}/analyze</code>.</li>
 <li><code>qym analyze summary &lt;run_id&gt;</code> — aggregates already-recorded root-cause categories (from corrections or item metadata) for the run; it does not start new analysis.</li>
 </ul>
-<pre data-lang="bash">qym analyze run a1b2c3d4 --concurrency 10
-qym analyze summary a1b2c3d4 --json</pre>
+<pre data-lang="bash">qym analyze summary a1b2c3d4 --json</pre>
 
 <h2><code>qym config</code></h2>
 <p>Two commands for verifying your environment before a run.</p>

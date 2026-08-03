@@ -2365,11 +2365,10 @@ class Evaluator:
     ) -> Tuple[str, Any]:
         """Run a single metric, emit score event, and notify platform.
 
-        The metric call is wrapped in ``asyncio.wait_for`` with a wall-clock budget
-        of ``self.metric_timeout`` (default 120s). A metric that hangs beyond the
-        budget is cancelled and recorded as ``score=0`` with ``label="timeout"`` so
-        one misbehaving metric (e.g. an LLM judge that never returns) cannot hold
-        the whole item hostage in ``asyncio.gather``.
+        Each metric attempt is wrapped in ``asyncio.wait_for`` with the
+        ``self.metric_timeout`` budget (default 60s). Timeouts retry according to
+        ``self.metric_max_retries``; an exhausted timeout follows the ordinary
+        metric-error path (score 0 plus an error string).
         """
         metric_started_at_ms = int(time.time() * 1000)
         metric_started_monotonic = time.monotonic()

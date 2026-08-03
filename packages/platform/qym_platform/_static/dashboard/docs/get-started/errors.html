@@ -34,11 +34,11 @@
     <tr><td><code>InvalidTaskOutputError</code></td><td>Task returned a dict that isn't the <code>{output, metadata}</code> envelope.</td><td>Return a plain value, or wrap as <code>{"output": value, "metadata": {}}</code>.</td></tr>
     <tr><td><code>DatasetNotFoundError</code> on a string dataset</td><td>String isn't an existing local file, so it's treated as a platform dataset, but credentials are missing.</td><td>Fix the path / use <code>CsvDataset</code>, or set <code>QYM_BASE_URL</code> + <code>QYM_API_KEY</code>.</td></tr>
     <tr><td><code>CsvDatasetSchemaError</code></td><td>Missing column, bad JSON cell, no header, or non-<code>.csv</code> path.</td><td>Read the <code>file</code>/<code>row</code>/<code>column</code> in the message and fix that cell or column mapping.</td></tr>
-    <tr><td><code>ValueError: Metric '…' not found</code></td><td>Unknown metric name (typo, or a judge name without the <code>[judges]</code> extra).</td><td>Use a registered name or pass a callable. Install <code>qym[judges]</code> for judges.</td></tr>
+    <tr><td><code>ValueError: Metric '…' not found</code></td><td>Unknown or not-yet-imported custom metric name.</td><td>Use a registered name, import its registration module, or pass a callable.</td></tr>
     <tr><td><code>RuntimeError: LLM judge metrics require configuration</code></td><td>A judge ran without <code>QYM_JUDGE_MODEL</code> and/or an API key.</td><td>Set <code>QYM_JUDGE_MODEL</code> and <code>QYM_JUDGE_API_KEY</code> (or <code>OPENAI_API_KEY</code>).</td></tr>
-    <tr><td><code>ImportError</code> on judge import</td><td>The optional <code>openai</code> dependency isn't installed.</td><td>Run <code>pip install qym[judges]</code>.</td></tr>
+    <tr><td><code>ImportError</code> when a judge runs</td><td>The optional <code>openai</code> dependency isn't installed.</td><td>Run <code>pip install openai</code>.</td></tr>
     <tr><td>No run appears in the dashboard</td><td><code>QYM_API_KEY</code> not set in the run's process, or <code>create_run</code> failed silently.</td><td>Check the stderr <code>Platform live UI disabled…</code> warning; set <code>QYM_PLATFORM_DEBUG=1</code>.</td></tr>
-    <tr><td>A metric scores <code>0</code> with a <code>timeout</code> label</td><td>The metric exceeded <code>metric_timeout</code> (default 60.0s).</td><td>Raise <code>metric_timeout</code> for slow custom metrics, or speed up the metric.</td></tr>
+    <tr><td>A metric shows a timeout error</td><td>Every metric attempt exceeded <code>metric_timeout</code> (default 60.0s), including <code>metric_max_retries</code> retries (default 2).</td><td>Raise <code>metric_timeout</code>, lower or raise retries deliberately, or speed up the metric.</td></tr>
     <tr><td>Rows show <code>ERROR:</code> or <code>N/A</code></td><td>The task raised, or a metric failed, for that item.</td><td>Inspect the row's output and trace; the run still completes for other items.</td></tr>
   </tbody>
 </table>
@@ -103,27 +103,30 @@ export QYM_API_KEY=&lt;platform-api-key&gt;</pre>
 
 <h3>"Metric 'X' not found"</h3>
 <p>Passing a metric name the registry doesn't recognize raises a <code>ValueError</code>. The message lists every available name (custom-registered names first, then built-ins, sorted):</p>
-<pre data-lang="text">ValueError: Metric 'contains_expected' not found. Available metrics: contains, correctness, exact_match, faithfulness, fuzzy_match, response_time, token_count</pre>
-<p>The built-in metrics that ship without any extras are exactly:</p>
+<pre data-lang="text">ValueError: Metric 'contains_expected' not found. Available metrics: conciseness, contains, correctness, correctness_llm, exact_match, faithfulness, faithfulness_llm, fuzzy_match, hallucination, relevance, response_time, token_count, tool_calling, toxicity</pre>
+<p>The dependency-free code metrics are:</p>
 <pre data-lang="python">exact_match, contains, fuzzy_match, response_time, token_count, correctness, faithfulness</pre>
 <div class="docs-callout warn">
   <svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-  <p><span class="docs-callout-title">The registry name is <code>contains</code>, not <code>contains_expected</code>.</span> The function is named <code>contains_expected</code> internally, but it is registered under <code>"contains"</code>. Likewise, the code metric <code>faithfulness</code> is a token-overlap heuristic; the LLM judge is the separate name <code>faithfulness_llm</code> and only appears with the judges extra (below).</p>
+  <p><span class="docs-callout-title">The registry name is <code>contains</code>, not <code>contains_expected</code>.</span> The function is named <code>contains_expected</code> internally, but it is registered under <code>"contains"</code>. Likewise, the code metric <code>faithfulness</code> is a token-overlap heuristic; the LLM judge is the separate name <code>faithfulness_llm</code>.</p>
 </div>
-<p>The seven LLM-judge names (<code>relevance</code>, <code>faithfulness_llm</code>, <code>correctness_llm</code>, <code>conciseness</code>, <code>hallucination</code>, <code>toxicity</code>, <code>tool_calling</code>) are only registered when the optional <code>openai</code> dependency is installed. Without it, those names are simply absent from the registry — requesting one produces the same "Metric '…' not found" error. To check what's available from the CLI:</p>
+<p>The seven LLM-judge names (<code>relevance</code>, <code>faithfulness_llm</code>, <code>correctness_llm</code>, <code>conciseness</code>, <code>hallucination</code>, <code>toxicity</code>, <code>tool_calling</code>) are registered regardless of whether <code>openai</code> is installed. A missing client raises <code>ImportError</code> only when a judge executes. To inspect the registry:</p>
 <pre data-lang="bash">qym metric list</pre>
 
 <h3>A metric that hangs: the metric_timeout wall</h3>
-<p>Each metric call has a hard wall-clock budget, <code>metric_timeout</code>, defaulting to <strong>60.0 seconds</strong>. A metric that exceeds it is cancelled and recorded as <code>score = 0</code> with a <code>timeout</code> label, so one stuck metric (for example an LLM judge that never returns) can't hold the whole item hostage. For legitimately slow custom metrics, raise the budget in config:</p>
-<pre data-lang="python">config = {"metric_timeout": 180.0}  # or None to disable the cap
+<p>Each metric attempt has a wall-clock budget, <code>metric_timeout</code>, defaulting to <strong>60.0 seconds</strong>. qym retries a timed-out attempt up to <code>metric_max_retries</code> times (default <strong>2</strong>). If the last attempt also times out, the metric is recorded like every other metric failure: score <code>0</code> plus an <code>error</code> message, with no special timeout label. The error is excluded from the metric mean and lowers metric success rate.</p>
+<pre data-lang="python">config = {
+    "metric_timeout": 180.0,
+    "metric_max_retries": 1,
+}  # use metric_timeout=None to disable the cap and timeout retries
 result = Evaluator(task, data, metrics=[slow_metric], config=config).run(show_tui=False)</pre>
 <p>See <a href="#sdk-guide/config">Configs &amp; options</a> for the full timeout and concurrency reference.</p>
 
 <h2>LLM-as-judge errors</h2>
 
-<h3>ImportError: judges need the openai extra</h3>
-<p>The judge metrics depend on the optional <code>openai</code> package. If it's missing, the judge module fails to import (and, as noted above, the judge names won't be in the registry). Install the extra:</p>
-<pre data-lang="bash">pip install qym[judges]</pre>
+<h3>ImportError: judges need the openai client</h3>
+<p>The judge metrics depend on the optional <code>openai</code> package at execution time. Install it directly; there is no <code>qym[judges]</code> package extra:</p>
+<pre data-lang="bash">pip install openai</pre>
 
 <h3>RuntimeError: missing judge configuration</h3>
 <p>A judge needs a model name and an API key. If either is missing when the judge runs, <code>JudgeConfig.validate()</code> raises a <code>RuntimeError</code> that names exactly what's missing and how to set it:</p>

@@ -1,69 +1,51 @@
-# Product Eval API Integration Guide
+# Product Eval API Integration and Operations Guide
 
-This API lets an external application trigger a predefined qym evaluation over HTTP, then poll for progress and qym run links. The external app does not need Python or the qym SDK.
+The Product Eval API lets an external application start a predefined qym evaluation, poll it, and stop it over HTTP. The caller needs only a project API key; the platform runs the qym SDK internally.
 
-The platform still uses the qym SDK internally. The SDK creates the platform run, writes run items and scores, and streams normal platform events. The Product Eval API only starts the SDK run, tracks the temporary background job, and exposes a compact polling contract.
+> `run_count=k` creates one logical qym run with `samples=k`. Each dataset item runs through `k` sequential passes inside that run. It does not create or compare `k` physical runs.
 
-For the `insightor` preset, the API runs **one qym run with `samples=k`** (native repeat runs): every dataset item is evaluated `k` times inside a single run. Clients can set `run_count`; when omitted, the deployment uses `QYM_PRODUCT_EVAL_RUN_COUNT` (default `3`). The run reports grouped Pass@k, Avg@k, consistency, reliability, and latency metrics, with per-pass detail in the "Samples analysis" view.
+For client-only instructions, see the [Product Eval API Client Guide](PRODUCT_EVAL_API_CLIENT_GUIDE.md).
 
-## Authentication
+## Execution Model
 
-Use a project API key in the `Authorization` header:
+1. `POST /v1/product-evals` authenticates the project key, validates the preset, and checks process capacity.
+2. The platform creates an in-memory job with an `eval_...` ID.
+3. A thread-pool worker loads the preset and calls the synchronous qym `Evaluator.run()` API. Synchronous preset tasks run through qym's task worker pool; the HTTP request does not wait for completion.
+4. The SDK creates one platform run, streams normal run/pass/item events back to `QYM_BASE_URL`, and stores the caller metadata plus the `eval_id` on the run.
+5. Submit waits at most five seconds for initial run creation, then returns `202 Accepted`. Clients poll by `eval_id`.
+
+The product-eval job manager, stop flag, and final compact `group_analysis` are process-local. Platform run data is durable in PostgreSQL; transient job state is not.
+
+## Endpoints
+
+| Method and path | Purpose |
+|---|---|
+| `POST /v1/product-evals` | Submit an asynchronous eval. |
+| `GET /v1/product-evals/{eval_id}` | Canonical eval polling; can recover persisted runs after job-state loss. |
+| `POST /v1/product-evals/{eval_id}/stop` | Canonical cooperative stop. |
+| `GET /v1/product-evals/{qym_run_id}` | Poll aggregate data for a physical run. |
+| `GET /v1/product-evals/{qym_run_id}?include_items=true` | Poll a physical run with item rows. |
+| `POST /v1/product-evals/{qym_run_id}/stop` | Stop by physical run ID. |
+| `GET /v1/product-evals/jobs/{eval_id}` | Process-local compatibility polling. |
+| `POST /v1/product-evals/jobs/{eval_id}/stop` | Process-local compatibility stop. |
+
+There is no synchronous submit-and-wait endpoint.
+
+## Authentication and Ownership
+
+Every endpoint requires a project API key:
 
 ```http
 Authorization: Bearer <QYM_API_KEY>
 ```
 
-Required scopes:
+The submit key is forwarded to the SDK and binds the run to its project and key owner. Job/run reads are restricted to that owner and project. A different user's key in the same project cannot take over the eval.
 
-- Submit eval: `runs:write`
-- Poll job/run: `runs:read`
-- Stop eval: `runs:write`
+API-key scopes are not enforced. Stored scope labels are metadata only; documentation and clients must not treat `runs:read` or `runs:write` as authorization boundaries.
 
-The API key must be bound to the same project where the run should be created.
+Auth failures generally use FastAPI's `{"detail": ...}` shape rather than the product-eval response envelope.
 
-## Response Envelope
-
-All Product Eval API success responses use:
-
-```json
-{
-  "ok": true,
-  "data": {},
-  "error": null
-}
-```
-
-Product Eval API request/setup errors use:
-
-```json
-{
-  "ok": false,
-  "data": null,
-  "error": {
-    "code": "invalid_request",
-    "message": "Unknown product eval preset: example"
-  }
-}
-```
-
-Shared auth errors may still use the platform's normal FastAPI error shape.
-
-## HTTP Status Codes
-
-- `200 OK`: Poll succeeded.
-- `200 OK`: Stop succeeded.
-- `202 Accepted`: Submit succeeded and the eval job was accepted.
-- `400 Bad Request`: Invalid request, such as unknown preset, unsupported field, or a client-sent `config`.
-- `401 Unauthorized`: Missing or invalid bearer API key.
-- `403 Forbidden`: API key lacks scope or project access.
-- `429 Too Many Requests`: All product eval worker slots are busy. The API returns `Retry-After`.
-- `404 Not Found`: Job or run does not exist or is not visible to the caller.
-- `500 Internal Server Error`: Server-side preset setup problem.
-
-Clients should branch on HTTP status first. For `2xx`, read `data`. For non-`2xx`, read `error` when present.
-
-## Submit An Eval
+## Submit Contract
 
 ```http
 POST /v1/product-evals
@@ -71,336 +53,26 @@ Content-Type: application/json
 Authorization: Bearer <QYM_API_KEY>
 ```
 
-Request body:
+### Request Schema
 
-```json
-{
-  "preset": "insightor",
-  "dataset": "customer-langfuse-dataset",
-  "insightor_url": "https://insightor.example.com",
-  "refresh_token": "external-app-refresh-token",
-  "agent_version": "agent-v1",
-  "image_version": "image-v1",
-  "kb_version": "kb-v1",
-  "run_name": "product-eval-smoke-001",
-  "run_count": 5,
-  "model": "optional-model",
-  "metadata": {
-    "source": "external-app",
-    "customer_id": "customer-123"
-  }
-}
-```
+| Field | Type | Default | Rules |
+|---|---|---|---|
+| `preset` | string | `insightor` | Supported values: `insightor`, `test`. |
+| `dataset` | string/null | deployment default | Optional for `insightor`; forbidden for `test`; blank strings are invalid. |
+| `insightor_url` | string/null | null | Required and nonblank for `insightor`. |
+| `refresh_token` | string/null | null | Required and nonblank for `insightor`; secret input. |
+| `agent_version` | string/null | null | Optional Insightor runtime input and run-name component. |
+| `image_version` | string/null | null | Optional Insightor runtime input and run-name component. |
+| `kb_version` | string/null | null | Optional Insightor runtime input and run-name component. |
+| `run_name` | string/null | preset/version name | Dashboard run name. |
+| `task_name` | string/null | preset task | Task display-name override. |
+| `model` | string/null | `MODEL`/preset value | Model label/override. |
+| `run_count` | integer/null | operator setting | Samples per item, `1`–`100`. |
+| `metadata` | object | `{}` | Caller metadata stored on the platform run. |
 
-Fields:
+The model initially permits extra JSON fields so the route can return a clear `400` identifying them. `config` is explicitly rejected because concurrency, timeouts, and retries are operator-controlled.
 
-- `preset`: Required preset name. Use `test` for smoke tests or `insightor` for the real Insightor eval.
-- `dataset`: Qym dataset name. Optional for `insightor`; defaults to `QYM_PRODUCT_EVAL_DEFAULT_DATASET` when omitted.
-- `insightor_url`: Required for `insightor`. Passed to the in-process Insightor task and not returned in polling payloads.
-- `refresh_token`: Required for `insightor`. Treated as a secret input and not logged in product eval metadata or returned by this API.
-- `agent_version`, `image_version`, `kb_version`: Optional Insightor version labels used for run naming and task runtime config.
-- `run_name`: Optional display/run name. If omitted, the preset default is used.
-- `run_count`: Optional number of samples for every dataset item, from `1` to `100`. Overrides `QYM_PRODUCT_EVAL_RUN_COUNT`.
-- `model`: Optional model override. Some presets may ignore this.
-- `metadata`: Optional caller metadata stored on the qym run.
-
-The submit request does not accept `config`. If clients send `config`, the API returns `400 Bad Request` and no eval is created.
-
-## Runtime Configuration
-
-Operators configure Insightor product eval runtime limits with Qym platform environment variables:
-
-| Env var | Default | Range | Description |
-| --- | --- | --- | --- |
-| `QYM_PRODUCT_EVAL_MAX_WORKERS` | `3` | `>= 1` | Maximum active product eval jobs in this platform process. Requests above this return `429`. |
-| `QYM_PRODUCT_EVAL_MAX_CONCURRENCY` | `10` | `1` to `20` | Item-level concurrency inside each Qym run. |
-| `QYM_PRODUCT_EVAL_TIMEOUT` | `900` | `1` to `900` | Overall run timeout in seconds. |
-| `QYM_PRODUCT_EVAL_MAX_RETRIES` | `1` | `0` to `2` | Retries for failed items. |
-| `QYM_PRODUCT_EVAL_MAX_PARALLEL_RUNS` | `1` | `1` to `3` | Number of Insightor attempts to run at the same time. |
-| `QYM_PRODUCT_EVAL_METRIC_TIMEOUT` | `300` | `>= 1` | Metric timeout in seconds. |
-| `QYM_PRODUCT_EVAL_RUN_COUNT` | `3` | `1` to `100` | Default sample count when the request omits `run_count`. |
-| `QYM_PRODUCT_EVAL_DEFAULT_DATASET` | `playground_set_v2` | Non-empty Qym dataset name | Dataset used when the request omits `dataset`. |
-
-The effective concurrency budget must satisfy:
-
-```text
-QYM_PRODUCT_EVAL_MAX_CONCURRENCY * QYM_PRODUCT_EVAL_MAX_PARALLEL_RUNS <= 20
-```
-
-Recommended normal settings are the defaults: `QYM_PRODUCT_EVAL_MAX_CONCURRENCY=10` and `QYM_PRODUCT_EVAL_MAX_PARALLEL_RUNS=1`.
-
-## Insightor Runtime Inputs
-
-The Docker image includes `/app/insightor_eval.py`. Insightor connection inputs are supplied per request, while shared backend credentials are still supplied as server environment variables.
-
-Required request fields for `insightor`:
-
-- `insightor_url`
-- `refresh_token`
-
-Optional request fields for `insightor`:
-
-- `dataset`: Qym dataset name. Defaults to `QYM_PRODUCT_EVAL_DEFAULT_DATASET` when omitted.
-
-Required server environment variables:
-
-- `DATAIKU_API_KEY`
-- `OPENAI_API_KEY`
-
-Optional:
-
-- `DATAIKU_URL` defaults to the configured Dataiku host.
-- `OPENAI_BASE_URL` is used by the main judge client.
-- `CONTEXT_JUDGE_API_KEY` overrides `OPENAI_API_KEY` for the context judge.
-- `CONTEXT_JUDGE_BASE_URL` defaults to the configured AI gateway host.
-- `MODEL` is used when the request does not provide `model`.
-
-Response:
-
-```json
-{
-  "ok": true,
-  "data": {
-    "status": "RUNNING",
-    "run_count": 5,
-    "qym_run_id": "2c93f1bc-76a9-48e7-aaf1-5ec8ea1c6e30",
-    "qym_project_id": "1805a314-0fea-427c-9b14-c4c27c820d72",
-    "qym_run_url": "https://qym.example.com/run/2c93f1bc-76a9-48e7-aaf1-5ec8ea1c6e30",
-    "qym_runs": [],
-    "qym_compare_url": null,
-    "poll_url": "/v1/product-evals/2c93f1bc-76a9-48e7-aaf1-5ec8ea1c6e30",
-    "created_at": "2026-05-13T11:17:03.655197Z",
-    "updated_at": "2026-05-13T11:17:04.102901Z"
-  },
-  "error": null
-}
-```
-
-Sometimes `qym_run_id` is temporarily `null` because the background SDK run has not created the platform run yet. In that case, use the returned job `poll_url`.
-
-```json
-{
-  "ok": true,
-  "data": {
-    "status": "STARTING",
-    "qym_run_id": null,
-    "qym_project_id": "1805a314-0fea-427c-9b14-c4c27c820d72",
-    "qym_run_url": null,
-    "qym_runs": [],
-    "qym_compare_url": null,
-    "poll_url": "/v1/product-evals/jobs/7adcb65d-fdb9-4cfa-85d3-07979830b5bf",
-    "created_at": "2026-05-13T11:17:03.655197Z",
-    "updated_at": "2026-05-13T11:17:03.655197Z"
-  },
-  "error": null
-}
-```
-
-## Poll A Job
-
-Use this before the qym platform run exists, and for multi-run presets such as `insightor`.
-
-```http
-GET /v1/product-evals/jobs/{opaque_startup_id}
-Authorization: Bearer <QYM_API_KEY>
-```
-
-Response:
-
-```json
-{
-  "ok": true,
-  "data": {
-    "status": "RUNNING",
-    "qym_run_id": "2c93f1bc-76a9-48e7-aaf1-5ec8ea1c6e30",
-    "qym_project_id": "1805a314-0fea-427c-9b14-c4c27c820d72",
-    "qym_run_url": "https://qym.example.com/run/2c93f1bc-76a9-48e7-aaf1-5ec8ea1c6e30",
-    "qym_runs": [],
-    "qym_compare_url": null,
-    "poll_url": "/v1/product-evals/2c93f1bc-76a9-48e7-aaf1-5ec8ea1c6e30",
-    "created_at": "2026-05-13T11:17:03.655197Z",
-    "updated_at": "2026-05-13T11:17:04.102901Z"
-  },
-  "error": null
-}
-```
-
-Once `qym_run_id` is present, clients can poll `/v1/product-evals/{qym_run_id}`. For `insightor`, keep polling the returned job URL while the sampled run is active.
-
-When the Insightor job reaches `COMPLETED`, the job payload includes `group_analysis` with dynamic `pass_at_<k>` and `avg_at_<k>` keys, plus `consistency`, `reliability`, and `avg_latency_ms`, where `k` is the effective `run_count`.
-
-Insightor job response:
-
-```json
-{
-  "ok": true,
-  "data": {
-    "status": "RUNNING",
-    "qym_run_id": "run-attempt-1",
-    "qym_project_id": "1805a314-0fea-427c-9b14-c4c27c820d72",
-    "qym_run_url": "https://qym.example.com/run/run-attempt-1",
-    "qym_runs": [
-      {
-        "attempt": 1,
-        "status": "COMPLETED",
-        "qym_run_id": "run-attempt-1",
-        "qym_run_url": "https://qym.example.com/run/run-attempt-1"
-      },
-      {
-        "attempt": 2,
-        "status": "RUNNING",
-        "qym_run_id": "run-attempt-2",
-        "qym_run_url": "https://qym.example.com/run/run-attempt-2"
-      },
-      {
-        "attempt": 3,
-        "status": "STARTING",
-        "qym_run_id": null,
-        "qym_run_url": null
-      }
-    ],
-    "qym_compare_url": "https://qym.example.com/compare?runs=run-attempt-1&runs=run-attempt-2",
-    "poll_url": "/v1/product-evals/jobs/7adcb65d-fdb9-4cfa-85d3-07979830b5bf",
-    "created_at": "2026-05-13T11:17:03.655197Z",
-    "updated_at": "2026-05-13T11:17:04.102901Z"
-  },
-  "error": null
-}
-```
-
-If the background job fails before creating a platform run, the job response contains:
-
-```json
-{
-  "ok": true,
-  "data": {
-    "status": "FAILED",
-    "qym_run_id": null,
-    "qym_project_id": "1805a314-0fea-427c-9b14-c4c27c820d72",
-    "qym_run_url": null,
-    "qym_runs": [],
-    "qym_compare_url": null,
-    "error": "RuntimeError: sanitized failure message",
-    "created_at": "2026-05-13T11:17:03.655197Z",
-    "updated_at": "2026-05-13T11:17:04.102901Z",
-    "poll_url": "/v1/product-evals/jobs/7adcb65d-fdb9-4cfa-85d3-07979830b5bf"
-  },
-  "error": null
-}
-```
-
-## Poll A Run
-
-This is the normal progress endpoint after a platform run exists.
-
-```http
-GET /v1/product-evals/{qym_run_id}
-Authorization: Bearer <QYM_API_KEY>
-```
-
-Default response is aggregate-only. It does not include per-item rows.
-
-```json
-{
-  "ok": true,
-  "data": {
-    "qym_run_id": "2c93f1bc-76a9-48e7-aaf1-5ec8ea1c6e30",
-    "qym_project_id": "1805a314-0fea-427c-9b14-c4c27c820d72",
-    "qym_run_url": "https://qym.example.com/run/2c93f1bc-76a9-48e7-aaf1-5ec8ea1c6e30",
-    "external_run_id": "product-eval-smoke-001",
-    "status": "RUNNING",
-    "task": "test_task",
-    "dataset": "product-eval-test-dataset",
-    "model": "test-model",
-    "metrics": ["exact_match"],
-    "total": 50,
-    "completed": 12,
-    "failed": 0,
-    "in_progress": 2,
-    "pending": 36,
-    "metric_stats": {
-      "exact_match": {
-        "count": 12,
-        "mean": 1.0,
-        "min": 1.0,
-        "max": 1.0
-      }
-    },
-    "latency_ms": {
-      "count": 12,
-      "mean": 5003.4,
-      "min": 4998.1,
-      "max": 5012.8
-    },
-    "started_at": "2026-05-13T11:20:00Z",
-    "ended_at": null,
-    "created_at": "2026-05-13T11:20:00Z",
-    "metadata": {
-      "source": "external-app",
-      "customer_id": "customer-123",
-      "total_items": 50
-    }
-  },
-  "error": null
-}
-```
-
-Progress fields:
-
-- `total`: Total expected items.
-- `completed`: Items completed successfully.
-- `failed`: Items with item-level errors.
-- `in_progress`: Items created but not completed or failed.
-- `pending`: Items not yet started.
-- `metric_stats`: Per-metric aggregate stats over scored items.
-- `latency_ms`: Aggregate item latency over items that have latency.
-
-Caller-sent metadata remains at the top level inside `metadata`. Internal wrapper bookkeeping is not returned in the public polling payload.
-
-## Optional Item Debugging
-
-Per-item rows are intentionally omitted from normal polling. To debug item details:
-
-```http
-GET /v1/product-evals/{qym_run_id}?include_items=true
-Authorization: Bearer <QYM_API_KEY>
-```
-
-This adds `data.items`:
-
-```json
-{
-  "items": [
-    {
-      "index": 0,
-      "item_id": "test-1",
-      "status": "completed",
-      "input": {"text": "item-001", "delay_seconds": 5.0},
-      "expected": "ITEM-001",
-      "output": "ITEM-001",
-      "error": null,
-      "latency_ms": 5002.3,
-      "retry_count": 0,
-      "trace_id": "trace-id",
-      "trace_url": "https://...",
-      "metadata": {"case": "uppercase", "index": 1},
-      "scores": {"exact_match": 1.0},
-      "metric_metadata": {
-        "exact_match": {
-          "expected": "ITEM-001",
-          "output": "ITEM-001"
-        }
-      }
-    }
-  ]
-}
-```
-
-Do not use `include_items=true` for high-frequency production polling.
-
-## Curl Example
-
-Submit Insightor:
+Example:
 
 ```bash
 curl -X POST "$QYM_BASE_URL/v1/product-evals" \
@@ -408,60 +80,207 @@ curl -X POST "$QYM_BASE_URL/v1/product-evals" \
   -H "Content-Type: application/json" \
   -d '{
     "preset": "insightor",
-    "dataset": "customer-langfuse-dataset",
+    "dataset": "customer-eval-set",
     "insightor_url": "https://insightor.example.com",
     "refresh_token": "'"$INSIGHTOR_REFRESH_TOKEN"'",
-    "agent_version": "agent-v1",
-    "image_version": "image-v1",
-    "kb_version": "kb-v1",
-    "run_name": "insightor-api-smoke-001",
-    "metadata": {
-      "source": "curl"
-    }
+    "run_count": 5,
+    "run_name": "insightor-smoke-001",
+    "metadata": {"source": "external-app", "request_id": "req-123"}
   }'
 ```
 
-Poll the returned `data.poll_url`:
+## Presets
 
-```bash
-curl "$QYM_BASE_URL/v1/product-evals/<qym_run_id>" \
-  -H "Authorization: Bearer $QYM_API_KEY"
+### `insightor`
+
+- Task: `insightor_api`
+- Metric: `accuracy`
+- Dataset: request `dataset`, otherwise `QYM_PRODUCT_EVAL_DEFAULT_DATASET`
+- Model precedence: request `model`, then server `MODEL`, then a script-level value if present
+- Required request inputs: `insightor_url`, `refresh_token`
+- Optional version inputs: `agent_version`, `image_version`, `kb_version`
+- Script: repository `insightor_eval.py`, overridable with `QYM_INSIGHTOR_EVAL_SCRIPT`
+
+The platform injects the request's Insightor inputs through the script's `configure_runtime()` hook; it does not write them to caller metadata or return them in API payloads.
+
+The bundled script also uses server-side provider credentials. Configure these as needed for the deployed evaluation:
+
+| Variable | Purpose |
+|---|---|
+| `DATAIKU_API_KEY` | Dataiku SQL access. |
+| `DATAIKU_URL` | Dataiku host; the bundled script has a deployment-specific default. |
+| `OPENAI_API_KEY` | Main judge credentials and fallback context-judge credentials. |
+| `OPENAI_BASE_URL` | Optional OpenAI-compatible base URL. |
+| `CONTEXT_JUDGE_API_KEY` | Optional context-judge override. |
+| `CONTEXT_JUDGE_BASE_URL` | Optional context-judge base URL. |
+| `MODEL` | Default model label when the request omits `model`. |
+
+### `test`
+
+The smoke-test preset is self-contained:
+
+- 50 in-memory items
+- synchronous task sleeping about five seconds per item
+- deterministic uppercase output and `exact_match`
+- fixed task concurrency `10` and task timeout `30` seconds
+- no external dataset or provider credentials
+- request `dataset` is rejected
+- `run_count` still controls samples/passes
+
+It intentionally exercises asynchronous submit, polling, summaries, stopping, and repeat-pass storage; it is not a fast health endpoint.
+
+## Operator Configuration
+
+`QYM_BASE_URL` must be the platform's reachable public/internal URL. The in-process SDK uses it to stream the run back to the platform. For private TLS, configure `QYM_PLATFORM_CA_BUNDLE`; use `QYM_PLATFORM_SSL_VERIFY=false` only for local troubleshooting.
+
+Product-eval settings:
+
+| Variable | Default | Validation | Effect |
+|---|---:|---:|---|
+| `QYM_PRODUCT_EVAL_MAX_WORKERS` | `3` | `>=1` | Maximum non-terminal jobs in this process. Excess submits receive `429`; there is no waiting queue. |
+| `QYM_PRODUCT_EVAL_MAX_CONCURRENCY` | `10` | `1`–`20` | Insightor item concurrency within each pass. |
+| `QYM_PRODUCT_EVAL_TIMEOUT` | `900` | `1`–`900` | Insightor timeout per task attempt, seconds. |
+| `QYM_PRODUCT_EVAL_MAX_RETRIES` | `1` | `0`–`2` | Insightor task retries after failure/timeout. |
+| `QYM_PRODUCT_EVAL_METRIC_TIMEOUT` | `300` | `>=1` | Insightor hard timeout per metric attempt, seconds. |
+| `QYM_PRODUCT_EVAL_RUN_COUNT` | `3` | `1`–`100` | Default `samples` value for both presets. Request `run_count` overrides it. |
+| `QYM_PRODUCT_EVAL_DEFAULT_DATASET` | `playground_set_v2` | nonempty | Insightor dataset used when the request omits one. |
+| `QYM_PRODUCT_EVAL_MAX_PARALLEL_RUNS` | `1` | `1`–`3` | Legacy compatibility multiplier used only in the Insightor effective-concurrency safety check. It does not create parallel physical runs. |
+| `QYM_INSIGHTOR_EVAL_SCRIPT` | repository script | existing path | Alternative Insightor preset module. |
+
+Insightor validation requires:
+
+```text
+QYM_PRODUCT_EVAL_MAX_CONCURRENCY * QYM_PRODUCT_EVAL_MAX_PARALLEL_RUNS <= 20
 ```
 
-## Recommended Client Flow
+The `test` preset keeps its fixed concurrency and timeout; it uses the shared worker and run-count settings.
 
-1. Submit `POST /v1/product-evals`.
-2. Read `data.poll_url`.
-3. Poll that URL every 2-5 seconds.
-4. If polling a job and `data.qym_run_id` appears, switch to `data.poll_url`.
-5. Stop when `data.status` is terminal, usually `COMPLETED`, `FAILED`, or `STOPPED`.
-6. For routine progress, do not request `include_items=true`.
+Restart the platform after changing these variables. `QYM_PRODUCT_EVAL_MAX_WORKERS` is captured when the module-level job manager is created.
 
-## Stop An Eval
+## Success and Error Envelopes
 
-Recommended stop path:
+Product-eval successes use:
+
+```json
+{"ok": true, "data": {}, "error": null}
+```
+
+Route-level request/setup failures use:
+
+```json
+{
+  "ok": false,
+  "data": null,
+  "error": {
+    "code": "invalid_request",
+    "message": "insightor_url, refresh_token required for preset 'insightor'"
+  }
+}
+```
+
+Submit returns `202`; successful poll and stop return `200`.
+
+| HTTP status | Source |
+|---|---|
+| `400` | Unknown preset, missing Insightor input, invalid dataset rule, `config`, or another unsupported field. |
+| `401` | Missing, malformed, invalid, or revoked Bearer key. |
+| `403` | Disabled owner, key without a project, or cross-owner/project access. |
+| `404` | Unknown/inaccessible eval or physical run. |
+| `422` | Pydantic body/type/range validation, including invalid `run_count`. Uses FastAPI `detail`. |
+| `429` | All local job slots busy. Returns `Retry-After: 30` and code `queue_full`. |
+| `500` | Preset setup error, such as a missing script. Returns code `preset_error`. |
+
+A background exception does not turn a later poll into an HTTP error. Poll returns `200` with `data.status: "FAILED"` and a sanitized `data.error` string.
+
+## Eval Polling Response
+
+`GET /v1/product-evals/{eval_id}` returns:
+
+| Field | Meaning |
+|---|---|
+| `eval_id` | Stable `eval_...` identifier. |
+| `status` | `STARTING`, `RUNNING`, `COMPLETED`, `FAILED`, or `STOPPED`. |
+| `qym_project_id` | Project bound to the submit key. |
+| `run_count` | Effective sample/pass count. |
+| `runs` | Legacy attempt-shaped compatibility rows; not a reliable physical-run count. |
+| `qym_compare_url` | URL only when two or more physical run IDs exist; normally null for new native evals. |
+| `group_analysis` | Compact sampled-run analysis, exposed only after successful completion when calculation succeeds. |
+| `created_at`, `updated_at` | UTC job/run timestamps. |
+| `error` | Sanitized background error when failed. |
+
+The `runs` rows contain `attempt`, `status`, `qym_run_id`, `qym_run_url`, `task`, `dataset`, `model`, and `summary`. Important compatibility rules:
+
+- Native execution creates one physical qym run even when `run_count > 1`.
+- Planned placeholder rows may remain in `runs`; the physical run is identified by a non-null `qym_run_id`.
+- Trust the top-level eval `status`, not individual compatibility-row statuses or array length.
+- Top-level `qym_run_id`, `qym_run_url`, `qym_runs`, `poll_url`, and `job_id` are intentionally absent.
+- The result UI link is the non-null `runs[].qym_run_url`, not `qym_compare_url`.
+
+When available, `summary` contains item progress, metric aggregates, latency aggregates, and start/end timestamps. It summarizes the run's compatibility/reduced item view; pass details live on the platform run.
+
+### Group Analysis Shape
+
+For `samples=k`, the in-memory job derives:
+
+```json
+{
+  "metric": "accuracy",
+  "threshold": 0.8,
+  "k": 3,
+  "total_items": 100,
+  "total_score_count": 300,
+  "failed_count": 1,
+  "pass_at_3": 0.92,
+  "avg_at_3": 0.84,
+  "consistency": 0.78,
+  "reliability": 0.88,
+  "avg_latency_ms": 1234.5
+}
+```
+
+`pass_at_<k>` and `avg_at_<k>` are dynamic keys. `group_analysis` is null for active/stopped/failed jobs, normally null for `run_count=1`, and may be null if calculation or transient-state recovery is unavailable. The platform's Samples analysis is authoritative.
+
+## Physical-Run Polling
+
+Once a compatibility row exposes a `qym_run_id`:
 
 ```http
-POST /v1/product-evals/jobs/{job_id}/stop
-Authorization: Bearer <QYM_API_KEY>
+GET /v1/product-evals/{qym_run_id}
 ```
 
-For multi-run product evals such as Insightor, clients should stop by job because one product eval creates multiple Qym runs. The run-level stop endpoint exists for single-run product evals and operational fallback:
+The response contains `qym_run_id`, project/run URL, external run ID, run status, task, dataset, model, metrics, progress counts, metric statistics, latency statistics, timestamps, and public caller metadata. Internal `metadata.product_eval` bookkeeping is removed.
+
+`?include_items=true` adds item input/expected/output/error, latency, retries, trace fields, scores, and metric metadata. It is ignored for an `eval_id`, so use a physical run ID. Avoid it for high-frequency polling.
+
+## Stop Semantics
+
+Prefer:
 
 ```http
-POST /v1/product-evals/{run_id}/stop
-Authorization: Bearer <QYM_API_KEY>
+POST /v1/product-evals/{eval_id}/stop
 ```
 
-Stopping requires `runs:write`. The API marks the product eval job as `STOPPED` and marks already-created Qym runs as `STOPPED`. In-flight Python work is cooperative/best-effort: a blocking task call may finish its current call, but late SDK events are ignored for explicitly stopped runs.
+The job stop flag is visible to the qym evaluator through `should_stop`. The route immediately marks the process-local job and planned compatibility rows `STOPPED`, then marks non-terminal persisted runs `STOPPED` with reason `product_eval_stopped`. The response adds `stopped_qym_runs`.
 
-## Current Test Preset
+Stopping is cooperative: a blocking synchronous task call may finish before control returns to qym. Completed/failed/stopped runs are not changed, and explicitly stopped runs are not reopened by late SDK events.
 
-The built-in `test` preset is intended for integration smoke tests:
+Stop by physical run ID is supported. The `/jobs/{eval_id}/stop` route is retained only for compatibility and requires the original process-local job to exist.
 
-- 50 in-memory items.
-- 5 seconds per item.
-- Default concurrency is 2.
-- Expected runtime is roughly 125 seconds.
-- Uses deterministic uppercase task and exact-match metric.
-- Requires no external files, model provider, SQL database, or Python SDK in the caller.
+## Persistence and Compatibility
+
+- The canonical `/{eval_id}` poll route checks the in-memory job first. If it is absent, it searches active platform runs whose internal metadata contains that `eval_id`, owner, and project.
+- A restart before the physical run is persisted loses the eval ID completely; polling returns `404`.
+- After persistence, the route can recover status and run summaries. Process-local planning rows, stop flag, and computed group analysis are not guaranteed to survive.
+- New native sampled evals normally have one run and a null compare URL. Multiple run rows and a compare URL can appear when reading data created by the former physical multi-run implementation.
+- `/jobs/{eval_id}` never performs database recovery and is unsuitable as a durable client contract.
+
+## Deployment Checklist
+
+- Run PostgreSQL migrations before startup.
+- Set `QYM_BASE_URL` to an address the platform process can call back through the SDK.
+- Create the default qym dataset and a usable published version/alias before submitting Insightor without a dataset override.
+- Configure Insightor/Dataiku/judge credentials on the server, never in caller metadata.
+- Use one application process for reliable live polling and stopping. Job state is not shared between Uvicorn workers; if multiple processes are unavoidable, use sticky routing and understand that only persisted run recovery is durable.
+- Size `QYM_PRODUCT_EVAL_MAX_WORKERS` and per-pass item concurrency for the host. Capacity is per process and excess work receives `429` rather than queuing.
+- Treat stop as cooperative and design synchronous preset calls with bounded timeouts.
+- Monitor `/healthz`, worker-capacity errors, and background `FAILED` statuses separately.

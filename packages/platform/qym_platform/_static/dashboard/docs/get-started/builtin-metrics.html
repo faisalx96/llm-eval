@@ -1,6 +1,6 @@
 <p class="docs-eyebrow">Get started</p>
 <h1>Built-in metrics tour</h1>
-<p class="docs-lead">qym ships a small set of metrics you can use by name — no code required. Seven work offline out of the box; seven more are LLM-as-judge metrics that activate when you install the <code>judges</code> extra. This page is the accurate catalog: exact names, what each one measures, and the footguns the older docs got wrong.</p>
+<p class="docs-lead">qym ships a small set of metrics you can use by name — no code required. Seven work offline; seven more call an OpenAI-compatible LLM and require the optional <code>openai</code> client at execution time. This page lists their exact names and behavior.</p>
 
 <h2>How metrics are selected</h2>
 <p>You pass metrics to the <code>Evaluator</code> as a list. Each entry can be a <strong>string</strong> (the registry name of a built-in), a legacy callable, or a typed <code>Metric(...)</code> wrapper. Use the wrapper for custom metrics so qym can validate and correctly display booleans, percentages, counts, and raw numbers. See <a href="#sdk-guide/metrics">Metrics (deep dive)</a>.</p>
@@ -12,10 +12,10 @@ result = Evaluator(
     metrics=["exact_match", "contains", my_custom_metric],
 ).run(show_tui=False)</pre>
 <p>When you pass a string, qym looks it up in the metric registry. If the name is not registered, it raises <code>ValueError</code> with this exact message:</p>
-<pre data-lang="text">Metric 'X' not found. Available metrics: contains, correctness, exact_match, faithfulness, fuzzy_match, response_time, token_count</pre>
+<pre data-lang="text">Metric 'X' not found. Available metrics: conciseness, contains, correctness, correctness_llm, exact_match, faithfulness, faithfulness_llm, fuzzy_match, hallucination, relevance, response_time, token_count, tool_calling, toxicity</pre>
 <div class="docs-callout tip">
   <svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-  <p><span class="docs-callout-title">List them from code or CLI.</span> Run <code>qym metric list</code>, or in Python <code>from qym import list_available_metrics; list_available_metrics()</code>. The available set grows by exactly the seven judges when the <code>judges</code> extra is installed.</p>
+  <p><span class="docs-callout-title">List them from code or CLI.</span> Run <code>qym metric list</code>, or in Python <code>from qym import list_available_metrics; list_available_metrics()</code>. Judge names are registered even before the optional client is installed.</p>
 </div>
 
 <h2>The seven built-ins (no extras)</h2>
@@ -40,7 +40,7 @@ result = Evaluator(
 
 <div class="docs-callout warn">
   <svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-  <p><span class="docs-callout-title"><code>faithfulness</code> (code) is not <code>faithfulness_llm</code> (judge).</span> The built-in <code>faithfulness</code> is a dependency-free token-overlap heuristic. The LLM-based version is a separate judge registered as <code>faithfulness_llm</code> and requires the <code>judges</code> extra. Don't confuse the two.</p>
+  <p><span class="docs-callout-title"><code>faithfulness</code> (code) is not <code>faithfulness_llm</code> (judge).</span> The built-in <code>faithfulness</code> is a dependency-free token-overlap heuristic. The LLM-based version is a separate judge registered as <code>faithfulness_llm</code> and requires <code>openai</code> when called.</p>
 </div>
 
 <h3>Behavior notes worth knowing</h3>
@@ -63,10 +63,10 @@ result = Evaluator(
   <p><span class="docs-callout-title">Custom metrics see the whole envelope.</span> Auto-unwrapping is a convenience of the built-ins only. A custom metric receives the full envelope as its <code>output</code> argument — read <code>output["output"]</code> and <code>output["metadata"]</code> yourself. See <a href="#sdk-guide/custom-metrics">Custom metrics</a>.</p>
 </div>
 
-<h2>LLM-as-judge metrics (the <code>judges</code> extra)</h2>
-<p>Seven additional metrics use an OpenAI-compatible model to grade each output and return a verdict label plus the model's explanation. They are <strong>only registered when the <code>openai</code> package is installed</strong>, via:</p>
-<pre data-lang="bash">pip install qym[judges]</pre>
-<p>Without that extra, the seven judge names are absent from the registry and selecting one raises the "not found" error. Each judge fills its prompt from your dataset's fields — <code>{output}</code> and <code>{expected}</code> are filled automatically, and any other <code>{variable}</code> is pulled from the matching key in the item's input dict.</p>
+<h2>LLM-as-judge metrics</h2>
+<p>Seven additional metrics use an OpenAI-compatible model to grade each output and return a verdict label plus the model's explanation. The names are always registered; install the optional client before executing one:</p>
+<pre data-lang="bash">pip install openai</pre>
+<p>Each judge fills its prompt from your dataset's fields — <code>{output}</code> and <code>{expected}</code> are filled automatically, and any other <code>{variable}</code> is pulled from the matching key in the item's input dict.</p>
 
 <table>
   <thead><tr><th>Name</th><th>What it evaluates</th><th>Verdict labels (score)</th><th>Prompt variables it reads</th></tr></thead>
@@ -104,7 +104,7 @@ set_default_judge_config(JudgeConfig(model="gpt-4o-mini", api_key="sk-..."))</pr
 
 <div class="docs-callout danger">
   <svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><polygon points="7.86 2 16.14 2 22 7.86 22 16.14 16.14 22 7.86 22 2 16.14 2 7.86 7.86 2"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-  <p><span class="docs-callout-title">Two distinct failures if you forget the extra.</span> Selecting a judge name without <code>pip install qym[judges]</code> fails with the registry "not found" error (the name was never registered). Selecting it <em>with</em> the extra but without a configured model/key fails later with <code>RuntimeError</code> from the judge config. They are different problems with different fixes.</p>
+  <p><span class="docs-callout-title">Dependencies and credentials fail differently.</span> A judge without <code>openai</code> raises <code>ImportError</code> when called. With the client installed but no configured model or key, <code>JudgeConfig.validate()</code> raises <code>RuntimeError</code>. The judge name remains registered in both cases.</p>
 </div>
 
 <h2>Custom and pairwise judges</h2>
@@ -121,7 +121,7 @@ result = Evaluator(task, dataset, metrics=[helpfulness]).run(show_tui=False)</pr
 <p>For comparative evaluation, <code>create_pairwise_judge</code> compares two outputs (A vs B) and uses a fixed set of choices: <code>{"A": 1.0, "B": 0.0, "tie": 0.5}</code>. Its prompt exposes <code>{output_a}</code> and <code>{output_b}</code> (B is taken from <code>input_data["output_b"]</code>, falling back to <code>expected</code>).</p>
 <div class="docs-callout warn">
   <svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-  <p><span class="docs-callout-title">Unknown <code>{vars}</code> stay as literal text.</span> Template substitution replaces only the placeholders it has values for. A <code>{variable}</code> with no matching key is left in the prompt verbatim — it does <strong>not</strong> raise an error. Double-check your placeholder names against the keys actually present in your dataset items.</p>
+  <p><span class="docs-callout-title">Missing prompt fields fail before the LLM call.</span> If a prompt references a field that is not available, qym raises <code>JudgeInputError</code> naming the missing and received fields. Use matching dataset keys or <code>input_mapping</code>.</p>
 </div>
 
 <h2>Return shapes, in brief</h2>
@@ -139,7 +139,7 @@ result = Evaluator(task, dataset, metrics=[helpfulness]).run(show_tui=False)</pr
   </div>
   <div class="docs-card">
     <h3>RAG / grounding</h3>
-    <p>Begin with the offline <code>faithfulness</code> heuristic (needs a <code>context</code> field). Upgrade to <code>faithfulness_llm</code> or <code>hallucination</code> once you've installed the <code>judges</code> extra.</p>
+    <p>Begin with the offline <code>faithfulness</code> heuristic (needs a <code>context</code> field). Upgrade to <code>faithfulness_llm</code> or <code>hallucination</code> after installing <code>openai</code> and configuring a judge provider.</p>
   </div>
   <div class="docs-card">
     <h3>Open-ended quality</h3>

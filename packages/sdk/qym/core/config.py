@@ -11,13 +11,10 @@ class EvaluatorConfig(BaseModel):
     max_concurrency: int = Field(default=10, ge=1)
     max_metric_concurrency: int = Field(default=1, ge=1)
     timeout: Optional[float] = Field(default=300, gt=0)
-    # Hard wall-clock cap per metric call. A metric that hangs beyond this budget
-    # is cancelled with asyncio.wait_for and recorded as score=0 with a "timeout"
-    # label — so one misbehaving metric (e.g. an LLM judge that never returns)
-    # cannot hold an entire item hostage. 60s comfortably covers a healthy LLM
-    # judge (~5-30s typical, ~60s long-reasoning tail) while still catching a
-    # hung upstream within ~1 minute per item. Override for slow custom metrics;
-    # set to None to disable.
+    # Hard wall-clock cap per metric attempt. Timed-out attempts retry according
+    # to metric_max_retries; an exhausted timeout is recorded through the normal
+    # metric-error path (score 0 + error), so it is visible but excluded from the
+    # metric mean. Set to None to disable the cap and timeout retries.
     metric_timeout: Optional[float] = Field(default=60.0, gt=0)
     # Retries for a metric call that hits metric_timeout. After the last
     # attempt the timeout is recorded through the ordinary metric-error path

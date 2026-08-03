@@ -23,6 +23,17 @@
       ]
     },
     {
+      id: 'platform-guide',
+      title: 'Platform guide',
+      icon: '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>',
+      pages: [
+        { id: 'navigation', title: 'Navigation & roles' },
+        { id: 'runs', title: 'Runs, selection & cohorts' },
+        { id: 'run-detail', title: 'Run detail & item analysis' },
+        { id: 'projects-data-review', title: 'Projects, data & review' }
+      ]
+    },
+    {
       id: 'sdk-guide',
       title: 'SDK guide',
       icon: '<polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>',

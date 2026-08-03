@@ -1,0 +1,75 @@
+<p class="docs-eyebrow">PLATFORM GUIDE</p>
+<h1>Run detail &amp; item analysis</h1>
+<p class="docs-lead">Run detail moves from summary to evidence: first the execution context and aggregate behavior, then each item's input, outputs, metric results, trace, and review data.</p>
+
+<h2>Start with the run header</h2>
+<p>The header identifies the run, status, owner, task, model, dataset, version, timing, configuration, and execution context. A repeat run also shows its pass count. Available submit, approve, reject, export, and delete actions follow ownership and project-role rules.</p>
+
+<h2>Overview</h2>
+<p>The overview begins with item, completion, and error counts. Metric cards adapt to their type:</p>
+<ul>
+  <li><strong>Boolean metrics</strong> show pass/fail rates.</li>
+  <li><strong>Percentage or score metrics</strong> show an average and score distribution.</li>
+  <li><strong>Numeric metrics</strong> show minimum, average, maximum, and total.</li>
+  <li><strong>Latency</strong> shows distribution and percentile landmarks.</li>
+</ul>
+
+<p>Click a distribution segment to filter Item-by-Item Detail. Deep Analysis appears when the run has enough item-level evidence and can show metric relationships and quality-versus-latency behavior.</p>
+
+<h2>Repeat-run analysis</h2>
+<p>For <code>samples=k</code>, the repeat section adds a metric picker, pass threshold, group metrics, a pass sweep, accuracy-versus-k analysis, correct-pass distribution, and stability views.</p>
+
+<table>
+  <thead><tr><th>Measure</th><th>Interpretation</th></tr></thead>
+  <tbody>
+    <tr><td><code>Pass@k</code></td><td>Capability: at least one of k executions passes.</td></tr>
+    <tr><td><code>Pass^k</code></td><td>Reliability: all k executions pass.</td></tr>
+    <tr><td><code>Avg@k</code></td><td>Average score across executions.</td></tr>
+    <tr><td><code>Max@k</code></td><td>Average of each item's best execution.</td></tr>
+    <tr><td>Consistency</td><td>How often repeated outcomes agree.</td></tr>
+    <tr><td>Reliability</td><td>For items solved at least once, how often attempts solve them.</td></tr>
+  </tbody>
+</table>
+
+<p>The pass sweep gives each pass's metrics, average and median latency, errors, and completed items. Change the metric or threshold to recompute the pass/fail interpretation without rerunning.</p>
+
+<h3>Open one pass</h3>
+<p>Click a pass in the Runs expansion or an item's pass heading. The <strong>Pass N/k</strong> lens replaces every item's reduced values with that pass's output, metrics, latency, status, error, and trace. Use the pass pill to return to the all-pass view.</p>
+
+<h2>Item-by-Item Detail</h2>
+<p>Search inputs and outputs, sort by index, score, or latency, and use <strong>Display</strong> to choose the analysis metric, threshold, item metadata columns, and metric-detail fields. Repeat runs also offer Cards and Heatmap layouts. Export the current filtered item set with <strong>CSV</strong>.</p>
+
+<h3>Build precise filters</h3>
+<p>Open <strong>Filters</strong>, add conditions, and choose whether <strong>AND</strong> or <strong>OR</strong> joins them. Groups can be nested. Filter fields include every metric, item categories, approval state, output text, errors, edited metrics, retries, trace errors, and latency.</p>
+
+<pre data-lang="filter">AND — every rule below must match
+  correctness  is  failed
+  faithfulness ≥ 0.80
+  Has error    false</pre>
+
+<p>For a metric's <strong>passed</strong>/<strong>failed</strong> operator, the run's current threshold is used. Direct comparisons such as <code>&gt;= 0.8</code> use the value you enter. This makes an AND query across several metrics explicit; adding separate chart filters is not a substitute.</p>
+
+<div class="docs-callout tip">
+  <svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+  <p><span class="docs-callout-title">AND means the same item must satisfy every condition.</span> Use OR when any condition may qualify the item, and a nested group for combinations such as “failed correctness AND (error OR slow).”</p>
+</div>
+
+<h2>Read a classic item</h2>
+<p>Expand a card to see the full input, expected output, system output, latency, trace, metric strip, metadata, and root-cause fields. A metric row shows its score, opens judge or metric details when recorded, and exposes score editing. Edited values are marked.</p>
+
+<h2>Compare repeat outputs and variants</h2>
+<p>A repeat item opens into synchronized pass columns. Each column shows one pass's output, pass/fail verdict for the selected analysis metric, latency, trace, metric values, and edit control. Toggle pass headings to hide or show columns.</p>
+
+<p>The output header reports how many distinct variants occurred. Variant identity uses exact output equality after trimming and collapsing whitespace. It is not a semantic or fuzzy match.</p>
+
+<h3>Per-pass metric explanations</h3>
+<p>Click a metric in any pass column to align that metric's recorded explanation or structured metadata beneath the visible columns. If the run did not store pass-specific details, the page says so and shows the run-level metric detail instead. Editing a pass score updates that pass and the run's reduced item score.</p>
+
+<h2>Cards or heatmap?</h2>
+<table>
+  <thead><tr><th>View</th><th>Best for</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Cards</strong></td><td>Reading inputs, outputs, explanations, traces, and root causes.</td></tr>
+    <tr><td><strong>Heatmap</strong></td><td>Scanning repeat-run variance by item and pass; rows show mean, standard deviation, and every pass value.</td></tr>
+  </tbody>
+</table>
