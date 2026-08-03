@@ -2742,20 +2742,22 @@
       border-bottom: none;
       padding-bottom: 0;
     }
-    /* Collapsed cards are one-line zebra rows: borderless, breathing
-       padding, alternating surface — a list, not a stack of boxes. */
+    /* Collapsed cards keep the separated rounded-row composition, with a
+       quiet boundary and token-level zebra contrast. */
     .item-comparison-row.item-collapsed {
       padding: 13px 16px;
-      border: none;
+      border: 1px solid var(--border-subtle);
+      background: var(--bg-surface);
     }
     .items-grid > .item-comparison-row.item-collapsed:nth-child(even) {
-      background: color-mix(in srgb, var(--bg-surface) 25%, var(--bg-elevated));
+      background: var(--bg-elevated);
     }
     .items-grid > .item-comparison-row.item-collapsed:hover {
       background: var(--bg-hover);
+      border-color: var(--border-default);
     }
-    /* Premium disclosure control: stroked SVG chevron in a rounded hover
-       target; rotates 90deg while the item is open. */
+    /* Disclosure is neutral at rest and uses glyph-only accent feedback;
+       the open state rotates without adding a hover tile. */
     .item-chevron {
       display: inline-flex;
       align-items: center;
@@ -2763,11 +2765,15 @@
       width: 26px;
       height: 26px;
       border-radius: 6px;
-      color: var(--accent-primary);
+      background: transparent;
+      color: var(--text-dim);
       flex: 0 0 auto;
-      transition: background 0.12s;
+      transition: color 0.12s;
     }
-    .item-comparison-row:not(.item-collapsed) .item-header-expand:hover .item-chevron { background: var(--bg-active); }
+    .item-header-expand:is(:hover, :focus-visible) .item-chevron {
+      background: transparent;
+      color: var(--accent-primary);
+    }
     .item-chevron svg {
       width: 15px;
       height: 15px;
@@ -2791,22 +2797,6 @@
       -webkit-line-clamp: 2;
       -webkit-box-orient: vertical;
       overflow: hidden;
-    }
-    .item-agg-pills {
-      display: inline-flex;
-      gap: 6px;
-      flex: 0 0 auto;
-      flex-wrap: wrap;
-      justify-content: flex-end;
-    }
-    .item-agg-pill {
-      display: inline-flex;
-      align-items: center;
-      gap: 5px;
-      padding: 2px 8px;
-      border-radius: 4px;
-      white-space: nowrap;
-      background: var(--bg-elevated);
     }
     /* Metric details: one closed toggle per metric inside each run's cell */
     .metric-det-zone {
@@ -4880,8 +4870,8 @@
       }
     }
   </style>
-  <link rel="stylesheet" href="./static/ui_components.css?v=ui-consistency-20260801-44">
-  <script defer src="./static/ui_components.js?v=ui-consistency-20260730-27"></script>
+  <link rel="stylesheet" href="./static/ui_components.css?v=ui-consistency-20260803-60">
+  <script defer src="./static/ui_components.js?v=ui-consistency-20260803-28"></script>
 </head>
 <body>
   <main class="compare-container">
@@ -4941,10 +4931,10 @@
           </div>
           <div class="compare-shared-controls" id="compare-shared-controls">
             <div class="metric-tabs-row">
-              <div class="threshold-control" id="threshold-control" style="display: none;">
+              <div class="threshold-control qym-threshold-control" id="threshold-control" style="display: none;">
                 <span class="threshold-label">Pass if ≥</span>
-                <input type="range" id="threshold-slider" class="threshold-slider" min="0" max="100" step="5" value="80">
-                <span class="threshold-value" id="threshold-value">80%</span>
+                <input type="range" id="threshold-slider" class="threshold-slider qym-threshold-slider" min="0" max="100" step="5" value="80" style="--qym-range-value:80%;" aria-label="Pass threshold for the selected metric">
+                <output class="threshold-value qym-threshold-value" id="threshold-value" for="threshold-slider">80%</output>
               </div>
               <div class="metric-tabs qym-segmented" id="overview-metric-tabs" role="group" aria-label="Overview metric"></div>
             </div>
@@ -4959,8 +4949,8 @@
         <div id="root-cause-section"></div>
 
         <!-- Side-by-side items -->
-        <div class="items-comparison">
-          <div class="compare-section-head">
+        <div class="items-comparison qym-item-section">
+          <div class="compare-section-head qym-item-section-head">
             <div>
               <h3 class="section-title">Item-by-Item Comparison</h3>
               <p class="compare-section-copy">Filter and inspect aligned inputs, outputs, scores, and review metadata.</p>
@@ -5011,13 +5001,13 @@
                     <div class="pop-sec">Columns</div>
                     <div class="pop-line" id="fp-meta-fields" style="display:none;"><span>Item fields</span>
                       <div class="metadata-fields-selector multi-select-wrapper" style="position:relative;">
-                        <button type="button" class="fp-gear-btn metadata-fields-btn multi-select-btn qym-inline-action qym-inline-action--neutral" id="metadata-fields-btn" title="Choose which item metadata fields to display">&#9881; Item</button>
+                        <button type="button" class="metadata-fields-btn multi-select-btn qym-control qym-select" id="metadata-fields-btn" title="Choose which item metadata fields to display" aria-haspopup="true" aria-expanded="false" aria-controls="metadata-fields-dropdown">Item</button>
                         <div class="metadata-fields-dropdown qym-dropdown" id="metadata-fields-dropdown"></div>
                       </div>
                     </div>
                     <div class="pop-line" id="fp-metric-meta-fields" style="display:none;"><span>Metric fields</span>
                       <div class="metadata-fields-selector multi-select-wrapper" style="position:relative;">
-                        <button type="button" class="fp-gear-btn metadata-fields-btn multi-select-btn qym-inline-action qym-inline-action--neutral" id="metric-meta-fields-btn" title="Choose which metric metadata fields to display">&#9881; Metric</button>
+                        <button type="button" class="metadata-fields-btn multi-select-btn qym-control qym-select" id="metric-meta-fields-btn" title="Choose which metric metadata fields to display" aria-haspopup="true" aria-expanded="false" aria-controls="metric-meta-fields-dropdown">Metric</button>
                         <div class="metadata-fields-dropdown qym-dropdown" id="metric-meta-fields-dropdown"></div>
                       </div>
                     </div>
@@ -5029,8 +5019,15 @@
                 </button>
               </div>
             </div>
-            <div class="fp-filter-row qym-item-builder" id="item-filter-builder" hidden>
-              <div class="fp-group">
+            <div class="item-filter-builder qym-item-builder" id="item-filter-builder" hidden>
+              <div class="fb-head">
+                <span class="fb-title">Filters</span>
+                <span class="fb-count" id="builder-rule-count"></span>
+              </div>
+              <div id="filter-builder-body"></div>
+              <div id="compare-legacy-filter-inputs" hidden aria-hidden="true">
+                <div class="fp-filter-row">
+                <div class="fp-group">
                 <span class="fp-label">Show</span>
                 <select id="item-filter" class="filter-select qym-control qym-select">
                   <option value="all">All Items</option>
@@ -5092,11 +5089,12 @@
                   <option value="not_approved">Not Approved</option>
                 </select>
               </div>
+                </div>
+              </div>
             </div>
           </div>
 
           <div class="qym-item-results">
-            <div class="qym-item-result-meter" aria-hidden="true"><i id="items-fmeter"></i></div>
             <div class="items-grid" id="items-grid"></div>
             <div class="pagination qym-pagination" id="pagination" aria-label="Compared items pagination"></div>
           </div>
@@ -5182,6 +5180,7 @@
         'Fix Tool Configuration': '#ec4899', 'Add Output Validation': '#00d4aa',
         'Restructure Chain-of-Thought': '#a855f7', 'Update Knowledge Base': '#6366f1',
       };
+      const FILTER_TRASH_ICON = '<svg class="qym-filter-trash-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>';
 
       const state = {
         runs: [],
@@ -5189,6 +5188,8 @@
         selectedOverviewMetric: null,  // For Comparison Overview tabs
         selectedItemsMetric: null,     // For Item-by-Item filters
         itemFilter: 'all',
+        filterRoot: { op: 'and', children: [] },
+        filterBuilderOpen: false,
         winnerFilter: 'any',
         approvalFilter: null,
         approvalValues: ['approved', 'not_approved'],
@@ -7677,6 +7678,7 @@
         if (thresholdSlider) {
           thresholdSlider.addEventListener('input', (e) => {
             const value = parseFloat(e.target.value);
+            e.target.style.setProperty('--qym-range-value', value + '%');
             if (thresholdValue) thresholdValue.textContent = `${value}%`;
           });
           thresholdSlider.addEventListener('change', (e) => {
@@ -7725,6 +7727,7 @@
               }
               state.page = 1;
               populateWinnerFilter();
+              renderFilterBuilder();
               renderItems();
             });
           }
@@ -7757,6 +7760,7 @@
           // Set slider value to current threshold (as percentage)
           const pct = Math.round((state.metricThresholds[metric] ?? 0.8) * 100);
           thresholdSlider.value = pct;
+          thresholdSlider.style.setProperty('--qym-range-value', `${pct}%`);
           if (thresholdValue) thresholdValue.textContent = `${pct}%`;
         }
       }
@@ -9677,6 +9681,352 @@
         if (aaBtn) aaBtn.addEventListener('click', function () { QymPlayground.open(); });
       }
 
+      // Compare uses the same composable filter builder as run detail, with
+      // fields evaluated against one aligned item across every compared run.
+      const _isFilterGroup = node => Array.isArray(node.children);
+
+      function compareFilterConditionComplete(node) {
+        const field = compareFilterFieldById(node && node.field);
+        if (!field) return false;
+        if (field.kind === 'enum') return Array.isArray(node.value) && node.value.length > 0;
+        if (field.kind === 'number') {
+          return node.value !== '' && node.value !== null && node.value !== undefined && !Number.isNaN(Number(node.value));
+        }
+        if (field.kind === 'bool') return node.value === 'true' || node.value === 'false';
+        return String(node.value ?? '').trim().length > 0;
+      }
+
+      function filterRuleCount(node) {
+        return _isFilterGroup(node)
+          ? node.children.reduce((sum, child) => sum + filterRuleCount(child), 0)
+          : (compareFilterConditionComplete(node) ? 1 : 0);
+      }
+
+      function compareFilterChoices(values) {
+        return values.map(value => typeof value === 'object'
+          ? value
+          : { value: String(value), label: formatFieldName(String(value)) });
+      }
+
+      function compareFilterFieldDefs() {
+        const defs = [{
+          id: 'outcome',
+          label: 'Outcome',
+          group: 'Comparison',
+          kind: 'enum',
+          choices: compareFilterChoices([
+            { value: 'different', label: 'Different outputs' },
+            { value: 'errors', label: 'With errors' },
+            { value: 'edited_metrics', label: 'With edited metrics' },
+            { value: 'all_correct', label: 'All runs correct' },
+            { value: 'all_wrong', label: 'No run correct' },
+            { value: 'partially_correct', label: 'Partially correct' },
+            { value: 'rarely_solved', label: 'Rarely solved (≤25%)' },
+            { value: 'unique_solve', label: 'Uniquely solved' },
+          ]),
+          get: context => context.outcomes,
+        }];
+
+        const winnerChoices = [{ value: 'tie', label: 'Tie' }];
+        state.runs.forEach((run, index) => {
+          const name = run?.run?.run_name || `Run ${index + 1}`;
+          winnerChoices.push({ value: `win_${index}`, label: `${name} won` });
+          winnerChoices.push({ value: `only_${index}`, label: `Only ${name} solved` });
+        });
+        defs.push({
+          id: 'winner', label: 'Winner', group: 'Comparison', kind: 'enum',
+          choices: winnerChoices, get: context => context.winners,
+        });
+        defs.push({
+          id: 'pass_count', label: 'Passing runs', group: 'Comparison', kind: 'number',
+          get: context => context.passCount,
+        });
+
+        state.runs.forEach((run, index) => {
+          const name = run?.run?.run_name || `Run ${index + 1}`;
+          defs.push({
+            id: `score:${index}`,
+            label: `${name} · ${state.selectedItemsMetric || 'score'}`,
+            group: 'Scores',
+            kind: 'number',
+            step: 0.05,
+            get: context => context.scores[index],
+          });
+        });
+
+        [
+          ['complexity', 'Complexity', state.complexityValues],
+          ['domain', 'Domain', state.domainValues],
+          ['root_cause', 'Root cause', state.rootCauseValues],
+        ].forEach(([key, label, values]) => {
+          const choices = compareFilterChoices((values || []).map(String));
+          if (key === 'root_cause') choices.push({ value: '__none__', label: 'Unassigned' });
+          if (!choices.length) return;
+          defs.push({
+            id: `meta:${key}`, label, group: 'Metadata', kind: 'enum', choices,
+            get: context => context.metadata[key],
+          });
+        });
+
+        defs.push({
+          id: 'approval', label: 'Approval', group: 'Review', kind: 'enum',
+          choices: compareFilterChoices([
+            { value: 'approved', label: 'Approved' },
+            { value: 'not_approved', label: 'Not approved' },
+          ]),
+          get: context => context.approvals,
+        });
+        defs.push({ id: 'error', label: 'Has error', group: 'State', kind: 'bool', get: context => context.hasError });
+        defs.push({ id: 'edited', label: 'Edited metrics', group: 'State', kind: 'bool', get: context => context.hasEditedMetric });
+        defs.push({ id: 'output', label: 'Output text', group: 'Content', kind: 'text', get: context => context.outputText });
+        defs.push({ id: 'latency', label: 'Max latency (ms)', group: 'Performance', kind: 'number', get: context => context.maxLatency });
+        return defs;
+      }
+
+      function compareFilterFieldById(id) {
+        return compareFilterFieldDefs().find(field => field.id === id) || null;
+      }
+
+      function compareFilterContext(itemId, rowData, scores, stats) {
+        const validScores = scores.filter(score => score !== null);
+        const isBoolean = state.metricIsBoolean[state.selectedItemsMetric];
+        const threshold = isBoolean ? 0.9999 : (state.metricThresholds[state.selectedItemsMetric] ?? 0.8);
+        const correctRuns = scores
+          .map((score, index) => score !== null && score >= threshold ? index : -1)
+          .filter(index => index >= 0);
+        const outcomes = [];
+        const outputs = rowData.map(row => row?.output_full || row?.output || '').filter(Boolean);
+        if (new Set(outputs).size > 1) outcomes.push('different');
+        const hasError = rowData.some(row => row && window.QymMetrics.isErrorRow(row));
+        const hasEditedMetric = rowData.some(rowHasEditedMetric);
+        if (hasError) outcomes.push('errors');
+        if (hasEditedMetric) outcomes.push('edited_metrics');
+        if (validScores.length >= 2 && validScores.every(score => score >= threshold)) outcomes.push('all_correct');
+        if (validScores.length >= 2 && validScores.every(score => score < threshold)) outcomes.push('all_wrong');
+        if (validScores.length >= 2 && correctRuns.length > 0 && correctRuns.length < validScores.length) outcomes.push('partially_correct');
+        const rareThreshold = Math.max(1, Math.floor(state.runs.length * 0.25));
+        if (correctRuns.length > 0 && correctRuns.length <= rareThreshold) outcomes.push('rarely_solved');
+        if (correctRuns.length === 1) outcomes.push('unique_solve');
+
+        const winners = [];
+        const itemIndex = state.itemIdToIndex?.[itemId];
+        const winner = itemIndex !== undefined ? stats?.itemWinners?.[itemIndex] : null;
+        if (winner === 'tie') winners.push('tie');
+        else if (Number.isInteger(winner)) winners.push(`win_${winner}`);
+        if (correctRuns.length === 1) winners.push(`only_${correctRuns[0]}`);
+
+        const inputRow = rowData.find(Boolean);
+        const itemMetadata = (typeof inputRow?.item_metadata === 'object' && inputRow.item_metadata) || {};
+        const rootCauses = rowData.map(row => {
+          const metadata = (typeof row?.item_metadata === 'object' && row.item_metadata) || {};
+          return metadata.root_cause ? String(metadata.root_cause) : '__none__';
+        });
+        const approvals = rowData.filter(Boolean).map(row =>
+          matchesApprovalFilter(row, 'approved') ? 'approved' : 'not_approved');
+        const latencies = rowData.map(row => Number(row?.latency_ms) || 0);
+
+        return {
+          scores,
+          outcomes,
+          winners,
+          passCount: correctRuns.length,
+          hasError,
+          hasEditedMetric,
+          approvals,
+          outputText: outputs.join('\n'),
+          maxLatency: latencies.length ? Math.max(...latencies) : 0,
+          metadata: {
+            complexity: String(itemMetadata.complexity ?? ''),
+            domain: parseMetaList(itemMetadata.domain).map(String),
+            root_cause: rootCauses,
+          },
+        };
+      }
+
+      function compareNumberMatches(operator, value, target) {
+        if (value === null || value === undefined || Number.isNaN(Number(value))) return false;
+        const actual = Number(value);
+        const expected = Number(target) || 0;
+        if (operator === 'gte') return actual >= expected;
+        if (operator === 'gt') return actual > expected;
+        if (operator === 'lte') return actual <= expected;
+        if (operator === 'lt') return actual < expected;
+        if (operator === 'eq') return actual === expected;
+        if (operator === 'neq') return actual !== expected;
+        return true;
+      }
+
+      function evalFilterNode(node, context) {
+        if (_isFilterGroup(node)) {
+          const activeChildren = node.children.filter(child => filterRuleCount(child) > 0);
+          if (!activeChildren.length) return true;
+          return node.op === 'or'
+            ? activeChildren.some(child => evalFilterNode(child, context))
+            : activeChildren.every(child => evalFilterNode(child, context));
+        }
+        if (!compareFilterConditionComplete(node)) return true;
+        const field = compareFilterFieldById(node.field);
+        if (!field) return true;
+        const value = field.get(context);
+        if (field.kind === 'number') return compareNumberMatches(node.oper, value, node.value);
+        if (field.kind === 'enum') {
+          const wanted = (Array.isArray(node.value) ? node.value : [node.value]).map(item => String(item).toLowerCase());
+          const actual = (Array.isArray(value) ? value : [value]).map(item => String(item).toLowerCase());
+          const matched = actual.some(item => wanted.includes(item));
+          return node.oper === 'notin' ? !matched : matched;
+        }
+        if (field.kind === 'bool') return node.value === 'false' ? !value : !!value;
+        const matched = String(value).toLowerCase().includes(String(node.value || '').toLowerCase());
+        return node.oper === 'notcontains' ? !matched : matched;
+      }
+
+      function defaultCompareFilterCondition(field = null) {
+        if (!field) return { field: '', oper: '', value: '' };
+        if (field.kind === 'enum') return { field: field.id, oper: 'in', value: [] };
+        if (field.kind === 'number') return { field: field.id, oper: 'gte', value: '' };
+        if (field.kind === 'bool') return { field: field.id, oper: 'is', value: '' };
+        return { field: field.id, oper: 'contains', value: '' };
+      }
+
+      function filterNodeAt(path) {
+        if (!path) return state.filterRoot;
+        return path.split('.').reduce((node, index) => node.children[Number(index)], state.filterRoot);
+      }
+
+      function filterParentOf(path) {
+        const parts = path.split('.');
+        const index = Number(parts.pop());
+        return { parent: filterNodeAt(parts.join('.')), index };
+      }
+
+      function compareFilterOperator(path, node, operators) {
+        const compact = operators.every(([value]) => ['is', 'gte', 'gt', 'lte', 'lt', 'eq', 'neq'].includes(value));
+        return `<select class="${compact ? 'fb-oper-compact' : ''}" data-fb-p="${escapeAttr(path)}" data-fb-k="oper">${operators.map(([value, label]) =>
+          `<option value="${value}"${value === node.oper ? ' selected' : ''}>${label}</option>`).join('')}</select>`;
+      }
+
+      function compareFilterConditionHtml(node, path) {
+        const definitions = compareFilterFieldDefs();
+        const field = compareFilterFieldById(node.field);
+        const groups = {};
+        definitions.forEach(definition => (groups[definition.group] = groups[definition.group] || []).push(definition));
+        const fieldSelect = `<select data-fb-p="${escapeAttr(path)}" data-fb-k="field" required><option value="" disabled${!field ? ' selected' : ''}>Choose field…</option>${Object.entries(groups).map(([group, fields]) =>
+          `<optgroup label="${escapeAttr(group)}">${fields.map(option =>
+            `<option value="${escapeAttr(option.id)}"${field && option.id === field.id ? ' selected' : ''}>${escapeHtml(option.label)}</option>`).join('')}</optgroup>`).join('')}</select>`;
+        if (!field) {
+          return `<div class="fb-cond"><span class="fb-token">${fieldSelect}</span><button type="button" class="fb-rm qym-icon-action action-icon delete-run" data-fb-rm="${escapeAttr(path)}" title="Delete condition" aria-label="Delete condition">${FILTER_TRASH_ICON}</button></div>`;
+        }
+        const numberOperators = [['gte', '≥'], ['gt', '>'], ['lte', '≤'], ['lt', '<'], ['eq', '='], ['neq', '≠']];
+        let operator = '';
+        let input = '';
+        if (field.kind === 'number') {
+          operator = compareFilterOperator(path, node, numberOperators);
+          input = `<input type="number" min="0" step="${field.step || 1}" value="${escapeAttr(String(node.value ?? ''))}" data-fb-p="${escapeAttr(path)}" data-fb-k="value" placeholder="value">`;
+        } else if (field.kind === 'enum') {
+          operator = compareFilterOperator(path, node, [['in', 'is any of'], ['notin', 'is none of']]);
+          const values = Array.isArray(node.value) ? node.value : [node.value];
+          input = `<span class="fb-vchips">${field.choices.map(choice => {
+            const selected = values.includes(choice.value);
+            return `<button type="button" class="fb-vchip qym-chip${selected ? ' on' : ''}" data-fb-vt="${escapeAttr(path)}" data-fb-val="${escapeAttr(choice.value)}" aria-pressed="${selected}">${escapeHtml(choice.label)}</button>`;
+          }).join('')}</span>`;
+        } else if (field.kind === 'bool') {
+          operator = compareFilterOperator(path, node, [['is', 'is']]);
+          input = `<select data-fb-p="${escapeAttr(path)}" data-fb-k="value" required><option value="" disabled${!node.value ? ' selected' : ''}>Choose state…</option>${['true', 'false'].map(value =>
+            `<option value="${value}"${value === node.value ? ' selected' : ''}>${value}</option>`).join('')}</select>`;
+        } else {
+          operator = compareFilterOperator(path, node, [['contains', 'contains'], ['notcontains', 'does not contain']]);
+          input = `<input type="text" value="${escapeAttr(String(node.value ?? ''))}" data-fb-p="${escapeAttr(path)}" data-fb-k="value" placeholder="text...">`;
+        }
+        return `<div class="fb-cond"><span class="fb-token">${fieldSelect}${operator}${input}</span><button type="button" class="fb-rm qym-icon-action action-icon delete-run" data-fb-rm="${escapeAttr(path)}" title="Delete condition" aria-label="Delete condition">${FILTER_TRASH_ICON}</button></div>`;
+      }
+
+      function compareFilterGroupHtml(node, path = '', depth = 0) {
+        const conjunction = `<span class="fb-conj qym-segmented" role="group" aria-label="Rule match mode"><button type="button" class="qym-segmented__option${node.op === 'and' ? ' active' : ''}" data-fb-conj="${escapeAttr(path)}" data-fb-op="and" aria-pressed="${node.op === 'and'}">AND</button><button type="button" class="qym-segmented__option${node.op === 'or' ? ' active' : ''}" data-fb-conj="${escapeAttr(path)}" data-fb-op="or" aria-pressed="${node.op === 'or'}">OR</button></span>`;
+        const header = `<div class="fb-grp-head">${conjunction}<span class="fb-grp-lab">${node.op === 'and' ? 'every rule below must match' : 'any rule below may match'}</span>${depth > 0 ? `<button type="button" class="fb-rm qym-icon-action action-icon delete-run" data-fb-rm="${escapeAttr(path)}" title="Delete group" aria-label="Delete group">${FILTER_TRASH_ICON}</button>` : ''}</div>`;
+        const children = node.children.map((child, index) => {
+          const childPath = path ? `${path}.${index}` : String(index);
+          return _isFilterGroup(child)
+            ? compareFilterGroupHtml(child, childPath, depth + 1)
+            : compareFilterConditionHtml(child, childPath);
+        }).join('');
+        const actions = `<div class="fb-add-row"><button type="button" class="fb-add qym-inline-action qym-inline-action--accent" data-fb-addc="${escapeAttr(path)}">+ Condition</button><button type="button" class="fb-add fb-add-muted qym-inline-action qym-inline-action--neutral" data-fb-addg="${escapeAttr(path)}">+ Group</button></div>`;
+        return `<div class="fb-grp${depth === 0 ? ' fb-root' : ''}">${header}${children}${actions}</div>`;
+      }
+
+      function renderFilterBuilder() {
+        const holder = el('item-filter-builder');
+        const body = el('filter-builder-body');
+        if (!holder || !body) return;
+        holder.hidden = !state.filterBuilderOpen;
+        const button = el('btn-item-filters');
+        const ruleCount = filterRuleCount(state.filterRoot);
+        const expandedCount = countExpandedItemFilters();
+        if (button) {
+          button.classList.toggle('on', state.filterBuilderOpen);
+          button.classList.toggle('has-rules', expandedCount > 0);
+          button.setAttribute('aria-expanded', state.filterBuilderOpen ? 'true' : 'false');
+        }
+        const badge = el('filter-trigger-count');
+        if (badge) {
+          badge.textContent = expandedCount;
+          badge.classList.toggle('is-empty', expandedCount === 0);
+        }
+        const count = el('builder-rule-count');
+        if (count) count.textContent = ruleCount ? `${ruleCount} rule${ruleCount === 1 ? '' : 's'}` : 'no rules yet';
+        if (!state.filterBuilderOpen) return;
+        body.innerHTML = compareFilterGroupHtml(state.filterRoot);
+
+        body.querySelectorAll('select[data-fb-p], input[data-fb-p]').forEach(input => {
+          input.addEventListener('change', () => {
+            const node = filterNodeAt(input.dataset.fbP);
+            if (input.dataset.fbK === 'field') {
+              Object.assign(node, defaultCompareFilterCondition(compareFilterFieldById(input.value)));
+            } else if (input.dataset.fbK === 'oper') {
+              node.oper = input.value;
+            } else {
+              node.value = input.type === 'number' && input.value !== '' ? Number(input.value) : input.value;
+            }
+            state.page = 1;
+            renderFilterBuilder();
+            renderItems();
+          });
+        });
+        body.querySelectorAll('[data-fb-vt]').forEach(chip => chip.addEventListener('click', () => {
+          const node = filterNodeAt(chip.dataset.fbVt);
+          const values = Array.isArray(node.value) ? node.value : [node.value];
+          const value = chip.dataset.fbVal;
+          node.value = values.includes(value) ? values.filter(item => item !== value) : values.concat(value);
+          state.page = 1;
+          renderFilterBuilder();
+          renderItems();
+        }));
+        body.querySelectorAll('[data-fb-rm]').forEach(remove => remove.addEventListener('click', () => {
+          const location = filterParentOf(remove.dataset.fbRm);
+          location.parent.children.splice(location.index, 1);
+          state.page = 1;
+          renderFilterBuilder();
+          renderItems();
+        }));
+        body.querySelectorAll('[data-fb-conj]').forEach(toggle => toggle.addEventListener('click', () => {
+          filterNodeAt(toggle.dataset.fbConj).op = toggle.dataset.fbOp;
+          state.page = 1;
+          renderFilterBuilder();
+          renderItems();
+        }));
+        body.querySelectorAll('[data-fb-addc]').forEach(add => add.addEventListener('click', () => {
+          filterNodeAt(add.dataset.fbAddc).children.push(defaultCompareFilterCondition());
+          state.page = 1;
+          renderFilterBuilder();
+          renderItems();
+        }));
+        body.querySelectorAll('[data-fb-addg]').forEach(add => add.addEventListener('click', () => {
+          filterNodeAt(add.dataset.fbAddg).children.push({ op: 'or', children: [defaultCompareFilterCondition()] });
+          state.page = 1;
+          renderFilterBuilder();
+          renderItems();
+        }));
+      }
+
       function getFilteredItems() {
         if (!canRenderItemComparison()) {
           return [];
@@ -9884,6 +10234,9 @@
             }
           }
 
+          const filterContext = compareFilterContext(itemId, rowData, scores, stats);
+          if (!evalFilterNode(state.filterRoot, filterContext)) continue;
+
           items.push({ itemId: itemId, rowData });
         }
 
@@ -10083,6 +10436,24 @@
             meta: (row.metric_meta || {})[name] || {},
           };
         };
+        const verdictFor = (row, runIdx) => {
+          if (!row) return '';
+          const metric = state.selectedItemsMetric;
+          let verdict = '';
+          if (row.status === 'error') {
+            verdict = 'fail';
+          } else if (metric && (state.metricTypes?.[metric] || 'score') !== 'numeric') {
+            const score = scoreData(row, runIdx, metric).parsed;
+            const threshold = state.metricIsBoolean[metric]
+              ? 0.9999
+              : (state.metricThresholds[metric] ?? 0.8);
+            if (score !== null) verdict = score >= threshold ? 'pass' : 'fail';
+          }
+          if (!verdict) return '';
+          const label = verdict === 'pass' ? 'Pass' : 'Fail';
+          const title = row.status === 'error' ? 'Execution error' : `${label} on ${metric}`;
+          return `<span class="qym-tag ${verdict === 'pass' ? 'qym-tag--success' : 'qym-tag--danger'}" title="${escapeAttr(title)}">${label}</span>`;
+        };
         const metricStripFor = (row, runIdx) => {
           if (!row) return '';
           const buttons = state.allMetrics.map(name => {
@@ -10131,7 +10502,7 @@
             ? `<button type="button" class="trace-drawer-btn qym-inline-action qym-inline-action--neutral qym-trace-action" data-trace-endpoint="${escapeAttr(traceEndpoint)}" data-trace-item-label="${escapeAttr(identity + ' · ' + runItemId)}" data-trace-id="${escapeAttr(traceId || '')}" data-trace-url="${escapeAttr(traceUrl || '')}" title="Open trace viewer"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M2.5 4h11M2.5 8h7M2.5 12h9"/><circle cx="12.5" cy="8" r="1.2" fill="currentColor" stroke="none" opacity=".5"/><circle cx="13.5" cy="12" r="1.2" fill="currentColor" stroke="none" opacity=".5"/></svg>Trace</button>`
             : '';
           const copyButton = `<button class="copy-btn qym-icon-action" data-copy-text="${escapeAttr(typeof output === 'object' ? JSON.stringify(output, null, 2) : String(output))}" title="Copy output">${COPY_ICON}</button>`;
-          return `<article class="item-run-output qym-output-card${hidden.has(runIdx) ? ' is-hidden' : ''}" data-output-card="${outputId}" style="border-left-color:${color}"><div class="qym-output-card__header"><span class="qym-output-card__identity"><span class="qym-output-swatch" style="background:${color}"></span>${identityHtml}</span>${row.latency_ms ? `<span class="qym-output-card__duration">${CLOCK_ICON}<span>${formatLatency(row.latency_ms)}</span></span>` : '<span class="qym-output-card__duration">\u2014</span>'}<span class="qym-output-card__actions">${traceButton}${copyButton}</span></div><div class="output-text ${row.status === 'error' ? 'score-1' : ''}">${renderMarkdownSafe(output)}</div>${metricStripFor(row, runIdx)}</article>`;
+          return `<article class="item-run-output qym-output-card${hidden.has(runIdx) ? ' is-hidden' : ''}" data-output-card="${outputId}" style="border-left-color:${color}"><div class="qym-output-card__header"><span class="qym-output-card__identity"><span class="qym-output-swatch" style="background:${color}"></span>${identityHtml}${verdictFor(row, runIdx)}</span>${row.latency_ms ? `<span class="qym-output-card__duration">${CLOCK_ICON}<span>${formatLatency(row.latency_ms)}</span></span>` : '<span class="qym-output-card__duration">\u2014</span>'}<span class="qym-output-card__actions">${traceButton}${copyButton}</span></div><div class="output-text ${row.status === 'error' ? 'score-1' : ''}">${renderMarkdownSafe(output)}</div>${metricStripFor(row, runIdx)}</article>`;
         }).join('');
         const panels = state.allMetrics.map(name => {
           const cells = rowData.map((row, runIdx) => {
@@ -10466,19 +10837,20 @@
           const titleText = (typeof input === 'object' ? JSON.stringify(input) : String(input)).replace(/\s+/g, ' ').trim();
           const headerMetric = state.selectedItemsMetric;
           const headerPills = rowData.map((row, runIdx) => {
-            if (!row) return '';
+            const emptyPill = `<span class="item-agg-pill qym-item-metric-cell qym-item-metric-cell--empty" data-qym-metric-column="${runIdx}" aria-hidden="true"></span>`;
+            if (!row) return emptyPill;
             const run = state.runs[runIdx];
             const runInfo = run?.run || {};
             const mNames = run?.snapshot?.metric_names || runInfo.metric_names || [];
             const mIdx = headerMetric ? mNames.indexOf(headerMetric) : 0;
-            if (mIdx < 0) return '';
+            if (mIdx < 0) return emptyPill;
             const v = window.QymMetrics.parseScoreValue((row.metric_values || [])[mIdx]);
-            if (v === null) return '';
+            if (v === null) return emptyPill;
             const mType = state.metricTypes?.[mNames[mIdx]] || 'score';
             const cls = window.QymMetrics.getMetricColorClass(v, mType);
             const display = window.QymMetrics.formatMetricObservation(v, mType, state.metricSpecs?.[mNames[mIdx]]);
             const color = COLORS[runIdx % COLORS.length];
-            return `<span class="item-agg-pill" title="${escapeAttr((runInfo.run_name || ('Run ' + (runIdx + 1))) + ' \u00B7 ' + mNames[mIdx])}"><span class="compare-run-dot" style="background:${color}"></span><span class="metric-score-value qym-score-value ${cls}">${display}</span></span>`;
+            return `<span class="item-agg-pill qym-item-metric-cell qym-item-metric-cell--selected" data-qym-metric-column="${runIdx}" title="${escapeAttr((runInfo.run_name || ('Run ' + (runIdx + 1))) + ' \u00B7 ' + mNames[mIdx])}"><span class="compare-run-dot" style="background:${color}"></span><span class="metric-score-value qym-score-value ${cls}">${display}</span></span>`;
           }).join('');
           const expandable = !options.forceExpanded;
           const expandAttrs = ` data-item-expand="${escapeAttr(itemId)}" role="button" tabindex="0" aria-expanded="${isExpanded}"`;
@@ -10489,7 +10861,7 @@
                 <span class="item-index" title="ID: ${escapeHtml(itemId)}">${escapeHtml(compactItemLabel)}</span>
                 ${isExpanded
                   ? `<span class="item-header-spacer"></span><span class="item-pass-note">${visibleRunCount} run${visibleRunCount === 1 ? '' : 's'}</span>`
-                  : `<span class="item-title">${escapeHtml(titleText)}</span><span class="item-agg-pills">${headerPills}</span>`}
+                  : `<span class="item-title">${escapeHtml(titleText)}</span><span class="item-agg-pills qym-item-metric-grid" data-qym-metric-grid>${headerPills}</span>`}
               </div>`;
 
           if (!isExpanded) {
@@ -10686,8 +11058,6 @@
         filterCountEl.innerHTML = `<span class="count-num">${items.length}</span> of ${totalItems} items`;
         const displayLabel = el('item-display-label');
         if (displayLabel) displayLabel.textContent = `Display · ${formatFieldName(state.selectedItemsMetric || 'Outcome')}`;
-        const meter = el('items-fmeter');
-        if (meter) meter.style.width = (totalItems ? (items.length / totalItems) * 100 : 0) + '%';
         updateClearButton();
 
         // Set CSS variable for grid columns
@@ -10707,6 +11077,8 @@
         }
 
         container.innerHTML = pageItems.map(({ itemId, rowData }) => renderItemComparisonCard(itemId, rowData)).join('');
+
+        window.QymUIComponents?.alignMetricColumns(container);
 
         window.QymUIComponents?.renderPagination(paginationEl, {
           page: state.page,
@@ -10919,7 +11291,8 @@
               if (h > max) max = h;
             });
             outputs.forEach(el => {
-              const cap = el.querySelector('.formatted-table-grid') ? 640 : 300;
+              const computedCap = Number.parseFloat(window.getComputedStyle(el).maxHeight);
+              const cap = Number.isFinite(computedCap) ? computedCap : max;
               el.style.minHeight = `${Math.min(max, cap)}px`;
             });
           });
@@ -12066,6 +12439,7 @@
       // ── Clear button counter ──
       function countActiveFilters() {
         let n = 0;
+        n += filterRuleCount(state.filterRoot);
         if (state.itemFilter !== 'all') n++;
         if (state.winnerFilter !== 'any') n++;
         if (state.approvalFilter !== null) n++;
@@ -12084,6 +12458,7 @@
 
       function countExpandedItemFilters() {
         let n = 0;
+        n += filterRuleCount(state.filterRoot);
         if (state.itemFilter !== 'all') n++;
         if (state.winnerFilter !== 'any') n++;
         if (state.approvalFilter !== null) n++;
@@ -12113,6 +12488,7 @@
       }
 
       function clearAllFilters() {
+        state.filterRoot = { op: 'and', children: [] };
         state.itemFilter = 'all';
         state.winnerFilter = 'any';
         state.approvalFilter = null;
@@ -12144,17 +12520,16 @@
         syncMultiselectUI('domain');
         syncMultiselectUI('root_cause');
 
+        renderFilterBuilder();
         renderItems();
       }
 
       {
         const filterBtn = el('btn-item-filters');
-        const filterBuilder = el('item-filter-builder');
-        if (filterBtn && filterBuilder) {
+        if (filterBtn) {
           filterBtn.addEventListener('click', () => {
-            const open = filterBuilder.hidden;
-            filterBuilder.hidden = !open;
-            filterBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+            state.filterBuilderOpen = !state.filterBuilderOpen;
+            renderFilterBuilder();
           });
         }
 
@@ -12566,20 +12941,34 @@
 
       // #6: Metadata fields selector toggle
       el('metadata-fields-btn').addEventListener('click', () => {
+        const button = el('metadata-fields-btn');
+        const dropdown = el('metadata-fields-dropdown');
         el('metric-meta-fields-dropdown').classList.remove('open');
+        el('metric-meta-fields-btn').setAttribute('aria-expanded', 'false');
         document.querySelectorAll('.multi-select-dropdown.open').forEach(d => d.classList.remove('open'));
-        el('metadata-fields-dropdown').classList.toggle('open');
+        const open = dropdown.classList.toggle('open');
+        button.setAttribute('aria-expanded', open ? 'true' : 'false');
       });
       el('metric-meta-fields-btn').addEventListener('click', () => {
+        const button = el('metric-meta-fields-btn');
+        const dropdown = el('metric-meta-fields-dropdown');
         el('metadata-fields-dropdown').classList.remove('open');
+        el('metadata-fields-btn').setAttribute('aria-expanded', 'false');
         document.querySelectorAll('.multi-select-dropdown.open').forEach(d => d.classList.remove('open'));
-        el('metric-meta-fields-dropdown').classList.toggle('open');
+        const open = dropdown.classList.toggle('open');
+        button.setAttribute('aria-expanded', open ? 'true' : 'false');
       });
       document.addEventListener('click', (e) => {
         const metaDd = el('metadata-fields-dropdown'), metaBtn = el('metadata-fields-btn');
         const mmDd = el('metric-meta-fields-dropdown'), mmBtn = el('metric-meta-fields-btn');
-        if (metaDd && !metaDd.contains(e.target) && e.target !== metaBtn) metaDd.classList.remove('open');
-        if (mmDd && !mmDd.contains(e.target) && e.target !== mmBtn) mmDd.classList.remove('open');
+        if (metaDd && !metaDd.contains(e.target) && e.target !== metaBtn) {
+          metaDd.classList.remove('open');
+          metaBtn.setAttribute('aria-expanded', 'false');
+        }
+        if (mmDd && !mmDd.contains(e.target) && e.target !== mmBtn) {
+          mmDd.classList.remove('open');
+          mmBtn.setAttribute('aria-expanded', 'false');
+        }
       });
 
       function populateFieldVisibilityDropdown({ dropdownId, keys, visibility, labelFor, defaultVisible, emptyMessage }) {

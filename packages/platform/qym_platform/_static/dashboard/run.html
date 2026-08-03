@@ -2175,169 +2175,6 @@
     }
     .rail-pop .pop-line .filter-select { min-width: 130px; }
 
-    /* ── The query builder: inline expansion, no modal ── */
-    .item-filter-builder {
-      border-top: 1px solid var(--border-subtle);
-      background: var(--bg-base);
-      padding: 10px 14px 12px;
-      border-radius: 0 0 7px 7px;
-      animation: fb-in 0.16s ease;
-    }
-    .item-filter-builder[hidden] { display: none; }
-    @keyframes fb-in { from { opacity: 0; transform: translateY(-3px); } }
-    @media (prefers-reduced-motion: reduce) { .item-filter-builder { animation: none; } }
-    .fb-head {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 2px 2px 8px;
-      border-bottom: 1px solid var(--border-subtle);
-      margin-bottom: 8px;
-    }
-    .fb-title {
-      font-size: var(--font-sm);
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.6px;
-      color: var(--text-muted);
-    }
-    .fb-count {
-      font-family: var(--font-mono);
-      font-size: var(--font-sm);
-      color: var(--accent-primary);
-      font-weight: 700;
-    }
-    .fb-spacer { flex: 1 1 auto; }
-    .fb-clear {
-      border: none;
-      background: transparent;
-      color: var(--text-muted);
-      font-size: var(--font-sm);
-      cursor: pointer;
-      font-family: var(--font-sans);
-    }
-    .fb-clear:hover { color: var(--error); }
-    .fb-grp { padding: 2px 0; margin: 4px 0; }
-    .fb-grp .fb-grp {
-      background: var(--bg-surface);
-      border: 1px solid var(--border-subtle);
-      border-left: 2px solid rgba(0, 168, 255, 0.4);
-      border-radius: 8px;
-      padding: 8px 10px;
-      margin: 8px 0 8px 2px;
-    }
-    .fb-grp-head { display: flex; align-items: center; gap: 8px; margin: 2px 0 6px; }
-    .fb-conj {
-      display: inline-flex;
-      border: 1px solid var(--border-default);
-      border-radius: 5px;
-      overflow: hidden;
-      height: 24px;
-    }
-    .fb-conj button {
-      border: none;
-      background: transparent;
-      color: var(--text-muted);
-      font-size: var(--font-xs);
-      font-weight: 700;
-      letter-spacing: 0.6px;
-      padding: 0 10px;
-      cursor: pointer;
-      font-family: var(--font-mono);
-      transition: color 0.12s, background 0.12s;
-    }
-    .fb-conj button:hover { color: var(--text-primary); }
-    .fb-conj button.on { background: rgba(0, 168, 255, 0.14); color: var(--accent-secondary); }
-    .fb-grp-lab { font-size: var(--font-sm); color: var(--text-muted); }
-    .fb-cond { display: flex; align-items: center; gap: 8px; margin: 5px 0; flex-wrap: wrap; }
-    /* One rule reads as one connected token: field | operator | value */
-    .fb-token {
-      display: inline-flex;
-      align-items: stretch;
-      border: 1px solid var(--border-default);
-      border-radius: 7px;
-      background: var(--bg-surface);
-      overflow: hidden;
-      transition: border-color 0.15s, box-shadow 0.15s;
-    }
-    .fb-token:hover { border-color: var(--border-strong); }
-    .fb-token:focus-within {
-      border-color: var(--accent-primary);
-      box-shadow: 0 0 0 1px rgba(0, 212, 170, 0.25);
-    }
-    .fb-token > * + * { border-left: 1px solid var(--border-subtle); }
-    .fb-token select, .fb-token input[type=number], .fb-token input[type=text] {
-      background: transparent;
-      border: none;
-      color: var(--text-primary);
-      font-size: var(--font-base);
-      padding: 0 10px;
-      height: 30px;
-      min-height: 0;
-      font-family: var(--font-sans);
-      outline: none;
-      box-shadow: none;
-      transition: background 0.12s;
-    }
-    .fb-token select:hover, .fb-token input:hover { background: var(--bg-hover); }
-    .fb-token select[data-fb-k=field] { min-width: 150px; font-weight: 600; }
-    .fb-token select[data-fb-k=oper] { min-width: 88px; color: var(--text-secondary); }
-    .fb-token input[type=number] { width: 74px; font-family: var(--font-mono); }
-    .fb-token input[type=text] { width: 150px; font-family: var(--font-mono); }
-    .fb-token select.fb-val-passed { color: var(--score-5); font-weight: 600; }
-    .fb-token select.fb-val-failed { color: var(--score-1); font-weight: 600; }
-    .fb-vchips { display: inline-flex; gap: 4px; flex-wrap: wrap; align-items: center; padding: 0 8px; }
-    .fb-vchip {
-      display: inline-flex;
-      align-items: center;
-      height: 22px;
-      padding: 0 9px;
-      border-radius: 100px;
-      font-size: var(--font-sm);
-      font-weight: 500;
-      border: 1px solid var(--border-subtle);
-      background: var(--bg-elevated);
-      color: var(--text-secondary);
-      cursor: pointer;
-      font-family: var(--font-sans);
-      transition: all 0.12s;
-    }
-    .fb-vchip:hover { border-color: var(--border-strong); color: var(--text-primary); }
-    .fb-vchip.on {
-      background: rgba(0, 212, 170, 0.14);
-      border-color: rgba(0, 212, 170, 0.5);
-      color: var(--accent-primary);
-      font-weight: 600;
-    }
-    .fb-rm {
-      border: none;
-      background: transparent;
-      color: var(--text-muted);
-      cursor: pointer;
-      font-size: var(--font-md);
-      padding: 2px 6px;
-      border-radius: 4px;
-      opacity: 0;
-      transition: opacity 0.12s, color 0.12s;
-    }
-    .fb-cond:hover .fb-rm, .fb-grp-head:hover .fb-rm { opacity: 1; }
-    .fb-rm:hover { color: var(--error); background: var(--bg-hover); }
-    .fb-add-row { display: flex; gap: 6px; margin-top: 6px; }
-    .fb-add {
-      border: 1px dashed transparent;
-      background: transparent;
-      color: var(--accent-primary);
-      font-size: var(--font-sm);
-      font-weight: 600;
-      cursor: pointer;
-      padding: 3px 8px;
-      border-radius: 5px;
-      font-family: var(--font-sans);
-      transition: border-color 0.12s, background 0.12s;
-    }
-    .fb-add-muted { color: var(--text-muted); }
-    .fb-add:hover { border-color: var(--border-strong); background: var(--bg-surface); }
-
     .fp-label {
       font-size: var(--font-xs);
       font-family: var(--font-sans);
@@ -2601,20 +2438,22 @@
       border-bottom: none;
       padding-bottom: 0;
     }
-    /* Collapsed cards are one-line zebra rows: borderless, breathing
-       padding, alternating surface — a list, not a stack of boxes. */
+    /* Collapsed cards keep the separated rounded-row composition, with a
+       quiet boundary and token-level zebra contrast. */
     .item-card.item-collapsed {
       padding: 13px 16px;
-      border: none;
+      border: 1px solid var(--border-subtle);
+      background: var(--bg-surface);
     }
     .items-grid > .item-card.item-collapsed:nth-child(even) {
-      background: color-mix(in srgb, var(--bg-surface) 25%, var(--bg-elevated));
+      background: var(--bg-elevated);
     }
     .items-grid > .item-card.item-collapsed:hover {
       background: var(--bg-hover);
+      border-color: var(--border-default);
     }
-    /* Premium disclosure control: stroked SVG chevron in a rounded hover
-       target; rotates 90deg while the item is open. */
+    /* Disclosure is neutral at rest and uses glyph-only accent feedback;
+       the open state rotates without adding a hover tile. */
     .item-chevron {
       display: inline-flex;
       align-items: center;
@@ -2622,11 +2461,15 @@
       width: 26px;
       height: 26px;
       border-radius: 6px;
-      color: var(--accent-primary);
+      background: transparent;
+      color: var(--text-dim);
       flex: 0 0 auto;
-      transition: background 0.12s;
+      transition: color 0.12s;
     }
-    .item-card:not(.item-collapsed) .item-header-expand:hover .item-chevron { background: var(--bg-active); }
+    .item-header-expand:is(:hover, :focus-visible) .item-chevron {
+      background: transparent;
+      color: var(--accent-primary);
+    }
     .item-chevron svg {
       width: 15px;
       height: 15px;
@@ -2638,19 +2481,6 @@
       transition: transform 0.15s;
     }
     .item-chevron.open svg { transform: rotate(90deg); }
-    /* Verdict chip: squared, borderless, filled tint — one anchor per row */
-    .item-verdict {
-      display: inline-flex;
-      align-items: center;
-      height: 20px;
-      padding: 0 7px;
-      border-radius: 4px;
-      font-size: var(--font-sm);
-      font-weight: 700;
-      flex: 0 0 auto;
-    }
-    .item-verdict.pass { background: var(--success-dim); color: var(--score-5); }
-    .item-verdict.fail { background: rgba(239, 68, 68, 0.15); color: var(--score-1); }
     /* Fills the title's slot while the item is open (the full input shows
        in its own block below, so the header drops the duplicate). */
     .item-header-spacer { flex: 1 1 auto; }
@@ -2667,22 +2497,6 @@
       -webkit-box-orient: vertical;
       overflow: hidden;
     }
-    .item-agg-pills {
-      display: inline-flex;
-      gap: 6px;
-      flex: 0 0 auto;
-      flex-wrap: wrap;
-      justify-content: flex-end;
-    }
-    .item-agg-pill {
-      display: inline-flex;
-      align-items: center;
-      gap: 5px;
-      padding: 2px 8px;
-      border-radius: 4px;
-      white-space: nowrap;
-      background: var(--bg-elevated);
-    }
     /* The pill must name its metric — a bare value reads as noise. */
     .item-agg-pill .metric-score-name {
       font-size: var(--font-sm);
@@ -2694,7 +2508,6 @@
       font-size: var(--font-sm);
       font-weight: 700;
     }
-    .item-agg-pill.highlighted { background: var(--bg-hover); }
     .item-pass-note {
       flex: 0 0 auto;
       padding: 1px 6px;
@@ -4969,8 +4782,8 @@
     .pass-cmp-vtable td.score-1 { color: var(--score-1); }
     .pass-cmp-actions { display: flex; gap: 6px; }
   </style>
-  <link rel="stylesheet" href="/static/ui_components.css?v=ui-consistency-20260801-44">
-  <script defer src="/static/ui_components.js?v=ui-consistency-20260730-27"></script>
+  <link rel="stylesheet" href="/static/ui_components.css?v=ui-consistency-20260803-60">
+  <script defer src="/static/ui_components.js?v=ui-consistency-20260803-28"></script>
 </head>
 <body>
   <main class="run-container">
@@ -5009,8 +4822,13 @@
 
       <div id="root-cause-section"></div>
 
-      <div class="items-comparison">
-        <h3 class="section-title">Item-by-Item Detail</h3>
+      <div class="items-comparison qym-item-section">
+        <div class="qym-item-section-head">
+          <div>
+            <h3 class="section-title">Item-by-Item Detail</h3>
+            <p class="qym-item-section-copy">Inspect each input, outcome, and metric result.</p>
+          </div>
+        </div>
         <div class="filter-panel qym-item-control-center">
           <div class="qym-item-toolbar">
             <div class="qym-item-query">
@@ -5057,22 +4875,22 @@
                 <div class="pop-line" id="fp-metric-group"><span>Metric</span>
                   <select id="items-metric-select" class="filter-select qym-control qym-select"></select>
                 </div>
-                <div class="pop-line" id="fp-threshold-group" style="display:none;"><span>Pass if &ge;</span>
-                  <div class="threshold-control" id="threshold-control">
-                    <input type="range" id="threshold-slider" class="threshold-slider" min="0" max="100" step="5" value="80">
-                    <span class="threshold-value" id="threshold-value">80%</span>
+                <div class="pop-line" id="fp-threshold-group" style="display:none;"><span>Pass if score &ge;</span>
+                  <div class="threshold-control qym-threshold-control" id="threshold-control">
+                    <input type="range" id="threshold-slider" class="threshold-slider qym-threshold-slider" min="0" max="100" step="5" value="80" style="--qym-range-value:80%;" aria-label="Pass threshold for the selected metric">
+                    <output class="threshold-value qym-threshold-value" id="threshold-value" for="threshold-slider">80%</output>
                   </div>
                 </div>
                 <div class="pop-sec">Columns</div>
                 <div class="pop-line" id="fp-meta-fields" style="display:none;"><span>Item fields</span>
                   <div class="metadata-fields-selector multi-select-wrapper" style="position:relative;">
-                    <button type="button" class="qym-inline-action qym-inline-action--neutral" id="metadata-fields-btn" title="Choose which item metadata fields to display">&#9881; Item</button>
+                    <button type="button" class="metadata-fields-btn multi-select-btn qym-control qym-select" id="metadata-fields-btn" title="Choose which item metadata fields to display" aria-haspopup="true" aria-expanded="false" aria-controls="metadata-fields-dropdown">Item</button>
                     <div class="metadata-fields-dropdown qym-dropdown" id="metadata-fields-dropdown"></div>
                   </div>
                 </div>
                 <div class="pop-line" id="fp-metric-meta-fields" style="display:none;"><span>Metric fields</span>
                   <div class="metadata-fields-selector multi-select-wrapper" style="position:relative;">
-                    <button type="button" class="qym-inline-action qym-inline-action--neutral" id="metric-meta-fields-btn" title="Choose which metric metadata fields to display">&#9881; Metric</button>
+                    <button type="button" class="metadata-fields-btn multi-select-btn qym-control qym-select" id="metric-meta-fields-btn" title="Choose which metric metadata fields to display" aria-haspopup="true" aria-expanded="false" aria-controls="metric-meta-fields-dropdown">Metric</button>
                     <div class="metadata-fields-dropdown qym-dropdown" id="metric-meta-fields-dropdown"></div>
                   </div>
                 </div>
@@ -5093,7 +4911,6 @@
           </div>
         </div>
         <div class="qym-item-results">
-          <div class="qym-item-result-meter" aria-hidden="true"><i id="items-fmeter"></i></div>
           <div class="items-grid" id="items-grid"></div>
           <div class="pagination qym-pagination" id="pagination" aria-label="Run items pagination"></div>
         </div>
@@ -5185,6 +5002,7 @@
       const SAVE_ICON = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m3 8.5 3.5 3.5 6.5-7"/></svg>';
       const CLOSE_ICON = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 4 8 8M12 4l-8 8"/></svg>';
       const CLOCK_ICON = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><circle cx="8" cy="8" r="6.25"/><path d="M8 4.5V8l2.5 1.5"/></svg>';
+      const FILTER_TRASH_ICON = '<svg class="qym-filter-trash-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>';
 
       const formatPercent = window.QymMetrics.formatPercent;
       const formatLatency = window.QymMetrics.formatLatency;
@@ -6190,10 +6008,10 @@
             'data-samples-metric="' + escapeAttr(m) + '" aria-pressed="' + (m === groupMetric) + '" title="' + escapeAttr(m) + '">' + escapeHtml(m) + '</button>'
         ).join('');
         const thresholdControlHtml = supportsThreshold
-          ? '<div class="threshold-control samples-repeat-threshold">' +
+          ? '<div class="threshold-control qym-threshold-control samples-repeat-threshold">' +
               '<span class="threshold-label">Pass if &ge;</span>' +
-              '<input type="range" class="threshold-slider" data-samples-threshold min="0" max="100" step="5" value="' + thresholdPct + '" aria-label="Pass threshold for ' + escapeAttr(groupMetric) + '">' +
-              '<span class="threshold-value" data-samples-threshold-value>' + thresholdPct + '%</span>' +
+              '<input type="range" class="threshold-slider qym-threshold-slider" data-samples-threshold min="0" max="100" step="5" value="' + thresholdPct + '" style="--qym-range-value:' + thresholdPct + '%;" aria-label="Pass threshold for ' + escapeAttr(groupMetric) + '">' +
+              '<span class="threshold-value qym-threshold-value" data-samples-threshold-value>' + thresholdPct + '%</span>' +
             '</div>'
           : '';
 
@@ -6623,6 +6441,7 @@
         const samplesThresholdValue = container.querySelector('[data-samples-threshold-value]');
         if (samplesThreshold) {
           samplesThreshold.addEventListener('input', event => {
+            event.target.style.setProperty('--qym-range-value', event.target.value + '%');
             if (samplesThresholdValue) samplesThresholdValue.textContent = event.target.value + '%';
           });
           samplesThreshold.addEventListener('change', event => {
@@ -6769,6 +6588,7 @@
         if (thresholdSlider) {
           thresholdSlider.addEventListener('input', (e) => {
             const v = parseFloat(e.target.value);
+            e.target.style.setProperty('--qym-range-value', v + '%');
             el('threshold-value').textContent = v + '%';
           });
           thresholdSlider.addEventListener('change', (e) => {
@@ -6832,6 +6652,7 @@
           tg.style.display = '';
           const pct = Math.round((state.metricThresholds[metric] ?? 0.8) * 100);
           ts.value = pct;
+          ts.style.setProperty('--qym-range-value', pct + '%');
           if (tv) tv.textContent = pct + '%';
         }
       }
@@ -8750,10 +8571,21 @@
       }
 
       const _isFilterGroup = node => Array.isArray(node.children);
+      function _filterConditionComplete(node) {
+        const f = itemFilterFieldById(node && node.field);
+        if (!f) return false;
+        if (f.kind === 'enum') return Array.isArray(node.value) && node.value.length > 0;
+        if (f.kind === 'metric' && node.oper === 'is') return ['passed', 'failed'].includes(node.value);
+        if (f.kind === 'number' || f.kind === 'metric') {
+          return node.value !== '' && node.value !== null && node.value !== undefined && !isNaN(Number(node.value));
+        }
+        if (f.kind === 'bool') return node.value === 'true' || node.value === 'false';
+        return String(node.value ?? '').trim().length > 0;
+      }
       function filterRuleCount(node) {
         return _isFilterGroup(node)
           ? node.children.reduce((sum, c) => sum + filterRuleCount(c), 0)
-          : 1;
+          : (_filterConditionComplete(node) ? 1 : 0);
       }
       function _numCompare(oper, v, target) {
         if (v === null || v === undefined || isNaN(v)) return false;
@@ -8768,11 +8600,13 @@
       }
       function evalFilterNode(node, row) {
         if (_isFilterGroup(node)) {
-          if (!node.children.length) return true;
+          const activeChildren = node.children.filter(c => filterRuleCount(c) > 0);
+          if (!activeChildren.length) return true;
           return node.op === 'or'
-            ? node.children.some(c => evalFilterNode(c, row))
-            : node.children.every(c => evalFilterNode(c, row));
+            ? activeChildren.some(c => evalFilterNode(c, row))
+            : activeChildren.every(c => evalFilterNode(c, row));
         }
+        if (!_filterConditionComplete(node)) return true;
         const f = itemFilterFieldById(node.field);
         if (!f) return true;
         const v = f.get(row);
@@ -8791,7 +8625,7 @@
           const hit = have.some(x => wanted.includes(x));
           return node.oper === 'notin' ? !hit : hit;
         }
-        if (f.kind === 'bool') return node.oper === 'isnot' ? !v : !!v;
+        if (f.kind === 'bool') return node.value === 'false' ? !v : !!v;
         if (f.kind === 'text') {
           const hit = String(v).toLowerCase().includes(String(node.value || '').toLowerCase());
           return node.oper === 'notcontains' ? !hit : hit;
@@ -8800,15 +8634,14 @@
       }
 
       function _newFilterCondition() {
-        const first = itemFilterFieldDefs()[0];
-        if (!first) return null;
-        return _defaultCondFor(first);
+        return { field: '', oper: '', value: '' };
       }
       function _defaultCondFor(f) {
-        if (f.kind === 'metric') return { field: f.id, oper: 'is', value: 'failed' };
-        if (f.kind === 'enum') return { field: f.id, oper: 'in', value: [f.values[0]] };
-        if (f.kind === 'number') return { field: f.id, oper: 'gte', value: f.id === 'latency' ? 1000 : 1 };
-        if (f.kind === 'bool') return { field: f.id, oper: 'is', value: null };
+        if (!f) return _newFilterCondition();
+        if (f.kind === 'metric') return { field: f.id, oper: 'is', value: '' };
+        if (f.kind === 'enum') return { field: f.id, oper: 'in', value: [] };
+        if (f.kind === 'number') return { field: f.id, oper: 'gte', value: '' };
+        if (f.kind === 'bool') return { field: f.id, oper: 'is', value: '' };
         return { field: f.id, oper: 'contains', value: '' };
       }
       function _filterNodeAt(path) {
@@ -8822,64 +8655,75 @@
       }
 
       function _fbOperSelect(path, node, opers) {
-        return '<select data-fb-p="' + path + '" data-fb-k="oper">'
+        const compact = opers.every(([v]) => ['is', 'gte', 'gt', 'lte', 'lt', 'eq', 'neq'].includes(v));
+        return '<select class="' + (compact ? 'fb-oper-compact' : '') + '" data-fb-p="' + path + '" data-fb-k="oper">'
           + opers.map(([v, l]) => '<option value="' + v + '"' + (v === node.oper ? ' selected' : '') + '>' + l + '</option>').join('')
           + '</select>';
       }
       function _fbCondHtml(node, path) {
         const defs = itemFilterFieldDefs();
-        const f = itemFilterFieldById(node.field) || defs[0];
+        const f = itemFilterFieldById(node.field);
         const groups = {};
         defs.forEach(d => (groups[d.group] = groups[d.group] || []).push(d));
-        const fieldSel = '<select data-fb-p="' + path + '" data-fb-k="field">'
+        const fieldSel = '<select data-fb-p="' + path + '" data-fb-k="field" required>'
+          + '<option value="" disabled' + (!f ? ' selected' : '') + '>Choose field…</option>'
           + Object.entries(groups).map(([g, ds]) =>
             '<optgroup label="' + escapeAttr(g) + '">' + ds.map(d =>
-              '<option value="' + escapeAttr(d.id) + '"' + (d.id === f.id ? ' selected' : '') + '>' + escapeHtml(d.label) + '</option>'
+              '<option value="' + escapeAttr(d.id) + '"' + (f && d.id === f.id ? ' selected' : '') + '>' + escapeHtml(d.label) + '</option>'
             ).join('') + '</optgroup>').join('')
           + '</select>';
+        if (!f) {
+          return '<div class="fb-cond"><span class="fb-token">' + fieldSel
+            + '</span><button type="button" class="fb-rm qym-icon-action action-icon delete-run" data-fb-rm="' + path + '" title="Delete condition" aria-label="Delete condition">' + FILTER_TRASH_ICON + '</button></div>';
+        }
         const NUM_OPERS = [['gte', '\u2265'], ['gt', '>'], ['lte', '\u2264'], ['lt', '<'], ['eq', '='], ['neq', '\u2260']];
         let operSel = '', valueInp = '';
         if (f.kind === 'metric') {
           operSel = _fbOperSelect(path, node, [['is', 'is']].concat(NUM_OPERS));
           if (node.oper === 'is') {
-            valueInp = '<select data-fb-p="' + path + '" data-fb-k="value" class="fb-val-' + (node.value === 'passed' ? 'passed' : 'failed') + '">'
+            valueInp = '<select data-fb-p="' + path + '" data-fb-k="value" required class="' + (node.value ? 'fb-val-' + node.value : '') + '">'
+              + '<option value="" disabled' + (!node.value ? ' selected' : '') + '>Choose outcome…</option>'
               + ['passed', 'failed'].map(v => '<option' + (v === node.value ? ' selected' : '') + '>' + v + '</option>').join('')
               + '</select>';
           } else {
-            valueInp = '<input type="number" min="0" max="1" step="0.05" value="' + escapeAttr(String(node.value ?? 0.5)) + '" data-fb-p="' + path + '" data-fb-k="value">';
+            valueInp = '<input type="number" min="0" max="1" step="0.05" value="' + escapeAttr(String(node.value ?? '')) + '" data-fb-p="' + path + '" data-fb-k="value" placeholder="value">';
           }
         } else if (f.kind === 'number') {
           operSel = _fbOperSelect(path, node, NUM_OPERS);
-          valueInp = '<input type="number" min="0" step="1" value="' + escapeAttr(String(node.value ?? 0)) + '" data-fb-p="' + path + '" data-fb-k="value">';
+          valueInp = '<input type="number" min="0" step="1" value="' + escapeAttr(String(node.value ?? '')) + '" data-fb-p="' + path + '" data-fb-k="value" placeholder="value">';
         } else if (f.kind === 'enum') {
           operSel = _fbOperSelect(path, node, [['in', 'is any of'], ['notin', 'is none of']]);
           const arr = Array.isArray(node.value) ? node.value : [node.value];
           valueInp = '<span class="fb-vchips">' + f.values.map(v =>
-            '<button type="button" class="fb-vchip' + (arr.includes(v) ? ' on' : '') + '" data-fb-vt="' + path + '" data-fb-val="' + escapeAttr(v) + '" aria-pressed="' + arr.includes(v) + '">' + escapeHtml(v) + '</button>'
+            '<button type="button" class="fb-vchip qym-chip' + (arr.includes(v) ? ' on' : '') + '" data-fb-vt="' + path + '" data-fb-val="' + escapeAttr(v) + '" aria-pressed="' + arr.includes(v) + '">' + escapeHtml(v) + '</button>'
           ).join('') + '</span>';
         } else if (f.kind === 'bool') {
-          operSel = _fbOperSelect(path, node, [['is', 'true'], ['isnot', 'false']]);
+          operSel = _fbOperSelect(path, node, [['is', 'is']]);
+          valueInp = '<select data-fb-p="' + path + '" data-fb-k="value" required>'
+            + '<option value="" disabled' + (!node.value ? ' selected' : '') + '>Choose state…</option>'
+            + ['true', 'false'].map(v => '<option value="' + v + '"' + (v === node.value ? ' selected' : '') + '>' + v + '</option>').join('')
+            + '</select>';
         } else {
           operSel = _fbOperSelect(path, node, [['contains', 'contains'], ['notcontains', 'does not contain']]);
           valueInp = '<input type="text" value="' + escapeAttr(String(node.value ?? '')) + '" data-fb-p="' + path + '" data-fb-k="value" placeholder="text...">';
         }
         return '<div class="fb-cond"><span class="fb-token">' + fieldSel + operSel + valueInp
-          + '</span><button type="button" class="fb-rm" data-fb-rm="' + path + '" title="Remove condition">\u00d7</button></div>';
+          + '</span><button type="button" class="fb-rm qym-icon-action action-icon delete-run" data-fb-rm="' + path + '" title="Delete condition" aria-label="Delete condition">' + FILTER_TRASH_ICON + '</button></div>';
       }
       function _fbGroupHtml(node, path, depth) {
-        const conj = '<span class="fb-conj">'
-          + '<button type="button" data-fb-conj="' + path + '" data-fb-op="and" class="' + (node.op === 'and' ? 'on' : '') + '">AND</button>'
-          + '<button type="button" data-fb-conj="' + path + '" data-fb-op="or" class="' + (node.op === 'or' ? 'on' : '') + '">OR</button></span>';
+        const conj = '<span class="fb-conj qym-segmented" role="group" aria-label="Rule match mode">'
+          + '<button type="button" class="qym-segmented__option' + (node.op === 'and' ? ' active' : '') + '" data-fb-conj="' + path + '" data-fb-op="and" aria-pressed="' + (node.op === 'and') + '">AND</button>'
+          + '<button type="button" class="qym-segmented__option' + (node.op === 'or' ? ' active' : '') + '" data-fb-conj="' + path + '" data-fb-op="or" aria-pressed="' + (node.op === 'or') + '">OR</button></span>';
         const head = '<div class="fb-grp-head">' + conj
           + '<span class="fb-grp-lab">' + (node.op === 'and' ? 'every rule below must match' : 'any rule below may match') + '</span>'
-          + (depth > 0 ? '<button type="button" class="fb-rm" data-fb-rm="' + path + '" title="Remove group">\u00d7</button>' : '')
+          + (depth > 0 ? '<button type="button" class="fb-rm qym-icon-action action-icon delete-run" data-fb-rm="' + path + '" title="Delete group" aria-label="Delete group">' + FILTER_TRASH_ICON + '</button>' : '')
           + '</div>';
         const kids = node.children.map((c, i) => {
           const cp = path ? path + '.' + i : String(i);
           return _isFilterGroup(c) ? _fbGroupHtml(c, cp, depth + 1) : _fbCondHtml(c, cp);
         }).join('');
-        const adds = '<div class="fb-add-row"><button type="button" class="fb-add" data-fb-addc="' + path + '">+ Condition</button>'
-          + '<button type="button" class="fb-add fb-add-muted" data-fb-addg="' + path + '">+ Group</button></div>';
+        const adds = '<div class="fb-add-row"><button type="button" class="fb-add qym-inline-action qym-inline-action--accent" data-fb-addc="' + path + '">+ Condition</button>'
+          + '<button type="button" class="fb-add fb-add-muted qym-inline-action qym-inline-action--neutral" data-fb-addg="' + path + '">+ Group</button></div>';
         return '<div class="fb-grp' + (depth === 0 ? ' fb-root' : '') + '">' + head + kids + adds + '</div>';
       }
 
@@ -8913,11 +8757,11 @@
               node.oper = inp.value;
               const f = itemFilterFieldById(node.field);
               if (f && f.kind === 'metric') {
-                if (node.oper === 'is' && !['passed', 'failed'].includes(node.value)) node.value = 'failed';
-                if (node.oper !== 'is' && wasIs) node.value = 0.5;
+                if (node.oper === 'is' && !['passed', 'failed'].includes(node.value)) node.value = '';
+                if (node.oper !== 'is' && wasIs) node.value = '';
               }
             } else {
-              node.value = inp.type === 'number' ? +inp.value : inp.value;
+              node.value = inp.type === 'number' && inp.value !== '' ? +inp.value : inp.value;
             }
             state.page = 1;
             renderFilterBuilder();
@@ -9246,6 +9090,25 @@
           return Array.isArray(scores) ? scores[passNo - 1] : null;
         };
         const scoreFor = (name, passNo) => window.QymMetrics.parseScoreValue(rawScoreFor(name, passNo));
+        const passIdentityFor = (att) => {
+          const label = 'Pass ' + att.pass_number;
+          if (IS_EXPORT) return '<span class="qym-output-card__name">' + label + '</span>';
+          const url = window.location.pathname + '?pass=' + encodeURIComponent(att.pass_number);
+          return '<a class="qym-output-card__link" href="' + escapeAttr(url) + '" title="View ' + escapeAttr(label) + '"><span class="qym-output-card__name">' + label + '</span></a>';
+        };
+        const verdictFor = (att) => {
+          let verdict = '';
+          if (att.status === 'error') {
+            verdict = 'fail';
+          } else if (metric && (state.metricTypes[metric] || 'score') !== 'numeric') {
+            const value = scoreFor(metric, att.pass_number);
+            if (value !== null) verdict = value >= threshold ? 'pass' : 'fail';
+          }
+          if (!verdict) return '';
+          const label = verdict === 'pass' ? 'Pass' : 'Fail';
+          const title = att.status === 'error' ? 'Execution error' : label + ' on ' + metric;
+          return '<span class="qym-tag ' + (verdict === 'pass' ? 'qym-tag--success' : 'qym-tag--danger') + '" title="' + escapeAttr(title) + '">' + label + '</span>';
+        };
         const metaFor = (name, passNo) => {
           const values = passMeta[name];
           const meta = Array.isArray(values) ? values[passNo - 1] : null;
@@ -9299,7 +9162,7 @@
           const outputId = 'pass-' + att.pass_number;
           const actions = traceBtnFor(att) + copyBtnFor(att);
           return '<article class="item-run-output qym-output-card' + (hidden.has(att.pass_number) ? ' is-hidden' : '') + '" data-output-card="' + outputId + '" style="border-left-color:' + color + '">' +
-            '<div class="qym-output-card__header"><span class="qym-output-card__identity"><span class="qym-output-swatch" style="background:' + color + '"></span><span class="qym-output-card__name">Pass ' + att.pass_number + '</span></span>' +
+            '<div class="qym-output-card__header"><span class="qym-output-card__identity"><span class="qym-output-swatch" style="background:' + color + '"></span>' + passIdentityFor(att) + verdictFor(att) + '</span>' +
             (att.latency_ms ? '<span class="qym-output-card__duration">' + CLOCK_ICON + '<span>' + formatLatency(att.latency_ms) + '</span></span>' : '<span class="qym-output-card__duration">\u2014</span>') +
             '<span class="qym-output-card__actions">' + actions + '</span></div>' +
             '<div class="output-text' + (att.status === 'error' ? ' score-1' : '') + '">' + renderMarkdownSafe(att.output ?? '\u2014') + '</div>' +
@@ -9464,8 +9327,6 @@
         filterCountEl.innerHTML = '<span><span class="count-num">' + items.length + '</span> of ' + totalRows + ' items</span>';
         const displayLabel = el('item-display-label');
         if (displayLabel) displayLabel.textContent = 'Display · ' + formatItemControlMetric(metric);
-        const meter = el('items-fmeter');
-        if (meter) meter.style.width = (totalRows ? (items.length / totalRows) * 100 : 0) + '%';
         updateClearButton();
 
         const totalPages = Math.max(1, Math.ceil(items.length / state.pageSize));
@@ -9531,8 +9392,7 @@
           const traceChip = !IS_EXPORT
             ? '<button type="button" class="trace-drawer-btn qym-inline-action qym-inline-action--neutral qym-trace-action" data-trace-endpoint="' + escapeAttr(traceEndpoint) + '" data-trace-item-label="' + escapeAttr((state.run.run_name || 'Run') + ' \u00B7 ' + displayItemId) + '" data-trace-id="' + escapeAttr(traceId || '') + '" data-trace-url="' + escapeAttr(traceUrl || '') + '" title="Open trace viewer"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M2.5 4h11M2.5 8h7M2.5 12h9"/><circle cx="12.5" cy="8" r="1.2" fill="currentColor" stroke="none" opacity=".5"/><circle cx="13.5" cy="12" r="1.2" fill="currentColor" stroke="none" opacity=".5"/></svg>Trace</button>'
             : '';
-          // Pass/fail status indicator (skip for numeric metrics — threshold doesn't apply)
-          let statusIndicator = '';
+          // The verdict belongs to the expanded execution, not the aggregate row.
           const pfMType = metric ? (state.metricTypes[metric] || 'score') : 'score';
           let pfClass = '';
           if (status === 'error') {
@@ -9543,11 +9403,9 @@
               pfClass = pfVal >= threshold ? 'pass' : 'fail';
             }
           }
-          if (pfClass) {
-            // Squared borderless verdict chip — the row's one colored anchor,
-            // opening the row right after the item number.
-            statusIndicator = '<span class="item-verdict ' + pfClass + '">' + (pfClass === 'pass' ? 'Pass' : 'Fail') + '</span>';
-          }
+          const statusIndicator = pfClass
+            ? '<span class="qym-tag ' + (pfClass === 'pass' ? 'qym-tag--success' : 'qym-tag--danger') + '" title="' + escapeAttr(status === 'error' ? 'Execution error' : (pfClass === 'pass' ? 'Pass' : 'Fail') + ' on ' + metric) + '">' + (pfClass === 'pass' ? 'Pass' : 'Fail') + '</span>'
+            : '';
 
           // Root cause + Solution (side by side for failed items)
           let rootCauseHtml = '';
@@ -9698,7 +9556,7 @@
               + _renderTraceChips(row.trace_stats, row.retry_count) + rootCauseHtml;
           }
           if (!outputBlockHtml) {
-            outputBlockHtml = '<div class="item-run-output"><div class="output-header"><span class="output-status-cluster"><span class="run-label">' + outputLabel + '</span>' + durationPart + timePart + '</span><span class="output-actions">' + traceChip + copyBtn + '</span></div><div class="output-text ' + (status === 'error' ? 'score-1' : '') + '">' + renderMarkdownSafe(output) + '</div>' + _renderTraceChips(row.trace_stats, row.retry_count) + metricStripHtml + rootCauseHtml + '</div>';
+            outputBlockHtml = '<div class="item-run-output"><div class="output-header"><span class="output-status-cluster"><span class="run-label">' + outputLabel + '</span>' + statusIndicator + durationPart + timePart + '</span><span class="output-actions">' + traceChip + copyBtn + '</span></div><div class="output-text ' + (status === 'error' ? 'score-1' : '') + '">' + renderMarkdownSafe(output) + '</div>' + _renderTraceChips(row.trace_stats, row.retry_count) + metricStripHtml + rootCauseHtml + '</div>';
           }
 
           // Collapsed header: the input itself is the title; aggregates live
@@ -9708,7 +9566,7 @@
           // open, the metrics strip in the body is the single source.
           const aggPills = isExpanded ? '' : state.allMetrics.map((name, i) => {
             const v = window.QymMetrics.parseScoreValue(metricVals[i]);
-            if (v === null) return '';
+            if (v === null) return '<span class="item-agg-pill qym-item-metric-cell qym-item-metric-cell--empty" data-qym-metric-column="' + i + '" aria-hidden="true"></span>';
             const mType = state.metricTypes[name] || 'score';
             const cls = window.QymMetrics.getMetricColorClass(v, mType);
             const isReducedBoolean = mType === 'boolean'
@@ -9717,7 +9575,7 @@
             const display = isReducedBoolean
               ? window.QymMetrics.formatMetricValue(v, 'score')
               : window.QymMetrics.formatMetricObservation(v, mType, state.metricSpecs?.[name]);
-            return '<span class="item-agg-pill"><span class="metric-score-name">' + escapeHtml(name) + '</span><span class="metric-score-value ' + cls + '">' + display + '</span></span>';
+            return '<span class="item-agg-pill qym-item-metric-cell' + (name === metric ? ' qym-item-metric-cell--selected' : '') + '" data-qym-metric-column="' + i + '"><span class="metric-score-name">' + escapeHtml(name) + '</span><span class="metric-score-value ' + cls + '">' + display + '</span></span>';
           }).join('');
           const passNote = isRepeatItem
             ? '<span class="item-pass-note">' + passAttempts.filter(Boolean).length + ' passes</span>'
@@ -9726,11 +9584,11 @@
           const headerHtml = '<div class="item-header item-header-expand"' + (isExpanded ? expandAttrs : '') + '>' +
             '<span class="item-chevron' + (isExpanded ? ' open' : '') + '"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m5.5 3.5 5 4.5-5 4.5"/></svg></span>' +
             '<span class="item-index" title="ID: ' + escapeHtml(itemId) + '">#' + (row.index + 1) + '</span>' +
-            statusIndicator +
+            (!isExpanded && !isRepeatItem ? statusIndicator : '') +
             (isExpanded
               ? '<span class="item-header-spacer"></span>'
               : '<span class="item-title" title="' + escapeAttr(displayItemId) + '">' + escapeHtml(titleText) + '</span>') +
-            '<span class="item-agg-pills">' + aggPills + '</span>' +
+            '<span class="item-agg-pills qym-item-metric-grid" data-qym-metric-grid>' + aggPills + '</span>' +
             passNote +
 
           '</div>';
@@ -9748,6 +9606,8 @@
             outputBlockHtml +
           '</div>';
         }).join('');
+
+        window.QymUIComponents?.alignMetricColumns(container);
 
         window.QymUIComponents?.renderPagination(paginationEl, {
           page: state.page,
@@ -10867,20 +10727,34 @@
       // ── Metadata fields selector ──
 
       el('metadata-fields-btn').addEventListener('click', () => {
+        const button = el('metadata-fields-btn');
+        const dropdown = el('metadata-fields-dropdown');
         el('metric-meta-fields-dropdown').classList.remove('open');
+        el('metric-meta-fields-btn').setAttribute('aria-expanded', 'false');
         document.querySelectorAll('.multi-select-dropdown.open').forEach(d => d.classList.remove('open'));
-        el('metadata-fields-dropdown').classList.toggle('open');
+        const open = dropdown.classList.toggle('open');
+        button.setAttribute('aria-expanded', open ? 'true' : 'false');
       });
       el('metric-meta-fields-btn').addEventListener('click', () => {
+        const button = el('metric-meta-fields-btn');
+        const dropdown = el('metric-meta-fields-dropdown');
         el('metadata-fields-dropdown').classList.remove('open');
+        el('metadata-fields-btn').setAttribute('aria-expanded', 'false');
         document.querySelectorAll('.multi-select-dropdown.open').forEach(d => d.classList.remove('open'));
-        el('metric-meta-fields-dropdown').classList.toggle('open');
+        const open = dropdown.classList.toggle('open');
+        button.setAttribute('aria-expanded', open ? 'true' : 'false');
       });
       document.addEventListener('click', (e) => {
         var metaDd = el('metadata-fields-dropdown'), metaBtn = el('metadata-fields-btn');
         var mmDd = el('metric-meta-fields-dropdown'), mmBtn = el('metric-meta-fields-btn');
-        if (metaDd && !metaDd.contains(e.target) && e.target !== metaBtn) metaDd.classList.remove('open');
-        if (mmDd && !mmDd.contains(e.target) && e.target !== mmBtn) mmDd.classList.remove('open');
+        if (metaDd && !metaDd.contains(e.target) && e.target !== metaBtn) {
+          metaDd.classList.remove('open');
+          metaBtn.setAttribute('aria-expanded', 'false');
+        }
+        if (mmDd && !mmDd.contains(e.target) && e.target !== mmBtn) {
+          mmDd.classList.remove('open');
+          mmBtn.setAttribute('aria-expanded', 'false');
+        }
       });
 
       function populateFieldVisibilityDropdown({ dropdownId, keys, visibility, labelFor, defaultVisible, emptyMessage }) {

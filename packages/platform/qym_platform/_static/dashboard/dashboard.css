@@ -5122,6 +5122,7 @@ body.chart-col-resize-active {
   user-select: none;
 }
 .pg-connection-select {
+  --qym-select-chevron-image: var(--qym-chevron-down-muted);
   appearance: none;
   -webkit-appearance: none;
   background: transparent;
@@ -5135,10 +5136,16 @@ body.chart-col-resize-active {
   height: 100%;
   max-width: 260px;
   padding: 0 20px 0 2px;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%237a7a90' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-image: var(--qym-select-chevron-image);
   background-repeat: no-repeat;
-  background-position: right center;
-  background-size: 13px;
+  background-position: calc(100% - 4px) 50%;
+  background-size: 14px 14px;
+}
+.pg-connection-select:is(:hover, :focus-visible, :open) {
+  --qym-select-chevron-image: var(--qym-chevron-down-accent);
+}
+.pg-connection-select:open {
+  --qym-select-chevron-image: var(--qym-chevron-up-accent);
 }
 .pg-connection-select option {
   background: var(--bg-elevated);

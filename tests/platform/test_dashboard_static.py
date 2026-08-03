@@ -304,6 +304,25 @@ def test_repeat_and_compare_share_grouped_output_interaction() -> None:
     assert "const hasPassDetails = passDetails.some" in run
     assert "Pass-specific details were not recorded for this run; showing the run-level result." in run
     assert "(baseRow.metric_meta || {})[name]" in run
+    # Verdicts describe individual executions beside their identity. The
+    # collapsed repeat row no longer presents an aggregate Pass/Fail label.
+    repeat_outputs = run.split("function renderAnswerColumns", 1)[1].split(
+        "function _parseMetaDeep", 1
+    )[0]
+    compare_outputs = compare.split("function renderCompareOutputGroup", 1)[1].split(
+        "function renderItemComparisonCard", 1
+    )[0]
+    collapsed_run_header = run.split("// Collapsed header:", 1)[1].split(
+        "if (!isExpanded)", 1
+    )[0]
+    assert "verdictFor(att)" in repeat_outputs
+    assert "passIdentityFor(att)" in repeat_outputs
+    assert "window.location.pathname + '?pass=' + encodeURIComponent(att.pass_number)" in repeat_outputs
+    assert 'class="qym-output-card__link"' in repeat_outputs
+    assert "${identityHtml}${verdictFor(row, runIdx)}" in compare_outputs
+    assert "(!isExpanded && !isRepeatItem ? statusIndicator : '')" in collapsed_run_header
+    assert "qym-tag--success" in repeat_outputs
+    assert "qym-tag--danger" in compare_outputs
     # Comparing repeat passes preserves pass-aware editing instead of writing
     # the aggregate run score or replacing the sliced row with aggregate data.
     assert "const baseFilePath = passRefBase(filePath);" in compare
@@ -320,6 +339,14 @@ def test_repeat_and_compare_share_grouped_output_interaction() -> None:
         ".qym-metric-edit-action",
     ):
         assert selector in components
+
+    # Long output bodies use a shared viewport-aware reading area rather
+    # than the old 300px ceiling. Compare derives its alignment cap from
+    # that CSS so layout and overflow cannot drift apart again.
+    output_body = _rule(components, ".qym-output-card > .output-text {")
+    assert "max-height: min(58vh, calc(var(--space-xl) * 18));" in output_body
+    assert "window.getComputedStyle(el).maxHeight" in compare
+    assert "el.querySelector('.formatted-table-grid') ? 640 : 300" not in compare
 
     # Editing is a true swap state: the resting score/edit icon disappear,
     # while long metric names and the semantic actions remain contained.
@@ -391,6 +418,110 @@ def test_item_metric_rows_share_one_responsive_component() -> None:
     assert ".metric-compare-trigger.active" in caret_active
 
 
+def test_item_detail_cards_have_clear_neutral_and_interaction_states() -> None:
+    """Run/repeat and compare keep the approved separated-card layout while
+    sharing stronger zebra, disclosure, and collapsed-metric contrast."""
+    run = (DASHBOARD_DIR / "run.html").read_text(encoding="utf-8")
+    compare = (DASHBOARD_DIR / "compare.html").read_text(encoding="utf-8")
+    components = (DASHBOARD_DIR / "ui_components.css").read_text(encoding="utf-8")
+
+    for source, card_selector, collapsed_selector, even_selector in (
+        (
+            run,
+            ".item-card {",
+            ".item-card.item-collapsed {",
+            ".items-grid > .item-card.item-collapsed:nth-child(even) {",
+        ),
+        (
+            compare,
+            ".item-comparison-row {",
+            ".item-comparison-row.item-collapsed {",
+            ".items-grid > .item-comparison-row.item-collapsed:nth-child(even) {",
+        ),
+    ):
+        # Preserve the current separated, rounded composition.
+        assert "gap: var(--space-sm);" in _rule(source, ".items-grid {")
+        item_detail_styles = source[source.index(".items-grid {"):]
+        assert "border-radius: 8px;" in _rule(item_detail_styles, card_selector)
+
+        collapsed = _rule(source, collapsed_selector)
+        assert "border: 1px solid var(--border-subtle);" in collapsed
+        assert "background: var(--bg-surface);" in collapsed
+        assert "background: var(--bg-elevated);" in _rule(source, even_selector)
+
+        chevron = _rule(source, ".item-chevron {")
+        assert "background: transparent;" in chevron
+        assert "color: var(--text-dim);" in chevron
+        chevron_hover = _rule(
+            source,
+            ".item-header-expand:is(:hover, :focus-visible) .item-chevron {",
+        )
+        assert "background: transparent;" in chevron_hover
+        assert "color: var(--accent-primary);" in chevron_hover
+
+    metric = _rule(components, ".qym-item-metric-cell {")
+    assert "var(--text-primary) 6%, transparent" in metric
+    assert "box-shadow: none;" in metric
+    selected_metric = _rule(components, ".qym-item-metric-cell--selected {")
+    assert "var(--text-primary) 9%, transparent" in selected_metric
+
+    assert "qym-item-metric-cell--selected" in run
+    assert "qym-item-metric-cell--selected" in compare
+
+
+def test_item_summary_metrics_use_shared_column_alignment() -> None:
+    run = (DASHBOARD_DIR / "run.html").read_text(encoding="utf-8")
+    compare = (DASHBOARD_DIR / "compare.html").read_text(encoding="utf-8")
+    behavior = (DASHBOARD_DIR / "ui_components.js").read_text(encoding="utf-8")
+
+    assert "function alignMetricColumns(root, options)" in behavior
+    assert "cell.getBoundingClientRect().width" in behavior
+    assert "--qym-item-metric-columns" in behavior
+    assert "alignMetricColumns: alignMetricColumns" in behavior
+
+    components = (DASHBOARD_DIR / "ui_components.css").read_text(encoding="utf-8")
+    metric_grid = _rule(components, ".qym-item-metric-grid {")
+    assert "display: inline-grid;" in metric_grid
+    assert "grid-auto-flow: column;" in metric_grid
+    assert "grid-template-columns: var(--qym-item-metric-columns, none);" in metric_grid
+    metric_cell = _rule(components, ".qym-item-metric-cell {")
+    assert "justify-content: space-between;" in metric_cell
+
+    for source in (run, compare):
+        assert "qym-item-metric-grid" in source
+        assert "qym-item-metric-cell" in source
+        assert "data-qym-metric-grid" in source
+        assert "data-qym-metric-column" in source
+        assert "qym-item-metric-cell--empty" in source
+        assert "window.QymUIComponents?.alignMetricColumns(container);" in source
+
+    # Narrow screens retain the prior wrapping behavior instead of forcing
+    # the desktop metric columns beyond the viewport.
+    assert ".qym-item-metric-cell--empty { display: none; }" in components
+
+
+def test_item_detail_section_has_one_defined_shared_shell() -> None:
+    run = (DASHBOARD_DIR / "run.html").read_text(encoding="utf-8")
+    compare = (DASHBOARD_DIR / "compare.html").read_text(encoding="utf-8")
+    components = (DASHBOARD_DIR / "ui_components.css").read_text(encoding="utf-8")
+
+    section = _rule(components, ".qym-item-section {")
+    assert "border: 1px solid var(--border-subtle);" in section
+    assert "background: color-mix(in srgb, var(--bg-surface) 30%, transparent);" in section
+    query = _rule(components, ".qym-item-query {")
+    assert "flex: 1 1 680px;" in query
+    actions = _rule(components, ".qym-item-actions {")
+    assert "margin-left: auto;" in actions
+    results = _rule(components, ".qym-item-results {")
+    assert "border-top: 1px solid var(--border-subtle);" in results
+
+    for source in (run, compare):
+        assert "items-comparison qym-item-section" in source
+        assert "qym-item-section-head" in source
+        assert "qym-item-result-meter" not in source
+        assert "items-fmeter" not in source
+
+
 def test_compare_expanded_item_shell_matches_run_detail() -> None:
     compare = (DASHBOARD_DIR / "compare.html").read_text(encoding="utf-8")
     components = (DASHBOARD_DIR / "ui_components.css").read_text(encoding="utf-8")
@@ -400,7 +531,7 @@ def test_compare_expanded_item_shell_matches_run_detail() -> None:
     # selected-metric pills that are visible directly below.
     assert "const compactItemLabel = Number.isFinite(sourceRowIndex)" in compare
     assert '${isExpanded\n                  ? `<span class="item-header-spacer"></span><span class="item-pass-note">${visibleRunCount} run' in compare
-    assert ': `<span class="item-title">${escapeHtml(titleText)}</span><span class="item-agg-pills">${headerPills}</span>`}' in compare
+    assert ': `<span class="item-title">${escapeHtml(titleText)}</span><span class="item-agg-pills qym-item-metric-grid" data-qym-metric-grid>${headerPills}</span>`}' in compare
     assert '<div class="input-label">INPUT ' in compare
     assert '<div class="expected-label">EXPECTED OUTPUT ' in compare
 
@@ -437,7 +568,7 @@ def test_repeat_run_analysis_uses_shared_visual_language() -> None:
     assert 'class="samples-metric-tabs qym-segmented" role="group"' in source
     assert 'data-qym-segmented-key="repeat-metric"' in source
     assert "state.samplesMetric = nextMetric;" in source
-    assert 'class="threshold-control samples-repeat-threshold"' in source
+    assert 'class="threshold-control qym-threshold-control samples-repeat-threshold"' in source
     metric_row = source.split("'<div class=\"samples-metric-row\">' +", 1)[1].split(
         "'<div class=\"samples-group-tiles", 1
     )[0]
@@ -1244,15 +1375,21 @@ def test_semantic_quick_actions_keep_shared_surface_and_hover_states() -> None:
     assert "background-color 0.15s ease" in components
 
 
-def test_item_table_toolbar_actions_use_shared_inline_action_variants() -> None:
+def test_item_table_display_controls_use_shared_component_variants() -> None:
     run = (DASHBOARD_DIR / "run.html").read_text(encoding="utf-8")
+    compare = (DASHBOARD_DIR / "compare.html").read_text(encoding="utf-8")
     components = (DASHBOARD_DIR / "ui_components.css").read_text(encoding="utf-8")
 
-    for control_id in ("metadata-fields-btn", "metric-meta-fields-btn"):
-        assert (
-            'class="qym-inline-action qym-inline-action--neutral" '
-            f'id="{control_id}"'
-        ) in run
+    for source in (run, compare):
+        for control_id in ("metadata-fields-btn", "metric-meta-fields-btn"):
+            assert (
+                'class="metadata-fields-btn multi-select-btn qym-control qym-select" '
+                f'id="{control_id}"'
+            ) in source
+            assert f'aria-controls="{control_id.removesuffix("-btn")}-dropdown"' in source
+        assert 'class="threshold-slider qym-threshold-slider"' in source
+        assert "--qym-range-value:80%" in source
+
     # Export is the shared borderless green action in the item toolbar.
     assert (
         'class="qym-inline-action qym-inline-action--accent" '
@@ -1260,6 +1397,18 @@ def test_item_table_toolbar_actions_use_shared_inline_action_variants() -> None:
     ) in run
     assert "fp-gear-btn metadata-fields-btn multi-select-btn qym-control" not in run
     assert 'class="fp-btn fp-export"' not in run
+
+    for selector in (
+        ".qym-threshold-control",
+        ".qym-threshold-slider",
+        ".qym-threshold-slider::-webkit-slider-thumb",
+        ".qym-threshold-slider::-moz-range-progress",
+        ".qym-threshold-value",
+    ):
+        assert selector in components
+    assert "var(--accent-primary) var(--qym-range-value)" in components
+    assert "style.setProperty('--qym-range-value'" in run
+    assert "style.setProperty('--qym-range-value'" in compare
 
     shared_actions = components.split(
         ".qym-inline-action.qym-inline-action--neutral,\n"
@@ -1276,6 +1425,71 @@ def test_item_table_toolbar_actions_use_shared_inline_action_variants() -> None:
         assert contract in shared_actions
     assert ".qym-inline-action.qym-inline-action--neutral:hover {" in components
     assert ".qym-inline-action.qym-inline-action--accent:hover {" in components
+
+
+def test_dropdown_and_disclosure_chevrons_share_interaction_states() -> None:
+    components = (DASHBOARD_DIR / "ui_components.css").read_text(encoding="utf-8")
+    dashboard = (DASHBOARD_DIR / "dashboard.css").read_text(encoding="utf-8")
+    behavior = (DASHBOARD_DIR / "ui_components.js").read_text(encoding="utf-8")
+
+    # Native and custom selects share one generated chevron. Native selects
+    # use :open; custom dropdowns expose the same state through aria-expanded.
+    for selector in (
+        ".qym-select",
+        ".multi-select-btn",
+        "select.filter-select",
+        "select.form-select",
+        "select.samples-metric-select",
+        "select.qym-pagination__size",
+        "select.shell-form-input",
+        ".fb-token select",
+    ):
+        assert selector in components
+    assert "--qym-chevron-down-muted:" in components
+    assert "--qym-chevron-down-accent:" in components
+    assert "--qym-chevron-up-accent:" in components
+    assert "d='M4.5 6.25 8 9.75l3.5-3.5'" in components
+    assert "stroke-width='1.5'" in components
+    assert "--qym-select-chevron-image: var(--qym-chevron-down-muted);" in components
+    assert ":is(:hover, :focus-visible, :open)" in components
+    assert ':is(.qym-select, .multi-select-btn)[aria-expanded="true"]' in components
+    assert 'button:is(.qym-select, .multi-select-btn)[aria-expanded="true"]' in components
+    assert "--qym-select-chevron-image: var(--qym-chevron-down-accent);" in components
+    assert "--qym-select-chevron-image: var(--qym-chevron-up-accent);" in components
+    assert "background-size: 14px 14px;" in components
+    connection_select = _rule(dashboard, ".pg-connection-select {")
+    connection_open = _rule(dashboard, ".pg-connection-select:open {")
+    assert "--qym-select-chevron-image: var(--qym-chevron-down-muted);" in connection_select
+    assert "background-image: var(--qym-select-chevron-image);" in connection_select
+    assert "--qym-select-chevron-image: var(--qym-chevron-up-accent);" in connection_open
+
+    # SVG/text disclosure chevrons share the quiet/hover signal. Item-row
+    # chevrons rotate while open but remain neutral until hover/focus.
+    for selector in (
+        ".project-trigger-chevron",
+        ".rseg-chev",
+        ".context-section-caret",
+        ".item-chevron",
+        ".det-caret",
+        ".samples-toggle",
+        ".pg-section-chevron",
+        ".tv-toggle",
+        ".tv-metric-chevron",
+        ".expand-btn .arrow",
+    ):
+        assert selector in components
+    assert ".item-header-expand:is(:hover, :focus-visible) .item-chevron" in components
+    assert ".item-chevron.open," not in components
+    assert ".context-section[open] .context-section-caret" in components
+    assert ".pg-section[open] > .pg-section-summary .pg-section-chevron" in components
+    assert ".tv-metric-card.expanded .tv-metric-chevron" in components
+    assert "color: var(--accent-primary);" in components
+
+    # The shared observer keeps custom dropdown aria state synchronized when
+    # page code opens or closes its menu by toggling the dropdown class.
+    assert "record.target.matches('.multi-select-dropdown, .qym-dropdown')" in behavior
+    assert "ensureDropdownButton(wrapper && wrapper.querySelector('.multi-select-btn'))" in behavior
+    assert "attributeFilter: ['aria-selected', 'aria-pressed', 'class']" in behavior
 
 
 def test_compare_view_uses_current_run_detail_component_contracts() -> None:
@@ -1329,10 +1543,7 @@ def test_compare_view_uses_current_run_detail_component_contracts() -> None:
     )
     assert 'class="filter-count" id="filter-count"' in compare
     assert 'class="filter-count qym-tag qym-tag--count"' not in compare
-    assert (
-        "metadata-fields-btn multi-select-btn qym-inline-action "
-        "qym-inline-action--neutral"
-    ) in compare
+    assert "metadata-fields-btn multi-select-btn qym-control qym-select" in compare
     assert (
         "fp-export qym-inline-action qym-inline-action--accent"
     ) in compare
@@ -1432,7 +1643,9 @@ def test_clear_filter_control_has_aligned_label_and_soft_count_pill() -> None:
     for page in DASHBOARD_DIR.glob("*.html"):
         source = page.read_text(encoding="utf-8")
         if "ui_components.css?v=" in source:
-            assert "ui_components.css?v=ui-consistency-20260801-44" in source
+            assert "ui_components.css?v=ui-consistency-20260803-60" in source
+        if "ui_components.js?v=" in source:
+            assert "ui_components.js?v=ui-consistency-20260803-28" in source
 
 
 def test_operational_statistics_use_connected_strip_contract() -> None:
@@ -1914,13 +2127,106 @@ def test_compare_html_export_is_self_contained_and_export_safe() -> None:
     assert "if (!IS_COMPARE_EXPORT && typeof QymPlayground !== 'undefined')" in source
 
 
-def test_compare_filter_bar_does_not_use_rigid_wide_grid() -> None:
+def test_compare_uses_shared_composable_item_filter_builder() -> None:
     source = (DASHBOARD_DIR / "compare.html").read_text(encoding="utf-8")
+    run = (DASHBOARD_DIR / "run.html").read_text(encoding="utf-8")
+    components = (DASHBOARD_DIR / "ui_components.css").read_text(encoding="utf-8")
 
-    assert "grid-template-columns: 210px 170px 240px" not in source
-    assert ".fp-filter-row {\n      display: flex;" in source
-    assert ".fp-actions {\n      display: flex;" in source
-    assert "min-width: max-content;" in source
+    assert 'class="item-filter-builder qym-item-builder" id="item-filter-builder"' in source
+    assert 'id="builder-rule-count"' in source
+    assert 'id="filter-builder-body"' in source
+    assert "filterRoot: { op: 'and', children: [] }" in source
+    assert "function compareFilterFieldDefs()" in source
+    assert "function compareFilterGroupHtml(node, path = '', depth = 0)" in source
+    assert "if (!evalFilterNode(state.filterRoot, filterContext)) continue;" in source
+    for field in ("outcome", "winner", "pass_count", "approval", "error", "edited", "output", "latency"):
+        assert f"id: '{field}'" in source
+
+    # Legacy selects remain hidden only as compatibility state for existing
+    # chart interactions; the opened surface is the shared rule builder.
+    assert 'id="compare-legacy-filter-inputs" hidden aria-hidden="true"' in source
+    assert ".qym-item-builder .fb-token" in components
+    assert ".qym-item-builder .fb-conj" in components
+    assert ".fb-head {" not in run
+
+    for markup in (run, source):
+        assert 'class="fb-conj qym-segmented"' in markup
+        assert 'class="qym-segmented__option' in markup
+        assert 'class="fb-vchip qym-chip' in markup
+        assert 'class="fb-rm qym-icon-action action-icon delete-run"' in markup
+        assert 'const FILTER_TRASH_ICON = \'<svg class="qym-filter-trash-icon"' in markup
+        assert 'title="Delete condition" aria-label="Delete condition"' in markup
+        assert 'title="Delete group" aria-label="Delete group"' in markup
+        assert 'fb-add qym-inline-action qym-inline-action--accent' in markup
+        assert 'fb-add-muted qym-inline-action qym-inline-action--neutral' in markup
+        assert 'data-fb-k="field" required' in markup
+        assert "Choose field…" in markup
+        assert "Choose state…" in markup
+
+    run_builder = run.split("// ═══ Item filter rules ═══", 1)[1].split(
+        "function getFilteredItems()", 1
+    )[0]
+    compare_builder = source.split(
+        "// Compare uses the same composable filter builder as run detail", 1
+    )[1].split("function getFilteredItems()", 1)[0]
+    assert "return { field: '', oper: '', value: '' };" in run_builder
+    assert "if (!_filterConditionComplete(node)) return true;" in run_builder
+    assert "Choose outcome…" in run_builder
+    assert "value: 'failed'" not in run_builder
+    assert "value: [f.values[0]]" not in run_builder
+    assert "if (!field) return { field: '', oper: '', value: '' };" in compare_builder
+    assert "if (!compareFilterConditionComplete(node)) return true;" in compare_builder
+    assert "value: [field.choices[0].value]" not in compare_builder
+
+    connector = _rule(components, '.qym-item-filter[aria-expanded="true"]::after {')
+    assert "top: calc(100% + 1px);" in connector
+    assert "height: calc(var(--space-sm) + 1px);" in connector
+    builder = _rule(components, ".qym-item-builder {")
+    assert "margin-top: var(--space-sm);" in builder
+    assert "border: 1px solid var(--border-default);" in builder
+    assert "border-radius: var(--dropdown-radius);" in builder
+    assert "background: color-mix(in srgb, var(--bg-elevated) 28%, var(--bg-base));" in builder
+    filter_count = _rule(components, ".qym-item-filter-count {")
+    assert "min-width: var(--space-md);" in filter_count
+    assert "height: var(--space-md);" in filter_count
+    nested_group = _rule(components, ".qym-item-builder .fb-grp .fb-grp {")
+    assert "border-left:" not in nested_group
+    assert "background: color-mix(in srgb, var(--bg-elevated) 28%, var(--bg-surface));" in nested_group
+    token_controls = _rule(components, '.qym-item-builder .fb-token select,')
+    assert "align-self: stretch;" in token_controls
+    assert "min-height: var(--control-height);" in token_controls
+    assert "height: auto;" in token_controls
+    assert "font-size: var(--font-sm);" in token_controls
+    token_dividers = _rule(
+        components,
+        '.qym-item-builder .fb-token > [data-fb-k="oper"],',
+    )
+    assert '[data-fb-k="value"]' in token_dividers
+    assert "> .fb-vchips" in token_dividers
+    assert "border-left: 1px solid var(--border-strong);" in token_dividers
+    token_select = _rule(components, ".qym-item-builder .fb-token select {")
+    assert "padding-right: calc(var(--space-lg) + var(--space-xs));" in token_select
+    compact_operator = _rule(
+        components,
+        '.qym-item-builder .fb-token select[data-fb-k="oper"].fb-oper-compact {',
+    )
+    assert "width: calc(var(--space-xl) + var(--space-lg));" in compact_operator
+    value_select = _rule(
+        components, '.qym-item-builder .fb-token select[data-fb-k="value"] {'
+    )
+    assert "flex: 0 0 auto;" in value_select
+    assert "var(--space-xl) + var(--space-xl) + var(--space-xl)" in value_select
+    remove_rest = _rule(components, ".qym-item-builder .fb-rm {")
+    assert "color: var(--error);" in remove_rest
+    assert "opacity: 1;" in remove_rest
+    assert "background: rgba(239, 68, 68, 0.1);" in remove_rest
+    trash_icon = _rule(components, ".qym-item-builder .qym-filter-trash-icon {")
+    assert "width: 14px;" in trash_icon
+    assert "height: 14px;" in trash_icon
+    assert "transform: translateY(-1px);" in trash_icon
+    remove_action = _rule(components, ".qym-item-builder .fb-rm:is(:hover, :focus-visible) {")
+    assert "background: rgba(239, 68, 68, 0.2);" in remove_action
+    assert "color: var(--error);" in remove_action
 
 
 def test_compare_cohort_metadata_breakdown_uses_user_defined_item_metadata() -> None:
@@ -1934,14 +2240,18 @@ def test_compare_cohort_metadata_breakdown_uses_user_defined_item_metadata() -> 
     assert "const preferred = ['domain', 'complexity', 'root_cause'];" not in source
 
 
-def test_compare_output_height_alignment_preserves_scroll_caps() -> None:
+def test_compare_output_height_alignment_uses_shared_responsive_scroll_cap() -> None:
     source = (DASHBOARD_DIR / "compare.html").read_text(encoding="utf-8")
+    components = (DASHBOARD_DIR / "ui_components.css").read_text(encoding="utf-8")
 
     assert ".item-run-output .output-text {\n      font-family: var(--font-mono);" in source
-    assert "max-height: 300px;" in source
     assert ".item-run-output .output-text:has(.formatted-table-grid)" in source
-    assert "const cap = el.querySelector('.formatted-table-grid') ? 640 : 300;" in source
+    output_body = _rule(components, ".qym-output-card > .output-text {")
+    assert "max-height: min(58vh, calc(var(--space-xl) * 18));" in output_body
+    assert "window.getComputedStyle(el).maxHeight" in source
+    assert "Number.isFinite(computedCap) ? computedCap : max" in source
     assert "el.style.minHeight = `${Math.min(max, cap)}px`;" in source
+    assert "const cap = el.querySelector('.formatted-table-grid') ? 640 : 300;" not in source
     assert "el.style.minHeight = `${max}px`;" not in source
 
 

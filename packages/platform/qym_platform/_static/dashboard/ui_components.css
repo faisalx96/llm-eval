@@ -2,6 +2,15 @@
    Loaded after page-local styles so component meaning, rather than route,
    determines geometry and interaction. See docs/DESIGN_LANGUAGE.md. */
 
+/* One canonical 14px stroked chevron, matching .qym-item-chevron exactly.
+   SVG background images cannot inherit CSS color, so the two encoded stroke
+   values mirror --text-muted (#9a9ab2) and --accent-primary (#00d4aa). */
+:root {
+  --qym-chevron-down-muted: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4.5 6.25 8 9.75l3.5-3.5' fill='none' stroke='%239a9ab2' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  --qym-chevron-down-accent: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4.5 6.25 8 9.75l3.5-3.5' fill='none' stroke='%2300d4aa' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  --qym-chevron-up-accent: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4.5 9.75 8 6.25l3.5 3.5' fill='none' stroke='%2300d4aa' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+
 /* 1. Selectors and inputs — approved option B: one aligned 24px density. */
 :is(
   .qym-control,
@@ -114,24 +123,70 @@
 
 :is(
   .qym-select,
+  .multi-select-btn,
   select.filter-select,
   select.toolbar-select,
   select.form-select,
   select.samples-metric-select,
+  select.qym-pagination__size,
+  select.pg-select,
   select.pg-mapping-select,
-  select.pg-mapping-key-select
+  select.pg-mapping-key-select,
+  select.shell-form-input,
+  .fb-token select
 ) {
+  --qym-select-chevron-image: var(--qym-chevron-down-muted);
   appearance: none;
   padding-left: var(--space-sm);
   padding-right: 28px;
-  background-image:
-    linear-gradient(45deg, transparent 50%, var(--text-muted) 50%),
-    linear-gradient(135deg, var(--text-muted) 50%, transparent 50%);
-  background-position:
-    calc(100% - 14px) 50%,
-    calc(100% - 10px) 50%;
+  background-image: var(--qym-select-chevron-image);
+  background-position: calc(100% - 6px) 50%;
   background-repeat: no-repeat;
-  background-size: 4px 4px, 4px 4px;
+  background-size: 14px 14px;
+}
+
+/* Every select-like control uses the same quiet-to-Qym disclosure signal.
+   Native selects expose :open; custom dropdown buttons mirror their open
+   state through aria-expanded in ui_components.js. */
+:is(
+  .qym-select,
+  .multi-select-btn,
+  select.filter-select,
+  select.toolbar-select,
+  select.form-select,
+  select.samples-metric-select,
+  select.qym-pagination__size,
+  select.pg-select,
+  select.pg-mapping-select,
+  select.pg-mapping-key-select,
+  select.shell-form-input,
+  .fb-token select
+):is(:hover, :focus-visible, :open),
+:is(.qym-select, .multi-select-btn)[aria-expanded="true"] {
+  --qym-select-chevron-image: var(--qym-chevron-down-accent);
+}
+
+:is(
+  select.qym-select,
+  select.filter-select,
+  select.toolbar-select,
+  select.form-select,
+  select.samples-metric-select,
+  select.qym-pagination__size,
+  select.pg-select,
+  select.pg-mapping-select,
+  select.pg-mapping-key-select,
+  select.shell-form-input,
+  .fb-token select
+):open,
+:is(.qym-select, .multi-select-btn)[aria-expanded="true"] {
+  --qym-select-chevron-image: var(--qym-chevron-up-accent);
+}
+
+/* The element type keeps this open-state rule level with the native-select
+   branch even when the shared selector list contains descendant selectors. */
+button:is(.qym-select, .multi-select-btn)[aria-expanded="true"] {
+  --qym-select-chevron-image: var(--qym-chevron-up-accent);
 }
 
 :is(
@@ -2464,6 +2519,9 @@
 
 .qym-output-card > .output-text {
   min-height: 250px;
+  /* Let output cards use the viewport before introducing internal scroll.
+     The token-derived ceiling keeps repeat and compare cards consistent. */
+  max-height: min(58vh, calc(var(--space-xl) * 18));
   padding: var(--space-sm);
 }
 
@@ -2800,6 +2858,32 @@
 .qym-metric-edit-action:disabled { opacity: 0.6; cursor: default; }
 
 /* Item-by-item control center — shared by run, repeat, and compare views. */
+.qym-item-section {
+  margin-bottom: var(--space-xl);
+  padding: var(--space-md);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bg-surface) 30%, transparent);
+}
+
+.qym-item-section-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-lg);
+  margin-bottom: var(--space-md);
+}
+
+.qym-item-section-head .section-title { margin: 0; }
+
+.qym-item-section-copy {
+  margin: var(--space-xs) 0 0;
+  color: var(--text-muted);
+  font-family: var(--font-sans);
+  font-size: var(--font-sm);
+  line-height: 1.4;
+}
+
 .qym-item-control-center {
   margin-bottom: 0;
   overflow: visible;
@@ -2816,7 +2900,7 @@
 
 .qym-item-query {
   display: flex;
-  flex: 0 1 680px;
+  flex: 1 1 680px;
   align-items: center;
   min-width: 0;
   gap: var(--space-xs);
@@ -2837,6 +2921,7 @@
   align-items: center;
   justify-content: flex-start;
   gap: var(--space-xs);
+  margin-left: auto;
   min-width: max-content;
 }
 
@@ -2854,6 +2939,24 @@
 }
 
 .qym-item-filter.qym-control { flex: 0 0 auto; font-weight: 650; }
+
+.qym-item-filter[aria-expanded="true"] { position: relative; }
+
+.qym-item-filter[aria-expanded="true"]::after {
+  content: "";
+  position: absolute;
+  z-index: 1;
+  top: calc(100% + 1px);
+  left: 50%;
+  width: 1px;
+  height: calc(var(--space-sm) + 1px);
+  background: linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--accent-primary) 70%, transparent),
+    var(--border-default)
+  );
+  pointer-events: none;
+}
 
 .qym-item-control-icon {
   width: 14px;
@@ -2877,8 +2980,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: var(--badge-height);
-  height: var(--badge-height);
+  min-width: var(--space-md);
+  height: var(--space-md);
   padding: 0 var(--space-xs);
   border-radius: 999px;
   background: var(--accent-primary);
@@ -2915,6 +3018,50 @@
   stroke: var(--accent-primary);
 }
 
+/* Shared chevron contract. Dropdown chevrons point down and flip up; row
+   disclosures point right and rotate toward their expanded content. Row
+   chevrons remain quiet while open and use Qym green only on hover/focus. */
+:is(
+  .breadcrumb-project-btn .project-trigger-chevron,
+  .project-trigger .project-trigger-chevron,
+  .header-user-dropdown .trigger .arrow,
+  .rseg-chev,
+  .context-section-caret,
+  .item-chevron,
+  .det-caret,
+  .samples-toggle,
+  .pg-section-chevron,
+  .tv-toggle,
+  .tv-metric-chevron,
+  .expand-btn .arrow
+) {
+  color: var(--text-muted);
+  transition-property: transform, color, background-color;
+  transition-duration: 0.15s;
+  transition-timing-function: ease;
+}
+
+.item-chevron { color: var(--text-dim); }
+
+:is(.breadcrumb-project-btn, .project-trigger):is(:hover, :focus-visible, .open) .project-trigger-chevron,
+.header-user-dropdown .trigger:is(:hover, :focus-visible) .arrow,
+.header-user-dropdown.open .trigger .arrow,
+.rseg:is(:hover, :focus-visible, .on) .rseg-chev,
+.context-section > summary:is(:hover, :focus-visible) .context-section-caret,
+.context-section[open] .context-section-caret,
+.item-header-expand:is(:hover, :focus-visible) .item-chevron,
+.det-toggle:is(:hover, :focus-within, .open) .det-caret,
+.metric-compare-row:has(> .metric-compare-trigger.active) .det-caret,
+.samples-toggle:is(:hover, :focus-visible, .open),
+.pg-section-summary:is(:hover, :focus-visible) .pg-section-chevron,
+.pg-section[open] > .pg-section-summary .pg-section-chevron,
+.tv-toggle:is(:hover, :focus-visible, .open),
+.tv-metric-head:is(:hover, :focus-visible) .tv-metric-chevron,
+.tv-metric-card.expanded .tv-metric-chevron,
+.expand-btn:is(:hover, :focus-visible, .expanded) .arrow {
+  color: var(--accent-primary);
+}
+
 .qym-item-count {
   display: inline-flex;
   align-items: center;
@@ -2930,8 +3077,128 @@
 
 .qym-item-count .count-num { color: var(--accent-primary); font-weight: 700; }
 
+/* Item summary metric grid. Each page supplies a shared column template via
+   QymUIComponents.alignMetricColumns(), so repeated values scan vertically
+   without turning the full item row into a rigid table. */
+.qym-item-metric-grid {
+  display: inline-grid;
+  grid-auto-flow: column;
+  grid-auto-columns: max-content;
+  grid-template-columns: var(--qym-item-metric-columns, none);
+  justify-content: flex-end;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+.qym-item-metric-cell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 5px;
+  min-width: 0;
+  padding: 2px 8px;
+  border-radius: var(--control-radius);
+  background: color-mix(in srgb, var(--text-primary) 6%, transparent);
+  box-shadow: none;
+  white-space: nowrap;
+}
+
+.qym-item-metric-cell--selected {
+  background: color-mix(in srgb, var(--text-primary) 9%, transparent);
+}
+
+.qym-item-metric-cell--empty { visibility: hidden; }
+
+@media (max-width: 760px) {
+  .qym-item-metric-grid {
+    display: inline-flex;
+    flex-wrap: wrap;
+  }
+
+  .qym-item-metric-cell { justify-content: flex-start; }
+  .qym-item-metric-cell--empty { display: none; }
+}
+
 .qym-item-clear { visibility: visible; }
 .qym-item-clear:not(.visible) { display: none; }
+
+.qym-threshold-control {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-sm);
+  min-width: calc(var(--space-xl) * 5);
+}
+
+.qym-threshold-slider {
+  --qym-range-value: 80%;
+  appearance: none;
+  flex: 1 1 auto;
+  min-width: calc(var(--space-xl) * 4);
+  height: var(--space-xs);
+  margin: 0;
+  border: 0;
+  border-radius: 999px;
+  background: linear-gradient(
+    to right,
+    var(--accent-primary) 0,
+    var(--accent-primary) var(--qym-range-value),
+    var(--border-strong) var(--qym-range-value),
+    var(--border-strong) 100%
+  );
+  box-shadow: inset 0 0 0 1px var(--border-default);
+  cursor: pointer;
+}
+
+.qym-threshold-slider::-webkit-slider-thumb {
+  appearance: none;
+  width: var(--space-md);
+  height: var(--space-md);
+  border: 2px solid var(--accent-primary);
+  border-radius: 50%;
+  background: var(--bg-elevated);
+  box-shadow: none;
+  cursor: grab;
+}
+
+.qym-threshold-slider::-webkit-slider-thumb:active { cursor: grabbing; }
+
+.qym-threshold-slider::-moz-range-track {
+  height: var(--space-xs);
+  border-radius: 999px;
+  background: var(--border-strong);
+  box-shadow: inset 0 0 0 1px var(--border-default);
+}
+
+.qym-threshold-slider::-moz-range-progress {
+  height: var(--space-xs);
+  border-radius: 999px;
+  background: var(--accent-primary);
+}
+
+.qym-threshold-slider::-moz-range-thumb {
+  width: var(--space-md);
+  height: var(--space-md);
+  border: 2px solid var(--accent-primary);
+  border-radius: 50%;
+  background: var(--bg-elevated);
+  box-shadow: none;
+  cursor: grab;
+}
+
+.qym-threshold-slider:focus-visible {
+  outline: 1px solid var(--accent-primary);
+  outline-offset: var(--space-xs);
+}
+
+.qym-threshold-value {
+  min-width: calc(var(--space-xl) + var(--space-sm));
+  color: var(--accent-primary);
+  font-family: var(--font-mono);
+  font-size: var(--font-sm);
+  font-weight: 650;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
 
 .qym-item-popover-host {
   position: relative;
@@ -2981,34 +3248,200 @@
 .qym-item-popover .pop-line > .multi-select-wrapper { min-width: 130px; }
 
 .qym-item-builder {
+  position: relative;
   margin-top: var(--space-sm);
-  padding: var(--space-sm) var(--space-md) var(--space-md);
-  border-top: 1px solid var(--border-subtle);
-  border-bottom: 1px solid var(--border-subtle);
-  border-radius: 0;
-  background: transparent;
+  padding: var(--space-md);
+  border: 1px solid var(--border-default);
+  border-radius: var(--dropdown-radius);
+  background: color-mix(in srgb, var(--bg-elevated) 28%, var(--bg-base));
+  box-shadow: 0 10px 28px color-mix(in srgb, var(--bg-void) 26%, transparent);
+  animation: qym-item-builder-in 0.16s ease;
 }
 
 .qym-item-builder[hidden] { display: none; }
 
-.qym-item-results { margin-top: var(--space-md); }
-
-.qym-item-result-meter {
-  height: 2px;
-  overflow: hidden;
-  background: var(--border-subtle);
+@keyframes qym-item-builder-in {
+  from { opacity: 0; transform: translateY(-3px); }
 }
 
-.qym-item-result-meter > i {
-  display: block;
-  width: 100%;
-  height: 100%;
-  background: linear-gradient(
-    90deg,
-    var(--accent-primary),
-    color-mix(in srgb, var(--accent-primary) 25%, transparent)
-  );
-  transition: width 0.25s ease;
+/* Shared item-filter query builder. Run, repeat, and compare supply their own
+   field registries while keeping one visual and interaction grammar. */
+.qym-item-builder .fb-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: 2px 2px var(--space-sm);
+  margin-bottom: var(--space-sm);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.qym-item-builder .fb-title {
+  color: var(--text-muted);
+  font-size: var(--font-sm);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.qym-item-builder .fb-count {
+  color: var(--accent-primary);
+  font-family: var(--font-mono);
+  font-size: var(--font-sm);
+  font-weight: 700;
+}
+
+.qym-item-builder .fb-grp { padding: 2px 0; margin: var(--space-xs) 0; }
+
+.qym-item-builder .fb-grp .fb-grp {
+  margin: var(--space-sm) 0 var(--space-sm) var(--space-md);
+  padding: var(--space-sm);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--dropdown-radius);
+  background: color-mix(in srgb, var(--bg-elevated) 28%, var(--bg-surface));
+}
+
+.qym-item-builder .fb-grp-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  margin: 0 0 var(--space-xs);
+}
+
+.qym-item-builder .fb-conj { flex: 0 0 auto; }
+
+.qym-item-builder .fb-grp-lab { color: var(--text-muted); font-size: var(--font-sm); }
+.qym-item-builder .fb-cond {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-xs);
+  margin: var(--space-xs) 0;
+}
+
+.qym-item-builder .fb-token {
+  display: inline-flex;
+  align-items: stretch;
+  max-width: 100%;
+  overflow: hidden;
+  border: 1px solid var(--border-default);
+  border-radius: var(--control-radius);
+  background: var(--bg-elevated);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.qym-item-builder .fb-token:hover { border-color: var(--border-strong); }
+.qym-item-builder .fb-token:focus-within {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent-primary) 25%, transparent);
+}
+
+.qym-item-builder .fb-token select,
+.qym-item-builder .fb-token input[type="number"],
+.qym-item-builder .fb-token input[type="text"] {
+  align-self: stretch;
+  min-height: var(--control-height);
+  height: auto;
+  padding: 0 var(--space-sm);
+  border: 0;
+  outline: 0;
+  background-color: transparent;
+  color: var(--text-primary);
+  box-shadow: none;
+  font-family: var(--font-sans);
+  font-size: var(--font-sm);
+  transition: background 0.12s;
+}
+
+/* Explicit semantic selectors outrank the controls' border reset. */
+.qym-item-builder .fb-token > [data-fb-k="oper"],
+.qym-item-builder .fb-token > [data-fb-k="value"],
+.qym-item-builder .fb-token > .fb-vchips {
+  border-left: 1px solid var(--border-strong);
+}
+
+.qym-item-builder .fb-token select:hover,
+.qym-item-builder .fb-token input:hover { background-color: var(--bg-hover); }
+.qym-item-builder .fb-token select {
+  padding-right: calc(var(--space-lg) + var(--space-xs));
+  padding-left: var(--space-sm);
+}
+.qym-item-builder .fb-token select[data-fb-k="field"] { min-width: 150px; font-weight: 600; }
+.qym-item-builder .fb-token select[data-fb-k="oper"] {
+  flex: 0 0 auto;
+  min-width: 76px;
+  color: var(--text-secondary);
+}
+.qym-item-builder .fb-token select[data-fb-k="oper"].fb-oper-compact {
+  width: calc(var(--space-xl) + var(--space-lg));
+  min-width: calc(var(--space-xl) + var(--space-lg));
+  max-width: calc(var(--space-xl) + var(--space-lg));
+}
+.qym-item-builder .fb-token select[data-fb-k="value"] {
+  flex: 0 0 auto;
+  min-width: calc(var(--space-xl) + var(--space-xl) + var(--space-xl));
+}
+.qym-item-builder .fb-token input[type="number"] {
+  flex: 0 0 calc(var(--space-xl) + var(--space-xl) + var(--space-xl));
+  width: calc(var(--space-xl) + var(--space-xl) + var(--space-xl));
+  font-family: var(--font-mono);
+}
+.qym-item-builder .fb-token input[type="text"] { width: 150px; }
+.qym-item-builder .fb-token select.fb-val-passed { color: var(--score-5); font-weight: 600; }
+.qym-item-builder .fb-token select.fb-val-failed { color: var(--score-1); font-weight: 600; }
+
+.qym-item-builder .fb-vchips {
+  display: inline-flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-xs);
+  min-width: 0;
+  padding: var(--space-xs);
+}
+
+.qym-item-builder .fb-vchip {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.qym-item-builder .fb-rm {
+  width: var(--control-height);
+  min-width: var(--control-height);
+  height: var(--control-height);
+  padding: 0;
+  background: rgba(239, 68, 68, 0.1);
+  color: var(--error);
+  opacity: 1;
+  transition: opacity 0.12s, color 0.12s, background 0.12s;
+}
+
+/* Exact run-delete glyph geometry: a 14px semantic icon in the shared
+   24px action target. */
+.qym-item-builder .qym-filter-trash-icon {
+  width: 14px;
+  height: 14px;
+  transform: translateY(-1px);
+}
+
+.qym-item-builder .fb-rm:is(:hover, :focus-visible) {
+  background: rgba(239, 68, 68, 0.2);
+  color: var(--error);
+  box-shadow: none;
+}
+
+.qym-item-builder .fb-add-row {
+  display: flex;
+  gap: var(--space-xs);
+  margin-top: var(--space-sm);
+}
+.qym-item-builder .fb-add {
+  min-width: max-content;
+}
+
+.qym-item-results {
+  margin-top: var(--space-md);
+  padding-top: var(--space-md);
+  border-top: 1px solid var(--border-subtle);
 }
 
 .qym-item-results > .items-grid {
@@ -3031,8 +3464,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .qym-item-chevron,
-  .qym-item-result-meter > i { transition: none; }
+  .qym-item-chevron { transition: none; }
+  .qym-item-builder { animation: none; }
 }
 
 @media (max-width: 760px) {

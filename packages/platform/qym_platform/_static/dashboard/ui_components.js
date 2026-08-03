@@ -112,6 +112,38 @@
     }
   }
 
+  function alignMetricColumns(root, options) {
+    if (!root || !root.querySelectorAll) return;
+    options = options || {};
+    var groupSelector = options.groupSelector || '[data-qym-metric-grid]';
+    var cellSelector = options.cellSelector || '[data-qym-metric-column]';
+    var columnAttribute = options.columnAttribute || 'data-qym-metric-column';
+    var groups = Array.from(root.querySelectorAll(groupSelector));
+    if (!groups.length) return;
+
+    groups.forEach(function (group) {
+      group.style.removeProperty('--qym-item-metric-columns');
+    });
+
+    var widths = [];
+    groups.forEach(function (group) {
+      group.querySelectorAll(cellSelector).forEach(function (cell) {
+        var column = Number.parseInt(cell.getAttribute(columnAttribute), 10);
+        if (!Number.isFinite(column) || column < 0) return;
+        var measured = Math.ceil(cell.getBoundingClientRect().width);
+        widths[column] = Math.max(widths[column] || 0, measured);
+      });
+    });
+    if (!widths.length) return;
+
+    var template = widths.map(function (width) {
+      return Math.max(1, width || 0) + 'px';
+    }).join(' ');
+    groups.forEach(function (group) {
+      group.style.setProperty('--qym-item-metric-columns', template);
+    });
+  }
+
   function setupScrollMirror(mirror) {
     if (!mirror || mirror.dataset.qymScrollMirrorReady === 'true') return;
     var targetId = mirror.getAttribute('data-qym-scroll-mirror-for');
@@ -615,6 +647,7 @@
   }
 
   window.QymUIComponents = {
+    alignMetricColumns: alignMetricColumns,
     closeHelpMarkers: closeHelpMarkers,
     refresh: refresh,
     renderPagination: renderPagination,
