@@ -2964,27 +2964,51 @@ body.chart-col-resize-active {
   white-space: nowrap;
 }
 
-.run-analysis-link {
+/* ANALYSIS column: an analyzed run shows its distinct root-cause count as a
+   purple chip; an eligible unanalyzed run shows a quiet static Analyze
+   action. Purple stays exclusive to AI surfaces. */
+.run-analysis-chip,
+.run-analysis-start {
   display: inline-flex;
-  min-height: 28px;
   align-items: center;
-  padding: 0 var(--space-sm);
-  border: 1px solid var(--border-default);
-  border-radius: 6px;
-  color: var(--accent-primary);
+  gap: 5px;
+  min-height: var(--badge-height);
+  padding: 0 10px;
+  border-radius: 999px;
   font-size: var(--font-sm);
   font-weight: 600;
+  line-height: 1;
   text-decoration: none;
+  white-space: nowrap;
 }
-
-.run-analysis-link:hover {
-  border-color: var(--accent-primary);
+.run-analysis-chip svg,
+.run-analysis-start svg {
+  width: 11px;
+  height: 11px;
+  flex-shrink: 0;
+}
+.run-analysis-chip {
+  color: var(--accent-tertiary-soft);
+  border: 1px solid rgba(168, 85, 247, 0.4);
+  background: rgba(168, 85, 247, 0.09);
+}
+.run-analysis-chip:is(:hover, :focus-visible) {
+  background: rgba(168, 85, 247, 0.18);
+}
+.run-analysis-start {
+  color: var(--text-muted);
+  border: 1px solid var(--border-default);
+  background: transparent;
+}
+.run-analysis-start:is(:hover, :focus-visible) {
+  color: var(--accent-tertiary-soft);
+  border-color: rgba(168, 85, 247, 0.4);
   background: var(--bg-hover);
 }
-
-.run-analysis-unavailable {
-  color: var(--text-muted);
-  font-size: var(--font-sm);
+.run-analysis-chip:focus-visible,
+.run-analysis-start:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 1px;
 }
 
 .col-version {

@@ -2791,3 +2791,35 @@ def test_shell_and_run_detail_normalize_trailing_slashes_before_route_parsing() 
     assert "const path = rawPath.length > 1 ? rawPath.replace(/\\/+$/, '') : rawPath;" in shell
     assert "const pathname = rawPathname.length > 1 ? rawPathname.replace(/\\/+$/, '') : rawPathname;" in shell
     assert "const path = rawPath.length > 1 ? rawPath.replace(/\\/+$/, '') : rawPath;" in run
+
+
+def test_runs_table_analysis_column_shows_state_or_static_action() -> None:
+    """The ANALYSIS column carries state: analyzed runs show a root-cause
+    count chip, eligible runs a static Analyze action, live runs a dash."""
+    index = (DASHBOARD_DIR / "index.html").read_text(encoding="utf-8")
+    dashboard_js = (DASHBOARD_DIR / "dashboard.js").read_text(encoding="utf-8")
+    styles = (DASHBOARD_DIR / "dashboard.css").read_text(encoding="utf-8")
+    runs_api = RUNS_API.read_text(encoding="utf-8")
+
+    # The column sits after the dynamic metric columns and before latency.
+    assert '<th class="col-analysis">ANALYSIS</th>' in index
+    assert index.index("col-analysis") > index.index("col-version")
+    assert index.index("col-analysis") < index.index("col-latency")
+    assert "AUTO-ANALYSIS" not in index
+    # Dynamic metric columns anchor on the analysis header.
+    assert "headerRow.querySelector('.col-analysis') || latencyHeader" in dashboard_js
+
+    # Cell renderer: chip for analyzed, static action for eligible, dash for live.
+    assert "function renderAnalysisCell(run, status)" in dashboard_js
+    assert "run.analysis_cause_count" in dashboard_js
+    assert 'class="run-analysis-chip"' in dashboard_js
+    assert 'class="run-analysis-start"' in dashboard_js
+    assert "run-analysis-link" not in dashboard_js
+
+    # Styling exists for both states; purple stays the AI accent.
+    assert ".run-analysis-chip" in styles
+    assert ".run-analysis-start" in styles
+
+    # The runs list API exposes the distinct root-cause count per run.
+    assert '"analysis_cause_count"' in runs_api
+    assert "metric_analyses" in runs_api

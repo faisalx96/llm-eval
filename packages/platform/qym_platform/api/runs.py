@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
-from sqlalchemy import case, func, or_
+from sqlalchemy import Text, case, cast, func, or_
 from sqlalchemy.orm import Session
 
 from qym_platform.auth import Principal, require_ui_principal
@@ -1176,6 +1176,33 @@ def legacy_list_runs(
     approvals = db.query(Approval).filter(Approval.run_id.in_(run_ids)).all()
     approval_map = {a.run_id: a for a in approvals}
 
+    # --- Batch query: distinct root-cause counts per run ---
+    # Powers the runs-table ANALYSIS column. The LIKE prefilter keeps the scan
+    # to items that carry any analysis data; cause extraction is done in Python
+    # so the JSON handling is identical on PostgreSQL and SQLite.
+    analysis_rows = (
+        db.query(RunItem.run_id, RunItem.item_metadata)
+        .filter(
+            RunItem.run_id.in_(run_ids),
+            cast(RunItem.item_metadata, Text).like('%"root_cause"%'),
+        )
+        .all()
+    )
+    analysis_causes: Dict[str, set] = {}
+    for row in analysis_rows:
+        md = row.item_metadata if isinstance(row.item_metadata, dict) else {}
+        causes = analysis_causes.setdefault(row.run_id, set())
+        legacy = str(md.get("root_cause") or "").strip()
+        if legacy:
+            causes.add(legacy)
+        metric_analyses = md.get("metric_analyses")
+        if isinstance(metric_analyses, dict):
+            for entry in metric_analyses.values():
+                if isinstance(entry, dict):
+                    cause = str(entry.get("root_cause") or "").strip()
+                    if cause:
+                        causes.add(cause)
+
     # --- Batch query: all referenced users ---
     user_ids = {r.owner_user_id for r in runs}
     user_ids |= {a.decision_by_user_id for a in approvals if a.decision_by_user_id}
@@ -1306,6 +1333,7 @@ def legacy_list_runs(
             "git_commit": r.run_config.get("git_commit") if isinstance(r.run_config, dict) else None,
             "owner": owner_info,
             "approval": approval_info,
+            "analysis_cause_count": len(analysis_causes.get(r.id, ())),
             "trace_stats": r.run_metadata.get("trace_stats") if isinstance(r.run_metadata, dict) else None,
             "product_eval": r.run_metadata.get("product_eval") if isinstance(r.run_metadata, dict) else None,
         }

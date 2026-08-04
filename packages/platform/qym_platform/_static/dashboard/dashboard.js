@@ -2901,27 +2901,50 @@
   // RENDERING: TABLE VIEW
   // ═══════════════════════════════════════════════════
 
+  const ANALYSIS_SPARK_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 3l1.2 3.3L16.5 7.5l-3.3 1.2L12 12l-1.2-3.3-3.3-1.2 3.3-1.2L12 3z"></path></svg>';
+
+  // ANALYSIS column cell: a purple chip with the distinct root-cause count
+  // when the run has analysis data, a static quiet Analyze action when the
+  // run is eligible, and a dash while the run is still live.
+  function renderAnalysisCell(run, status) {
+    const causeCount = Number(run.analysis_cause_count || 0);
+    const analyzerHref = projectUrl(
+      state.currentProject && state.currentProject.slug,
+      `analysis?run=${encodeURIComponent(run.run_id)}`,
+    );
+    if (causeCount > 0) {
+      const label = `${causeCount} cause${causeCount === 1 ? '' : 's'}`;
+      return `<a class="run-analysis-chip" href="${analyzerHref}" title="${label} found — open auto-analysis" aria-label="${label} found — open auto-analysis">${ANALYSIS_SPARK_SVG}${label}</a>`;
+    }
+    if (status !== 'RUNNING' && status !== 'PENDING') {
+      return `<a class="run-analysis-start" href="${analyzerHref}" title="Run auto-analysis" aria-label="Run auto-analysis">${ANALYSIS_SPARK_SVG}Analyze</a>`;
+    }
+    return '<span class="metric-na">—</span>';
+  }
+
   function updateTableHeader(metricsToShow) {
     // Update the table header to include dynamic metric columns
     const headerRow = el('table-header-row');
     if (!headerRow) return;
 
-    // Find the latency columns (insert metric columns before them)
+    // Find the anchor columns (metric columns insert before ANALYSIS, which
+    // sits right before the latency pair)
     const latencyHeader = headerRow.querySelector('.col-latency');
     const medianLatencyHeader = headerRow.querySelector('.col-latency-median');
     if (!latencyHeader) return;
+    const metricAnchor = headerRow.querySelector('.col-analysis') || latencyHeader;
 
     // Remove any existing dynamic metric columns and trace columns
     headerRow.querySelectorAll('.col-metric-dynamic, .col-trace-separator, .col-trace-metric').forEach(col => col.remove());
 
-    // Insert metric columns before LATENCY column
+    // Insert metric columns before the ANALYSIS column
     metricsToShow.forEach(metric => {
       const th = document.createElement('th');
       th.className = 'col-metric-dynamic sortable';
       th.dataset.sort = `metric-${metric}`;
       th.textContent = metric;
       th.title = `Sort by ${metric}`;
-      headerRow.insertBefore(th, latencyHeader);
+      headerRow.insertBefore(th, metricAnchor);
     });
 
     // Insert the ops separator before latency columns and trace metric columns after them
@@ -3207,18 +3230,13 @@
               ${renderModelLabelForRun(run)}
             </span>
           </td>
-          <td class="col-analysis" onclick="event.stopPropagation()">
-            ${status !== 'RUNNING' && status !== 'PENDING'
-              ? `<a class="run-analysis-link" href="${projectUrl(state.currentProject && state.currentProject.slug, `analysis?run=${encodeURIComponent(run.run_id)}`)}">Analyze</a>`
-              : '<span class="run-analysis-unavailable">Not ready</span>'}
-          </td>
           <td class="col-dataset">
             <span class="tag qym-tag" title="${run.dataset_name}">${truncateText(run.dataset_name, 25)}${window.QymShell ? QymShell.datasetVersionInline(run.dataset_version) + QymShell.datasetAliasTags(run.dataset_aliases) : ''}</span>
           </td>
           <td class="col-version">
             ${run.git_commit ? `<span class="version-badge qym-tag" title="${run.git_branch ? run.git_branch + '/' : ''}${run.git_commit}">${run.git_branch ? run.git_branch + '/' : ''}${run.git_commit}</span>` : '<span style="color:var(--text-muted)">—</span>'}
           </td>
-          ${metricCells}${visibleTraceMetrics.length > 0 ? '<td class="col-trace-separator"></td>' : ''}
+          ${metricCells}<td class="col-analysis" onclick="event.stopPropagation()">${renderAnalysisCell(run, status)}</td>${visibleTraceMetrics.length > 0 ? '<td class="col-trace-separator"></td>' : ''}
           ${visibleSystemColumns.has('latency') ? `<td class="col-latency">
             <span class="latency-value">${run.avg_latency_ms ? formatLatency(run.avg_latency_ms) : '—'}</span>
           </td>` : ''}
@@ -3332,7 +3350,7 @@
         });
       }
 
-      const analysisLink = tr.querySelector('.run-analysis-link');
+      const analysisLink = tr.querySelector('.run-analysis-chip, .run-analysis-start');
       if (analysisLink) {
         analysisLink.addEventListener('click', (e) => {
           e.preventDefault();
@@ -3679,10 +3697,9 @@
           <td class="col-run"><span class="pass-indent"></span><span class="pass-member-id">${passLabel}</span>${passMeta ? `<span class="pass-member-items">${passMeta}</span>` : ''}</td>
           ${inherit('col-task')}
           ${inherit('col-model')}
-          ${inherit('col-analysis')}
           ${inherit('col-dataset')}
           ${inherit('col-version')}
-          ${metricCells}${visibleTraceMetrics.length > 0 ? '<td class="col-trace-separator"></td>' : ''}
+          ${metricCells}${inherit('col-analysis')}${visibleTraceMetrics.length > 0 ? '<td class="col-trace-separator"></td>' : ''}
           ${visibleSystemColumns.has('latency') ? latencyCell('col-latency', pass.avg_latency_ms, avgLatencyWinners) : ''}
           ${visibleSystemColumns.has('median-latency') ? latencyCell('col-latency-median', pass.median_latency_ms, medianLatencyWinners) : ''}
           ${visibleTraceMetrics.map(tm => renderTraceMetricTableCell(tm, pass.trace_stats?.[tm.key])).join('')}
