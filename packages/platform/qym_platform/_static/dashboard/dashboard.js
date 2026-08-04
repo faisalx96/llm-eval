@@ -2901,11 +2901,14 @@
   // RENDERING: TABLE VIEW
   // ═══════════════════════════════════════════════════
 
-  const ANALYSIS_SPARK_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 3l1.2 3.3L16.5 7.5l-3.3 1.2L12 12l-1.2-3.3-3.3-1.2 3.3-1.2L12 3z"></path></svg>';
+  // The three-star AI cluster: concave four-point sparkles in three sizes on
+  // a rising diagonal. The two smaller sparks twinkle via CSS on hover.
+  const ANALYSIS_SPARK_ICON = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false"><path class="spark-main" d="M8.3 2.8C8.3 6.4 11.9 10 15.5 10C11.9 10 8.3 13.6 8.3 17.2C8.3 13.6 4.7 10 1.1 10C4.7 10 8.3 6.4 8.3 2.8Z"></path><path class="spark-minor" d="M18.3 9C18.3 11.5 20.8 14 23.3 14C20.8 14 18.3 16.5 18.3 19C18.3 16.5 15.8 14 13.3 14C15.8 14 18.3 11.5 18.3 9Z"></path><path class="spark-third" d="M18.3 2.1C18.3 3.45 19.65 4.8 21 4.8C19.65 4.8 18.3 6.15 18.3 7.5C18.3 6.15 16.95 4.8 15.6 4.8C16.95 4.8 18.3 3.45 18.3 2.1Z"></path></svg>';
 
   // ANALYSIS column cell: a purple chip with the distinct root-cause count
-  // when the run has analysis data, a static quiet Analyze action when the
-  // run is eligible, and a dash while the run is still live.
+  // when the run has analysis data, a static Analyze action styled like the
+  // run-detail inline actions when the run is eligible, and a dash while the
+  // run is still live.
   function renderAnalysisCell(run, status) {
     const causeCount = Number(run.analysis_cause_count || 0);
     const analyzerHref = projectUrl(
@@ -2914,10 +2917,10 @@
     );
     if (causeCount > 0) {
       const label = `${causeCount} cause${causeCount === 1 ? '' : 's'}`;
-      return `<a class="run-analysis-chip" href="${analyzerHref}" title="${label} found — open auto-analysis" aria-label="${label} found — open auto-analysis">${ANALYSIS_SPARK_SVG}${label}</a>`;
+      return `<a class="run-analysis-chip" href="${analyzerHref}" title="${label} found — open auto-analysis" aria-label="${label} found — open auto-analysis">${ANALYSIS_SPARK_ICON}${label}</a>`;
     }
     if (status !== 'RUNNING' && status !== 'PENDING') {
-      return `<a class="run-analysis-start" href="${analyzerHref}" title="Run auto-analysis" aria-label="Run auto-analysis">${ANALYSIS_SPARK_SVG}Analyze</a>`;
+      return `<a class="run-analysis-start" href="${analyzerHref}" title="Run auto-analysis" aria-label="Run auto-analysis">${ANALYSIS_SPARK_ICON}Analyze</a>`;
     }
     return '<span class="metric-na">—</span>';
   }
@@ -2927,12 +2930,10 @@
     const headerRow = el('table-header-row');
     if (!headerRow) return;
 
-    // Find the anchor columns (metric columns insert before ANALYSIS, which
-    // sits right before the latency pair)
+    // Find the latency columns (insert metric columns before them)
     const latencyHeader = headerRow.querySelector('.col-latency');
     const medianLatencyHeader = headerRow.querySelector('.col-latency-median');
     if (!latencyHeader) return;
-    const metricAnchor = headerRow.querySelector('.col-analysis') || latencyHeader;
 
     // Remove any existing dynamic metric columns and trace columns
     headerRow.querySelectorAll('.col-metric-dynamic, .col-trace-separator, .col-trace-metric').forEach(col => col.remove());
@@ -2944,7 +2945,7 @@
       th.dataset.sort = `metric-${metric}`;
       th.textContent = metric;
       th.title = `Sort by ${metric}`;
-      headerRow.insertBefore(th, metricAnchor);
+      headerRow.insertBefore(th, latencyHeader);
     });
 
     // Insert the ops separator before latency columns and trace metric columns after them
@@ -3231,12 +3232,13 @@
             </span>
           </td>
           <td class="col-dataset">
-            <span class="tag qym-tag" title="${run.dataset_name}">${truncateText(run.dataset_name, 25)}${window.QymShell ? QymShell.datasetVersionInline(run.dataset_version) + QymShell.datasetAliasTags(run.dataset_aliases) : ''}</span>
+            <span class="tag qym-tag runs-dataset-tag" title="${run.dataset_name}">${truncateText(run.dataset_name, 25)}${window.QymShell ? QymShell.datasetVersionInline(run.dataset_version) + QymShell.datasetAliasTags(run.dataset_aliases) : ''}</span>
           </td>
+          <td class="col-analysis" onclick="event.stopPropagation()">${renderAnalysisCell(run, status)}</td>
           <td class="col-version">
             ${run.git_commit ? `<span class="version-badge qym-tag" title="${run.git_branch ? run.git_branch + '/' : ''}${run.git_commit}">${run.git_branch ? run.git_branch + '/' : ''}${run.git_commit}</span>` : '<span style="color:var(--text-muted)">—</span>'}
           </td>
-          ${metricCells}<td class="col-analysis" onclick="event.stopPropagation()">${renderAnalysisCell(run, status)}</td>${visibleTraceMetrics.length > 0 ? '<td class="col-trace-separator"></td>' : ''}
+          ${metricCells}${visibleTraceMetrics.length > 0 ? '<td class="col-trace-separator"></td>' : ''}
           ${visibleSystemColumns.has('latency') ? `<td class="col-latency">
             <span class="latency-value">${run.avg_latency_ms ? formatLatency(run.avg_latency_ms) : '—'}</span>
           </td>` : ''}
@@ -3698,8 +3700,9 @@
           ${inherit('col-task')}
           ${inherit('col-model')}
           ${inherit('col-dataset')}
+          ${inherit('col-analysis')}
           ${inherit('col-version')}
-          ${metricCells}${inherit('col-analysis')}${visibleTraceMetrics.length > 0 ? '<td class="col-trace-separator"></td>' : ''}
+          ${metricCells}${visibleTraceMetrics.length > 0 ? '<td class="col-trace-separator"></td>' : ''}
           ${visibleSystemColumns.has('latency') ? latencyCell('col-latency', pass.avg_latency_ms, avgLatencyWinners) : ''}
           ${visibleSystemColumns.has('median-latency') ? latencyCell('col-latency-median', pass.median_latency_ms, medianLatencyWinners) : ''}
           ${visibleTraceMetrics.map(tm => renderTraceMetricTableCell(tm, pass.trace_stats?.[tm.key])).join('')}

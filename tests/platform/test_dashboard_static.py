@@ -2801,19 +2801,21 @@ def test_runs_table_analysis_column_shows_state_or_static_action() -> None:
     styles = (DASHBOARD_DIR / "dashboard.css").read_text(encoding="utf-8")
     runs_api = RUNS_API.read_text(encoding="utf-8")
 
-    # The column sits after the dynamic metric columns and before latency.
+    # The column sits between DATASET and VERSION, early enough to see
+    # without horizontal scrolling.
     assert '<th class="col-analysis">ANALYSIS</th>' in index
-    assert index.index("col-analysis") > index.index("col-version")
-    assert index.index("col-analysis") < index.index("col-latency")
+    assert index.index("col-analysis") > index.index("col-dataset")
+    assert index.index("col-analysis") < index.index("col-version")
     assert "AUTO-ANALYSIS" not in index
-    # Dynamic metric columns anchor on the analysis header.
-    assert "headerRow.querySelector('.col-analysis') || latencyHeader" in dashboard_js
 
-    # Cell renderer: chip for analyzed, static action for eligible, dash for live.
+    # Cell renderer: chip for analyzed, static action for eligible, dash for
+    # live. The action mirrors the run-detail Auto-Analyze recipe at table
+    # scale and carries the sparkle icon.
     assert "function renderAnalysisCell(run, status)" in dashboard_js
     assert "run.analysis_cause_count" in dashboard_js
     assert 'class="run-analysis-chip"' in dashboard_js
     assert 'class="run-analysis-start"' in dashboard_js
+    assert "ANALYSIS_SPARK_ICON" in dashboard_js
     assert "run-analysis-link" not in dashboard_js
 
     # Styling exists for both states; purple stays the AI accent.
