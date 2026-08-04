@@ -21,14 +21,21 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.add_column(
-        "run_item_pass_scores",
-        sa.Column("meta", sa.JSON(), nullable=True),
-    )
-    op.add_column(
-        "run_item_pass_scores",
-        sa.Column("explanation", sa.Text(), nullable=True),
-    )
+    # Databases migrated before the analyzer-branch merge already ran this
+    # change under the retired revision id 0027_pass_score_meta, so both
+    # columns may exist.
+    inspector = sa.inspect(op.get_bind())
+    existing = {c["name"] for c in inspector.get_columns("run_item_pass_scores")}
+    if "meta" not in existing:
+        op.add_column(
+            "run_item_pass_scores",
+            sa.Column("meta", sa.JSON(), nullable=True),
+        )
+    if "explanation" not in existing:
+        op.add_column(
+            "run_item_pass_scores",
+            sa.Column("explanation", sa.Text(), nullable=True),
+        )
 
 
 def downgrade() -> None:
