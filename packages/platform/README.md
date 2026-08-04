@@ -11,6 +11,7 @@
 - project dashboards for runs, charts, models, reviews, and datasets
 - live and historical run details, traces, repeat-pass analysis, and exports
 - human review, approval workflows, corrections, and AI-assisted analysis
+- project-scoped, metric-aware AI analysis with versioned rules and document context
 - versioned datasets with aliases, lineage, comparisons, and item history
 - project API keys and encrypted project LLM connections
 - SDK ingestion and a product-evaluation API
@@ -100,6 +101,7 @@ Settings are read from environment variables or `.env`.
 | `QYM_HIDDEN_TASKS` | empty | Comma-separated task names hidden from run listings. |
 | `QYM_RUN_STALE_TIMEOUT_SECONDS` | `60` | Seconds without events before a viewed `RUNNING` run becomes `STOPPED` with reason `lease_timeout`; minimum `5`. |
 | `QYM_LLM_CONFIG_ENCRYPTION_KEY` | empty | Fernet key required before storing project LLM credentials. |
+| `QYM_ALLOW_PRIVATE_LLM_BASE_URLS` | `false` | Allow trusted private or local LLM endpoints; keep `false` in shared deployments. |
 | `QYM_PLATFORM_HOST` | `0.0.0.0` | Bind host used by the `qym-platform` command. |
 | `QYM_PLATFORM_PORT` | `8000` | Bind port used by the `qym-platform` command. |
 
@@ -159,7 +161,7 @@ Keys are bound to one project. The stored `scopes` field is descriptive metadata
 
 ### Project LLM Connections
 
-Project members configure OpenAI-compatible connections under **Project Settings → LLM Connections**. Connections can be tested and one is selected as the project default for AI analysis. `QYM_LLM_CONFIG_ENCRYPTION_KEY` must be configured before an API key can be stored; secrets are encrypted and never returned by the API.
+Project members configure OpenAI-compatible connections under **Project Settings → LLM Connections**. Connections can be tested, one is selected as the project default for AI analysis, and a different connection can be chosen per analyzer request. `QYM_LLM_CONFIG_ENCRYPTION_KEY` must be configured before an API key can be stored; secrets are encrypted and never returned by the API.
 
 ## Runs and Reviews
 
@@ -234,4 +236,5 @@ Parsed records are written to PostgreSQL; source files are not retained as perma
 - [Platform User Guide](docs/USER_GUIDE.md)
 - [Product Evaluation API Guide](docs/PRODUCT_EVAL_API_GUIDE.md)
 - [Product Evaluation Client Guide](docs/PRODUCT_EVAL_API_CLIENT_GUIDE.md)
+- [LLM analyzer branch changes](../../docs/BRANCH_CHANGES_LLM_ANALYZER.md)
 - [SDK README](../sdk/README.md)

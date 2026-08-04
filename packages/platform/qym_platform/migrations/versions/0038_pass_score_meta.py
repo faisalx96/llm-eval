@@ -5,8 +5,8 @@ only stored the number and a label — so the UI could not show why pass 2
 scored 0.60 next to why pass 4 scored 1.00. Mirrors RunItemScore's
 meta/explanation columns at pass granularity.
 
-Revision ID: 0027_pass_score_meta
-Revises: 0026_run_metric_analyses
+Revision ID: 0038_pass_score_meta
+Revises: 0037_remove_project_desc
 Create Date: 2026-07-29
 """
 
@@ -14,8 +14,8 @@ from alembic import op
 import sqlalchemy as sa
 
 
-revision = "0027_pass_score_meta"
-down_revision = "0026_run_metric_analyses"
+revision = "0038_pass_score_meta"
+down_revision = "0037_remove_project_desc"
 branch_labels = None
 depends_on = None
 

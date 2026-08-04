@@ -15,6 +15,8 @@ FROM python-base AS dev
 # Prime dependency resolution from package metadata so source edits do not
 # force a full reinstall during dev rebuilds.
 COPY packages/sdk/pyproject.toml /app/packages/sdk/pyproject.toml
+COPY packages/sdk/README.md /app/packages/sdk/README.md
+COPY packages/sdk/qym/_version.py /app/packages/sdk/qym/_version.py
 COPY packages/platform/pyproject.toml /app/packages/platform/pyproject.toml
 RUN mkdir -p /app/packages/sdk/qym /app/packages/platform/qym_platform
 RUN touch /app/packages/sdk/qym/__init__.py /app/packages/platform/qym_platform/__init__.py

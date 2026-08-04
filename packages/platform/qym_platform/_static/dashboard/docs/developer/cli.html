@@ -208,7 +208,7 @@ qym run compare a1b2c3d4 e5f6a7b8</pre>
 
 <h2><code>qym analyze</code></h2>
 <ul>
-<li><code>qym analyze run &lt;run_id&gt;</code> — currently targets a removed legacy <code>/v1</code> route and is not compatible with this platform build. Use <strong>Auto-Analyze</strong> in run detail, whose supported endpoint is <code>POST /api/runs/{run_id}/analyze</code>.</li>
+<li><code>qym analyze run &lt;run_id&gt;</code> — triggers AI root-cause analysis on the run's item-metric targets via <code>POST /api/runs/{run_id}/analyze</code>. Accepts <code>--concurrency</code> (default <code>20</code>, range 1–20) controlling parallel analysis requests. Reports the count analyzed plus a category breakdown.</li>
 <li><code>qym analyze summary &lt;run_id&gt;</code> — aggregates already-recorded root-cause categories (from corrections or item metadata) for the run; it does not start new analysis.</li>
 </ul>
 <pre data-lang="bash">qym analyze summary a1b2c3d4 --json</pre>

@@ -84,6 +84,10 @@ The key owner, a project manager, or a global admin can revoke a key.
 
 Any project member can add, test, choose a default, or remove an OpenAI-compatible LLM connection. These connections power platform-side AI analysis. They are separate from SDK judge configuration (`QYM_JUDGE_*`).
 
+Each connection stores a base URL, a model, and an encrypted API key; the UI only shows a masked last-four-character hint. The first connection becomes the project default, and a different connection can be chosen for an individual analysis run. Updating a connection without entering a new key preserves the stored key.
+
+The default deployment blocks provider URLs that resolve to private or loopback addresses. Set `QYM_ALLOW_PRIVATE_LLM_BASE_URLS=true` only when the platform intentionally uses a trusted local provider.
+
 ## Dashboard and runs
 
 The Runs page presents each evaluation as one logical row. It does not infer groups from timestamps.
@@ -159,7 +163,7 @@ Compare treats the selected executions as one cohort and keeps the selected side
 - Cohort score, latency, Pass@K, Pass^K, stability, and best-score summaries.
 - Side-by-side item outputs with winner and score indicators.
 - Search, metadata, review, and metric-range filters.
-- Category and root-cause breakdowns.
+- Category and root-cause breakdowns, with a metric selector that scopes the breakdown and the solution Sankey view to one metric or all metrics.
 - CSV export using the active filters and selected columns.
 
 Do not interpret a repeat as “Pass@k of Pass@k.” Its passes enter the cohort as individual executions.
@@ -191,9 +195,21 @@ Reference a platform dataset from the SDK by name, version, or alias after setti
 
 ### AI root-cause analysis
 
-Configure the project's default LLM connection first. On a run, **Auto-Analyze** can preview or analyze selected items and propose a root-cause category, detail, note, solution, and solution note. The playground supports prompt editing, variable mapping, category catalogs, test analyses, and approved corrections as few-shot examples.
+Configure at least one project LLM connection first. Open **Auto-analysis** from the project navigation, or use the run-specific analyzer on a run page. Select one or more metrics; each item/metric pair is analyzed independently, so one item can carry different diagnoses for different metrics. Filters cover all/failed/passed/errors, score thresholds, metadata and root-cause values, explicit item IDs, and skipping already-analyzed targets.
 
-The supported platform analysis route is `/api/runs/{run_id}/analyze`. The current `qym analyze run` CLI command still targets a legacy `/v1` route and should not be used until that client mismatch is fixed.
+The analyzer proposes a **root cause category**, a reusable **root cause detail**, and an evidence-based **note**. AI-suggested values show a robot indicator with confidence; human-confirmed values show a checkmark.
+
+The analyzer playground supports prompt editing, variable mapping, category/detail catalogs, additional instructions, prompt previews, and test analyses of up to three items that do not save results.
+
+Project context strengthens the analysis:
+
+- **Project description** — explain the business domain and correctness expectations.
+- **Analysis rules** — versioned title/instruction pairs with a draft → published → `production` alias lifecycle, lineage, comparisons, and rule generation from selected sources.
+- **Reference documents** — PDF, DOCX, text, Markdown, HTML, CSV, JSON, and YAML uploads are converted to bounded text in a shared project library; select which documents a run uses. Each upload is limited to 10 MB and 40,000 extracted characters, with at most eight documents and 80,000 reference characters per prompt.
+
+The default prompt sends the selected metric result, useful trace evidence, project context, active rules, and selected documents. It redacts credential-like fields. Approved correction snapshots are evidence for rule generation; they are not added to per-item prompts as few-shot examples.
+
+The platform analysis route is `/api/runs/{run_id}/analyze`; the `qym analyze run` CLI command uses the same route.
 
 ### Reviews
 

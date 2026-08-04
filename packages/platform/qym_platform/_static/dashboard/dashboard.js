@@ -231,7 +231,7 @@
     { key: GROUP_CONSISTENCY_COLUMN_KEY, label: 'Consistency' },
     { key: GROUP_RELIABILITY_COLUMN_KEY, label: 'Reliability' },
   ];
-  const RUNS_TABLE_BASE_COLUMN_COUNT = 11;
+  const RUNS_TABLE_BASE_COLUMN_COUNT = 12;
   const MODELS_VIEW_SCORE_STAT_KEYS = ['passAtK', 'passHatK', 'maxAtK', 'consistency', 'reliability', 'avgScore', 'failedCount', 'totalRetries', 'avgLatency', 'medianLatency', 'correctDistribution'];
   const MODELS_VIEW_NUMERIC_STAT_KEYS = ['avgScore', 'minScore', 'maxAtK', 'stddevScore', 'totalScoreSum', 'failedCount', 'totalRetries', 'avgLatency', 'medianLatency'];
   function _traceMetricsForRuns(runs = null) {
@@ -3207,6 +3207,11 @@
               ${renderModelLabelForRun(run)}
             </span>
           </td>
+          <td class="col-analysis" onclick="event.stopPropagation()">
+            ${status !== 'RUNNING' && status !== 'PENDING'
+              ? `<a class="run-analysis-link" href="${projectUrl(state.currentProject && state.currentProject.slug, `analysis?run=${encodeURIComponent(run.run_id)}`)}">Analyze</a>`
+              : '<span class="run-analysis-unavailable">Not ready</span>'}
+          </td>
           <td class="col-dataset">
             <span class="tag qym-tag" title="${run.dataset_name}">${truncateText(run.dataset_name, 25)}${window.QymShell ? QymShell.datasetVersionInline(run.dataset_version) + QymShell.datasetAliasTags(run.dataset_aliases) : ''}</span>
           </td>
@@ -3324,6 +3329,15 @@
         });
         checkbox.addEventListener('change', (e) => {
           toggleSelect(filePath);
+        });
+      }
+
+      const analysisLink = tr.querySelector('.run-analysis-link');
+      if (analysisLink) {
+        analysisLink.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          navigateTo(analysisLink.href);
         });
       }
 
@@ -3665,6 +3679,7 @@
           <td class="col-run"><span class="pass-indent"></span><span class="pass-member-id">${passLabel}</span>${passMeta ? `<span class="pass-member-items">${passMeta}</span>` : ''}</td>
           ${inherit('col-task')}
           ${inherit('col-model')}
+          ${inherit('col-analysis')}
           ${inherit('col-dataset')}
           ${inherit('col-version')}
           ${metricCells}${visibleTraceMetrics.length > 0 ? '<td class="col-trace-separator"></td>' : ''}
@@ -5722,13 +5737,11 @@
   async function createProjectFromSelector() {
     const nameInput = el('project-create-name');
     const slugInput = el('project-create-slug');
-    const descInput = el('project-create-description');
     const errorEl = el('project-selector-message');
     if (!nameInput) return;
     const payload = {
       name: (nameInput.value || '').trim(),
       slug: (slugInput && slugInput.value || '').trim(),
-      description: (descInput && descInput.value || '').trim(),
     };
     if (!payload.name) {
       if (errorEl) errorEl.textContent = 'Project name is required';
@@ -5811,7 +5824,6 @@
                 <div class="project-hub-actions">
                   <input id="project-create-name" class="form-input" placeholder="Project name" />
                   <input id="project-create-slug" class="form-input" placeholder="project-slug (optional)" />
-                  <input id="project-create-description" class="form-input" placeholder="Description (optional)" />
                   <button id="project-create-submit" class="btn btn-primary" type="button">Create Project</button>
                   <div id="project-selector-message" class="project-hub-message"></div>
                 </div>

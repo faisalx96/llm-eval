@@ -10,6 +10,7 @@ import sqlite3
 from typing import Any, Dict
 
 
+
 def _clean_sql(sql: str) -> str:
     """Remove markdown code blocks if present."""
     sql = sql.strip()

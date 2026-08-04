@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>قيِّم • Reviews</title>
   <link rel="icon" type="image/png" href="/static/qym_icon.png">
-  <link rel="stylesheet" href="/static/dashboard.css?v=ui-consistency-20260730-16">
+  <link rel="stylesheet" href="/static/dashboard.css?v=merge-20260804-1">
   <link rel="stylesheet" href="/static/shell.css">
   <script src="/static/auth.js"></script>
   <script src="/static/shell.js?v=ui-consistency-20260730-15"></script>
@@ -18,8 +18,39 @@
     .reviews-layout {
       display: flex;
       flex-direction: column;
-      height: calc(100vh - 44px);
+      height: 100%;
+      min-height: 0;
       overflow: hidden;
+    }
+
+    .reviews-hero {
+      padding: var(--space-lg) var(--space-lg) var(--space-md);
+      background: var(--bg-base);
+    }
+
+    .reviews-title {
+      margin: 0;
+      color: var(--text-primary);
+      font-size: var(--font-title);
+      font-weight: 650;
+    }
+
+    .reviews-description {
+      margin: var(--space-xs) 0 0;
+      overflow: hidden;
+      color: var(--text-muted);
+      font-size: var(--font-base);
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .reviews-meta {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+      margin-top: var(--space-sm);
+      color: var(--text-muted);
+      font-size: var(--font-base);
     }
 
     /* ── Stats Strip ─────────────────────────────── */
@@ -65,7 +96,7 @@
     }
 
     .stat-card .stat-lbl {
-      font-size: var(--font-xs);
+      font-size: var(--font-sm);
       text-transform: uppercase;
       letter-spacing: 0.8px;
       color: var(--text-muted);
@@ -1149,6 +1180,16 @@
 </head>
 <body>
   <div class="reviews-layout">
+    <header class="reviews-hero">
+      <h1 class="reviews-title">Reviews</h1>
+      <p class="reviews-description">Validate corrections before they become examples for future auto-analysis.</p>
+      <div class="reviews-meta">
+        <span>Queue <span id="reviews-meta-total">—</span></span>
+        <span aria-hidden="true">·</span>
+        <span>Approved corrections improve project analysis</span>
+      </div>
+    </header>
+
     <!-- Stats Strip -->
     <div class="reviews-stats qym-stat-strip">
       <div class="stat-card qym-stat-strip__item stat-total active" data-filter="">
@@ -1240,7 +1281,7 @@
         <button class="btn-sm btn-approve" id="bulk-approve">Approve</button>
         <button class="btn-sm btn-reject" id="bulk-reject">Reject</button>
         <button class="btn-sm btn-reset" id="bulk-reset">Reset</button>
-        <button class="btn-sm btn-reject" id="bulk-delete">Delete</button>
+        <button class="btn-sm btn-reject" id="bulk-delete" title="Remove from the review queue and mark rejected">Delete</button>
         <button class="btn-ghost qym-icon-action" id="bulk-deselect" title="Deselect all" aria-label="Deselect all">&times;</button>
       </div>
 
@@ -1263,7 +1304,7 @@
         <div class="empty-title">No corrections found</div>
         <div class="empty-desc">
           Corrections appear here when humans correct AI-suggested root causes on run detail pages.
-          Only approved corrections feed into the auto-analyzer as few-shot examples.
+          Approved corrections can be used as evidence when generating project analysis rules.
         </div>
       </div>
     </div>
@@ -1277,7 +1318,7 @@
         <button class="modal-close qym-icon-action" id="modal-close" aria-label="Close">&times;</button>
       </div>
       <div class="reviews-modal-body">
-        <p id="modal-desc">This correction will be used as a few-shot example for future AI analysis.</p>
+        <p id="modal-desc">This correction will be available as evidence when generating project analysis rules.</p>
         <textarea id="modal-comment" placeholder="Optional review comment..." rows="3"></textarea>
       </div>
       <div class="reviews-modal-footer">
@@ -1704,15 +1745,6 @@
       refreshVisibleCorrections();
     }
 
-    function removeCorrectionIds(ids) {
-      const idSet = new Set(ids.map(Number));
-      state.corrections = state.corrections.filter(c => !idSet.has(c.id));
-      idSet.forEach(id => state.selected.delete(id));
-      if (idSet.has(state.editingId)) state.editingId = null;
-      recomputeStatsFromCurrentFilters();
-      refreshVisibleCorrections();
-    }
-
     function applyBulkStatusUpdate(ids, status, comment = '') {
       const idSet = new Set(ids.map(Number));
       state.corrections = state.corrections.map(c => {
@@ -1728,6 +1760,15 @@
         }
         return next;
       });
+      idSet.forEach(id => state.selected.delete(id));
+      if (idSet.has(state.editingId)) state.editingId = null;
+      recomputeStatsFromCurrentFilters();
+      refreshVisibleCorrections();
+    }
+
+    function removeCorrectionIds(ids) {
+      const idSet = new Set(ids.map(Number));
+      state.corrections = state.corrections.filter(c => !idSet.has(c.id));
       idSet.forEach(id => state.selected.delete(id));
       if (idSet.has(state.editingId)) state.editingId = null;
       recomputeStatsFromCurrentFilters();
@@ -1779,6 +1820,7 @@
     function updateStats() {
       const counts = state.stats;
       el('stat-total').textContent = counts.total;
+      el('reviews-meta-total').textContent = `${counts.total} correction${counts.total === 1 ? '' : 's'}`;
       el('stat-pending').textContent = counts.pending;
       el('stat-approved').textContent = counts.approved;
       el('stat-rejected').textContent = counts.rejected;
@@ -2016,7 +2058,7 @@
                 <button class="btn-sm btn-reset qym-icon-action" data-reset="${c.id}" title="Reset to pending" aria-label="Reset to pending">&#8634;</button>
               ` : ''}
               <button class="btn-ghost qym-icon-action" data-edit="${c.id}" title="Edit correction" aria-label="Edit correction">&#9998;</button>
-              <button class="btn-sm btn-reject" data-delete="${c.id}" title="Delete correction">Delete</button>
+              <button class="btn-sm btn-reject" data-delete="${c.id}" title="Remove from the review queue and mark rejected">Delete</button>
               <button class="expand-btn qym-icon-action" data-expand="${c.id}" title="Show metadata" aria-label="Show metadata">
                 <span class="arrow">&#x25B6;</span>
               </button>
@@ -2025,6 +2067,7 @@
 
           <div class="card-context">
             ${c.task ? `<span class="context-chip" title="${escapeHtml(c.task)}"><strong>Task</strong><span>${escapeHtml(c.task)}</span></span>` : ''}
+            ${c.metric_name ? `<span class="context-chip" title="${escapeHtml(c.metric_name)}"><strong>Metric</strong><span>${escapeHtml(c.metric_name)}</span></span>` : ''}
             ${c.run_name ? `<span class="context-chip" title="${escapeHtml(c.run_name)}"><strong>Run</strong><span>${escapeHtml(c.run_name)}</span></span>` : ''}
             ${c.dataset ? `<span class="context-chip" title="${escapeHtml(c.dataset)}"><strong>Dataset</strong><span>${escapeHtml(c.dataset)}</span></span>` : ''}
             ${c.model ? `<span class="context-chip" title="${escapeHtml(c.model)}"><strong>Model</strong><span>${renderModelLabel(c.model, !!c.has_reasoning)}</span></span>` : ''}
@@ -2240,7 +2283,7 @@
           const id = Number(btn.dataset.reject);
           const comment = await openModal(
             'Reject Correction',
-            'This correction will NOT be used as a few-shot example.',
+            'This correction will NOT be used as evidence when generating project analysis rules.',
             'Reject',
             'btn-danger'
           );
@@ -2278,15 +2321,15 @@
           e.stopPropagation();
           const id = Number(btn.dataset.delete);
           const confirmed = await confirmToast(
-            'Delete correction?',
-            `Correction #${id} will be permanently removed. This cannot be undone.`,
-            'Delete'
+            'Remove this correction?',
+            `Correction #${id} will be marked rejected and kept in review history.`,
+            'Reject & remove'
           );
           if (!confirmed) return;
           try {
             await apiAction('DELETE', `api/corrections/${id}`);
             removeCorrectionIds([id]);
-            showToast('success', 'Deleted', `Correction #${id} deleted`);
+            showToast('success', 'Deleted', `Correction #${id} was marked rejected and removed`);
             refreshCorrectionsInBackground();
           } catch (err) {
             showToast('error', 'Failed', err.message);
@@ -2478,7 +2521,7 @@
       }
       const comment = await openModal(
         `Approve ${ids.length} Correction${ids.length > 1 ? 's' : ''}`,
-        `${ids.length} correction${ids.length > 1 ? 's' : ''} will be approved as few-shot examples.`,
+        `${ids.length} correction${ids.length > 1 ? 's' : ''} will be approved as rule-generation evidence.`,
         'Approve All',
         'btn-primary'
       );
@@ -2539,15 +2582,16 @@
         return;
       }
       const confirmed = await confirmToast(
-        `Delete ${ids.length} correction${ids.length > 1 ? 's' : ''}?`,
-        `The selected correction${ids.length > 1 ? 's' : ''} will be permanently removed. This cannot be undone.`,
-        'Delete'
+        `Remove ${ids.length} correction${ids.length > 1 ? 's' : ''}?`,
+        `The selected correction${ids.length > 1 ? 's' : ''} will be marked rejected and kept in review history.`,
+        'Reject & remove'
       );
       if (!confirmed) return;
       try {
-        await apiAction('POST', 'api/corrections/bulk', { ids, action: 'delete' });
+        const comment = 'Rejected automatically after deletion request.';
+        await apiAction('POST', 'api/corrections/bulk', { ids, action: 'delete', comment });
         removeCorrectionIds(ids);
-        showToast('success', 'Bulk Deleted', `${ids.length} correction${ids.length > 1 ? 's' : ''} deleted`);
+        showToast('success', 'Deleted', `${ids.length} correction${ids.length > 1 ? 's were' : ' was'} marked rejected and removed`);
         refreshCorrectionsInBackground();
       } catch (err) {
         showToast('error', 'Failed', err.message);

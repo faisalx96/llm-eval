@@ -1445,7 +1445,7 @@ The platform dashboard includes:
 - **Compare view** — side-by-side item comparison with winner badges, score range filters, domain AND-matching, root-cause/solution breakdown with Sankey visualization, and approval filtering
 - **Charts view** — per-task cards with dataset tabs, inline Run/Version/Model grouping, and a version leaderboard aggregating performance by git commit
 - **Trace viewer** — embedded per-item span tree with LLM message reconstruction, reasoning display, error path highlighting, framework noise collapsing, and keyboard navigation
-- **AI analysis** — one-click root cause analysis with a playground for prompt editing, category/detail catalogs, few-shot correction bank, and test runs
+- **AI analysis** — project-scoped, metric-aware root cause analysis with prompt editing/testing, reference documents, versioned project rules, and category/detail catalogs
 - **Corrections review** — dedicated approval queue with bulk moderation, revision history, and synced metadata
 
 See the [Platform User Guide](../../../packages/platform/docs/USER_GUIDE.md) for full details on every feature.

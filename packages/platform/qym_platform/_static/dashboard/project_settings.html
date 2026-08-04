@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>قيِّم • Project Settings</title>
   <link rel="icon" type="image/png" href="/static/qym_icon.png">
-  <link rel="stylesheet" href="/static/dashboard.css?v=ui-consistency-20260730-16">
+  <link rel="stylesheet" href="/static/dashboard.css?v=merge-20260804-1">
   <link rel="stylesheet" href="/static/shell.css">
   <script src="/static/auth.js"></script>
   <script src="/static/shell.js?v=ui-consistency-20260730-15"></script>
@@ -117,12 +117,11 @@
     <!-- General -->
     <div class="settings-panel active" id="panel-general" role="tabpanel" aria-labelledby="settings-tab-general">
       <div class="card">
-        <div class="card-header"><div><div class="card-title">Project Details</div><div class="card-subtitle">Name, slug, and description</div></div></div>
+        <div class="card-header"><div><div class="card-title">Project Details</div><div class="card-subtitle">Name and slug</div></div></div>
         <div class="card-body">
           <div class="form-grid">
             <div class="form-group"><label class="form-label">Project Name</label><input class="form-input" id="gen-name" type="text" /></div>
             <div class="form-group"><label class="form-label">Slug</label><input class="form-input" id="gen-slug" type="text" style="font-family:var(--font-mono);font-size:var(--font-base);" readonly /></div>
-            <div class="form-group full-width"><label class="form-label">Description</label><input class="form-input" id="gen-description" type="text" /></div>
           </div>
         </div>
         <div class="card-footer"><button class="btn btn-primary" id="save-general-btn" type="button">Save Changes</button></div>
@@ -358,8 +357,6 @@
         // General tab
         document.getElementById('gen-name').value = p.name;
         document.getElementById('gen-slug').value = p.slug;
-        document.getElementById('gen-description').value = p.description || '';
-
         document.getElementById('project-summary').innerHTML = [
           ['Slug', p.slug], ['Role', p.role || 'MEMBER'], ['Members', String(state.members.length)], ['Status', p.is_active ? 'ACTIVE' : 'ARCHIVED'],
         ].map(([label, value]) => `<div class="form-group"><div class="form-label">${escapeHtml(label)}</div><div style="font-size:var(--font-sm);color:var(--text-primary);font-family:var(--font-mono)">${escapeHtml(value)}</div></div>`).join('');
