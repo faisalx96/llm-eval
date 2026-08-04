@@ -1,0 +1,2469 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>قيِّم • Auto-analysis</title>
+  <link rel="icon" type="image/png" href="/static/qym_icon.png">
+  <link rel="stylesheet" href="/static/dashboard.css?v=rules-ux-audit-12-20260730">
+  <link rel="stylesheet" href="/static/shell.css">
+  <script src="/static/auth.js"></script>
+  <script src="/static/shell.js?v=auto-analysis-workspace-20260729"></script>
+  <script src="/static/metrics.js"></script>
+  <script src="/static/playground.js?v=rules-ux-audit-12-20260730"></script>
+  <style>
+    /* Typography and color roles follow docs/DESIGN_LANGUAGE.md. */
+    .analysis-page {
+      --analysis-page-width: 1180px;
+      width: 100%;
+      max-width: var(--analysis-page-width);
+      margin: 0 auto;
+      padding: var(--space-xl) var(--space-lg);
+      box-sizing: border-box;
+    }
+    .analysis-hero {
+      margin-bottom: var(--space-lg);
+    }
+    .analysis-title {
+      margin: 0;
+      color: var(--text-primary);
+      font-size: var(--font-title);
+      font-weight: 650;
+    }
+    .analysis-description {
+      max-width: 760px;
+      margin: var(--space-xs) 0 0;
+      color: var(--text-muted);
+      font-size: var(--font-base);
+      line-height: 1.55;
+    }
+    .analysis-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--space-sm);
+      margin-top: var(--space-sm);
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+    }
+    .analysis-meta-value {
+      color: var(--text-secondary);
+      font-family: var(--font-mono);
+    }
+    .analysis-tabs {
+      display: flex;
+      gap: var(--space-lg);
+      margin-top: var(--space-lg);
+      border-bottom: 1px solid var(--border-default);
+    }
+    .analysis-tabs[hidden] {
+      display: none;
+    }
+    .analysis-tab {
+      margin-bottom: -1px;
+      padding: var(--space-sm) 0 var(--space-md);
+      border: 0;
+      border-bottom: 2px solid transparent;
+      background: transparent;
+      color: var(--text-muted);
+      font-family: var(--font-sans);
+      font-size: var(--font-base);
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .analysis-tab:hover {
+      color: var(--text-secondary);
+    }
+    .analysis-tab:disabled {
+      color: var(--text-dim);
+      cursor: not-allowed;
+    }
+    .analysis-tab[aria-selected="true"] {
+      border-bottom-color: var(--accent-primary);
+      color: var(--text-primary);
+    }
+    .analysis-view-panel[hidden],
+    .analysis-project-panel[hidden] {
+      display: none !important;
+    }
+    .analysis-loading,
+    .analysis-error,
+    .analysis-landing {
+      padding: var(--space-xl);
+      border: 1px solid var(--border-default);
+      border-radius: 8px;
+      background: var(--bg-surface);
+      color: var(--text-secondary);
+      text-align: center;
+    }
+    .analysis-landing {
+      max-width: 680px;
+      margin: var(--space-xl) auto 0;
+      padding: calc(var(--space-xl) * 1.5);
+    }
+    .analysis-landing h2 {
+      margin: 0;
+      color: var(--text-primary);
+      font-size: var(--font-xl);
+      font-weight: 650;
+    }
+    .analysis-landing p {
+      margin: var(--space-sm) auto var(--space-lg);
+      color: var(--text-muted);
+      font-size: var(--font-base);
+      line-height: 1.6;
+    }
+    .analysis-primary-link,
+    .analysis-secondary-link,
+    .analysis-mapping-open {
+      display: inline-flex;
+      min-height: 36px;
+      align-items: center;
+      justify-content: center;
+      padding: 0 var(--space-md);
+      border: 1px solid var(--border-default);
+      border-radius: 6px;
+      font-family: var(--font-sans);
+      font-size: var(--font-sm);
+      font-weight: 600;
+      text-decoration: none;
+      cursor: pointer;
+    }
+    .analysis-primary-link {
+      border-color: var(--accent-primary);
+      background: var(--accent-primary);
+      color: var(--bg-void);
+    }
+    .analysis-secondary-link,
+    .analysis-mapping-open {
+      background: var(--bg-elevated);
+      color: var(--text-secondary);
+    }
+    .analysis-error {
+      color: var(--error);
+    }
+    .analysis-status {
+      display: none;
+      margin-bottom: var(--space-md);
+      padding: var(--space-sm) var(--space-md);
+      border: 1px solid var(--border-default);
+      border-radius: 8px;
+      background: var(--bg-surface);
+      color: var(--text-secondary);
+      font-size: var(--font-sm);
+    }
+    .analysis-status.visible {
+      display: block;
+    }
+    .analysis-status.success {
+      border-color: var(--success-dim);
+      color: var(--success);
+    }
+    .analysis-status.warning {
+      border-color: var(--warning-dim);
+      color: var(--warning);
+    }
+    .analysis-status.error {
+      border-color: var(--error-dim);
+      color: var(--error);
+    }
+    .analysis-section-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: var(--space-lg);
+      padding: var(--space-lg);
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    .analysis-section-header h2 {
+      margin: 0;
+      color: var(--text-primary);
+      font-size: var(--font-lg);
+      font-weight: 600;
+    }
+    .analysis-section-header p {
+      max-width: 720px;
+      margin: var(--space-xs) 0 0;
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+      line-height: 1.5;
+    }
+    .analysis-run-card,
+    .analysis-target-card,
+    .analysis-results-card {
+      overflow: hidden;
+      border: 1px solid var(--border-default);
+      border-radius: 8px;
+      background: var(--bg-surface);
+    }
+    .analysis-project-shell {
+      overflow: visible;
+    }
+    .analysis-run-card {
+      margin-bottom: var(--space-lg);
+    }
+    .analysis-run-header {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) max-content;
+      align-items: center;
+    }
+    .analysis-run-heading {
+      min-width: 0;
+    }
+    .analysis-run-heading h2 {
+      overflow-wrap: anywhere;
+    }
+    .analysis-run-context {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: var(--space-xs) var(--space-md);
+      margin: var(--space-xs) 0 0;
+      padding: 0;
+      list-style: none;
+    }
+    .analysis-run-context-item {
+      display: inline-flex;
+      align-items: baseline;
+      gap: var(--space-xs);
+      overflow-wrap: anywhere;
+    }
+    .analysis-run-context-item::before {
+      color: var(--text-muted);
+      content: "•";
+    }
+    .analysis-run-context-label {
+      color: var(--text-muted);
+      font-size: var(--font-xs);
+      font-weight: 650;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+    .analysis-run-context-value {
+      color: var(--text-secondary);
+      font-family: var(--font-mono);
+      font-size: var(--font-sm);
+      overflow-wrap: anywhere;
+    }
+    .analysis-run-header > .analysis-secondary-link {
+      min-width: max-content;
+      flex: 0 0 auto;
+      white-space: nowrap;
+    }
+    .analysis-run-label {
+      display: block;
+      margin-bottom: var(--space-xs);
+      color: var(--text-muted);
+      font-size: var(--font-xs);
+      font-weight: 650;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+    .analysis-metrics {
+      padding: var(--space-md) var(--space-lg) var(--space-lg);
+    }
+    .analysis-metric-heading {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-md);
+    }
+    .analysis-metric-actions {
+      display: flex;
+      gap: var(--space-sm);
+    }
+    .analysis-metric-action {
+      min-height: 30px;
+      padding: 0 var(--space-sm);
+      border: 1px solid var(--border-default);
+      border-radius: 6px;
+      background: var(--bg-elevated);
+      color: var(--text-secondary);
+      font-family: var(--font-sans);
+      font-size: var(--font-sm);
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .analysis-metric-action:hover {
+      border-color: var(--accent-primary);
+      background: var(--bg-hover);
+      color: var(--accent-primary);
+    }
+    .analysis-metric-list {
+      display: flex;
+      gap: var(--space-sm);
+      margin-top: var(--space-sm);
+      padding: 0 0 var(--space-sm);
+      overflow-x: auto;
+      overscroll-behavior-inline: contain;
+      scrollbar-color: var(--border-default) transparent;
+      scrollbar-width: thin;
+    }
+    .analysis-metric-option {
+      display: inline-flex;
+      flex: 0 0 auto;
+      align-items: center;
+      gap: var(--space-sm);
+      min-height: 34px;
+      padding: 0 var(--space-md);
+      border: 1px solid var(--border-default);
+      border-radius: 999px;
+      background: var(--bg-elevated);
+      color: var(--text-secondary);
+      font-size: var(--font-sm);
+      cursor: pointer;
+    }
+    .analysis-metric-option:has(input:checked) {
+      border-color: var(--accent-primary);
+      background: var(--bg-active);
+      color: var(--text-primary);
+    }
+    .analysis-metric-option input {
+      accent-color: var(--accent-primary);
+    }
+    .analysis-metric-summary {
+      margin-top: var(--space-xs);
+      color: var(--text-muted);
+      font-size: var(--font-xs);
+    }
+    .analysis-context-toggles {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: var(--space-sm);
+      padding: var(--space-lg);
+    }
+    .analysis-context-toggle {
+      display: flex;
+      min-width: 0;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-sm);
+      padding: var(--space-md);
+      border: 1px solid var(--border-subtle);
+      border-radius: 8px;
+      background: var(--bg-elevated);
+    }
+    .analysis-context-toggle-control {
+      display: flex;
+      min-width: 0;
+      flex: 1;
+      align-items: center;
+      gap: var(--space-sm);
+      cursor: pointer;
+    }
+    .analysis-context-toggle-control input {
+      accent-color: var(--accent-primary);
+    }
+    .analysis-context-toggle-copy {
+      display: flex;
+      min-width: 0;
+      flex-direction: column;
+      gap: var(--space-xs);
+    }
+    .analysis-context-toggle-copy strong {
+      color: var(--text-primary);
+      font-size: var(--font-sm);
+      font-weight: 600;
+    }
+    .analysis-context-toggle-copy span {
+      color: var(--text-muted);
+      font-size: var(--font-xs);
+      line-height: 1.4;
+    }
+    .analysis-context-link {
+      display: inline-grid;
+      width: calc(var(--space-lg) + var(--space-sm));
+      height: calc(var(--space-lg) + var(--space-sm));
+      flex: 0 0 auto;
+      place-items: center;
+      border: 1px solid transparent;
+      border-radius: 6px;
+      color: var(--text-muted);
+      text-decoration: none;
+    }
+    .analysis-context-link:hover {
+      border-color: var(--border-subtle);
+      background: var(--bg-hover);
+      color: var(--accent-primary);
+    }
+    .analysis-context-link:focus-visible {
+      outline: 2px solid var(--accent-primary);
+      outline-offset: 2px;
+    }
+    .analysis-context-link .pg-action-icon {
+      width: var(--space-md);
+      height: var(--space-md);
+    }
+    .analysis-target-card {
+      margin-bottom: var(--space-lg);
+    }
+    .analysis-inline-section {
+      margin-bottom: var(--space-lg);
+    }
+    .analysis-inline-section .pg-section {
+      border: 0;
+      background: transparent;
+    }
+    .analysis-inline-section .pg-section-summary {
+      display: none;
+    }
+    .analysis-inline-section .pg-section-body {
+      padding: 0;
+    }
+    .analysis-diagnosis-summary {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+    }
+    .analysis-diagnosis-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: var(--space-lg);
+    }
+    .analysis-diagnosis-header p {
+      max-width: 720px;
+      margin: 0;
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+      line-height: 1.5;
+    }
+    .analysis-diagnosis-stat {
+      display: inline-flex;
+      align-items: baseline;
+      gap: var(--space-xs);
+      padding: var(--space-xs) var(--space-sm);
+      border: 1px solid var(--border-subtle);
+      border-radius: 999px;
+      background: var(--bg-elevated);
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+    }
+    .analysis-diagnosis-stat strong {
+      color: var(--text-primary);
+      font-family: var(--font-mono);
+      font-weight: 650;
+    }
+    #analysis-diagnosis-view .analysis-inline-section {
+      margin-bottom: 0;
+    }
+    #analysis-diagnosis-view .pg-section-body {
+      padding: 0;
+    }
+    #analysis-diagnosis-view .pg-category-group {
+      margin: 0 0 var(--space-md);
+      overflow: hidden;
+      border: 1px solid var(--border-subtle);
+      border-left: 1px solid var(--border-subtle);
+      border-radius: 8px;
+      background: var(--bg-elevated);
+    }
+    #analysis-diagnosis-view .pg-category-group:hover {
+      border-color: var(--border-default);
+    }
+    #analysis-diagnosis-view .pg-category-item {
+      min-height: 48px;
+      padding: var(--space-sm) var(--space-md);
+      border-bottom: 1px solid var(--border-subtle);
+      border-radius: 0;
+      background: var(--bg-surface);
+    }
+    #analysis-diagnosis-view .pg-category-item:hover {
+      background: var(--bg-surface);
+    }
+    #analysis-diagnosis-view .pg-category-heading {
+      display: flex;
+      min-width: 0;
+      align-items: center;
+      gap: var(--space-sm);
+    }
+    #analysis-diagnosis-view .pg-category-name {
+      color: var(--text-primary);
+      font-size: var(--font-md);
+      font-weight: 600;
+    }
+    #analysis-diagnosis-view .pg-category-example-count {
+      padding: var(--space-xs) var(--space-sm);
+      border-radius: 999px;
+      background: var(--bg-active);
+      color: var(--text-muted);
+      font-size: var(--font-xs);
+      font-weight: 650;
+    }
+    #analysis-diagnosis-view .pg-category-remove {
+      padding: var(--space-xs) var(--space-sm);
+      border: 1px solid transparent;
+      border-radius: 6px;
+      color: var(--text-muted);
+      font-family: var(--font-sans);
+      font-size: var(--font-sm);
+      font-weight: 600;
+    }
+    #analysis-diagnosis-view .pg-category-remove:hover {
+      border-color: var(--error-dim);
+      background: var(--error-dim);
+      color: var(--error);
+    }
+    #analysis-diagnosis-view .pg-category-content {
+      display: grid;
+      grid-template-columns: minmax(220px, 0.46fr) minmax(0, 1.54fr);
+      min-height: 120px;
+    }
+    #analysis-diagnosis-view .pg-category-details,
+    #analysis-diagnosis-view .pg-category-examples {
+      min-width: 0;
+      padding: var(--space-md);
+    }
+    #analysis-diagnosis-view .pg-category-details {
+      border-right: 1px solid var(--border-subtle);
+    }
+    #analysis-diagnosis-view .pg-category-details h4,
+    #analysis-diagnosis-view .pg-category-examples h4 {
+      margin: 0;
+      color: var(--text-primary);
+      font-size: var(--font-sm);
+      font-weight: 650;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+    #analysis-diagnosis-view .pg-details-sublist {
+      margin-top: var(--space-sm);
+      padding: 0;
+    }
+    #analysis-diagnosis-view .pg-detail-item {
+      min-height: 30px;
+      padding: var(--space-xs) var(--space-sm);
+      font-size: var(--font-sm);
+    }
+    #analysis-diagnosis-view .pg-category-details-empty,
+    #analysis-diagnosis-view .pg-category-examples-empty {
+      margin: var(--space-sm) 0 0;
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+      line-height: 1.5;
+    }
+    #analysis-diagnosis-view .pg-add-detail-row {
+      margin: var(--space-sm) 0 0;
+      padding: 0;
+    }
+    #analysis-diagnosis-view .pg-add-detail-row .pg-add-input,
+    #analysis-diagnosis-view .pg-add-detail-row .pg-add-btn {
+      min-height: 32px;
+      padding: 0 var(--space-sm);
+      font-size: var(--font-sm);
+    }
+    #analysis-diagnosis-view .pg-category-examples-heading {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-sm);
+    }
+    #analysis-diagnosis-view .pg-category-examples-heading > span {
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+      font-size: var(--font-sm);
+    }
+    #analysis-diagnosis-view .pg-category-example-list {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-sm);
+      margin-top: var(--space-sm);
+    }
+    #analysis-diagnosis-view .pg-category-example {
+      border: 1px solid var(--border-subtle);
+      border-radius: 6px;
+      background: var(--bg-surface);
+    }
+    #analysis-diagnosis-view .pg-category-example-summary {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) max-content;
+      gap: var(--space-sm);
+      padding: var(--space-sm) var(--space-md);
+      cursor: pointer;
+      list-style: none;
+    }
+    #analysis-diagnosis-view .pg-category-example-summary::-webkit-details-marker {
+      display: none;
+    }
+    #analysis-diagnosis-view .pg-category-example-title {
+      overflow: hidden;
+      color: var(--text-secondary);
+      font-family: var(--font-mono);
+      font-size: var(--font-sm);
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    #analysis-diagnosis-view .pg-category-example-meta {
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+    }
+    #analysis-diagnosis-view .pg-category-example-body {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-md);
+      padding: var(--space-md);
+      border-top: 1px solid var(--border-subtle);
+    }
+    #analysis-diagnosis-view .pg-category-example-field > span,
+    #analysis-diagnosis-view .pg-category-example-data span {
+      display: block;
+      margin-bottom: var(--space-xs);
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+      font-weight: 650;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+    #analysis-diagnosis-view .pg-category-example-field strong,
+    #analysis-diagnosis-view .pg-category-example-field p {
+      margin: 0;
+      color: var(--text-secondary);
+      font-size: var(--font-base);
+      line-height: 1.5;
+    }
+    #analysis-diagnosis-view .pg-category-example-data {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: var(--space-sm);
+    }
+    #analysis-diagnosis-view .pg-category-example-data pre {
+      max-height: 180px;
+      margin: 0;
+      padding: var(--space-sm);
+      overflow: auto;
+      border: 1px solid var(--border-subtle);
+      border-radius: 6px;
+      background: var(--bg-void);
+      color: var(--text-secondary);
+      font-family: var(--font-mono);
+      font-size: var(--font-sm);
+      line-height: 1.5;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+    #analysis-diagnosis-view .pg-add-category {
+      margin-top: var(--space-lg);
+      padding: var(--space-lg);
+      border: 1px solid var(--border-default);
+      border-radius: 8px;
+      background: var(--bg-surface);
+    }
+    .analysis-target-body {
+      padding: var(--space-lg);
+    }
+    .analysis-target-tools {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-md);
+      margin-bottom: var(--space-md);
+    }
+    .analysis-target-tools p {
+      margin: 0;
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+    }
+    .analysis-project-panel {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-lg);
+      padding: 0;
+    }
+    .analysis-project-panel > .analysis-target-card {
+      margin-bottom: 0;
+    }
+    .analysis-project-heading {
+      position: relative;
+    }
+    .analysis-info-button {
+      display: inline-grid;
+      width: 22px;
+      height: 22px;
+      place-items: center;
+      padding: 0;
+      border: 1px solid var(--border-default);
+      border-radius: 50%;
+      background: var(--bg-elevated);
+      color: var(--text-muted);
+      cursor: pointer;
+    }
+    .analysis-info-button:hover,
+    .analysis-info-button[aria-expanded="true"] {
+      border-color: var(--accent-primary);
+      color: var(--accent-primary);
+    }
+    .analysis-info-button .pg-action-icon {
+      width: 13px;
+      height: 13px;
+    }
+    .analysis-info-popover {
+      position: absolute;
+      z-index: 3;
+      top: calc(100% + var(--space-xs));
+      left: 0;
+      width: min(420px, 100%);
+      padding: var(--space-sm) var(--space-md);
+      border: 1px solid var(--border-default);
+      border-radius: 8px;
+      background: var(--bg-surface);
+      color: var(--text-secondary);
+      font-size: var(--font-sm);
+      line-height: 1.5;
+      box-shadow: 0 12px 28px color-mix(in srgb, var(--bg-void) 65%, transparent);
+    }
+    .analysis-rules-layout {
+      display: grid;
+      grid-template-columns: minmax(220px, 0.46fr) minmax(0, 1.54fr);
+      gap: var(--space-lg);
+      align-items: start;
+    }
+    .analysis-version-column,
+    .analysis-rule-column {
+      min-width: 0;
+    }
+    .analysis-subheading {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-md);
+      min-height: calc(var(--space-lg) + var(--space-md));
+      margin-bottom: var(--space-sm);
+    }
+    .analysis-subheading .analysis-run-label {
+      white-space: nowrap;
+    }
+    .analysis-subheading h4 {
+      margin: 0;
+      color: var(--text-secondary);
+      font-size: var(--font-sm);
+      font-weight: 600;
+    }
+    .analysis-version-heading-copy {
+      min-width: 0;
+    }
+    .analysis-version-legend {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: var(--space-sm);
+      margin-top: var(--space-xs);
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+    }
+    .analysis-version-node-key {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-xs);
+    }
+    .analysis-version-node {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border: 1px solid var(--border-strong);
+      border-radius: 50%;
+      background: var(--bg-surface);
+    }
+    .analysis-version-node-live {
+      border-color: var(--success);
+      background: var(--success);
+    }
+    .analysis-project-shell .pg-rule-version-list,
+    .analysis-project-shell .pg-rule-list {
+      padding-right: var(--space-sm);
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      scrollbar-color: var(--border-default) transparent;
+      scrollbar-width: thin;
+    }
+    .analysis-project-shell .pg-rule-version-list {
+      position: relative;
+      max-height: 420px;
+      padding-left: 48px;
+    }
+    .analysis-project-shell .pg-rule-list {
+      max-height: 640px;
+    }
+    .analysis-rule-graph {
+      position: absolute;
+      inset: 0 auto 0 0;
+      width: 40px;
+      height: 100%;
+      pointer-events: auto;
+    }
+    .analysis-rule-graph circle {
+      cursor: help;
+      pointer-events: all;
+    }
+    .analysis-project-shell .pg-rule-version {
+      position: relative;
+      min-height: 36px;
+      margin-bottom: var(--space-xs);
+      padding: var(--space-xs) var(--space-sm);
+      border-color: var(--border-subtle);
+      background: var(--bg-elevated);
+    }
+    .analysis-project-shell .pg-rule-version-selected {
+      border-color: var(--accent-primary);
+    }
+    .analysis-project-shell .pg-rule-version-production {
+      color: var(--success);
+    }
+    .analysis-project-shell .pg-rule-version-lineage {
+      position: absolute;
+    }
+    .analysis-project-shell .pg-rule-list {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-sm);
+    }
+    .analysis-project-shell .pg-rule-item {
+      flex: 0 0 auto;
+      padding: 0;
+      overflow: hidden;
+      border-color: var(--border-subtle);
+      background: var(--bg-elevated);
+    }
+    .analysis-project-shell .pg-rule-remove:disabled {
+      display: none;
+    }
+    .analysis-project-shell .pg-rule-item-head {
+      display: grid;
+      grid-template-columns: 28px minmax(0, 1fr) auto auto;
+      align-items: center;
+      gap: var(--space-sm);
+      padding: var(--space-sm);
+    }
+    .analysis-project-shell .pg-rule-item-head:hover {
+      background: var(--bg-hover);
+    }
+    .analysis-project-shell .pg-rule-item-number {
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+      font-size: var(--font-xs);
+      text-align: center;
+    }
+    .analysis-project-shell .pg-rule-item-summary {
+      display: flex;
+      min-width: 0;
+      flex-direction: column;
+      gap: var(--space-xs);
+    }
+    .analysis-project-shell .pg-rule-item-summary strong {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .analysis-project-shell .pg-rule-item-summary strong {
+      color: var(--text-primary);
+      font-size: var(--font-sm);
+      font-weight: 600;
+    }
+    .analysis-project-shell .pg-rule-item-summary span {
+      display: -webkit-box;
+      overflow: hidden;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 2;
+      color: var(--text-muted);
+      font-size: var(--font-xs);
+      line-height: 1.4;
+      white-space: normal;
+    }
+    .analysis-project-shell .pg-rule-fields {
+      display: grid;
+      gap: var(--space-sm);
+      padding: var(--space-md);
+      border-top: 1px solid var(--border-subtle);
+    }
+    .analysis-project-shell .pg-rule-fields[hidden] {
+      display: none;
+    }
+    .analysis-project-shell .pg-rule-instruction {
+      min-height: 110px;
+    }
+    .analysis-rule-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-md);
+      min-height: calc(var(--space-lg) + var(--space-md));
+      margin-bottom: var(--space-sm);
+      padding-bottom: var(--space-sm);
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    .analysis-rule-toolbar-title {
+      display: flex;
+      min-width: 0;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: var(--space-sm);
+    }
+    .analysis-rule-toolbar-title h4 {
+      margin: 0;
+      color: var(--text-primary);
+      font-size: var(--font-md);
+      font-weight: 600;
+    }
+    .analysis-rule-toolbar #pg-add-rule {
+      display: grid;
+      width: 32px;
+      min-width: 32px;
+      height: 32px;
+      min-height: 32px;
+      flex: 0 0 32px;
+      align-self: center;
+      box-sizing: border-box;
+      align-items: center;
+      justify-items: center;
+      padding: 0;
+      line-height: 0;
+      text-align: center;
+    }
+    .analysis-rule-toolbar #pg-add-rule .pg-action-icon {
+      display: block;
+      width: 15px;
+      height: 15px;
+      margin: 0;
+    }
+    .analysis-rule-toolbar #pg-add-rule:disabled {
+      cursor: not-allowed;
+      opacity: 0.5;
+    }
+    .analysis-rule-toolbar .pg-rule-count {
+      color: var(--text-muted);
+      font-size: var(--font-xs);
+    }
+    .analysis-rule-version-meta {
+      display: inline-flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: var(--space-sm);
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+    }
+    .analysis-rule-version-meta-item {
+      white-space: nowrap;
+    }
+    .analysis-rule-version-meta-item + .analysis-rule-version-meta-item::before {
+      margin-right: var(--space-sm);
+      color: var(--text-muted);
+      content: "·";
+    }
+    .analysis-rule-version-meta time {
+      font-family: var(--font-mono);
+      font-variant-numeric: tabular-nums;
+    }
+    .analysis-rule-view-state {
+      display: inline-flex;
+      align-items: center;
+      padding: calc(var(--space-xs) / 2) var(--space-sm);
+      border: 1px solid var(--border-default);
+      border-radius: 999px;
+      font-size: var(--font-xs);
+      font-weight: 650;
+      white-space: nowrap;
+    }
+    .analysis-rule-view-state-readonly {
+      border-color: var(--warning-dim);
+      background: color-mix(in srgb, var(--warning) 12%, var(--bg-elevated));
+      color: var(--warning);
+    }
+    .analysis-rule-view-state-editable {
+      border-color: var(--success-dim);
+      background: color-mix(in srgb, var(--success) 12%, var(--bg-elevated));
+      color: var(--success);
+    }
+    .analysis-project-shell .pg-rule-inference-options {
+      display: block;
+      margin-bottom: var(--space-lg);
+      padding: 0;
+      border-color: var(--border-subtle);
+      background: var(--bg-elevated);
+    }
+    .analysis-project-shell .pg-rule-inference-heading {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-md);
+      padding: var(--space-sm) var(--space-md);
+      cursor: pointer;
+      list-style: none;
+    }
+    .analysis-project-shell .pg-rule-inference-heading::-webkit-details-marker {
+      display: none;
+    }
+    .analysis-project-shell .pg-rule-inference-summary {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-sm);
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+      font-weight: 400;
+      letter-spacing: normal;
+      text-transform: none;
+    }
+    .analysis-project-shell .pg-rule-inference-chevron {
+      display: inline-grid;
+      color: var(--text-muted);
+      place-items: center;
+    }
+    .analysis-project-shell .pg-rule-inference-chevron .pg-action-icon {
+      width: 14px;
+      height: 14px;
+      transition: transform 0.15s ease;
+    }
+    .analysis-project-shell .pg-rule-inference-options[open] .pg-rule-inference-chevron .pg-action-icon {
+      transform: rotate(90deg);
+    }
+    .analysis-project-shell .pg-rule-inference-content {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: var(--space-sm);
+      padding: 0 var(--space-sm) var(--space-sm);
+    }
+    .analysis-project-shell .pg-inference-toggle {
+      align-items: start;
+      padding: var(--space-sm);
+    }
+    .analysis-project-shell .pg-document-list {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: var(--space-sm);
+    }
+    .analysis-project-shell .pg-document-item {
+      min-width: 0;
+      border: 1px solid var(--border-subtle);
+      border-radius: 8px;
+      background: var(--bg-elevated);
+    }
+    .analysis-project-footer {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: var(--space-md);
+      margin: 0;
+      padding: var(--space-md) var(--space-lg);
+      border-top: 1px solid var(--border-subtle);
+      background: transparent;
+    }
+    .analysis-project-footer[hidden],
+    .analysis-project-footer [hidden] {
+      display: none !important;
+    }
+    .analysis-project-footer .pg-context-status {
+      flex: 1;
+      min-width: 180px;
+      font-weight: 600;
+    }
+    .analysis-project-footer .pg-context-status-readonly {
+      color: var(--warning);
+    }
+    .analysis-project-footer .pg-context-status-editable {
+      color: var(--success);
+    }
+    .analysis-project-footer .pg-context-actions {
+      display: flex;
+      align-items: center;
+      gap: var(--space-md);
+      flex-wrap: wrap;
+      margin: 0;
+    }
+    .analysis-project-footer .pg-context-action-group {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+    }
+    .analysis-project-footer .pg-context-action-divider {
+      align-self: stretch;
+      width: 1px;
+      background: var(--border-default);
+    }
+    .analysis-project-footer .pg-context-actions button {
+      display: inline-flex;
+      width: calc(var(--space-xl) * 4);
+      height: calc(var(--space-lg) * 2);
+      flex: 0 0 calc(var(--space-xl) * 4);
+      align-items: center;
+      justify-content: center;
+      padding: 0 var(--space-md);
+    }
+    .analysis-project-footer #pg-save-context {
+      border-color: var(--border-default);
+      background: var(--bg-elevated);
+      color: var(--text-secondary);
+    }
+    .analysis-project-footer #pg-save-context:not(:disabled):hover {
+      border-color: var(--accent-primary);
+      color: var(--accent-primary);
+    }
+    .analysis-project-footer #pg-save-context:disabled {
+      border-color: var(--border-subtle);
+      background: var(--bg-elevated);
+      color: var(--text-dim);
+      cursor: not-allowed;
+      opacity: 1;
+    }
+    .analysis-project-footer #pg-create-rule-version,
+    .analysis-project-footer #pg-update-rules {
+      border-color: var(--accent-tertiary);
+      background: var(--bg-elevated);
+      color: var(--accent-tertiary-soft);
+    }
+    .analysis-project-footer #pg-infer-rules {
+      border-color: var(--accent-tertiary);
+      background: var(--accent-tertiary);
+      color: var(--bg-void);
+    }
+    .analysis-project-footer #pg-infer-rules:disabled {
+      border-color: var(--border-default);
+      background: var(--bg-elevated);
+      color: var(--text-muted);
+      opacity: 1;
+    }
+    .analysis-project-shell .pg-rule-compare {
+      margin: 0 var(--space-lg) var(--space-lg);
+    }
+    .analysis-project-shell .pg-rule-compare-picker {
+      position: fixed;
+      inset: 0;
+      z-index: 1000;
+      display: grid;
+      width: auto;
+      max-width: none;
+      margin: 0;
+      padding: var(--space-lg);
+      place-items: center;
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+      box-shadow: none;
+    }
+    .analysis-project-shell .pg-rule-compare-picker .pg-rule-compare-backdrop {
+      position: absolute;
+      inset: 0;
+      background: color-mix(in srgb, var(--bg-void) 75%, transparent);
+    }
+    .analysis-project-shell .pg-rule-compare-picker .pg-rule-compare-dialog {
+      position: relative;
+      display: flex;
+      width: min(680px, 100%);
+      max-height: calc(100vh - (2 * var(--space-xl)));
+      flex-direction: column;
+      gap: var(--space-sm);
+      overflow-y: auto;
+      padding: var(--space-md);
+      border: 1px solid var(--border-strong);
+      border-radius: 8px;
+      background: var(--bg-surface);
+      box-shadow: 0 18px 60px color-mix(in srgb, var(--bg-void) 55%, transparent);
+    }
+    .analysis-project-shell .pg-rule-compare-picker .pg-rule-operation-help {
+      max-width: 34rem;
+    }
+    .analysis-project-shell .pg-rule-compare-picker .pg-rule-operation-field {
+      grid-template-columns: minmax(0, 1fr);
+      gap: var(--space-xs);
+    }
+    .analysis-project-shell .pg-rule-compare-picker .pg-rule-merge-actions {
+      justify-content: flex-end;
+      margin-top: var(--space-xs);
+    }
+    .analysis-project-shell .pg-rule-compare-picker .pg-context-primary {
+      flex: 0 0 auto;
+    }
+    .analysis-project-shell .pg-rule-merge-conflict {
+      padding: var(--space-md);
+      border: 1px solid var(--border-subtle);
+      border-radius: 8px;
+      background: var(--bg-elevated);
+    }
+    .analysis-project-shell .pg-rule-merge-conflict + .pg-rule-merge-conflict {
+      margin-top: var(--space-sm);
+    }
+    .analysis-project-shell .pg-rule-merge-conflict-head,
+    .analysis-project-shell .pg-rule-merge-actions {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-md);
+    }
+    .analysis-project-shell .pg-rule-merge-sides {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: var(--space-sm);
+      margin: var(--space-sm) 0;
+    }
+    .analysis-project-shell .pg-rule-merge-sides > div {
+      padding: var(--space-sm);
+      border: 1px solid var(--border-subtle);
+      border-radius: 6px;
+    }
+    .analysis-project-shell .pg-rule-merge-sides span,
+    .analysis-project-shell .pg-rule-merge-choice {
+      color: var(--text-muted);
+      font-size: var(--font-xs);
+    }
+    .analysis-project-shell .pg-rule-merge-sides p {
+      margin: var(--space-xs) 0 0;
+      color: var(--text-secondary);
+      font-size: var(--font-sm);
+      line-height: 1.45;
+    }
+    .analysis-project-shell .pg-rule-merge-choice,
+    .analysis-project-shell .pg-rule-merge-custom {
+      display: grid;
+      gap: var(--space-sm);
+    }
+    .analysis-project-shell .pg-rule-merge-custom[hidden] {
+      display: none;
+    }
+    .analysis-project-shell .pg-rule-merge-actions {
+      margin-top: var(--space-md);
+    }
+    .analysis-page .playground-header {
+      display: none;
+    }
+    .analysis-page .playground-page-overlay .playground-modal {
+      min-height: 0;
+      overflow: visible;
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+    }
+    .analysis-page .playground-page-overlay .playground-scroll {
+      max-width: none;
+      margin: 0;
+      padding: 0;
+      overflow: visible;
+    }
+    .analysis-page .playground-page-overlay .pg-workspace {
+      display: block;
+    }
+    .analysis-page .playground-page-overlay .pg-context-panel,
+    .analysis-page .playground-page-overlay .pg-analysis-main {
+      position: static;
+      width: 100%;
+      min-width: 0;
+      max-height: none;
+      padding: 0;
+      overflow: visible;
+      box-sizing: border-box;
+      border: 0;
+      background: transparent;
+    }
+    .analysis-page .playground-page-overlay .pg-section {
+      margin: 0;
+      border-color: var(--border-subtle);
+      border-radius: 8px;
+      background: var(--bg-elevated);
+      box-shadow: none;
+    }
+    .analysis-page .playground-page-overlay .pg-section-summary {
+      padding: var(--space-md);
+    }
+    .analysis-page .playground-page-overlay .pg-section-body {
+      padding: 0 var(--space-md) var(--space-md);
+    }
+    .analysis-run-footer {
+      position: relative;
+      z-index: 2;
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-start;
+      margin-top: var(--space-lg);
+      padding: var(--space-md);
+      border: 1px solid var(--border-default);
+      border-radius: 8px;
+      background: var(--bg-surface);
+      box-shadow: none;
+    }
+    .analysis-action-copy {
+      display: flex;
+      flex: 1 0 100%;
+      flex-direction: column;
+      gap: var(--space-xs);
+      margin-right: 0;
+    }
+    .analysis-action-copy strong {
+      color: var(--text-primary);
+      font-size: var(--font-sm);
+      font-weight: 600;
+    }
+    .analysis-action-copy span {
+      color: var(--text-muted);
+      font-size: var(--font-xs);
+    }
+    .analysis-run-footer .pg-footer-btn {
+      min-height: 38px;
+      border-radius: 6px;
+      box-shadow: none;
+      transform: none;
+    }
+    .analysis-run-footer .pg-footer-runall {
+      border-color: var(--accent-primary);
+      background: var(--accent-primary);
+      color: var(--bg-void);
+    }
+    .analysis-run-footer .pg-connection {
+      flex: 1 1 320px;
+      min-width: 0;
+      max-width: 480px;
+    }
+    .analysis-preview-card {
+      border: 1px solid var(--border-default);
+      border-radius: 10px;
+      background: var(--bg-surface);
+    }
+    .analysis-preview-card > .analysis-section-header {
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    .analysis-main-preview {
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+      box-shadow: none;
+    }
+    .analysis-main-preview > .pg-section-summary {
+      display: none;
+    }
+    .analysis-main-preview > .pg-section-body {
+      padding: var(--space-lg);
+    }
+    .analysis-mapping-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 1000;
+      display: grid;
+      place-items: center;
+      padding: var(--space-lg);
+      background: color-mix(in srgb, var(--bg-void) 75%, transparent);
+    }
+    .analysis-mapping-backdrop[hidden] {
+      display: none;
+    }
+    .analysis-mapping-dialog {
+      display: grid;
+      width: min(1040px, 80vw);
+      height: min(820px, 80vh);
+      grid-template-rows: auto minmax(0, 1fr) auto;
+      overflow: hidden;
+      border: 1px solid var(--border-default);
+      border-radius: 10px;
+      background: var(--bg-surface);
+      box-shadow: 0 24px 80px color-mix(in srgb, var(--bg-void) 75%, transparent);
+    }
+    .analysis-wizard-header,
+    .analysis-wizard-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-md);
+      padding: var(--space-md) var(--space-lg);
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    .analysis-wizard-footer {
+      border-top: 1px solid var(--border-subtle);
+      border-bottom: 0;
+    }
+    .analysis-wizard-title {
+      margin: 0;
+      color: var(--text-primary);
+      font-size: var(--font-lg);
+      font-weight: 600;
+    }
+    .analysis-wizard-progress {
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+    }
+    .analysis-wizard-close {
+      width: 32px;
+      height: 32px;
+      border: 1px solid var(--border-default);
+      border-radius: 6px;
+      background: var(--bg-elevated);
+      color: var(--text-secondary);
+      cursor: pointer;
+    }
+    .analysis-wizard-body {
+      min-height: 0;
+      padding: var(--space-lg);
+      overflow-y: auto;
+      overscroll-behavior: contain;
+    }
+    .analysis-mapping-dialog .pg-section {
+      border: 0;
+      background: transparent;
+    }
+    .analysis-mapping-dialog .pg-section-summary {
+      display: none;
+    }
+    .analysis-mapping-dialog .pg-section-body {
+      padding: 0;
+    }
+    .analysis-wizard-actions {
+      display: flex;
+      gap: var(--space-sm);
+      margin-left: auto;
+    }
+    .analysis-wizard-button {
+      min-height: 36px;
+      padding: 0 var(--space-md);
+      border: 1px solid var(--border-default);
+      border-radius: 6px;
+      background: var(--bg-elevated);
+      color: var(--text-secondary);
+      font-family: var(--font-sans);
+      font-size: var(--font-sm);
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .analysis-wizard-next {
+      border-color: var(--accent-primary);
+      background: var(--accent-primary);
+      color: var(--bg-void);
+    }
+    .analysis-page .pg-filter-row {
+      grid-template-columns: 260px max-content max-content;
+      align-items: start;
+      justify-content: start;
+      gap: var(--space-md);
+      margin-bottom: var(--space-sm);
+    }
+    .analysis-page .pg-filter-group,
+    .analysis-page .pg-filter-options-group,
+    .analysis-page .pg-filter-limit {
+      gap: 0;
+    }
+    .analysis-page .pg-filter-limit {
+      width: auto;
+      min-height: 34px;
+      align-self: end;
+      flex-direction: row;
+      align-items: center;
+      gap: var(--space-sm);
+    }
+    .analysis-page .pg-filter-limit input {
+      width: 96px;
+      min-height: 24px;
+    }
+    .analysis-page .pg-slider-control {
+      min-height: 34px;
+      align-items: center;
+      gap: var(--space-sm);
+    }
+    .analysis-page .pg-score-slider {
+      background: var(--border-default);
+    }
+    .analysis-page .pg-score-slider::-webkit-slider-runnable-track {
+      height: 6px;
+      border-radius: 999px;
+      background: var(--border-default);
+    }
+    .analysis-page .pg-score-slider::-webkit-slider-thumb {
+      margin-top: -6px;
+    }
+    .analysis-page .pg-score-slider::-moz-range-track {
+      background: var(--border-default);
+    }
+    .analysis-page .pg-filter-options {
+      min-height: 34px;
+      flex-wrap: nowrap;
+      gap: var(--space-md);
+    }
+    .analysis-page .pg-items-list {
+      max-height: 420px;
+      overflow-y: auto;
+      scrollbar-color: var(--border-default) transparent;
+      scrollbar-width: thin;
+    }
+    .analysis-page .pg-item-metric,
+    .analysis-page .pg-item-target-count {
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+      font-size: var(--font-xs);
+    }
+    .analysis-page .pg-zero-target-actions {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: var(--space-sm);
+      margin-top: var(--space-md);
+    }
+    .analysis-page .pg-zero-target-actions a {
+      color: var(--accent-primary);
+      font-size: var(--font-sm);
+      text-decoration: none;
+    }
+    .analysis-page .pg-zero-target-actions button {
+      min-height: 34px;
+      padding: 0 var(--space-md);
+      border: 1px solid var(--border-default);
+      border-radius: 6px;
+      background: var(--bg-elevated);
+      color: var(--text-secondary);
+      font-family: var(--font-sans);
+      font-size: var(--font-sm);
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .analysis-page .pg-zero-target-actions button:hover {
+      border-color: var(--accent-primary);
+      background: var(--bg-hover);
+      color: var(--text-primary);
+    }
+    @media (max-width: 900px) {
+      .analysis-context-toggles,
+      .analysis-rules-layout,
+      #analysis-diagnosis-view .pg-category-content {
+        grid-template-columns: minmax(0, 1fr);
+      }
+      #analysis-diagnosis-view .pg-category-details {
+        border-right: 0;
+        border-bottom: 1px solid var(--border-subtle);
+      }
+      #analysis-diagnosis-view .pg-category-example-data {
+        grid-template-columns: minmax(0, 1fr);
+      }
+      .analysis-page .pg-filter-row {
+        grid-template-columns: minmax(220px, 260px) minmax(0, 1fr);
+      }
+      .analysis-page .pg-filter-limit {
+        grid-column: 1 / -1;
+      }
+      .analysis-project-shell .pg-document-list,
+      .analysis-project-shell .pg-rule-merge-sides {
+        grid-template-columns: minmax(0, 1fr);
+      }
+      .analysis-mapping-dialog {
+        width: calc(100vw - (2 * var(--space-lg)));
+        height: calc(100vh - (2 * var(--space-lg)));
+      }
+    }
+    @media (max-width: 720px) {
+      .analysis-page {
+        padding: var(--space-lg) var(--space-md);
+      }
+      .analysis-tabs {
+        gap: var(--space-md);
+        overflow-x: auto;
+      }
+      .analysis-page .pg-filter-row {
+        grid-template-columns: minmax(0, 1fr);
+      }
+      .analysis-page .pg-filter-limit {
+        grid-column: auto;
+      }
+      .analysis-target-tools,
+      .analysis-diagnosis-header,
+      .analysis-project-footer,
+      .analysis-run-footer {
+        align-items: stretch;
+        flex-direction: column;
+      }
+      .analysis-run-footer {
+        position: relative;
+      }
+      .analysis-action-copy {
+        margin-right: 0;
+      }
+      .analysis-run-footer .pg-connection,
+      .analysis-run-footer .pg-footer-btn {
+        width: 100%;
+        box-sizing: border-box;
+        justify-content: center;
+      }
+      .analysis-project-shell .pg-rule-inference-content {
+        grid-template-columns: minmax(0, 1fr);
+      }
+      .analysis-project-shell .pg-rule-inference-heading {
+        grid-column: auto;
+      }
+      .analysis-project-footer .pg-context-actions,
+      .analysis-project-footer .pg-context-action-group {
+        width: 100%;
+      }
+      .analysis-project-footer .pg-context-actions {
+        align-items: stretch;
+        flex-direction: column;
+      }
+      .analysis-project-footer .pg-context-action-group {
+        flex-direction: column;
+      }
+      .analysis-project-footer .pg-context-actions button {
+        width: 100%;
+      }
+      .analysis-project-footer .pg-context-action-divider {
+        width: 100%;
+        height: 1px;
+      }
+      .analysis-project-shell .pg-rule-version-list {
+        padding-left: 40px;
+      }
+      .analysis-subheading .analysis-run-label {
+        white-space: normal;
+        text-align: right;
+      }
+      .analysis-project-shell .pg-rule-item-head {
+        grid-template-columns: 24px minmax(0, 1fr) auto;
+      }
+      .analysis-project-shell .pg-rule-remove {
+        grid-column: 3;
+      }
+      .analysis-project-shell .pg-rule-compare-picker {
+        width: auto;
+        padding: var(--space-md);
+      }
+      .analysis-project-shell .pg-rule-compare-picker .pg-rule-compare-dialog {
+        width: 100%;
+      }
+      .analysis-project-shell .pg-rule-compare-picker .pg-rule-operation-field {
+        grid-template-columns: minmax(0, 1fr);
+        gap: var(--space-xs);
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="analysis-page">
+    <header class="analysis-hero">
+      <h1 class="analysis-title">Auto-analysis</h1>
+      <p class="analysis-description">Diagnose failed metric targets with a focused run workspace and reusable project guidance.</p>
+      <div class="analysis-meta">
+        <span>Project <span class="analysis-meta-value" id="analysis-project-meta">loading</span></span>
+        <span aria-hidden="true">·</span>
+        <span>Workspace <span class="analysis-meta-value">metric failure diagnosis</span></span>
+      </div>
+      <nav class="analysis-tabs" id="analysis-tabs" role="tablist" aria-label="Auto-analysis views" hidden>
+        <button class="analysis-tab" id="analysis-run-tab" type="button" role="tab"
+          aria-selected="true" aria-controls="analysis-run-view" data-analysis-view="run">Analyze run</button>
+        <button class="analysis-tab" id="analysis-diagnosis-tab" type="button" role="tab"
+          aria-selected="false" aria-controls="analysis-diagnosis-view" data-analysis-view="diagnosis"
+          aria-disabled="true" disabled tabindex="-1" title="Select a run to configure diagnosis categories">Diagnosis categories</button>
+        <button class="analysis-tab" id="analysis-rules-tab" type="button" role="tab"
+          aria-selected="false" aria-controls="analysis-rules-view" data-analysis-view="rules" tabindex="-1">Production rules</button>
+        <button class="analysis-tab" id="analysis-documents-tab" type="button" role="tab"
+          aria-selected="false" aria-controls="analysis-documents-view" data-analysis-view="documents" tabindex="-1">Documents</button>
+      </nav>
+    </header>
+
+    <div class="analysis-status" id="analysis-status" role="status" aria-live="polite"></div>
+    <div class="analysis-loading" id="analysis-loading">Loading the analysis workspace…</div>
+    <div class="analysis-error" id="analysis-error" hidden></div>
+    <section class="analysis-landing" id="analysis-landing" hidden>
+      <h2>Select a run to start analysis</h2>
+      <p>The Analyze run workspace requires an explicit run. Go to the Runs page and choose Auto-analysis for the run you want to diagnose. Production rules and Documents remain available in the project tabs above.</p>
+      <a class="analysis-primary-link" id="analysis-go-runs" href="#">Select a run from Runs</a>
+    </section>
+    <div id="analyzer-host" hidden></div>
+  </main>
+
+  <script>
+    (() => {
+      'use strict';
+
+      const rootPath = (window.__QYM_ROOT_PATH__ || '').replace(/\/$/, '');
+      const path = window.location.pathname.replace(/\/+$/, '');
+      const params = new URLSearchParams(window.location.search);
+      const projectPageMatch = path.match(/\/projects\/([^/]+)\/analysis$/);
+      const projectRunMatch = path.match(/\/projects\/([^/]+)\/runs\/(.+)\/analyzer$/);
+      const legacyRunMatch = path.match(/\/run\/(.+)\/analyzer$/);
+      const projectSlug = decodeURIComponent((projectPageMatch && projectPageMatch[1]) || (projectRunMatch && projectRunMatch[1]) || '');
+      const runId = decodeURIComponent(params.get('run') || (projectRunMatch && projectRunMatch[2]) || (legacyRunMatch && legacyRunMatch[1]) || '');
+      const requestedMetric = params.get('metric') || '';
+      const requestedView = params.get('scope');
+      const state = {
+        currentView: ['diagnosis', 'rules', 'documents'].includes(requestedView)
+          ? requestedView
+          : (requestedView === 'project' ? 'rules' : 'run'),
+        contextRunId: '',
+        data: null,
+        metric: '',
+        metrics: [],
+        selectedMetrics: [],
+      };
+      document.getElementById('analysis-project-meta').textContent = projectSlug || 'current run';
+
+      function apiUrl(value) {
+        return window.location.origin + rootPath + '/' + String(value || '').replace(/^\/+/, '');
+      }
+
+      function projectUrl(suffix = '') {
+        const clean = String(suffix || '').replace(/^\/+/, '');
+        return rootPath + '/projects/' + encodeURIComponent(projectSlug) + (clean ? '/' + clean : '');
+      }
+
+      function analysisViewUrl(view) {
+        const nextParams = new URLSearchParams(window.location.search);
+        nextParams.set('scope', view);
+        return window.location.pathname + '?' + nextParams.toString();
+      }
+
+      function escapeHtml(value) {
+        const node = document.createElement('div');
+        node.textContent = value == null ? '' : String(value);
+        return node.innerHTML;
+      }
+
+      function escapeAttr(value) {
+        return escapeHtml(value).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+      }
+
+      function iconMarkup(name) {
+        const paths = {
+          check: '<path d="m5 12 4 4L19 6"></path>',
+          close: '<path d="M18 6 6 18M6 6l12 12"></path>',
+          info: '<circle cx="12" cy="12" r="9"></circle><path d="M12 11v5"></path><path d="M12 8h.01"></path>',
+          plus: '<path d="M12 5v14M5 12h14"></path>',
+          arrow: '<path d="M5 12h14"></path><path d="m13 6 6 6-6 6"></path>',
+        };
+        return '<svg class="pg-action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">' +
+          (paths[name] || paths.close) + '</svg>';
+      }
+
+      function showStatus(type, title, message) {
+        const node = document.getElementById('analysis-status');
+        node.className = 'analysis-status visible ' + (type || '');
+        node.textContent = (title ? title + ': ' : '') + (message || '');
+      }
+
+      function setAnalyzerView(view, options = {}) {
+        const diagnosisTab = document.getElementById('analysis-diagnosis-tab');
+        const requestedNextView = ['diagnosis', 'rules', 'documents'].includes(view) ? view : 'run';
+        const nextView = requestedNextView === 'diagnosis' && diagnosisTab && diagnosisTab.disabled
+          ? 'run'
+          : requestedNextView;
+        state.currentView = nextView;
+        document.querySelectorAll('[data-analysis-view]').forEach(tab => {
+          const active = tab.dataset.analysisView === nextView;
+          tab.setAttribute('aria-selected', active ? 'true' : 'false');
+          tab.tabIndex = active ? 0 : -1;
+          if (active && options.focus) tab.focus();
+        });
+        const projectView = document.getElementById('analysis-project-view');
+        const runView = document.getElementById('analysis-run-view');
+        const diagnosisView = document.getElementById('analysis-diagnosis-view');
+        if (projectView) projectView.hidden = !['rules', 'documents'].includes(nextView);
+        if (runView) runView.hidden = nextView !== 'run';
+        if (diagnosisView) diagnosisView.hidden = nextView !== 'diagnosis';
+        if (['rules', 'documents'].includes(nextView)) setProjectView(nextView);
+        if (nextView !== 'run') closeInputMapping();
+        if (options.updateUrl !== false) {
+          const nextParams = new URLSearchParams(window.location.search);
+          nextParams.set('scope', nextView);
+          history.replaceState(history.state, '', window.location.pathname + '?' + nextParams.toString());
+        }
+      }
+
+      document.querySelectorAll('[data-analysis-view]').forEach(tab => {
+        tab.addEventListener('click', () => setAnalyzerView(tab.dataset.analysisView));
+        tab.addEventListener('keydown', event => {
+          if (!['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
+          event.preventDefault();
+          const tabs = Array.from(document.querySelectorAll('[data-analysis-view]:not(:disabled)'));
+          const currentIndex = tabs.indexOf(tab);
+          const offset = event.key === 'ArrowRight' ? 1 : -1;
+          const nextTab = tabs[(currentIndex + offset + tabs.length) % tabs.length];
+          setAnalyzerView(nextTab.dataset.analysisView, { focus: true });
+        });
+      });
+
+      function analyzerRows() {
+        const snapshot = (state.data && state.data.snapshot) || {};
+        const metrics = snapshot.metric_names || [];
+        const metricIndex = metrics.indexOf(state.metric);
+        const specs = snapshot.metric_specs || {};
+        return (snapshot.rows || []).map(row => {
+          const metricScores = {};
+          const metricThresholds = {};
+          const metricDirections = {};
+          metrics.forEach((metricName, index) => {
+            metricScores[metricName] = window.QymMetrics.parseScoreValue((row.metric_values || [])[index]);
+            metricThresholds[metricName] = specs[metricName] && specs[metricName].pass_threshold != null
+              ? Number(specs[metricName].pass_threshold)
+              : 0.8;
+            metricDirections[metricName] = (specs[metricName] && specs[metricName].direction) || 'maximize';
+          });
+          return {
+            item_id: row.item_id,
+            index: row.index,
+            input: row.input,
+            input_full: row.input_full,
+            output: row.output,
+            output_full: row.output_full,
+            expected: row.expected,
+            expected_full: row.expected_full,
+            error: row.error,
+            item_metadata: row.item_metadata,
+            metric_metadata: state.metric ? ((row.metric_meta || {})[state.metric] || {}) : {},
+            metric_metadata_by_metric: row.metric_meta || {},
+            scores: metricScores,
+            metric_scores: metricScores,
+            metric_thresholds: metricThresholds,
+            metric_directions: metricDirections,
+            metric_score: metricIndex >= 0 ? metricScores[state.metric] : null,
+          };
+        });
+      }
+
+      function metricThreshold() {
+        const specs = ((state.data && state.data.snapshot) || {}).metric_specs || {};
+        const spec = specs[state.metric] || {};
+        return spec.pass_threshold == null ? 0.8 : Number(spec.pass_threshold);
+      }
+
+      function updateMetricSummary() {
+        const node = document.getElementById('analysis-metric-summary');
+        if (!node) return;
+        node.textContent = state.selectedMetrics.length
+          ? state.selectedMetrics.length + ' of ' + state.metrics.length + ' metrics selected'
+          : 'Select at least one metric to analyze.';
+      }
+
+      function setSelectedMetrics(metrics) {
+        state.selectedMetrics = state.metrics.filter(metric => metrics.includes(metric));
+        state.metric = state.selectedMetrics[0] || '';
+        document.querySelectorAll('#analysis-metric-list input').forEach(input => {
+          input.checked = state.selectedMetrics.includes(input.value);
+        });
+        updateMetricSummary();
+        if (window.QymPlayground && window.QymPlayground.refreshFilters) window.QymPlayground.refreshFilters();
+      }
+
+      function renderMetricSelector() {
+        const list = document.getElementById('analysis-metric-list');
+        list.innerHTML = state.metrics.map(metric =>
+          '<label class="analysis-metric-option">' +
+            '<input type="checkbox" value="' + escapeAttr(metric) + '"' + (state.selectedMetrics.includes(metric) ? ' checked' : '') + ' />' +
+            '<span>' + escapeHtml(metric) + '</span>' +
+          '</label>'
+        ).join('');
+        list.querySelectorAll('input').forEach(input => {
+          input.addEventListener('change', () => {
+            setSelectedMetrics(Array.from(list.querySelectorAll('input:checked')).map(node => node.value));
+          });
+        });
+        updateMetricSummary();
+      }
+
+      function runSummaryValue(value) {
+        return escapeHtml(value || '—');
+      }
+
+      function createRunCard() {
+        const run = state.data.run;
+        const card = document.createElement('section');
+        card.className = 'analysis-run-card';
+        card.innerHTML =
+          '<div class="analysis-section-header analysis-run-header">' +
+            '<div class="analysis-run-heading"><h2 title="' + escapeAttr(run.run_name || run.external_run_id || run.run_id || runId) + '">' +
+              runSummaryValue(run.run_name || run.external_run_id || run.run_id || runId) + '</h2>' +
+              '<ul class="analysis-run-context" aria-label="Run information">' +
+                '<li class="analysis-run-context-item"><span class="analysis-run-context-label">Task</span><span class="analysis-run-context-value">' + runSummaryValue(run.task_name) + '</span></li>' +
+                '<li class="analysis-run-context-item"><span class="analysis-run-context-label">Model</span><span class="analysis-run-context-value">' + runSummaryValue(run.model_name) + '</span></li>' +
+                '<li class="analysis-run-context-item"><span class="analysis-run-context-label">Dataset</span><span class="analysis-run-context-value">' + runSummaryValue(run.dataset_name) + '</span></li>' +
+              '</ul></div>' +
+            '<a class="analysis-secondary-link" href="' + projectUrl('runs/' + encodeURIComponent(runId)) + '">View run</a></div>' +
+          '<div class="analysis-metrics"><div class="analysis-metric-heading"><span class="analysis-run-label">Metrics to analyze</span>' +
+            '<span class="analysis-metric-actions"><button class="analysis-metric-action" id="analysis-metrics-all" type="button">Select all</button>' +
+            '<button class="analysis-metric-action" id="analysis-metrics-none" type="button">Clear</button></span></div>' +
+            '<div class="analysis-metric-list" id="analysis-metric-list" role="group" aria-label="Metrics to analyze"></div>' +
+            '<div class="analysis-metric-summary" id="analysis-metric-summary"></div></div>';
+        return card;
+      }
+
+      function createContextToggles() {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'analysis-context-toggles';
+        wrapper.innerHTML = [
+          ['pg-use-project-rules', 'Production rules', 'The current production rule version', 'rules'],
+          ['pg-use-project-documents', 'Project documents', 'Documents enabled in the Documents tab', 'documents'],
+        ].map(item =>
+          '<div class="analysis-context-toggle"><label class="analysis-context-toggle-control">' +
+            '<input id="' + item[0] + '" type="checkbox" checked />' +
+            '<span class="analysis-context-toggle-copy"><strong>' + item[1] + '</strong><span>' + item[2] + '</span></span></label>' +
+            '<a class="analysis-context-link" href="' + escapeAttr(analysisViewUrl(item[3])) + '" data-context-view="' + item[3] + '"' +
+              ' aria-label="Open ' + item[1] + ' tab" title="Open ' + item[1] + ' tab">' + iconMarkup('arrow') + '</a></div>'
+        ).join('');
+        return wrapper;
+      }
+
+      function setProjectView(view) {
+        const projectView = ['rules', 'documents'].includes(view) ? view : 'rules';
+        document.querySelectorAll('.analysis-project-panel').forEach(panel => {
+          panel.hidden = panel.dataset.projectPanel !== projectView;
+        });
+        const projectFooter = document.querySelector('.analysis-project-footer');
+        const saveContext = document.getElementById('pg-save-context');
+        const createDraft = document.getElementById('pg-create-rule-version');
+        const updateRules = document.getElementById('pg-update-rules');
+        const generateRules = document.getElementById('pg-infer-rules');
+        const manualActions = document.querySelector('.pg-context-action-group-manual');
+        const generationActions = document.querySelector('.pg-context-action-group-generation');
+        const actionDivider = document.querySelector('.pg-context-action-divider');
+        const rulesView = projectView === 'rules';
+        if (saveContext) saveContext.hidden = projectView === 'documents';
+        [createDraft, updateRules, generateRules].forEach(action => {
+          if (action) action.hidden = !rulesView;
+        });
+        if (manualActions) manualActions.hidden = projectView === 'documents';
+        if (generationActions) generationActions.hidden = !rulesView;
+        if (actionDivider) actionDivider.hidden = !rulesView;
+        if (projectFooter) projectFooter.hidden = projectView === 'documents';
+        if (rulesView) requestAnimationFrame(renderRuleGraph);
+      }
+
+      function renderRuleGraph() {
+        const list = document.getElementById('pg-rule-version-list');
+        if (!list || list.offsetParent === null) return;
+        const previous = list.querySelector('.analysis-rule-graph');
+        if (previous) previous.remove();
+        const rows = Array.from(list.querySelectorAll('[data-rule-version-id]'));
+        if (!rows.length) return;
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.classList.add('analysis-rule-graph');
+        svg.setAttribute('role', 'img');
+        svg.setAttribute('aria-label', 'Rule version lineage graph');
+        svg.setAttribute('viewBox', '0 0 40 ' + Math.max(list.scrollHeight, list.clientHeight));
+        svg.setAttribute('preserveAspectRatio', 'none');
+        svg.style.height = Math.max(list.scrollHeight, list.clientHeight) + 'px';
+        const byId = {};
+        rows.forEach((row, index) => {
+          const status = row.dataset.ruleVersionStatus || '';
+          const lane = row.querySelector('.pg-rule-version-production') ? 0 : (status === 'Draft' ? 1 + (index % 2) : index % 2);
+          byId[row.dataset.ruleVersionId] = {
+            row,
+            x: 10 + lane * 10,
+            y: row.offsetTop + row.offsetHeight / 2,
+          };
+        });
+        function addPath(child, parent, dashed) {
+          if (!child || !parent) return;
+          const pathNode = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+          const middle = child.y + (parent.y - child.y) / 2;
+          pathNode.setAttribute('d', 'M ' + child.x + ' ' + child.y + ' C ' + child.x + ' ' + middle + ', ' + parent.x + ' ' + middle + ', ' + parent.x + ' ' + parent.y);
+          pathNode.setAttribute('fill', 'none');
+          pathNode.setAttribute('stroke', dashed ? 'var(--accent-tertiary-soft)' : 'var(--border-strong)');
+          pathNode.setAttribute('stroke-width', '2');
+          if (dashed) pathNode.setAttribute('stroke-dasharray', '4 3');
+          svg.append(pathNode);
+        }
+        rows.forEach(row => {
+          const child = byId[row.dataset.ruleVersionId];
+          addPath(child, byId[row.dataset.ruleParentId], false);
+          String(row.dataset.ruleMergeParentIds || '').split(',').filter(Boolean).forEach(id => addPath(child, byId[id], true));
+        });
+        rows.forEach(row => {
+          const point = byId[row.dataset.ruleVersionId];
+          const isLive = !!row.querySelector('.pg-rule-version-production');
+          const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+          circle.setAttribute('cx', point.x);
+          circle.setAttribute('cy', point.y);
+          circle.setAttribute('r', isLive ? '5' : '4');
+          circle.setAttribute('fill', isLive ? 'var(--success)' : 'var(--bg-surface)');
+          circle.setAttribute('stroke', isLive ? 'var(--success)' : 'var(--border-strong)');
+          circle.setAttribute('stroke-width', '2');
+          circle.setAttribute('aria-label', row.querySelector('.pg-rule-version-name').textContent.trim() + ' · ' + (isLive ? 'Live' : (row.dataset.ruleVersionStatus || 'Not live')));
+          const title = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+          title.textContent = circle.getAttribute('aria-label');
+          circle.append(title);
+          svg.append(circle);
+        });
+        list.prepend(svg);
+      }
+
+      function closeInputMapping() {
+        const backdrop = document.getElementById('analysis-mapping-backdrop');
+        if (backdrop) backdrop.hidden = true;
+      }
+
+      function openInputMapping() {
+        const backdrop = document.getElementById('analysis-mapping-backdrop');
+        if (!backdrop) return;
+        backdrop.hidden = false;
+        document.getElementById('analysis-mapping-close').focus();
+      }
+
+      function buildInputMappingDialog(mapping) {
+        document.querySelectorAll('#analysis-mapping-backdrop').forEach(existing => existing.remove());
+        const backdrop = document.createElement('div');
+        backdrop.className = 'analysis-mapping-backdrop';
+        backdrop.id = 'analysis-mapping-backdrop';
+        backdrop.hidden = true;
+        backdrop.innerHTML =
+          '<section class="analysis-mapping-dialog" role="dialog" aria-modal="true" aria-labelledby="analysis-mapping-title">' +
+            '<header class="analysis-wizard-header"><div><h2 class="analysis-wizard-title" id="analysis-mapping-title">Input mapping</h2></div>' +
+              '<button class="analysis-wizard-close" id="analysis-mapping-close" type="button" aria-label="Close input mapping">×</button></header>' +
+            '<div class="analysis-wizard-body"></div>' +
+            '<footer class="analysis-wizard-footer"><span class="analysis-wizard-progress">Changes apply to this analysis only.</span>' +
+              '<div class="analysis-wizard-actions"><button class="analysis-wizard-button analysis-wizard-next" id="analysis-mapping-done" type="button">Done</button></div></footer>' +
+          '</section>';
+        const body = backdrop.querySelector('.analysis-wizard-body');
+        if (mapping) {
+          mapping.open = true;
+          body.append(mapping);
+        } else {
+          const empty = document.createElement('p');
+          empty.className = 'analysis-wizard-progress';
+          empty.textContent = 'No configurable fields are available for this run.';
+          body.append(empty);
+        }
+        document.body.append(backdrop);
+        backdrop.querySelector('#analysis-mapping-close').addEventListener('click', closeInputMapping);
+        backdrop.querySelector('#analysis-mapping-done').addEventListener('click', closeInputMapping);
+        backdrop.addEventListener('click', event => {
+          if (event.target === backdrop) closeInputMapping();
+        });
+        document.addEventListener('keydown', event => {
+          if (event.key === 'Escape' && !backdrop.hidden) closeInputMapping();
+        });
+      }
+
+      function organizeAnalyzerWorkspace() {
+        const overlay = document.querySelector('#analyzer-host .playground-page-overlay');
+        if (!overlay || overlay.dataset.analysisOrganized === 'true') return !!overlay;
+        const projectPanel = overlay.querySelector('.pg-context-panel');
+        const runPanel = overlay.querySelector('.pg-analysis-main');
+        const footer = overlay.querySelector('.playground-footer');
+        if (!projectPanel || !runPanel || !footer) return false;
+        overlay.dataset.analysisOrganized = 'true';
+
+        projectPanel.id = 'analysis-project-view';
+        projectPanel.className = 'analysis-project-shell analysis-view-panel';
+        runPanel.id = 'analysis-run-view';
+        runPanel.className = 'analysis-view-panel';
+        runPanel.setAttribute('role', 'tabpanel');
+        runPanel.setAttribute('aria-labelledby', 'analysis-run-tab');
+
+        const inference = document.querySelector('#analyzer-host .pg-rule-inference-options');
+        const inferencePrevious = inference && inference.previousElementSibling;
+        const rulesHint = inferencePrevious && inferencePrevious.classList.contains('pg-instructions-hint') ? inferencePrevious : null;
+        const ruleList = document.getElementById('pg-rule-list');
+        const ruleCount = document.getElementById('pg-rule-count');
+        const addRule = document.getElementById('pg-add-rule');
+        const versionList = document.getElementById('pg-rule-version-list');
+        const versionCompare = document.getElementById('pg-rule-version-compare');
+        const contextActions = projectPanel.querySelector('.pg-context-actions');
+        const contextStatus = document.getElementById('pg-context-status');
+        const contextFeedback = document.getElementById('pg-context-feedback');
+        const documentInput = document.getElementById('pg-document-input');
+        const documentsSection = documentInput && documentInput.closest('.pg-section');
+        const documentsBody = documentsSection && documentsSection.querySelector('.pg-section-body');
+
+        projectPanel.innerHTML = '';
+        const rulesPanel = document.createElement('section');
+        rulesPanel.className = 'analysis-project-panel';
+        rulesPanel.dataset.projectPanel = 'rules';
+        rulesPanel.id = 'analysis-rules-view';
+        rulesPanel.setAttribute('role', 'tabpanel');
+        rulesPanel.setAttribute('aria-labelledby', 'analysis-rules-tab');
+        const rulesSourceCard = document.createElement('section');
+        rulesSourceCard.className = 'analysis-target-card';
+        const rulesSourceHeader = document.createElement('div');
+        rulesSourceHeader.className = 'analysis-section-header';
+        rulesSourceHeader.innerHTML = '<div><h2>Generate diagnostic rules</h2>' +
+          '<p>Create rules from the project’s enabled documents and approved examples.</p></div>';
+        const rulesSourceBody = document.createElement('div');
+        rulesSourceBody.className = 'analysis-target-body';
+        [rulesHint, inference].forEach(node => { if (node) rulesSourceBody.append(node); });
+        rulesSourceCard.append(rulesSourceHeader, rulesSourceBody);
+        rulesPanel.append(rulesSourceCard);
+
+        const rulesWorkspaceCard = document.createElement('section');
+        rulesWorkspaceCard.className = 'analysis-target-card';
+        const rulesWorkspaceHeader = document.createElement('div');
+        rulesWorkspaceHeader.className = 'analysis-section-header analysis-project-heading';
+        rulesWorkspaceHeader.innerHTML = '<div><h2>Production rules</h2>' +
+          '<p>Inspect version history and maintain the rules applied during diagnosis.</p></div>';
+        const rulesHeadingTitle = rulesWorkspaceHeader.querySelector('h2');
+        const rulesHelp = document.createElement('button');
+        rulesHelp.className = 'analysis-info-button';
+        rulesHelp.type = 'button';
+        rulesHelp.setAttribute('aria-label', 'How version actions work');
+        rulesHelp.setAttribute('aria-expanded', 'false');
+        rulesHelp.setAttribute('aria-controls', 'analysis-rules-help');
+        rulesHelp.innerHTML = iconMarkup('info');
+        const rulesHelpCopy = document.createElement('div');
+        rulesHelpCopy.className = 'analysis-info-popover';
+        rulesHelpCopy.id = 'analysis-rules-help';
+        rulesHelpCopy.hidden = true;
+        rulesHelpCopy.textContent = 'Select a version to inspect it. Use Publish or Promote for lifecycle changes, and the menu for compare, merge, or delete.';
+        if (rulesHeadingTitle) rulesHeadingTitle.append(' ', rulesHelp);
+        rulesWorkspaceHeader.append(rulesHelpCopy);
+        rulesHelp.addEventListener('click', () => {
+          rulesHelpCopy.hidden = !rulesHelpCopy.hidden;
+          rulesHelp.setAttribute('aria-expanded', rulesHelpCopy.hidden ? 'false' : 'true');
+        });
+        const rulesLayout = document.createElement('div');
+        rulesLayout.className = 'analysis-rules-layout';
+        const versionColumn = document.createElement('section');
+        versionColumn.className = 'analysis-version-column';
+        versionColumn.innerHTML = '<div class="analysis-subheading analysis-version-heading"><div class="analysis-version-heading-copy"><h4>Version graph</h4><div class="analysis-version-legend"><span>Solid fork · dashed merge</span><span class="analysis-version-node-key"><i class="analysis-version-node analysis-version-node-live" aria-hidden="true"></i>Live</span><span class="analysis-version-node-key"><i class="analysis-version-node" aria-hidden="true"></i>Not live</span></div></div></div>';
+        if (versionList) versionColumn.append(versionList);
+        const ruleColumn = document.createElement('section');
+        ruleColumn.className = 'analysis-rule-column';
+        const toolbar = document.createElement('div');
+        toolbar.className = 'analysis-rule-toolbar';
+        const toolbarHeading = document.createElement('h4');
+        toolbarHeading.textContent = 'Rules in viewed version';
+        const toolbarTitle = document.createElement('div');
+        toolbarTitle.className = 'analysis-rule-toolbar-title';
+        toolbarTitle.append(toolbarHeading);
+        if (ruleCount) toolbarTitle.append(ruleCount);
+        const versionMeta = document.createElement('span');
+        versionMeta.className = 'analysis-rule-version-meta';
+        versionMeta.id = 'pg-rule-version-meta';
+        toolbarTitle.append(versionMeta);
+        const viewState = document.createElement('span');
+        viewState.className = 'analysis-rule-view-state';
+        viewState.id = 'pg-rule-view-state';
+        viewState.setAttribute('role', 'status');
+        toolbarTitle.append(viewState);
+        toolbar.append(toolbarTitle);
+        if (addRule) {
+          addRule.innerHTML = iconMarkup('plus');
+          addRule.title = 'Add rule';
+          addRule.setAttribute('aria-label', 'Add rule');
+          toolbar.append(addRule);
+        }
+        ruleColumn.append(toolbar);
+        if (ruleList) ruleColumn.append(ruleList);
+        rulesLayout.append(versionColumn, ruleColumn);
+        const rulesWorkspaceBody = document.createElement('div');
+        rulesWorkspaceBody.className = 'analysis-target-body';
+        rulesWorkspaceBody.append(rulesLayout);
+        if (versionCompare) rulesWorkspaceBody.append(versionCompare);
+        rulesWorkspaceCard.append(rulesWorkspaceHeader, rulesWorkspaceBody);
+        rulesPanel.append(rulesWorkspaceCard);
+
+        const documentsPanel = document.createElement('section');
+        documentsPanel.className = 'analysis-project-panel';
+        documentsPanel.dataset.projectPanel = 'documents';
+        documentsPanel.id = 'analysis-documents-view';
+        documentsPanel.setAttribute('role', 'tabpanel');
+        documentsPanel.setAttribute('aria-labelledby', 'analysis-documents-tab');
+        documentsPanel.hidden = true;
+        const documentNodes = documentsBody ? Array.from(documentsBody.children) : [];
+        const documentList = document.getElementById('pg-document-list');
+        const uploadCard = document.createElement('section');
+        uploadCard.className = 'analysis-target-card';
+        uploadCard.innerHTML = '<div class="analysis-section-header"><div><h2>Add documents</h2>' +
+          '<p>Upload reference material that can be used to generate rules and diagnose runs.</p></div></div>';
+        const uploadBody = document.createElement('div');
+        uploadBody.className = 'analysis-target-body';
+        documentNodes.filter(node => node !== documentList).forEach(node => uploadBody.append(node));
+        uploadCard.append(uploadBody);
+        const libraryCard = document.createElement('section');
+        libraryCard.className = 'analysis-target-card';
+        libraryCard.innerHTML = '<div class="analysis-section-header"><div><h2>Document library</h2>' +
+          '<p>Enable the documents that should be available to project analysis.</p></div></div>';
+        const libraryBody = document.createElement('div');
+        libraryBody.className = 'analysis-target-body';
+        if (documentList) libraryBody.append(documentList);
+        libraryCard.append(libraryBody);
+        documentsPanel.append(uploadCard, libraryCard);
+        if (documentsSection) documentsSection.remove();
+
+        const projectFooter = document.createElement('footer');
+        projectFooter.className = 'analysis-project-footer';
+        if (contextStatus) projectFooter.append(contextStatus);
+        if (contextActions) projectFooter.append(contextActions);
+        if (contextFeedback) projectFooter.append(contextFeedback);
+        rulesWorkspaceCard.append(projectFooter);
+        projectPanel.append(rulesPanel, documentsPanel);
+        if (versionList) {
+          const versionObserver = new MutationObserver(mutations => {
+            const changedRows = mutations.some(mutation =>
+              Array.from(mutation.addedNodes).concat(Array.from(mutation.removedNodes)).some(node =>
+                node.nodeType === 1 && (node.matches?.('.pg-rule-version') || node.querySelector?.('.pg-rule-version'))
+              )
+            );
+            if (changedRows) requestAnimationFrame(renderRuleGraph);
+          });
+          versionObserver.observe(versionList, { childList: true, subtree: true });
+        }
+        window.addEventListener('resize', () => requestAnimationFrame(renderRuleGraph));
+
+        if (!runId) {
+          runPanel.innerHTML = '';
+          const landing = document.getElementById('analysis-landing');
+          if (landing) {
+            landing.hidden = false;
+            runPanel.append(landing);
+          }
+          footer.hidden = true;
+          document.getElementById('analysis-tabs').hidden = false;
+          setAnalyzerView(state.currentView, { updateUrl: false });
+          return true;
+        }
+
+        const sectionFor = id => {
+          const anchor = document.getElementById(id);
+          return anchor && anchor.closest('.pg-section');
+        };
+        const instructions = sectionFor('pg-additional-instructions');
+        const catalog = sectionFor('pg-categories-list');
+        const mapping = sectionFor('pg-mapping-0-field');
+        const filter = sectionFor('pg-max-score');
+        const preview = sectionFor('pg-preview-content');
+        const resultNodes = [
+          document.getElementById('pg-results-divider'),
+          document.getElementById('pg-test-results'),
+          document.getElementById('pg-runall-progress'),
+          document.getElementById('pg-runall-results'),
+        ].filter(Boolean);
+
+        const diagnosisPanel = document.createElement('section');
+        diagnosisPanel.className = 'analysis-project-panel analysis-view-panel';
+        diagnosisPanel.id = 'analysis-diagnosis-view';
+        diagnosisPanel.setAttribute('role', 'tabpanel');
+        diagnosisPanel.setAttribute('aria-labelledby', 'analysis-diagnosis-tab');
+        diagnosisPanel.hidden = true;
+        const diagnosisHeader = document.createElement('header');
+        diagnosisHeader.className = 'analysis-diagnosis-header';
+        diagnosisHeader.innerHTML = '<p>Manage the labels available to the analyzer and inspect the approved examples behind each category.</p>' +
+          '<div class="analysis-diagnosis-summary" aria-label="Diagnosis category summary">' +
+            '<span class="analysis-diagnosis-stat"><strong id="analysis-category-count">0</strong> categories</span>' +
+            '<span class="analysis-diagnosis-stat"><strong id="analysis-example-count">0</strong> examples</span>' +
+          '</div>';
+        const diagnosisBody = document.createElement('div');
+        diagnosisBody.className = 'analysis-diagnosis-workspace analysis-inline-section';
+        if (catalog) {
+          catalog.open = true;
+          diagnosisBody.append(catalog);
+        }
+        diagnosisPanel.append(diagnosisHeader, diagnosisBody);
+        projectPanel.after(diagnosisPanel);
+        const syncDiagnosisSummary = () => {
+          const groups = Array.from(diagnosisBody.querySelectorAll('.pg-category-group'));
+          const exampleCount = groups.reduce(
+            (total, group) => total + Number(group.dataset.exampleCount || 0),
+            0
+          );
+          const categoryCountNode = document.getElementById('analysis-category-count');
+          const exampleCountNode = document.getElementById('analysis-example-count');
+          if (categoryCountNode) categoryCountNode.textContent = String(groups.length);
+          if (exampleCountNode) exampleCountNode.textContent = String(exampleCount);
+        };
+        const diagnosisObserver = new MutationObserver(syncDiagnosisSummary);
+        diagnosisObserver.observe(diagnosisBody, { childList: true, subtree: true });
+        syncDiagnosisSummary();
+        const diagnosisTab = document.getElementById('analysis-diagnosis-tab');
+        diagnosisTab.disabled = false;
+        diagnosisTab.removeAttribute('aria-disabled');
+        diagnosisTab.removeAttribute('title');
+
+        runPanel.innerHTML = '';
+        runPanel.append(createRunCard());
+        renderMetricSelector();
+        document.getElementById('analysis-metrics-all').addEventListener('click', () => setSelectedMetrics(state.metrics));
+        document.getElementById('analysis-metrics-none').addEventListener('click', () => setSelectedMetrics([]));
+
+        const contextCard = document.createElement('section');
+        contextCard.className = 'analysis-target-card';
+        contextCard.innerHTML = '<div class="analysis-section-header"><div><h2>Use project context</h2>' +
+          '<p>Production rules and enabled documents can be included or removed for this run.</p></div></div>';
+        contextCard.append(createContextToggles());
+        contextCard.querySelectorAll('input[type="checkbox"]').forEach(toggle => {
+          toggle.addEventListener('change', () => {
+            if (window.QymPlayground && window.QymPlayground.refreshFilters) window.QymPlayground.refreshFilters();
+          });
+        });
+        contextCard.querySelectorAll('[data-context-view]').forEach(link => {
+          link.addEventListener('click', event => {
+            event.preventDefault();
+            setAnalyzerView(link.dataset.contextView, { focus: true });
+          });
+        });
+        runPanel.append(contextCard);
+
+        const instructionsCard = document.createElement('section');
+        instructionsCard.className = 'analysis-target-card';
+        instructionsCard.innerHTML = '<div class="analysis-section-header"><div><h2>Additional instructions</h2>' +
+          '<p>Add focused guidance and optional variables for this analysis.</p></div></div>';
+        const instructionsBody = document.createElement('div');
+        instructionsBody.className = 'analysis-target-body analysis-inline-section';
+        if (instructions) {
+          instructions.open = true;
+          instructionsBody.append(instructions);
+        }
+        instructionsCard.append(instructionsBody);
+        runPanel.append(instructionsCard);
+
+        const targetCard = document.createElement('section');
+        targetCard.className = 'analysis-target-card';
+        targetCard.innerHTML = '<div class="analysis-section-header"><div><h2>Targets</h2>' +
+          '<p>The limit is applied deterministically to the most severe matching item–metric targets.</p></div></div>';
+        const targetBody = document.createElement('div');
+        targetBody.className = 'analysis-target-body';
+        const tools = document.createElement('div');
+        tools.className = 'analysis-target-tools';
+        tools.innerHTML = '<p>Set the score, re-analysis options, and an optional target limit here.</p>' +
+          '<button class="analysis-mapping-open" id="analysis-mapping-open" type="button">Input mapping</button>';
+        targetBody.append(tools);
+        if (filter) targetBody.append(filter);
+        targetCard.append(targetBody);
+        runPanel.append(targetCard);
+
+        if (preview) {
+          preview.open = true;
+          preview.classList.add('analysis-main-preview');
+          const previewCard = document.createElement('section');
+          previewCard.className = 'analysis-preview-card';
+          previewCard.innerHTML = '<div class="analysis-section-header"><div><h2>Prompt preview</h2>' +
+            '<p>Inspect the exact analyzer messages. The preview updates as you change the run configuration.</p></div></div>';
+          previewCard.append(preview);
+          runPanel.append(previewCard);
+        }
+
+        const resultsCard = document.createElement('section');
+        resultsCard.className = 'analysis-results-card';
+        const resultsBody = document.createElement('div');
+        resultsBody.className = 'analysis-target-body';
+        resultNodes.forEach(node => resultsBody.append(node));
+        resultsCard.append(resultsBody);
+        runPanel.append(resultsCard);
+        const syncResultsCard = () => {
+          const hasContent = resultNodes.some(node => {
+            const computed = window.getComputedStyle(node);
+            if (computed.display === 'none' || computed.visibility === 'hidden') return false;
+            return Boolean((node.textContent || '').trim());
+          });
+          resultsCard.hidden = !hasContent;
+        };
+        const resultsObserver = new MutationObserver(syncResultsCard);
+        resultsObserver.observe(resultsBody, {
+          attributes: true,
+          attributeFilter: ['class', 'hidden', 'style'],
+          childList: true,
+          characterData: true,
+          subtree: true,
+        });
+        syncResultsCard();
+
+        buildInputMappingDialog(mapping);
+        document.getElementById('analysis-mapping-open').addEventListener('click', openInputMapping);
+
+        footer.classList.add('analysis-run-footer');
+        const actionCopy = document.createElement('div');
+        actionCopy.className = 'analysis-action-copy';
+        actionCopy.innerHTML = '<strong>Ready when the target count looks right</strong><span>Test one target or analyze the selected scope.</span>';
+        footer.prepend(actionCopy);
+        runPanel.append(footer);
+        document.getElementById('analysis-tabs').hidden = false;
+        setAnalyzerView(state.currentView, { updateUrl: false });
+        return true;
+      }
+
+      function organizeWhenReady() {
+        if (organizeAnalyzerWorkspace()) return;
+        const host = document.getElementById('analyzer-host');
+        const observer = new MutationObserver(() => {
+          if (organizeAnalyzerWorkspace()) observer.disconnect();
+        });
+        observer.observe(host, { childList: true, subtree: true });
+      }
+
+      function applyAnalysisResults(data) {
+        const rows = state.data && state.data.snapshot ? state.data.snapshot.rows || [] : [];
+        (data.results || []).forEach(result => {
+          const row = rows.find(candidate => candidate.item_id === result.item_id);
+          if (!row) return;
+          if (!row.item_metadata || typeof row.item_metadata !== 'object') row.item_metadata = {};
+          if (!row.item_metadata.metric_analyses || typeof row.item_metadata.metric_analyses !== 'object') row.item_metadata.metric_analyses = {};
+          if (result.metric_name) {
+            row.item_metadata.metric_analyses[result.metric_name] = {
+              source: 'ai',
+              root_cause: result.root_cause,
+              root_cause_detail: result.root_cause_detail || '',
+              root_cause_note: result.root_cause_note || '',
+              confidence: result.confidence,
+              solution: result.solution || '',
+              solution_note: result.solution_note || '',
+              error: result.error || '',
+            };
+          }
+        });
+        showStatus('success', 'Analysis complete', String(data.total_analyzed || 0) + ' metric targets analyzed. Open the run to review the results.');
+      }
+
+      async function loadRun() {
+        if (!runId) {
+          document.getElementById('analysis-go-runs').href = projectSlug ? projectUrl() : rootPath + '/';
+          const runsResponse = await fetch(apiUrl(
+            'api/runs?limit=1&project_slug=' + encodeURIComponent(projectSlug)
+          ));
+          if (!runsResponse.ok) {
+            throw new Error('Could not load project analysis settings (HTTP ' + runsResponse.status + ').');
+          }
+          const runsPayload = await runsResponse.json();
+          const projectRuns = [];
+          Object.values((runsPayload && runsPayload.tasks) || {}).forEach(models => {
+            Object.values(models || {}).forEach(runs => {
+              (runs || []).forEach(run => projectRuns.push(run));
+            });
+          });
+          const contextRun = projectRuns[0];
+          if (!contextRun) {
+            document.getElementById('analysis-loading').hidden = true;
+            document.getElementById('analysis-tabs').hidden = false;
+            document.getElementById('analysis-landing').hidden = false;
+            return;
+          }
+          state.contextRunId = contextRun.file_path || contextRun.run_id || '';
+          document.getElementById('analysis-loading').hidden = true;
+          document.getElementById('analyzer-host').hidden = false;
+          window.QymPlayground.init({
+            container: document.getElementById('analyzer-host'),
+            apiUrl: apiUrl,
+            dedicatedPage: true,
+            getRunId: () => state.contextRunId,
+            getRows: () => [],
+            getMetric: () => null,
+            getMetrics: () => [],
+            getThreshold: () => 0.8,
+            reviewsUrl: projectSlug ? projectUrl('reviews') : '',
+            showToast: showStatus,
+            escapeHtml: escapeHtml,
+          });
+          window.QymPlayground.open();
+          organizeWhenReady();
+          return;
+        }
+        const response = await fetch(apiUrl('api/runs/' + encodeURIComponent(runId)));
+        if (!response.ok) throw new Error('Could not load this run (HTTP ' + response.status + ').');
+        const data = await response.json();
+        if (!data.run || !data.snapshot) throw new Error('The run data is incomplete.');
+        state.data = data;
+        state.contextRunId = data.run.file_path || data.run.run_id || runId;
+        state.metrics = data.snapshot.metric_names || data.run.metric_names || [];
+        state.selectedMetrics = requestedMetric && state.metrics.includes(requestedMetric) ? [requestedMetric] : state.metrics.slice();
+        state.metric = state.selectedMetrics[0] || '';
+        document.title = 'قيِّم • Auto-analysis • ' + (data.run.run_name || runId);
+        document.getElementById('analysis-loading').hidden = true;
+        document.getElementById('analyzer-host').hidden = false;
+        window.QymPlayground.init({
+          container: document.getElementById('analyzer-host'),
+          apiUrl: apiUrl,
+          dedicatedPage: true,
+          getRunId: () => state.contextRunId,
+          getRows: analyzerRows,
+          getMetric: () => state.metric || null,
+          getMetrics: () => state.selectedMetrics.slice(),
+          getThreshold: metricThreshold,
+          onAnalysisComplete: applyAnalysisResults,
+          reviewsUrl: projectSlug ? projectUrl('reviews') : '',
+          showToast: showStatus,
+          escapeHtml: escapeHtml,
+        });
+        window.QymPlayground.open();
+        organizeWhenReady();
+      }
+
+      loadRun().catch(error => {
+        document.getElementById('analysis-loading').hidden = true;
+        const node = document.getElementById('analysis-error');
+        node.hidden = false;
+        node.textContent = error.message || 'Failed to load auto-analysis.';
+      });
+    })();
+  </script>
+</body>
+</html>

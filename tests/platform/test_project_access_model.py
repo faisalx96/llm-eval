@@ -31,6 +31,7 @@ from qym_platform.db.models import (
     Approval,
     ApprovalDecision,
     Project,
+    ProjectAnalysisRuleVersion,
     ProjectMembership,
     ProjectRole,
     Run,
@@ -101,7 +102,6 @@ def _seed_project_world(session: Session) -> dict[str, str]:
         id="project-1",
         name="Project One",
         slug="project-one",
-        description="Primary project",
         created_by_user_id=admin.id,
         is_active=True,
     )
@@ -109,7 +109,6 @@ def _seed_project_world(session: Session) -> dict[str, str]:
         id="project-2",
         name="Project Two",
         slug="project-two",
-        description="Other project",
         created_by_user_id=admin.id,
         is_active=True,
     )
@@ -457,7 +456,7 @@ def test_projects_and_me_include_project_summary_fields(client, session_factory)
     assert len(projects) == 1
     project = projects[0]
     assert project["id"] == seed["project_one_id"]
-    assert project["description"] == "Primary project"
+    assert "description" not in project
     assert project["member_count"] == 2
     assert project["run_count"] == 5
     assert project["role"] == "MANAGER"
@@ -465,7 +464,36 @@ def test_projects_and_me_include_project_summary_fields(client, session_factory)
     me_response = client.get("/v1/me", headers=_headers("manager@example.com"))
     assert me_response.status_code == 200
     me = me_response.json()
-    assert me["projects"][0]["description"] == "Primary project"
+    assert "description" not in me["projects"][0]
     assert me["projects"][0]["member_count"] == 2
     assert me["projects"][0]["run_count"] == 5
     assert me["default_project"]["slug"] == "project-one"
+
+
+def test_new_project_starts_with_one_live_rule_version(client, session_factory):
+    with session_factory() as session:
+        _seed_project_world(session)
+
+    response = client.post(
+        "/v1/projects",
+        headers=_headers("admin@example.com"),
+        json={
+            "name": "New Project",
+            "slug": "new-project",
+        },
+    )
+
+    assert response.status_code == 200
+    project_id = response.json()["id"]
+    with session_factory() as session:
+        versions = (
+            session.query(ProjectAnalysisRuleVersion)
+            .filter(
+                ProjectAnalysisRuleVersion.project_id == project_id,
+                ProjectAnalysisRuleVersion.deleted_at.is_(None),
+            )
+            .all()
+        )
+        assert len(versions) == 1
+        assert versions[0].version == 1
+        assert versions[0].name == "v1"

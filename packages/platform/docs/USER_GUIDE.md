@@ -7,17 +7,18 @@ The qym platform is the deployed web app that stores evaluation runs centrally a
 1. [Access Model](#access-model)
 2. [Organization & Roles](#organization--roles)
 3. [Profile Page](#profile-page)
-4. [Runs Dashboard](#runs-dashboard)
-5. [Single Run View](#single-run-view)
-6. [Compare View](#compare-view)
-7. [Charts View](#charts-view)
-8. [Trace Viewer](#trace-viewer)
-9. [AI Root Cause Analysis](#ai-root-cause-analysis)
-10. [Corrections Review](#corrections-review)
-11. [Run Workflow & Statuses](#run-workflow--statuses)
-12. [Uploading & Submitting Runs](#uploading--submitting-runs)
-13. [CLI Commands](#cli-commands)
-14. [Admin Panel](#admin-panel)
+4. [Project Settings](#project-settings)
+5. [Runs Dashboard](#runs-dashboard)
+6. [Single Run View](#single-run-view)
+7. [Compare View](#compare-view)
+8. [Charts View](#charts-view)
+9. [Trace Viewer](#trace-viewer)
+10. [AI Root Cause Analysis](#ai-root-cause-analysis)
+11. [Corrections Review](#corrections-review)
+12. [Run Workflow & Statuses](#run-workflow--statuses)
+13. [Uploading & Submitting Runs](#uploading--submitting-runs)
+14. [CLI Commands](#cli-commands)
+15. [Admin Panel](#admin-panel)
 
 ---
 
@@ -62,10 +63,24 @@ Each user belongs to exactly one Team, which determines their visibility and app
 Access at `/profile`. From here you can:
 
 - **View** your profile and organization info
-- **Manage API keys** for SDK integration — click **Create New Key**, name it, and copy the token (shown only once)
-- **Configure your LLM provider** for AI root cause analysis — set model, API key, and base URL for any OpenAI-compatible provider (OpenAI, OpenRouter, Azure, Ollama, vLLM), with a **Test Connection** button to verify
+- **View your project memberships** and open each project's dashboard or settings
+- API keys and analyzer provider settings are managed per project; see [Project Settings](#project-settings)
 
 A **user dropdown** in the header across all pages provides quick access to Profile and Admin.
+
+---
+
+## Project Settings
+
+Open `/projects/<project-slug>/settings` to manage a project. Project managers and admins can:
+
+- add or remove project members and assign `MEMBER` or `MANAGER` roles;
+- create and revoke project-scoped SDK/API keys (the token is shown only once); and
+- configure named **LLM Connections** for AI analysis.
+
+Each LLM connection stores an OpenAI-compatible base URL and model. The API key is encrypted at rest and the UI only displays a masked last-four-character hint. The first connection becomes the project default; managers can change the default, test a connection, or choose another connection for an individual analysis run. Updating a connection without entering a new key preserves the stored key.
+
+The default deployment blocks provider URLs that resolve to private or loopback addresses. Set `QYM_ALLOW_PRIVATE_LLM_BASE_URLS=true` only when the platform is intentionally using a trusted local provider.
 
 ---
 
@@ -131,7 +146,7 @@ Runs executed with `samples=k` (every item evaluated k times as one run) get ext
 
 ### Root Cause Analysis
 
-Each item can have a **root cause category**, **detail**, **note**, **solution**, and **solution note** — assigned by AI or a human reviewer. AI-suggested values show a robot prefix with confidence; human-confirmed ones show a checkmark. See [AI Root Cause Analysis](#ai-root-cause-analysis).
+Each item can have a metric-specific **root cause category**, **detail**, and **note** assigned by AI or a human reviewer. The selected metric's review status is shown independently from an item-level legacy summary. AI-suggested values show a robot prefix with confidence; human-confirmed ones show a checkmark. See [AI Root Cause Analysis](#ai-root-cause-analysis).
 
 ### Trace Viewer
 
@@ -190,6 +205,7 @@ In compare view, clicking winner or pass-rate distribution segments switches the
 ### Root Cause Analysis
 
 - **Root cause breakdown** — aggregate cards show root cause distribution across runs with a dedicated filter to drill down by cause
+- **Metric selector** — switch the root-cause breakdown and Sankey data between all metrics and one selected metric
 - Separate badges for **root-cause category**, **detail**, and **solution**
 - **Solution Sankey view** — root-cause-to-solution flow visualization
 - **Approval filtering** — All / Approved / Not Approved toggle
@@ -294,41 +310,47 @@ Traces require SDK instrumentation support. Install `qym`, run your evaluation, 
 
 ## AI Root Cause Analysis
 
-The platform includes LLM-powered root cause analysis for understanding why items fail.
+The platform includes a project-scoped, LLM-powered analyzer for understanding why evaluation items fail. Open **Auto-analysis** from the project navigation, or use `/projects/<project-slug>/analysis`. A run-specific analyzer is also available at `/projects/<project-slug>/runs/<run-id>/analyzer`.
 
 ### Prerequisites
 
-Configure your LLM provider on the **Profile** page — set model, API key, and optional base URL. Any OpenAI-compatible provider works (OpenAI, OpenRouter, Azure, Ollama, vLLM). Use the **Test Connection** button to verify.
+Configure at least one provider under **Project Settings → LLM Connections**. Any OpenAI-compatible provider works (OpenAI, OpenRouter, Azure, Ollama, vLLM). Use **Test** to verify the connection, then select it in the analyzer when a project has more than one.
 
 ### Using Auto-Analyze
 
-1. Open a run or compare view
-2. Click **Auto-Analyze**
-3. Configure filters — pass/fail, score threshold, skip already-analyzed items
-4. The LLM analyzes each item and assigns:
-   - **Root cause category** (e.g., Hallucination, Reasoning Error, Context Missing, Knowledge Gap)
-   - **Root cause detail** — specific sub-issue within the category
-   - **Root cause note** — explanation
-   - **Solution** — suggested fix
-   - **Solution note** — additional solution context
+1. Open **Auto-analysis** and choose a run.
+2. Select one or more metrics. Each item/metric pair is analyzed independently, so a single item can have different diagnoses for different metrics.
+3. Configure filters — all/failed/passed/errors, score threshold, complexity/domain/root-cause filters, explicit item IDs, and skip already-analyzed metric targets.
+4. Use **Preview prompt** or test up to three items before starting the full run. The test does not save results.
+5. Start the analysis and follow the streamed progress. The LLM assigns:
+   - **Root cause category** (for example, Hallucination, Reasoning Error, Context Missing, Knowledge Gap, or Dataset Issue)
+   - **Root cause detail** — a reusable failure mechanism rather than item-specific wording
+   - **Root cause note** — a short evidence-based explanation
 
 AI-suggested values show a robot icon with confidence indicator. Human-confirmed ones show a checkmark.
 
-### AI Evaluator Playground
+### Project context and analyzer playground
 
-Before running analysis, click **Auto-Analyze** to open the **Playground** modal where you can:
+The project context panel and run analysis panel are available together on the Auto-analysis page. You can:
 
-- **Edit the system prompt** and preview the rendered prompt
-- **Map variables** and add **additional instructions** with custom-variable interpolation
-- **Toggle the correction bank** — approved corrections are used as few-shot examples
-- **Adjust temperature** and other settings
-- **Edit category and detail catalogs** — add/remove root cause categories and their nested detail sub-issues
-- **Edit solution categories**
-- **Run test analyses** on selected items and inspect the generated context, few-shot examples, and results before launching the full analysis
+- **Describe the project** — explain the business domain and correctness expectations.
+- **Manage analysis rules** — edit title/instruction pairs, create drafts, generate rules from selected sources, compare versions, publish, and promote a published version to `production`.
+- **Upload reference documents** — PDF, DOCX, text, Markdown, HTML, CSV, JSON, and YAML files are converted to bounded text and stored in a shared project library. Select which documents the current run uses.
+- **Edit the system prompt**, map nested input/output/metric fields, add additional instructions, and interpolate custom variables.
+- **Choose which fields appear in the prompt** and maintain the root-cause category/detail catalog.
+- **Preview prompts** and inspect generated test context/results before launching the full analysis.
+
+The default prompt sends the selected metric result, useful trace evidence, project context, active rules, and selected documents as evidence. It redacts credential-like fields and does not add approved correction snapshots as per-item few-shot examples. The default response contains diagnosis fields only; remediation fields from older saved analyses remain visible for compatibility.
 
 ### Correction Bank
 
-Every human correction (with feedback notes) is stored as a few-shot example. Only **approved** corrections feed the bank. The analyzer's catalogs merge built-in defaults, current-run values, and approved history so suggestions reflect real reviewer vocabulary.
+Every human correction (with feedback notes) is stored for review and audit history. Approved corrections can also provide evidence when generating versioned project analysis rules, but correction examples are not included in per-item analyzer prompts.
+
+Project analysis rules use the same release lifecycle as platform datasets. Edit rules in a mutable draft, publish the reviewed draft as an immutable `vN` snapshot, and move the `production` alias when that version should become the analyzer default. New drafts can be cloned from any prior version, and the analyzer page shows lineage and rule-level comparisons. Saved AI analysis metadata records the resolved production rule-version ID for reproducibility.
+
+### Reference document limits
+
+Each upload is limited to 10 MB and extracted text to 40,000 characters per document. A prompt can include up to eight selected documents and 80,000 reference characters in total. HTML scripts/styles are ignored, scanned PDFs need OCR, and PDF/DOCX extraction rejects unsafe expansion. PDF parsing also runs in a bounded worker and fails closed when the host cannot apply the required resource limits.
 
 ---
 
@@ -353,7 +375,7 @@ Click **Corrections Review** in the dashboard navigation, or navigate to `/revie
 Each correction goes through a status lifecycle:
 
 1. **Pending** — newly created, awaiting review
-2. **Approved** — reviewed and accepted (feeds the correction bank for future AI analyses)
+2. **Approved** — reviewed and accepted (available as evidence when generating project analysis rules)
 3. **Rejected** — reviewed and declined
 4. **Superseded** — a newer approved correction replaced this one for the same item
 5. **Withdrawn** — manually withdrawn
@@ -367,7 +389,7 @@ Corrections maintain an **append-only revision history** with:
 - Snapshots of input, expected output, output, and scores at correction time
 - Review comments and statuses per revision
 
-Only one active approved example exists per item — approving a new correction supersedes the previous one. Approving a stale correction ID promotes the active candidate for that run item.
+Only one active candidate exists per item/metric scope — approving a new correction supersedes the previous one. Approving a stale correction ID promotes the active candidate for that run item and metric. Removing a correction marks it rejected and keeps it in history rather than permanently deleting the audit record.
 
 ### Syncing
 

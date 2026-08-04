@@ -10,7 +10,8 @@
 
 - run history and task/model comparisons
 - trace viewing and per-item drill-down
-- AI-assisted analysis and corrections review
+- project-scoped, metric-aware AI analysis with versioned rules and document context
+- corrections review with metric-scoped candidates and audit history
 - org, role, and admin workflows
 - APIs for streamed SDK ingestion and local uploads
 
@@ -101,7 +102,8 @@ Set these on the platform service:
 | `QYM_AUTH_SESSION_SECRET` | Session signing secret required when `QYM_AUTH_MODE=oidc`. |
 | `QYM_AUTH_GOOGLE_CLIENT_ID` / `QYM_AUTH_GOOGLE_CLIENT_SECRET` | Enable Google login in native OIDC mode. |
 | `QYM_AUTH_GITHUB_CLIENT_ID` / `QYM_AUTH_GITHUB_CLIENT_SECRET` | Enable GitHub login in native OIDC mode. |
-| `QYM_LLM_CONFIG_ENCRYPTION_KEY` | Fernet key used to encrypt stored user LLM API keys. |
+| `QYM_LLM_CONFIG_ENCRYPTION_KEY` | Fernet key used to encrypt stored project LLM API keys. |
+| `QYM_ALLOW_PRIVATE_LLM_BASE_URLS` | Optional; allow trusted private/local LLM endpoints. Keep `false` in shared deployments. |
 
 If product evals or SDK runs inside the platform container submit back to an HTTPS platform URL with an internal/self-signed certificate, set `QYM_PLATFORM_CA_BUNDLE=/path/in/container/internal-ca.pem`. Use `QYM_PLATFORM_SSL_VERIFY=false` only for local development troubleshooting.
 
@@ -167,15 +169,19 @@ Admins can configure:
 - **GM/VP Approved-Only Visibility**: GM and VP users only see approved runs
 - **Manager Visibility Scope**: managers see either their full subtree or only their direct team
 
-### API Keys
+### Project API Keys
 
-API keys are created per user. In the UI auth context, call:
+API keys are created per project from **Project Settings → API Keys**. In the UI auth context, call:
 
 ```bash
 POST /v1/me/api-keys
 ```
 
 The token is returned once and should be stored securely.
+
+### Analyzer LLM Connections
+
+Project managers configure named provider connections under **Project Settings → LLM Connections**. Each connection contains an OpenAI-compatible base URL, model, and encrypted API key. The first connection is the default; managers can test connections, change the default, or choose a connection per analyzer request. See the [Platform User Guide](docs/USER_GUIDE.md#ai-root-cause-analysis) for the analysis workflow and [branch change record](../../docs/BRANCH_CHANGES_LLM_ANALYZER.md) for the API and migration details.
 
 ### Useful Admin Endpoints
 
@@ -228,3 +234,4 @@ Evaluator(
 ## Related Docs
 
 - [Platform User Guide](docs/USER_GUIDE.md)
+- [LLM analyzer branch changes](../../docs/BRANCH_CHANGES_LLM_ANALYZER.md)

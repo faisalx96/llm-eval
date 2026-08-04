@@ -8,10 +8,9 @@
   <link rel="stylesheet" href="/static/dashboard.css?v=estimator-mark-20260717">
   <link rel="stylesheet" href="/static/shell.css">
   <script src="/static/auth.js"></script>
-  <script src="/static/shell.js"></script>
+  <script src="/static/shell.js?v=base-path-20260719"></script>
   <script src="/static/metrics.js"></script>
   <script src="/static/trace_viewer.js"></script>
-  <script src="/static/playground.js?v=variable-mapping-20260510"></script>
   <style>
     /* Typography/color rules: docs/DESIGN_LANGUAGE.md — tokens only (var(--font-*), var(--text-*)). */
     .run-container {
@@ -1716,6 +1715,23 @@
     .breakdown-domain .breakdown-header { color: #60a5fa; }
     .breakdown-root-cause .breakdown-icon,
     .breakdown-root-cause .breakdown-header { color: var(--text-primary); }
+    .root-cause-title-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-md);
+    }
+    .root-cause-metric-control {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+      font-weight: 600;
+    }
+    .root-cause-metric-control .filter-select {
+      min-width: 150px;
+    }
     .breakdown-errors.task-error-group .breakdown-icon,
     .breakdown-errors.task-error-group .breakdown-header { color: var(--error); }
     .breakdown-errors.trace-error-group .breakdown-icon,
@@ -2716,6 +2732,145 @@
       background: var(--bg-surface);
       border: 1px solid var(--border-subtle);
       border-radius: 8px;
+    }
+    .metric-analysis-list {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-sm);
+      margin-top: var(--space-md);
+    }
+    .metric-analysis-heading {
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+      font-weight: 650;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+    .metric-analysis-card {
+      padding: var(--space-md);
+      border: 1px solid var(--border-subtle);
+      border-left: 3px solid var(--metric-analysis-color, var(--accent-tertiary));
+      border-radius: 8px;
+      background: var(--bg-surface);
+    }
+    .metric-analysis-head {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: var(--space-sm);
+    }
+    .metric-analysis-actions {
+      display: inline-flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: var(--space-sm);
+      margin-left: auto;
+    }
+    .metric-analysis-name {
+      color: var(--text-primary);
+      font-family: var(--font-mono);
+      font-size: var(--font-md);
+      font-weight: 650;
+    }
+    .metric-analysis-category,
+    .metric-analysis-confidence {
+      padding: 2px 8px;
+      border: 1px solid var(--border-default);
+      border-radius: 999px;
+      color: var(--text-muted);
+      font-size: var(--font-xs);
+      font-weight: 650;
+    }
+    button.metric-analysis-category {
+      appearance: none;
+      background: transparent;
+      font-family: var(--font-sans);
+      cursor: pointer;
+    }
+    button.metric-analysis-category:hover {
+      color: var(--text-primary);
+      border-color: var(--border-strong);
+      background: var(--bg-hover);
+    }
+    .metric-analysis-confidence {
+      font-family: var(--font-mono);
+    }
+    .metric-analysis-edit {
+      margin-left: auto;
+      padding: 3px 9px;
+      border: 1px solid var(--border-default);
+      border-radius: 4px;
+      background: transparent;
+      color: var(--text-muted);
+      font-family: var(--font-sans);
+      font-size: var(--font-sm);
+      cursor: pointer;
+    }
+    .metric-analysis-edit:hover {
+      color: var(--text-primary);
+      border-color: var(--border-strong);
+      background: var(--bg-hover);
+    }
+    .metric-analysis-actions .metric-analysis-edit {
+      margin-left: 0;
+    }
+    button.metric-analysis-detail {
+      display: block;
+      width: 100%;
+      margin-top: var(--space-sm);
+      padding: 0;
+      border: 0;
+      background: transparent;
+      color: var(--text-primary);
+      font-family: var(--font-sans);
+      font-size: var(--font-md);
+      font-weight: 600;
+      line-height: 1.5;
+      text-align: left;
+      cursor: pointer;
+    }
+    button.metric-analysis-detail:hover {
+      color: var(--accent-primary);
+    }
+    .metric-analysis-note,
+    .metric-analysis-solution,
+    .metric-analysis-error {
+      margin-top: var(--space-sm);
+      color: var(--text-secondary);
+      font-size: var(--font-base);
+      line-height: 1.6;
+    }
+    button.metric-analysis-note,
+    button.metric-analysis-solution {
+      display: block;
+      width: 100%;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      font-family: var(--font-sans);
+      text-align: left;
+      cursor: pointer;
+    }
+    button.metric-analysis-note:hover,
+    button.metric-analysis-solution:hover {
+      color: var(--text-primary);
+    }
+    .metric-analysis-empty {
+      color: var(--text-muted);
+      font-weight: 400;
+    }
+    .metric-analysis-feedback-edit {
+      margin-top: var(--space-sm);
+      border: 1px solid var(--border-default);
+      border-radius: 6px;
+      background: var(--bg-base);
+    }
+    .metric-analysis-solution strong {
+      color: var(--text-primary);
+      font-weight: 600;
+    }
+    .metric-analysis-error {
+      color: var(--error);
     }
     .rc-sol-label {
       display: block;
@@ -4806,7 +4961,8 @@
       })();
 
       const RUN_ID = (() => {
-        const path = window.location.pathname;
+        const rawPath = window.location.pathname;
+        const path = rawPath.length > 1 ? rawPath.replace(/\/+$/, '') : rawPath;
         const projectMatch = path.match(/\/projects\/[^/]+\/runs\/(.+)$/);
         if (projectMatch) return decodeURIComponent(projectMatch[1]);
         const runMatch = path.match(/\/run\/(.+)$/);
@@ -4837,6 +4993,22 @@
         return CURRENT_PROJECT_SLUG ? projectUrl(CURRENT_PROJECT_SLUG) : (root + '/');
       }
 
+      function analyzerUrl() {
+        const root = (window.__QYM_ROOT_PATH__ || '').replace(/\/$/, '');
+        const runId = state.run?.file_path || state.run?.id || RUN_ID || '';
+        const path = CURRENT_PROJECT_SLUG
+          ? projectUrl(CURRENT_PROJECT_SLUG, 'analysis')
+          : root + '/run/' + encodeURIComponent(runId) + '/analyzer';
+        const params = new URLSearchParams();
+        if (CURRENT_PROJECT_SLUG) params.set('run', runId);
+        if (state.selectedMetric) params.set('metric', state.selectedMetric);
+        return path + (params.toString() ? '?' + params.toString() : '');
+      }
+
+      function openAnalyzerPage() {
+        window.location.href = analyzerUrl();
+      }
+
       function setHrefIfPresent(id, href) {
         const node = document.getElementById(id);
         if (node) node.href = href;
@@ -4854,13 +5026,22 @@
       const ROOT_CAUSE_PRESETS = [
         'Hallucination', 'Incomplete Answer', 'Wrong Format', 'Context Missing',
         'Reasoning Error', 'Tool Use Error', 'Instruction Following', 'Knowledge Gap',
+        'Dataset Issue',
       ];
       const ROOT_CAUSE_COLORS = {
         'Hallucination': '#ef4444', 'Incomplete Answer': '#f97316',
         'Wrong Format': '#00d4aa', 'Context Missing': '#3b82f6',
         'Reasoning Error': '#a855f7', 'Tool Use Error': '#ec4899',
         'Instruction Following': '#14b8a6', 'Knowledge Gap': '#6366f1',
+        'Dataset Issue': '#eab308',
       };
+      function rootCauseColor(value) {
+        const normalized = String(value || '').trim().toLowerCase();
+        const name = Object.keys(ROOT_CAUSE_COLORS).find(
+          candidate => candidate.toLowerCase() === normalized
+        );
+        return name ? ROOT_CAUSE_COLORS[name] : '#e07a5f';
+      }
       const SOLUTION_PRESETS = [
         'Improve Retrieval Context', 'Add Guardrails', 'Refine Prompt Instructions',
         'Expand Training Data', 'Fix Tool Configuration', 'Add Output Validation',
@@ -4901,6 +5082,7 @@
         domainFilterMode: 'include',  // include = explicit matches, exclude = all except selected values
         domainExclusive: new Set(),  // domains that must be sole value
         rootCauseFilter: null,
+        rootCauseMetric: 'all',
         taskErrorFilter: null,
         traceErrorFilter: null,
         analysisErrorFilter: null,
@@ -5599,6 +5781,9 @@
               for (const d of parseMetaList(md.domain)) domainSet.add(d);
             }
             if (md.root_cause != null && md.root_cause !== '') rootCauseSet.add(String(md.root_cause));
+            for (const analysis of getRowRootCauseAnalyses(row, 'all')) {
+              if (analysis.root_cause) rootCauseSet.add(String(analysis.root_cause));
+            }
           }
         }
         state.allMetadataKeys = Array.from(metaKeySet).sort();
@@ -5616,7 +5801,7 @@
 
         // Auto-select categories for breakdown chips
         // Exclude keys that have their own sections or are not useful for grouping
-        const EXCLUDED_CATEGORY_KEYS = new Set(['root_cause', 'root_cause_detail', 'root_cause_note', 'root_cause_source', 'root_cause_confidence', 'solution', 'solution_note', 'solution_source', 'task_started_at_ms', 'retry_count', 'analysis_error', 'trace_stats']);
+        const EXCLUDED_CATEGORY_KEYS = new Set(['root_cause', 'root_cause_detail', 'root_cause_note', 'root_cause_source', 'root_cause_confidence', 'solution', 'solution_note', 'solution_source', 'metric_analyses', 'task_started_at_ms', 'retry_count', 'analysis_error', 'trace_stats']);
         const MAX_CARDINALITY = 30; // skip keys with too many unique values
         if (state.selectedCategories.size === 0) {
           for (const k of state.allMetadataKeys) {
@@ -7491,7 +7676,59 @@
         return Object.values(metricMeta).some(isMetricMetaEdited);
       }
 
-      function renderSankeyDiagram(rows, filteredItemIds) {
+      function getRowRootCauseAnalyses(row, metricFilter) {
+        const md = row?.item_metadata || {};
+        const metricAnalyses = md.metric_analyses && typeof md.metric_analyses === 'object'
+          ? md.metric_analyses
+          : {};
+        const isValid = analysis => analysis && typeof analysis === 'object' &&
+          !analysis.error && String(analysis.root_cause || '').trim();
+        const metricEntries = Object.entries(metricAnalyses)
+          .filter(([, analysis]) => isValid(analysis));
+        if (metricFilter === 'all' && metricEntries.length) {
+          return metricEntries.map(([metricName, analysis]) => ({ ...analysis, metric_name: metricName }));
+        }
+        if (metricFilter !== 'all') {
+          const analysis = metricAnalyses[metricFilter];
+          if (isValid(analysis)) return [{ ...analysis, metric_name: metricFilter }];
+          if (metricEntries.length) return [];
+        }
+        const legacyCategory = String(md.root_cause || '').trim();
+        const legacyMetric = String(md.root_cause_metric_name || '').trim();
+        // A metric-backed compatibility summary is derivative data. Older
+        // deletions could leave it behind after removing the metric analysis;
+        // do not resurrect that orphan as an item-level diagnosis.
+        if (legacyMetric && md.root_cause_source !== 'human' &&
+            !isValid(metricAnalyses[legacyMetric])) return [];
+        const canUseLegacy = metricFilter === 'all' || legacyMetric === metricFilter ||
+          (!legacyMetric && state.allMetrics.length <= 1);
+        return legacyCategory && canUseLegacy ? [{
+          root_cause: legacyCategory,
+          root_cause_detail: md.root_cause_detail || '',
+          solution: md.solution || '',
+          metric_name: legacyMetric,
+        }] : [];
+      }
+
+      function rootCauseMetricControlHtml() {
+        const options = ['<option value="all"' + (state.rootCauseMetric === 'all' ? ' selected' : '') + '>All</option>']
+          .concat(state.allMetrics.map(metric =>
+            '<option value="' + escapeAttr(metric) + '"' + (state.rootCauseMetric === metric ? ' selected' : '') + '>' + escapeHtml(metric) + '</option>'
+          )).join('');
+        return '<label class="root-cause-metric-control" for="root-cause-metric-select">Metric' +
+          '<select id="root-cause-metric-select" class="filter-select">' + options + '</select></label>';
+      }
+
+      function wireRootCauseMetricControl(section) {
+        const select = section.querySelector('#root-cause-metric-select');
+        if (!select) return;
+        select.addEventListener('change', event => {
+          state.rootCauseMetric = event.target.value || 'all';
+          renderRootCauseSection();
+        });
+      }
+
+      function renderSankeyDiagram(rows, filteredItemIds, metricFilter) {
         const container = document.getElementById('sankey-diagram-container');
         if (!container) return;
 
@@ -7502,14 +7739,15 @@
         for (const row of rows) {
           const itemId = row.item_id || String(row.index);
           if (!filteredItemIds.has(itemId)) continue;
-          const md = row.item_metadata || {};
-          const rc = md.root_cause || '';
-          const sol = md.solution || '';
-          if (!rc || !sol) continue;
-          const key = rc + '|||' + sol;
-          links[key] = (links[key] || 0) + 1;
-          rcCounts[rc] = (rcCounts[rc] || 0) + 1;
-          solCounts[sol] = (solCounts[sol] || 0) + 1;
+          for (const analysis of getRowRootCauseAnalyses(row, metricFilter)) {
+            const rc = analysis.root_cause || '';
+            const sol = analysis.solution || '';
+            if (!rc || !sol) continue;
+            const key = rc + '|||' + sol;
+            links[key] = (links[key] || 0) + 1;
+            rcCounts[rc] = (rcCounts[rc] || 0) + 1;
+            solCounts[sol] = (solCounts[sol] || 0) + 1;
+          }
         }
 
         const linkEntries = Object.entries(links);
@@ -7550,7 +7788,7 @@
         // Left column (root causes)
         html += '<div class="sankey-col sankey-col-rc" style="width:' + colWidth + 'px;">';
         rcList.forEach(([rc, count], i) => {
-          const color = ROOT_CAUSE_COLORS[rc] || '#e07a5f';
+          const color = rootCauseColor(rc);
           const y = leftOffsetY + i * (nodeH + nodeGap);
           html += '<div class="sankey-node" data-sankey-rc="' + escapeAttr(rc) + '" style="background:' + color + '15;border-color:' + color + '40;color:' + color + ';" title="' + escapeAttr(rc) + ' (' + count + ')"><span class="sankey-node-label">' + escapeHtml(rc) + '</span><span class="sankey-node-count" style="background:' + color + '30;">' + count + '</span></div>';
         });
@@ -7617,7 +7855,7 @@
           const x2 = bodyW - colWidth - 8;
           const cx = (x1 + x2) / 2;
           const sw = minStroke + (count / maxCount) * (maxStroke - minStroke);
-          const color = ROOT_CAUSE_COLORS[rc] || '#e07a5f';
+          const color = rootCauseColor(rc);
 
           paths += '<path d="M ' + x1 + ' ' + y1 + ' C ' + cx + ' ' + y1 + ', ' + cx + ' ' + y2 + ', ' + x2 + ' ' + y2 + '" ' +
             'fill="none" stroke="' + color + '" stroke-opacity="0.35" stroke-width="' + sw.toFixed(1) + '" ' +
@@ -7730,7 +7968,7 @@
 
       function getCategoryChipKeys() {
         // Return metadata keys eligible for breakdown chips
-        const EXCLUDED = new Set(['root_cause', 'root_cause_detail', 'root_cause_note', 'root_cause_source', 'root_cause_confidence', 'solution', 'solution_note', 'solution_source', 'task_started_at_ms', 'retry_count', 'analysis_error']);
+        const EXCLUDED = new Set(['root_cause', 'root_cause_detail', 'root_cause_note', 'root_cause_source', 'root_cause_confidence', 'solution', 'solution_note', 'solution_source', 'metric_analyses', 'task_started_at_ms', 'retry_count', 'analysis_error']);
         const MAX_CARD = 30;
         const rows = state.snapshot.rows || [];
         const keys = [];
@@ -8216,8 +8454,7 @@
           return r.item_id || String(r.index);
         }));
         const anyAssignedOverall = rows.some(row => {
-          const md = row.item_metadata || {};
-          return !!String(md.root_cause || '').trim();
+          return getRowRootCauseAnalyses(row, 'all').length > 0;
         });
         const filteredFailedCount = filteredItems.filter(item => {
           const row = item.row;
@@ -8236,14 +8473,15 @@
         for (const row of rows) {
           const itemId = row.item_id || String(row.index);
           if (!filteredItemIds.has(itemId)) continue;
-          const md = row.item_metadata || {};
-          const rcRaw = String(md.root_cause || '');
-          if (!rcRaw) continue;
-          const rcDetail = md.root_cause_detail || '';
-          if (!rcCategories[rcRaw]) rcCategories[rcRaw] = { count: 0, subcauses: {} };
-          rcCategories[rcRaw].count++;
-          if (rcDetail) {
-            rcCategories[rcRaw].subcauses[rcDetail] = (rcCategories[rcRaw].subcauses[rcDetail] || 0) + 1;
+          for (const analysis of getRowRootCauseAnalyses(row, state.rootCauseMetric)) {
+            const rcRaw = String(analysis.root_cause || '');
+            if (!rcRaw) continue;
+            const rcDetail = analysis.root_cause_detail || '';
+            if (!rcCategories[rcRaw]) rcCategories[rcRaw] = { count: 0, subcauses: {} };
+            rcCategories[rcRaw].count++;
+            if (rcDetail) {
+              rcCategories[rcRaw].subcauses[rcDetail] = (rcCategories[rcRaw].subcauses[rcDetail] || 0) + 1;
+            }
           }
         }
 
@@ -8261,23 +8499,26 @@
           const autoAnalyzeHtml = anyAssignedOverall
             ? ''
             : '<button class="auto-analyze-btn" id="auto-analyze-btn" title="AI-powered root cause analysis"><span class="ai-icon">\uD83E\uDD16</span> Auto-Analyze</button>';
-          section.innerHTML = '<h3 class="section-title">Root Cause Analysis</h3>' +
+          section.innerHTML = '<div class="root-cause-title-row"><h3 class="section-title">Root Cause Analysis</h3>' +
+            rootCauseMetricControlHtml() + '</div>' +
             '<div class="comparison-stats"><div class="section-empty-state">' +
               '<div class="section-empty-copy"><span>' + escapeHtml(emptyMsg) + '</span></div>' +
               (autoAnalyzeHtml ? '<div class="section-empty-actions">' + autoAnalyzeHtml + '</div>' : '') +
             '</div></div>';
           var aaBtn0 = section.querySelector('#auto-analyze-btn');
-          if (aaBtn0) aaBtn0.addEventListener('click', function () { QymPlayground.open(); });
+          if (aaBtn0) aaBtn0.addEventListener('click', openAnalyzerPage);
+          wireRootCauseMetricControl(section);
           return;
         }
 
-        let html = '<h3 class="section-title">Root Cause Analysis <button class="auto-analyze-btn" id="auto-analyze-btn" title="AI-powered root cause analysis" style="margin-left:12px;"><span class="ai-icon">\uD83E\uDD16</span> Auto-Analyze</button></h3>';
+        let html = '<div class="root-cause-title-row"><h3 class="section-title">Root Cause Analysis <button class="auto-analyze-btn" id="auto-analyze-btn" title="AI-powered root cause analysis" style="margin-left:12px;"><span class="ai-icon">\uD83E\uDD16</span> Auto-Analyze</button></h3>' +
+          rootCauseMetricControlHtml() + '</div>';
         html += '<div class="comparison-stats"><div class="breakdown-section breakdown-root-cause">';
         html += '<div class="breakdown-header"><span class="breakdown-icon">\u2666</span> Categories &amp; Subcauses</div>';
         html += '<div class="breakdown-grid">';
 
         for (const cat of catStats) {
-          const rcColor = ROOT_CAUSE_COLORS[cat.category] || '#e07a5f';
+          const rcColor = rootCauseColor(cat.category);
           const subcauseList = Object.entries(cat.subcauses).sort((a, b) => b[1] - a[1]);
           let subcauseHtml = '';
           if (subcauseList.length > 0) {
@@ -8303,7 +8544,8 @@
         section.innerHTML = html;
 
         // Render Sankey diagram
-        renderSankeyDiagram(rows, filteredItemIds);
+        renderSankeyDiagram(rows, filteredItemIds, state.rootCauseMetric);
+        wireRootCauseMetricControl(section);
 
         // Sankey highlight helpers scoped to this section
         var sankeyContainer = section.querySelector('#sankey-diagram-container');
@@ -8366,7 +8608,7 @@
 
         // Wire auto-analyze button
         var aaBtn = section.querySelector('#auto-analyze-btn');
-        if (aaBtn) aaBtn.addEventListener('click', function () { QymPlayground.open(); });
+        if (aaBtn) aaBtn.addEventListener('click', openAnalyzerPage);
       }
 
       // ── Filtering & Items ──
@@ -8416,11 +8658,13 @@
           }
           if (state.rootCauseFilter !== null) {
             if (state.rootCauseFilter.length === 0) continue;
-            const rcVal = String(md.root_cause ?? '');
+            const rcValues = getRowRootCauseAnalyses(row, state.rootCauseMetric)
+              .map(analysis => String(analysis.root_cause || '').toLowerCase());
             const wantNone = state.rootCauseFilter.includes('__none__');
             const namedFilters = state.rootCauseFilter.filter(f => f !== '__none__');
-            const matchesNamed = namedFilters.length > 0 && namedFilters.some(f => f.toLowerCase() === rcVal.toLowerCase());
-            const matchesNone = wantNone && !rcVal;
+            const matchesNamed = namedFilters.length > 0 &&
+              namedFilters.some(f => rcValues.includes(f.toLowerCase()));
+            const matchesNone = wantNone && rcValues.length === 0;
             if (!matchesNamed && !matchesNone) continue;
           }
           if (state.approvalFilter !== null) {
@@ -8606,7 +8850,7 @@
         return (!tied && best) ? best : null;
       }
 
-      function renderPassCompareBlock(baseRow, itemId, displayItemId, metric, threshold, rootCauseHtml) {
+      function renderPassCompareBlock(baseRow, itemId, displayItemId, metric, threshold, analysisHtml) {
         const passAttempts = Array.isArray(baseRow.pass_attempts) ? baseRow.pass_attempts : [];
         const attempts = passAttempts
           .map((att, i) => att ? { ...att, pass_number: att.pass_number || i + 1 } : null)
@@ -8700,7 +8944,7 @@
         return '<div class="item-run-output pass-cmp">' +
           '<div class="output-header"><span class="output-status-cluster"><span class="run-label">OUTPUT · ALL PASSES</span><span class="pass-cmp-summary">' + summary + '</span></span><span class="output-actions">' + modesHtml + '</span></div>' +
           '<div class="pass-cmp-grid" style="--pass-cmp-cols:' + cols.length + ';">' + cols.join('') + '</div>' +
-          rootCauseHtml +
+          analysisHtml +
         '</div>';
       }
 
@@ -8879,104 +9123,71 @@
             statusIndicator += '<button type="button" class="pass-cmp-open" data-item-id="' + escapeAttr(itemId) + '" title="Compare all passes side by side">⇄ Side by side</button>';
           }
 
-          // Root cause + Solution (side by side for failed items)
-          let rootCauseHtml = '';
-          const itemPassed = pfClass === 'pass';
-          const rowRc = row.item_metadata?.root_cause || '';
-          const rowRcDetail = row.item_metadata?.root_cause_detail || '';
-          const rowRcNote = row.item_metadata?.root_cause_note || '';
-          const rowSol = row.item_metadata?.solution || '';
-          const rowSolNote = row.item_metadata?.solution_note || '';
-          const reviewCorrectionId = row.review_correction_id;
-          const reviewStatus = row.review_correction_status || '';
-
-          // Build root cause group (detail + category badges + shared feedback)
-          let rcGroupHtml = '';
-          const rcSource = row.item_metadata?.root_cause_source || '';
-          const rcConfidence = row.item_metadata?.root_cause_confidence;
-          const isAi = rcSource === 'ai';
-
-          if (rowRc || rowRcDetail || !itemPassed) {
-            const feedbackIcon = '<svg class="feedback-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 3h12v8H4l-2 2V3z"/></svg>';
-
-            const rcColor = ROOT_CAUSE_COLORS[rowRc] || '#e07a5f';
-
-            // Detail badge (specific issue) — uses same color as category
-            let rcDetailBadge = '';
-            if (rowRcDetail) {
-              const aiClass = isAi ? ' ai-suggested' : '';
-              const aiIcon = isAi ? '<span class="ai-indicator" title="AI suggested">\uD83E\uDD16</span>' : '';
-              rcDetailBadge = '<span class="meta-badge badge-rc-detail' + aiClass + '" data-rcdetail-item="' + escapeAttr(itemId) + '" style="border-color:' + rcColor + '40;color:' + rcColor + ';background:' + rcColor + '15;max-width:100%;box-sizing:border-box;display:inline-flex;" title="Root cause: ' + escapeAttr(rowRcDetail) + '. Click to change.">' + aiIcon + escapeHtml(rowRcDetail) + '</span>';
-            } else if (!itemPassed) {
-              rcDetailBadge = '<button class="root-cause-assign-btn" data-rcdetail-item="' + escapeAttr(itemId) + '" title="Assign root cause"><span class="badge-icon">+</span>Root Cause</button>';
-            }
-
-            // Category badge (broad preset)
-            let rcCategoryBadge = '';
-            if (rowRc) {
-              const aiClass = isAi ? ' ai-suggested' : '';
-              let confidenceDot = '';
-              const aiIcon = isAi ? '<span class="ai-indicator" title="AI suggested">\uD83E\uDD16</span>' : '';
-              if (isAi && rcConfidence != null) {
-                const dotColor = rcConfidence >= 0.8 ? '#22c55e' : (rcConfidence >= 0.5 ? '#eab308' : '#ef4444');
-                confidenceDot = '<span class="confidence-dot" style="background:' + dotColor + ';" title="Confidence: ' + (rcConfidence * 100).toFixed(0) + '%"></span>';
+          // Detailed AI analysis for every failed metric on this item.
+          const metricAnalyses = row.item_metadata?.metric_analyses &&
+            typeof row.item_metadata.metric_analyses === 'object'
+            ? row.item_metadata.metric_analyses
+            : {};
+          let perMetricAnalysisHtml = '';
+          {
+            const analysisCards = state.allMetrics.map((metricName, metricIndex) => {
+              const storedAnalysis = metricAnalyses[metricName];
+              const hasStoredAnalysis = storedAnalysis && typeof storedAnalysis === 'object';
+              const metricValue = window.QymMetrics.parseScoreValue(metricVals[metricIndex]);
+              const metricType = state.metricTypes[metricName] || 'score';
+              const metricThreshold = metricType === 'boolean'
+                ? 0.9999
+                : (state.metricThresholds[metricName] || 0.8);
+              const metricFailed = metricType !== 'numeric' &&
+                metricValue !== null && metricValue < metricThreshold;
+              if (!hasStoredAnalysis && !metricFailed) return '';
+              const analysis = hasStoredAnalysis ? storedAnalysis : {};
+              const metricEditData = ' data-metric-rc-item="' + escapeAttr(itemId) + '" data-metric-name="' + escapeAttr(metricName) + '"';
+              if (analysis.error) {
+                return '<div class="metric-analysis-card" style="--metric-analysis-color:var(--error);">' +
+                  '<div class="metric-analysis-head"><span class="metric-analysis-name">' + escapeHtml(metricName) + '</span>' +
+                    '<button type="button" class="metric-analysis-edit"' + metricEditData + '>Assign root cause</button></div>' +
+                  '<div class="metric-analysis-error">Analysis failed: ' + escapeHtml(String(analysis.error)) + '</div>' +
+                '</div>';
               }
-              rcCategoryBadge = '<span class="meta-badge badge-root-cause' + aiClass + '" data-rc-item="' + escapeAttr(itemId) + '" style="border-color:' + rcColor + '40;color:' + rcColor + ';background:' + rcColor + '15;max-width:100%;box-sizing:border-box;display:inline-flex;" title="Category: ' + escapeAttr(rowRc) + '. Click to change.">' + aiIcon + escapeHtml(rowRc) + confidenceDot + '</span>';
-            } else if (!itemPassed) {
-              rcCategoryBadge = '<button class="root-cause-assign-btn rc-category-assign" data-rc-item="' + escapeAttr(itemId) + '" title="Assign root cause category"><span class="badge-icon">+</span>Category</button>';
-            }
-
-            // Feedback (shared across both badges)
-            var feedbackHtml = '';
-            if (rowRc || rowRcDetail) {
-              feedbackHtml = rowRcNote
-                ? '<div class="feedback-section"><div class="feedback-display" data-feedback-item="' + escapeAttr(itemId) + '" title="Click to edit feedback">' + feedbackIcon + '<span class="feedback-text">' + escapeHtml(rowRcNote) + '</span></div></div>'
-                : '<div class="feedback-section"><div class="feedback-display" data-feedback-item="' + escapeAttr(itemId) + '" title="Click to add feedback">' + feedbackIcon + '<span class="feedback-text feedback-placeholder">Add feedback\u2026</span></div></div>';
-            }
-
-            // Solution badge group
-            let solBadgeHtml = '';
-            if (rowSol) {
-              const solColor = SOLUTION_COLORS[rowSol] || '#60a5fa';
-              const solSource = row.item_metadata?.solution_source || '';
-              const solIsAi = solSource === 'ai';
-              const solIcon = solIsAi ? '<span class="ai-indicator">\uD83E\uDD16</span>' : '';
-              solBadgeHtml = '<div class="rc-badge-group" style="max-width:100%;">' +
-                '<span class="rc-sol-label sol-label">\uD83D\uDEE0 SOLUTION</span>' +
-                '<span class="meta-badge badge-solution' + (solIsAi ? ' ai-suggested' : '') + '" data-sol-item="' + escapeAttr(itemId) + '" style="border-color:' + solColor + '40;color:' + solColor + ';background:' + solColor + '15;max-width:100%;box-sizing:border-box;display:inline-flex;" title="Solution: ' + escapeAttr(rowSol) + '. Click to change.">' + solIcon + escapeHtml(rowSol) + '</span>' +
-                (rowSolNote ? '<div class="sol-note-text">' + escapeHtml(rowSolNote) + '</div>' : '') +
-              '</div>';
-            } else if (!itemPassed) {
-              solBadgeHtml = '<div class="rc-badge-group" style="max-width:100%;">' +
-                '<span class="rc-sol-label sol-label">\uD83D\uDEE0 SOLUTION</span>' +
-                '<button class="solution-assign-btn" data-sol-item="' + escapeAttr(itemId) + '" title="Suggest solution"><span class="badge-icon">+</span>Solution</button>' +
-              '</div>';
-            }
-
-            // Combine all badge groups + feedback
-            var reviewStatusHtml = '';
-            if (reviewStatus === 'approved') {
-              reviewStatusHtml = '<div class="rc-inline-actions"><div class="rc-status-pill approved">Approved</div></div>';
-            } else if (reviewStatus === 'pending' && reviewCorrectionId) {
-              reviewStatusHtml = '<div class="rc-inline-actions"><div class="rc-status-pill pending">Pending Review</div><button class="rc-approve-btn" data-approve-correction="' + escapeAttr(String(reviewCorrectionId)) + '" data-approve-item="' + escapeAttr(itemId) + '">\u2713 Approve</button></div>';
-            }
-            var solSep = solBadgeHtml ? '<div class="rc-badges-sep"></div>' : '';
-            rootCauseHtml = '<div class="rc-sol-row">' +
-              reviewStatusHtml +
-              '<div class="rc-badges-row">' +
-                '<div class="rc-badge-group" style="max-width:100%;">' +
-                  '<span class="rc-sol-label rc-label">\u26A0 ROOT CAUSE</span>' +
-                  rcDetailBadge +
+              const analysisColor = rootCauseColor(analysis.root_cause);
+              const confidence = analysis.source === 'human'
+                ? 'Human edited'
+                : (analysis.confidence == null ? '' : Math.round(Number(analysis.confidence) * 100) + '% confidence');
+              const solutionText = [analysis.solution, analysis.solution_note].filter(Boolean).join(' — ');
+              const metricReview = row.review_corrections?.[metricName] || {};
+              const reviewCorrectionId = metricReview.id;
+              const reviewStatus = hasStoredAnalysis
+                ? String(metricReview.status || 'pending').toLowerCase()
+                : '';
+              let reviewActionsHtml = '';
+              if (reviewStatus === 'approved') {
+                reviewActionsHtml = '<div class="metric-analysis-actions"><div class="rc-status-pill approved">Approved</div>';
+              } else if (reviewStatus === 'pending') {
+                const correctionData = reviewCorrectionId ? ' data-approve-correction="' + escapeAttr(String(reviewCorrectionId)) + '"' : '';
+                reviewActionsHtml = '<div class="metric-analysis-actions"><div class="rc-status-pill pending">Pending Review</div><button class="rc-approve-btn"' + correctionData + ' data-approve-item="' + escapeAttr(itemId) + '" data-approve-metric="' + escapeAttr(metricName) + '">✓ Approve</button>';
+              }
+              if (reviewActionsHtml) {
+                reviewActionsHtml += '</div>';
+              }
+              return '<div class="metric-analysis-card" style="--metric-analysis-color:' + analysisColor + ';">' +
+                '<div class="metric-analysis-head">' +
+                  '<span class="metric-analysis-name">' + escapeHtml(metricName) + '</span>' +
+                  '<button type="button" class="metric-analysis-category"' + metricEditData + ' title="Change category">' + escapeHtml(analysis.root_cause || '+ Category') + '</button>' +
+                  (confidence ? '<span class="metric-analysis-confidence">' + escapeHtml(confidence) + '</span>' : '') +
+                  reviewActionsHtml +
                 '</div>' +
-                '<div class="rc-badge-group" style="max-width:100%;">' +
-                  '<span class="rc-sol-label rc-label">\uD83D\uDCC2 CATEGORY</span>' +
-                  rcCategoryBadge +
-                '</div>' +
-                solSep +
-                solBadgeHtml +
-              '</div>' +
-              feedbackHtml +
-            '</div>';
+                '<button type="button" class="metric-analysis-detail" data-metric-rcdetail-item="' + escapeAttr(itemId) + '" data-metric-name="' + escapeAttr(metricName) + '" title="Change specific issue">' +
+                  (analysis.root_cause_detail ? escapeHtml(analysis.root_cause_detail) : '<span class="metric-analysis-empty">+ Add specific issue</span>') + '</button>' +
+                '<button type="button" class="metric-analysis-note" data-metric-feedback-item="' + escapeAttr(itemId) + '" data-metric-name="' + escapeAttr(metricName) + '" title="Edit feedback">' +
+                  (analysis.root_cause_note ? escapeHtml(analysis.root_cause_note) : '<span class="metric-analysis-empty">+ Add feedback</span>') + '</button>' +
+                '<button type="button" class="metric-analysis-solution" data-metric-sol-item="' + escapeAttr(itemId) + '" data-metric-name="' + escapeAttr(metricName) + '" title="Change recommended solution">' +
+                  (solutionText ? '<strong>Recommended solution:</strong> ' + escapeHtml(solutionText) : '<span class="metric-analysis-empty">+ Add recommended solution</span>') + '</button>' +
+              '</div>';
+            }).filter(Boolean).join('');
+            if (analysisCards) {
+              perMetricAnalysisHtml = '<div class="metric-analysis-list"><div class="metric-analysis-heading">Per-metric root cause analysis</div>' + analysisCards + '</div>';
+            }
           }
 
           // Metric details
@@ -9001,7 +9212,7 @@
 
           // Item metadata badges
           let itemMetadataHtml = '';
-          const SPECIAL_KEYS = ['complexity', 'domain', 'root_cause', 'root_cause_detail', 'root_cause_note', 'root_cause_source', 'root_cause_confidence', 'solution', 'solution_note', 'solution_source'];
+          const SPECIAL_KEYS = ['complexity', 'domain', 'root_cause', 'root_cause_detail', 'root_cause_note', 'root_cause_source', 'root_cause_confidence', 'solution', 'solution_note', 'solution_source', 'metric_analyses'];
           const itemMd = row.item_metadata || {};
           if (typeof itemMd === 'object') {
             let badgesHtml = '';
@@ -9033,10 +9244,10 @@
 
           let outputBlockHtml = '';
           if (passCompareMode) {
-            outputBlockHtml = renderPassCompareBlock(baseRow, itemId, displayItemId, metric, threshold, rootCauseHtml);
+            outputBlockHtml = renderPassCompareBlock(baseRow, itemId, displayItemId, metric, threshold, perMetricAnalysisHtml);
           }
           if (!outputBlockHtml) {
-            outputBlockHtml = '<div class="item-run-output"><div class="output-header"><span class="output-status-cluster"><span class="run-label">' + outputLabel + '</span>' + statusIndicator + durationPart + timePart + '</span><span class="output-actions">' + copyBtn + traceChip + langfuseChip + '</span></div><div class="output-text ' + (status === 'error' ? 'score-1' : '') + '">' + renderMarkdownSafe(output) + '</div><div class="metric-scores-inline">' + metricScoresHtml + '</div>' + _renderTraceChips(row.trace_stats, row.retry_count) + metricEditHtml + rootCauseHtml + toggleHtml + metricDetailsHtml + '</div>';
+            outputBlockHtml = '<div class="item-run-output"><div class="output-header"><span class="output-status-cluster"><span class="run-label">' + outputLabel + '</span>' + statusIndicator + durationPart + timePart + '</span><span class="output-actions">' + copyBtn + traceChip + langfuseChip + '</span></div><div class="output-text ' + (status === 'error' ? 'score-1' : '') + '">' + renderMarkdownSafe(output) + '</div><div class="metric-scores-inline">' + metricScoresHtml + '</div>' + _renderTraceChips(row.trace_stats, row.retry_count) + metricEditHtml + perMetricAnalysisHtml + toggleHtml + metricDetailsHtml + '</div>';
           }
 
           return '<div class="item-card' + (lensPass ? ' pass-lensed' : '') + '">' +
@@ -9065,6 +9276,7 @@
         wireMetricEditHandlers();
         wireRootCauseHandlers();
         wireSolutionHandlers();
+        wireMetricAnalysisHandlers();
         wireCopyHandlers();
         initExpectedToggles();
 
@@ -9263,18 +9475,30 @@
             });
           });
         });
-        document.querySelectorAll('[data-approve-correction]').forEach(btn => {
+        document.querySelectorAll('.rc-approve-btn[data-approve-metric]').forEach(btn => {
           btn.addEventListener('click', async (e) => {
             e.stopPropagation();
             const correctionId = btn.dataset.approveCorrection;
             const itemId = btn.dataset.approveItem;
-            if (!correctionId || !itemId) return;
+            const metricName = btn.dataset.approveMetric;
+            if (!itemId || !metricName) return;
             btn.disabled = true;
             try {
-              const res = await fetch(apiUrl('api/corrections/' + correctionId + '/approve'), {
+              const approvalPath = correctionId
+                ? 'api/corrections/' + correctionId + '/approve'
+                : 'api/corrections/approve-metric-analysis';
+              const approvalBody = correctionId
+                ? { comment: '' }
+                : {
+                    run_id: state.run?.file_path || state.run?.id || RUN_ID,
+                    item_id: itemId,
+                    metric_name: metricName,
+                    comment: '',
+                  };
+              const res = await fetch(apiUrl(approvalPath), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ comment: '' }),
+                body: JSON.stringify(approvalBody),
               });
               const data = await res.json().catch(() => ({}));
               if (!res.ok || data.detail || data.error) {
@@ -9284,7 +9508,13 @@
               }
               const rows = state.snapshot.rows || [];
               const row = rows.find(r => (r.item_id || String(r.index)) === itemId);
-              if (row) row.review_correction_status = 'approved';
+              if (row) {
+                row.review_corrections = row.review_corrections || {};
+                row.review_corrections[metricName] = {
+                  id: data.id || reviewCorrectionId,
+                  status: 'approved',
+                };
+              }
               renderItems();
             } catch (err) {
               console.error('Error approving correction:', err);
@@ -9303,7 +9533,73 @@
         });
       }
 
-      async function saveFeedback(itemId, note) {
+      function wireMetricAnalysisHandlers() {
+        document.querySelectorAll('[data-metric-rc-item]').forEach(trigger => {
+          trigger.addEventListener('click', (e) => {
+            e.stopPropagation();
+            showRootCauseDropdown(
+              trigger.dataset.metricRcItem,
+              trigger,
+              trigger.dataset.metricName
+            );
+          });
+        });
+        document.querySelectorAll('[data-metric-rcdetail-item]').forEach(trigger => {
+          trigger.addEventListener('click', (e) => {
+            e.stopPropagation();
+            showRcDetailDropdown(
+              trigger.dataset.metricRcdetailItem,
+              trigger,
+              trigger.dataset.metricName
+            );
+          });
+        });
+        document.querySelectorAll('[data-metric-sol-item]').forEach(trigger => {
+          trigger.addEventListener('click', (e) => {
+            e.stopPropagation();
+            showSolutionDropdown(
+              trigger.dataset.metricSolItem,
+              trigger,
+              trigger.dataset.metricName
+            );
+          });
+        });
+        document.querySelectorAll('[data-metric-feedback-item]').forEach(trigger => {
+          trigger.addEventListener('click', function(e) {
+            e.stopPropagation();
+            const itemId = trigger.dataset.metricFeedbackItem;
+            const metricName = trigger.dataset.metricName;
+            const rows = state.snapshot.rows || [];
+            const row = rows.find(r => (r.item_id || String(r.index)) === itemId);
+            const currentNote = row?.item_metadata?.metric_analyses?.[metricName]?.root_cause_note || '';
+            const editor = document.createElement('div');
+            editor.className = 'metric-analysis-feedback-edit';
+            editor.innerHTML = '<div class="feedback-edit"><textarea placeholder="Add feedback\u2026">' + escapeHtml(currentNote) + '</textarea><div class="feedback-edit-actions"><button class="feedback-btn feedback-btn-cancel">Cancel</button><button class="feedback-btn feedback-btn-save">Save</button></div></div>';
+            trigger.replaceWith(editor);
+            const textarea = editor.querySelector('textarea');
+            const save = async () => {
+              await saveFeedback(itemId, textarea.value.trim(), metricName);
+            };
+            textarea.focus();
+            textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+            editor.querySelector('.feedback-btn-save').addEventListener('click', save);
+            editor.querySelector('.feedback-btn-cancel').addEventListener('click', () => renderItems());
+            textarea.addEventListener('keydown', async (ev) => {
+              if (ev.key === 'Enter' && !ev.shiftKey) {
+                ev.preventDefault();
+                await save();
+              }
+              if (ev.key === 'Escape') renderItems();
+            });
+          });
+        });
+      }
+
+      async function saveFeedback(itemId, note, metricName) {
+        if (metricName) {
+          await saveMetricAnalysisPatch(itemId, metricName, { root_cause_note: note });
+          return;
+        }
         var rows = state.snapshot.rows || [];
         var row = rows.find(function(r) { return (r.item_id || String(r.index)) === itemId; });
 
@@ -9347,23 +9643,136 @@
         } catch (err) { console.error('Error saving feedback:', err); }
       }
 
-      function showRootCauseDropdown(itemId, anchorEl) {
+      function applyMetricAnalysisPatchLocally(row, metricName, patch) {
+        if (!row) return;
+        if (!row.item_metadata) row.item_metadata = {};
+        const metricAnalyses = Object.assign({}, row.item_metadata.metric_analyses || {});
+        const analysis = Object.assign({}, metricAnalyses[metricName] || {});
+
+        if (Object.prototype.hasOwnProperty.call(patch, 'root_cause')) {
+          const value = String(patch.root_cause || '').trim();
+          if (value) analysis.root_cause = value;
+          else {
+            delete analysis.root_cause;
+            delete analysis.root_cause_detail;
+            delete analysis.root_cause_note;
+            delete analysis.confidence;
+          }
+        }
+        if (Object.prototype.hasOwnProperty.call(patch, 'root_cause_detail')) {
+          const value = String(patch.root_cause_detail || '').trim();
+          if (value) analysis.root_cause_detail = value;
+          else delete analysis.root_cause_detail;
+        }
+        if (Object.prototype.hasOwnProperty.call(patch, 'root_cause_note')) {
+          const value = String(patch.root_cause_note || '').trim();
+          if (value) analysis.root_cause_note = value;
+          else delete analysis.root_cause_note;
+        }
+        if (Object.prototype.hasOwnProperty.call(patch, 'solution')) {
+          const value = String(patch.solution || '').trim();
+          if (value) analysis.solution = value;
+          else {
+            delete analysis.solution;
+            delete analysis.solution_note;
+          }
+        }
+        if (Object.prototype.hasOwnProperty.call(patch, 'solution_note')) {
+          const value = String(patch.solution_note || '').trim();
+          if (value) analysis.solution_note = value;
+          else delete analysis.solution_note;
+        }
+        delete analysis.error;
+        delete analysis.confidence;
+        analysis.source = 'human';
+
+        const meaningfulKeys = Object.keys(analysis).filter(key => key !== 'source' && analysis[key] != null && analysis[key] !== '');
+        if (meaningfulKeys.length) metricAnalyses[metricName] = analysis;
+        else delete metricAnalyses[metricName];
+        if (Object.keys(metricAnalyses).length) row.item_metadata.metric_analyses = metricAnalyses;
+        else delete row.item_metadata.metric_analyses;
+      }
+
+      async function saveMetricAnalysisPatch(itemId, metricName, patch) {
+        const rows = state.snapshot.rows || [];
+        const row = rows.find(r => (r.item_id || String(r.index)) === itemId);
+
+        const applyLocally = () => {
+          applyMetricAnalysisPatchLocally(row, metricName, patch);
+          if (patch.root_cause && !state.rootCauseValues.includes(patch.root_cause)) {
+            state.rootCauseValues.push(patch.root_cause);
+            state.rootCauseValues.sort();
+          }
+          buildCategoryDropdowns();
+          renderItems();
+        };
+
+        if (IS_EXPORT) {
+          applyLocally();
+          autoSaveExport();
+          return;
+        }
+
+        const runId = state.run?.file_path;
+        if (!runId) return;
+        try {
+          const res = await fetch(apiUrl('api/runs/update_root_cause'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(Object.assign({
+              item_id: itemId,
+              metric_name: metricName,
+              run_id: runId,
+            }, patch)),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok || data.detail || data.error) {
+            console.error('Failed to save metric root cause:', data.detail || data.error);
+            return;
+          }
+          if (data.row) {
+            applyUpdatedRow(data.row);
+            if (patch.root_cause && !state.rootCauseValues.includes(patch.root_cause)) {
+              state.rootCauseValues.push(patch.root_cause);
+              state.rootCauseValues.sort();
+            }
+            buildCategoryDropdowns();
+            renderItems();
+          } else {
+            applyLocally();
+          }
+        } catch (err) {
+          console.error('Error saving metric root cause:', err);
+        }
+      }
+
+      function showRootCauseDropdown(itemId, anchorEl, metricName) {
         document.querySelectorAll('.root-cause-dropdown').forEach(d => d.remove());
         const rows = state.snapshot.rows || [];
         const row = rows.find(r => (r.item_id || String(r.index)) === itemId);
-        const currentRC = row?.item_metadata?.root_cause || '';
+        const currentRC = metricName
+          ? (row?.item_metadata?.metric_analyses?.[metricName]?.root_cause || '')
+          : (row?.item_metadata?.root_cause || '');
         const allOptions = [...ROOT_CAUSE_PRESETS];
         for (const v of state.rootCauseValues) { if (!allOptions.includes(v)) allOptions.push(v); }
+        for (const r of rows) {
+          const analyses = r.item_metadata?.metric_analyses;
+          if (!analyses || typeof analyses !== 'object') continue;
+          for (const analysis of Object.values(analyses)) {
+            const value = analysis && typeof analysis === 'object' ? analysis.root_cause : '';
+            if (value && !allOptions.includes(value)) allOptions.push(value);
+          }
+        }
 
         const dropdown = document.createElement('div');
         dropdown.className = 'root-cause-dropdown';
         let html = '<div class="rc-option ' + (!currentRC ? 'active' : '') + '" data-rc-value=""><span class="rc-dot" style="background:var(--text-muted);"></span> None (clear)</div>';
         html += '<div class="rc-divider"></div>';
         for (const opt of allOptions) {
-          const color = ROOT_CAUSE_COLORS[opt] || '#e07a5f';
+          const color = rootCauseColor(opt);
           const isCustom = !ROOT_CAUSE_PRESETS.includes(opt);
           html += '<div class="rc-option ' + (opt === currentRC ? 'active' : '') + '" data-rc-value="' + escapeAttr(opt) + '"><span class="rc-dot" style="background:' + color + ';"></span> ' + escapeHtml(opt) +
-            (isCustom ? '<span class="rc-delete-btn" data-rc-delete="' + escapeAttr(opt) + '" title="Delete this category">\u00D7</span>' : '') +
+            (isCustom && !metricName ? '<span class="rc-delete-btn" data-rc-delete="' + escapeAttr(opt) + '" title="Delete this category">\u00D7</span>' : '') +
           '</div>';
         }
         html += '<div class="rc-divider"></div>';
@@ -9413,7 +9822,7 @@
 
         dropdown.querySelectorAll('.rc-option').forEach(opt => {
           opt.addEventListener('click', async () => {
-            await saveRootCause(itemId, opt.dataset.rcValue);
+            await saveRootCause(itemId, opt.dataset.rcValue, metricName);
             dropdown.remove();
           });
         });
@@ -9422,12 +9831,12 @@
         const customBtn = dropdown.querySelector('.rc-custom-input button');
         customBtn.addEventListener('click', async () => {
           const val = customInput.value.trim();
-          if (val) { await saveRootCause(itemId, val); dropdown.remove(); }
+          if (val) { await saveRootCause(itemId, val, metricName); dropdown.remove(); }
         });
         customInput.addEventListener('keydown', async (e) => {
           if (e.key === 'Enter') {
             const val = customInput.value.trim();
-            if (val) { await saveRootCause(itemId, val); dropdown.remove(); }
+            if (val) { await saveRootCause(itemId, val, metricName); dropdown.remove(); }
           }
         });
 
@@ -9448,17 +9857,25 @@
         }, 0);
       }
 
-      function showRcDetailDropdown(itemId, anchorEl) {
+      function showRcDetailDropdown(itemId, anchorEl, metricName) {
         document.querySelectorAll('.root-cause-dropdown').forEach(d => d.remove());
         const rows = state.snapshot.rows || [];
         const row = rows.find(r => (r.item_id || String(r.index)) === itemId);
-        const currentDetail = row?.item_metadata?.root_cause_detail || '';
+        const currentDetail = metricName
+          ? (row?.item_metadata?.metric_analyses?.[metricName]?.root_cause_detail || '')
+          : (row?.item_metadata?.root_cause_detail || '');
 
         // Collect existing detail values for quick-pick
         const detailValues = [];
         for (const r of rows) {
           const d = r.item_metadata?.root_cause_detail;
           if (d && !detailValues.includes(d)) detailValues.push(d);
+          const analyses = r.item_metadata?.metric_analyses;
+          if (!analyses || typeof analyses !== 'object') continue;
+          for (const analysis of Object.values(analyses)) {
+            const metricDetail = analysis && typeof analysis === 'object' ? analysis.root_cause_detail : '';
+            if (metricDetail && !detailValues.includes(metricDetail)) detailValues.push(metricDetail);
+          }
         }
         detailValues.sort();
 
@@ -9469,7 +9886,7 @@
           html += '<div class="rc-divider"></div>';
           for (const dv of detailValues) {
             html += '<div class="rc-option' + (dv === currentDetail ? ' active' : '') + '" data-rcdetail-value="' + escapeAttr(dv) + '">' + escapeHtml(dv) +
-              '<span class="rc-delete-btn" data-rcdetail-delete="' + escapeAttr(dv) + '" title="Delete this root cause">\u00D7</span>' +
+              (!metricName ? '<span class="rc-delete-btn" data-rcdetail-delete="' + escapeAttr(dv) + '" title="Delete this root cause">\u00D7</span>' : '') +
             '</div>';
           }
         }
@@ -9517,7 +9934,7 @@
 
         dropdown.querySelectorAll('.rc-option').forEach(opt => {
           opt.addEventListener('click', async () => {
-            await saveRootCauseDetail(itemId, opt.dataset.rcdetailValue);
+            await saveRootCauseDetail(itemId, opt.dataset.rcdetailValue, metricName);
             dropdown.remove();
           });
         });
@@ -9526,7 +9943,7 @@
         const customBtn = dropdown.querySelector('.rc-custom-input button');
         const doSave = async () => {
           const val = customInput.value.trim();
-          await saveRootCauseDetail(itemId, val);
+          await saveRootCauseDetail(itemId, val, metricName);
           dropdown.remove();
         };
         customBtn.addEventListener('click', doSave);
@@ -9550,7 +9967,11 @@
         }, 0);
       }
 
-      async function saveRootCause(itemId, rootCause) {
+      async function saveRootCause(itemId, rootCause, metricName) {
+        if (metricName) {
+          await saveMetricAnalysisPatch(itemId, metricName, { root_cause: rootCause });
+          return;
+        }
         const rows = state.snapshot.rows || [];
         const row = rows.find(r => (r.item_id || String(r.index)) === itemId);
         const existingDetail = row?.item_metadata?.root_cause_detail || '';
@@ -9602,7 +10023,11 @@
         } catch (err) { console.error('Error saving root cause:', err); }
       }
 
-      async function saveRootCauseDetail(itemId, detail) {
+      async function saveRootCauseDetail(itemId, detail, metricName) {
+        if (metricName) {
+          await saveMetricAnalysisPatch(itemId, metricName, { root_cause_detail: detail });
+          return;
+        }
         const rows = state.snapshot.rows || [];
         const row = rows.find(r => (r.item_id || String(r.index)) === itemId);
         const existingCategory = row?.item_metadata?.root_cause || '';
@@ -9640,16 +10065,24 @@
         } catch (err) { console.error('Error saving root cause detail:', err); }
       }
 
-      function showSolutionDropdown(itemId, anchorEl) {
+      function showSolutionDropdown(itemId, anchorEl, metricName) {
         document.querySelectorAll('.solution-dropdown').forEach(d => d.remove());
         const rows = state.snapshot.rows || [];
         const row = rows.find(r => (r.item_id || String(r.index)) === itemId);
-        const currentSol = row?.item_metadata?.solution || '';
+        const currentSol = metricName
+          ? (row?.item_metadata?.metric_analyses?.[metricName]?.solution || '')
+          : (row?.item_metadata?.solution || '');
         const allOptions = [...SOLUTION_PRESETS];
         // Add any dynamic solution values from the dataset
         for (const r of rows) {
           const s = r.item_metadata?.solution;
           if (s && !allOptions.includes(s)) allOptions.push(s);
+          const analyses = r.item_metadata?.metric_analyses;
+          if (!analyses || typeof analyses !== 'object') continue;
+          for (const analysis of Object.values(analyses)) {
+            const metricSolution = analysis && typeof analysis === 'object' ? analysis.solution : '';
+            if (metricSolution && !allOptions.includes(metricSolution)) allOptions.push(metricSolution);
+          }
         }
 
         const dropdown = document.createElement('div');
@@ -9679,7 +10112,7 @@
 
         dropdown.querySelectorAll('.rc-option').forEach(opt => {
           opt.addEventListener('click', async () => {
-            await saveSolution(itemId, opt.dataset.solValue);
+            await saveSolution(itemId, opt.dataset.solValue, metricName);
             dropdown.remove();
           });
         });
@@ -9688,12 +10121,12 @@
         const customBtn = dropdown.querySelector('.rc-custom-input button');
         customBtn.addEventListener('click', async () => {
           const val = customInput.value.trim();
-          if (val) { await saveSolution(itemId, val); dropdown.remove(); }
+          if (val) { await saveSolution(itemId, val, metricName); dropdown.remove(); }
         });
         customInput.addEventListener('keydown', async (e) => {
           if (e.key === 'Enter') {
             const val = customInput.value.trim();
-            if (val) { await saveSolution(itemId, val); dropdown.remove(); }
+            if (val) { await saveSolution(itemId, val, metricName); dropdown.remove(); }
           }
         });
 
@@ -9714,7 +10147,11 @@
         }, 0);
       }
 
-      async function saveSolution(itemId, solution) {
+      async function saveSolution(itemId, solution, metricName) {
+        if (metricName) {
+          await saveMetricAnalysisPatch(itemId, metricName, { solution: solution });
+          return;
+        }
         const rows = state.snapshot.rows || [];
         const row = rows.find(r => (r.item_id || String(r.index)) === itemId);
 
@@ -10464,66 +10901,6 @@
         var groups = discoverExportColumns(_exportItems);
         renderExportModal(groups);
       });
-
-      // ── AI Evaluator Playground ──────────────────────────────
-      if (!IS_EXPORT && typeof QymPlayground !== 'undefined') {
-        QymPlayground.init({
-            apiUrl: apiUrl,
-            getRunId: function () { return state.run?.file_path || state.run?.id; },
-            getRows: function () {
-                return (state.snapshot?.rows || []).map(function (r) {
-                    var metricName = state.selectedMetric;
-                    return {
-                        item_id: r.item_id,
-                        index: r.index,
-                        input: r.input,
-                        input_full: r.input_full,
-                        output: r.output,
-                        output_full: r.output_full,
-                        expected: r.expected,
-                        expected_full: r.expected_full,
-                        error: r.error,
-                        item_metadata: r.item_metadata,
-                        metric_metadata: metricName ? ((r.metric_meta || {})[metricName] || {}) : {},
-                        metric_metadata_by_metric: r.metric_meta || {},
-                        scores: r.scores || {},
-                        metric_score: (function() {
-                            var mIdx = state.allMetrics.indexOf(metricName);
-                            var v = mIdx >= 0 ? (r.metric_values || [])[mIdx] : null;
-                            return v != null ? parseFloat(v) : null;
-                        })(),
-                    };
-                });
-            },
-            getMetric: function () { return state.selectedMetric; },
-            getThreshold: function () { return state.metricThresholds?.[state.selectedMetric] || 0.8; },
-            onAnalysisComplete: function (data) {
-                // Update local state with new root causes
-                var rows = state.snapshot?.rows || [];
-                for (var i = 0; i < (data.results || []).length; i++) {
-                    var result = data.results[i];
-                    var row = rows.find(function (r) { return r.item_id === result.item_id; });
-                    if (row) {
-                        if (!row.item_metadata) row.item_metadata = {};
-                        row.item_metadata.root_cause = result.root_cause;
-                        row.item_metadata.root_cause_detail = result.root_cause_detail || '';
-                        row.item_metadata.root_cause_note = result.root_cause_note;
-                        row.item_metadata.root_cause_source = 'ai';
-                        row.item_metadata.root_cause_confidence = result.confidence;
-                        if (result.solution) {
-                            row.item_metadata.solution = result.solution;
-                            row.item_metadata.solution_note = result.solution_note || '';
-                            row.item_metadata.solution_source = 'ai';
-                        }
-                    }
-                }
-                if (typeof buildCategoryDropdowns === 'function') buildCategoryDropdowns();
-                renderItems();
-            },
-            showToast: showToast,
-            escapeHtml: escapeHtml,
-        });
-      }
 
       // ── Export mode: hide mutation UI ──
       function applyExportMode() {

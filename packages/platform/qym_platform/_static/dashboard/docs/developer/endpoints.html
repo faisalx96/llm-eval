@@ -123,7 +123,7 @@ curl -s -X POST "https://qym.example.com/v1/datasets:upload" \
   <thead><tr><th>Method &amp; path</th><th>Purpose</th></tr></thead>
   <tbody>
     <tr><td><code>GET /v1/projects</code></td><td>Projects visible to the caller (all projects for an admin; member projects otherwise).</td></tr>
-    <tr><td><code>POST /v1/projects</code></td><td>Create a project. Body: <code>name</code>, optional <code>slug</code> / <code>description</code>. The creator becomes a manager. Only admins and existing managers may create; otherwise <code>403 Only admins and project managers can create projects</code>. Duplicate slug &rarr; <code>400 Project slug already exists</code>.</td></tr>
+    <tr><td><code>POST /v1/projects</code></td><td>Create a project. Body: <code>name</code> and optional <code>slug</code>. The creator becomes a manager. Only admins and existing managers may create; otherwise <code>403 Only admins and project managers can create projects</code>. Duplicate slug &rarr; <code>400 Project slug already exists</code>.</td></tr>
     <tr><td><code>GET /v1/projects/{project_id}</code></td><td>Get one project (with <code>member_count</code>, <code>run_count</code>, caller <code>role</code>).</td></tr>
     <tr><td><code>GET /v1/projects/by-slug/{project_slug}</code></td><td>Resolve a project by slug.</td></tr>
     <tr><td><code>GET /v1/projects/{project_id}/members</code></td><td>List members with roles.</td></tr>
@@ -148,7 +148,7 @@ curl -s -X POST "https://qym.example.com/v1/datasets:upload" \
     <tr><td><code>PUT /v1/projects/{project_id}/llm-connections/{connection_id}</code></td><td>Update. Send <code>llm_api_key="__KEEP__"</code> to preserve the stored key, or <code>""</code> to clear it.</td></tr>
     <tr><td><code>DELETE /v1/projects/{project_id}/llm-connections/{connection_id}</code></td><td>Delete (promotes the oldest remaining connection to default).</td></tr>
     <tr><td><code>POST /v1/projects/{project_id}/llm-connections/{connection_id}/set-default</code></td><td>Make this connection the project default.</td></tr>
-    <tr><td><code>POST /v1/projects/{project_id}/llm-connections/{connection_id}/test</code></td><td>Send a one-token probe to verify the connection.</td></tr>
+    <tr><td><code>POST /v1/projects/{project_id}/llm-connections/{connection_id}/test</code></td><td>Send a short <code>Reply with: ok</code> probe to verify the connection.</td></tr>
   </tbody>
 </table>
 
@@ -180,7 +180,7 @@ curl -s -X POST "https://qym.example.com/v1/datasets:upload" \
 <p>Run mutation endpoints (also UI session) live under <code>/api/runs</code>:</p>
 <ul>
   <li><code>POST /api/runs/update_metric</code> &mdash; override one metric score on one item. Requires <code>file_path</code> (the run id), <code>row_index</code>, <code>metric_name</code>, <code>new_score</code>; else <code>400 file_path, row_index, and metric_name required</code>.</li>
-  <li><code>POST /api/runs/update_root_cause</code> &mdash; set <code>root_cause</code> / <code>root_cause_detail</code> / <code>root_cause_note</code> / <code>solution</code> / <code>solution_note</code> on an item. Requires <code>item_id</code> and <code>run_id</code>.</li>
+  <li><code>POST /api/runs/update_root_cause</code> &mdash; set <code>root_cause</code> / <code>root_cause_detail</code> / <code>root_cause_note</code> / <code>solution</code> / <code>solution_note</code> on an item. Requires <code>item_id</code> and <code>run_id</code>. Pass optional <code>metric_name</code> to patch that metric's analysis while preserving the item-level summary.</li>
   <li><code>POST /api/runs/delete</code> &mdash; soft-delete a run (<code>file_path</code> = run id).</li>
   <li><code>POST /api/runs/restore</code> &mdash; restore a soft-deleted run. Admin only.</li>
 </ul>
@@ -204,25 +204,41 @@ curl -s -X POST "https://qym.example.com/v1/datasets:upload" \
 <p><code>RUNNING</code> and <code>PENDING</code> are the two "live" statuses; <code>GET /api/runs/live</code> filters on exactly these. An invalid value in the <code>status</code> filter on <code>GET /api/runs</code> returns <code>400 Invalid run status: &lt;value&gt;</code>.</p>
 
 <h2>Analysis &amp; corrections</h2>
-<p>The analysis and correction-bank endpoints are under <code>/api</code> and require a UI session. Analysis uses a project LLM connection to cluster and explain failures; corrections feed approved explanations back as few-shot examples.</p>
+<p>The analysis and correction-bank endpoints are under <code>/api</code> and require a UI session. Analysis uses a project LLM connection plus the project's description, reference documents, and active rule version to diagnose failures by metric; approved corrections can provide evidence when generating project analysis rules, but are not copied into each item's prompt as few-shot examples.</p>
 
 <table>
   <thead><tr><th>Method &amp; path</th><th>Purpose</th></tr></thead>
   <tbody>
-    <tr><td><code>POST /api/runs/{run_id}/analyze</code></td><td>Trigger root-cause analysis for selected items. Requires modify rights (<code>403 Access denied</code> otherwise). Body filters: <code>metric</code>, <code>max_score</code>, <code>item_filter</code> (<code>all</code>/<code>failed</code>/<code>passed</code>/<code>errors</code>), <code>threshold</code> (default 0.8), <code>only_unanalyzed</code> (default true), <code>item_ids[]</code>, <code>concurrency</code> (default 20, 1&ndash;20), <code>connection_id</code>. Returns <code>{total_analyzed, results, errors}</code>.</td></tr>
+    <tr><td><code>POST /api/runs/{run_id}/analyze</code></td><td>Trigger root-cause analysis for selected items. Requires modify rights (<code>403 Access denied</code> otherwise). Body filters: <code>metric</code> (single metric) or <code>metrics[]</code> (explicit metric selection), <code>max_score</code>, <code>item_filter</code> (<code>all</code>/<code>failed</code>/<code>passed</code>/<code>errors</code>), <code>threshold</code> (default 0.8), <code>only_unanalyzed</code> (default true), <code>item_ids[]</code>, <code>concurrency</code> (default 20, 1&ndash;20), <code>connection_id</code>. Returns <code>{total_analyzed, results, errors}</code>.</td></tr>
     <tr><td><code>POST /api/runs/{run_id}/analyze-stream</code></td><td>Same, streamed as progress events.</td></tr>
-    <tr><td><code>POST /api/runs/{run_id}/analyze-preview</code></td><td>Preview which items the filter would select, without calling the model.</td></tr>
-    <tr><td><code>POST /api/runs/{run_id}/analyze-test</code></td><td>Dry-run the analyzer prompt against a sample.</td></tr>
+    <tr><td><code>POST /api/runs/{run_id}/analyze-preview</code></td><td>Render the exact LLM messages for one item without calling the model or saving analysis.</td></tr>
+    <tr><td><code>POST /api/runs/{run_id}/analyze-test</code></td><td>Run analysis against 1&ndash;3 selected items without saving; returns rendered messages, results, and any aggregation error.</td></tr>
+    <tr><td><code>GET /api/runs/{run_id}/analysis-documents</code></td><td>List the project's shared reference-document library and project inclusion state.</td></tr>
+    <tr><td><code>POST /api/runs/{run_id}/analysis-documents</code></td><td>Upload and enable a reference document in the project library.</td></tr>
+    <tr><td><code>PATCH /api/runs/{run_id}/analysis-documents/{document_id}</code></td><td>Change whether a project reference document is included in analyzer prompts.</td></tr>
+    <tr><td><code>DELETE /api/runs/{run_id}/analysis-documents/{document_id}</code></td><td>Remove a reference document from the project library.</td></tr>
+    <tr><td><code>PATCH /api/runs/{run_id}/analysis-context</code></td><td>Save the working analysis-rule draft/version. Use the document selection endpoint above to select documents for a run.</td></tr>
+    <tr><td><code>POST /api/runs/{run_id}/analysis-rules/infer</code></td><td>Generate bounded analysis-rule drafts from selected project context, documents, and approved correction evidence.</td></tr>
     <tr><td><code>GET /api/runs/{run_id}/corrections</code></td><td>Approved correction-bank entries for this run's task (up to 20).</td></tr>
     <tr><td><code>GET /api/runs/{run_id}/analysis-config</code></td><td>Analysis configuration for the run.</td></tr>
+    <tr><td><code>GET /api/runs/{run_id}/analysis-rule-versions</code></td><td>List the project rule versions, including draft/published status, parent lineage, aliases, hashes, and the current production version.</td></tr>
+    <tr><td><code>POST /api/runs/{run_id}/analysis-rule-versions</code></td><td>Create a mutable draft, optionally cloned from a version or the <code>production</code> alias.</td></tr>
+    <tr><td><code>POST /api/runs/{run_id}/analysis-rule-versions/{version}:publish</code></td><td>Publish and lock a non-empty draft. Optional body <code>set_alias</code> moves an alias such as <code>production</code>.</td></tr>
+    <tr><td><code>POST /api/runs/{run_id}/analysis-rule-aliases/{alias}</code></td><td>Point an alias at a published rule version.</td></tr>
+    <tr><td><code>GET /api/runs/{run_id}/analysis-rule-versions/{version}:compare</code></td><td>Compare against the required <code>base</code> version, returning added, removed, changed, and unchanged rules.</td></tr>
+    <tr><td><code>GET /api/runs/{run_id}/analysis-rule-lineage</code></td><td>Return the parent-linked rule-version history and production pointer.</td></tr>
+    <tr><td><code>POST /api/runs/{run_id}/analysis-rule-versions/{version_id}/activate</code></td><td>Set an available rule version as the project's production version.</td></tr>
+    <tr><td><code>DELETE /api/runs/{run_id}/analysis-rule-versions/{version_id}</code></td><td>Delete a rule version while leaving at least one live version; requires run-owner or project-manager rights.</td></tr>
+    <tr><td><code>POST /api/runs/{run_id}/analysis-rule-versions/{version_id}/restore</code></td><td>Restore a deleted rule version. Platform admin only.</td></tr>
+    <tr><td><code>DELETE /api/runs/{run_id}/analysis-rule-versions/{version_id}/permanent</code></td><td>Permanently remove a soft-deleted rule version. Platform admin only.</td></tr>
     <tr><td><code>GET /api/corrections</code></td><td>List corrections with filters: <code>project_slug</code>, <code>task</code>, <code>dataset</code>, <code>model</code>, <code>run_name</code>, <code>source</code>, <code>conf_min</code>/<code>conf_max</code> (0&ndash;100), <code>status</code>, <code>search</code>, <code>limit</code> (1&ndash;500).</td></tr>
     <tr><td><code>GET /api/corrections/{correction_id}</code></td><td>One correction.</td></tr>
     <tr><td><code>PUT /api/corrections/{correction_id}</code></td><td>Edit a correction.</td></tr>
-    <tr><td><code>POST /api/corrections/{correction_id}/approve</code></td><td>Approve (feeds few-shot examples). Body: optional <code>comment</code>. Reviewer rights enforced.</td></tr>
+    <tr><td><code>POST /api/corrections/{correction_id}/approve</code></td><td>Approve for rule-generation evidence. Body: optional <code>comment</code>. Reviewer rights enforced.</td></tr>
     <tr><td><code>POST /api/corrections/{correction_id}/reject</code></td><td>Reject. Body: optional <code>comment</code>.</td></tr>
     <tr><td><code>POST /api/corrections/{correction_id}/reset</code></td><td>Reset to pending.</td></tr>
     <tr><td><code>POST /api/corrections/bulk</code></td><td>Bulk approve/reject/reset across corrections.</td></tr>
-    <tr><td><code>DELETE /api/corrections/{correction_id}</code></td><td>Delete a correction.</td></tr>
+    <tr><td><code>DELETE /api/corrections/{correction_id}</code></td><td>Remove the active candidate, mark it rejected, and retain its append-only history.</td></tr>
   </tbody>
 </table>
 

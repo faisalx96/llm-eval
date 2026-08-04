@@ -276,9 +276,6 @@
         if (project && project.name) {
           document.getElementById('overview-title').textContent = project.name;
         }
-        if (project && project.description) {
-          document.getElementById('overview-subtitle').textContent = project.description;
-        }
 
         if (slug) {
           document.getElementById('view-all-runs').href = projectUrl(slug);

@@ -48,8 +48,6 @@
 
     .project-card-name { font-size: var(--font-lg); font-weight: 650; color: var(--text-primary); }
     .project-card-slug { font-size: var(--font-sm); font-family: var(--font-mono); color: var(--text-muted); margin-top: 3px; }
-    .project-card-desc { font-size: var(--font-base); color: var(--text-muted); line-height: 1.5; margin: 0; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; min-height: 36px; }
-    .project-card-desc.none { color: var(--text-dim); font-style: italic; }
 
     .project-card-stats { display: flex; gap: 12px; flex-wrap: wrap; margin-top: auto; padding-top: 10px; border-top: 1px solid var(--border-subtle); font-size: var(--font-sm); color: var(--text-muted); }
     .project-card-stats .stat { display: inline-flex; align-items: center; gap: 4px; }
@@ -155,7 +153,6 @@
               <div class="project-card-name">${esc(p.name)}</div>
               <div class="project-card-slug">${esc(p.slug)}</div>
             </div>
-            <div class="project-card-desc${p.description ? '' : ' none'}">${esc(p.description || 'No description')}</div>
             <div class="project-card-stats">
               <span class="stat"><strong>${p.member_count != null ? p.member_count : '—'}</strong> ${p.member_count === 1 ? 'member' : 'members'}</span>
               <span class="stat"><strong>${p.run_count != null ? p.run_count : '—'}</strong> ${p.run_count === 1 ? 'run' : 'runs'}</span>
@@ -173,7 +170,7 @@
         const q = this.value.toLowerCase();
         if (!q) { renderProjects(allProjects); return; }
         renderProjects(allProjects.filter(p =>
-          p.name.toLowerCase().includes(q) || p.slug.toLowerCase().includes(q) || (p.description || '').toLowerCase().includes(q)
+          p.name.toLowerCase().includes(q) || p.slug.toLowerCase().includes(q)
         ));
       });
 

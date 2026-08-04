@@ -8,6 +8,36 @@ The entries below cover every commit after `e2fda02`, in chronological order (th
 
 ---
 
+## Unreleased — LLM analyzer context and rule lifecycle
+
+The `llm_analyzer` branch extends the existing playground into a project-scoped,
+metric-aware analysis workspace. The complete developer/operator record is in
+[LLM analyzer branch changes](BRANCH_CHANGES_LLM_ANALYZER.md).
+
+- **Metric-aware analysis** — analyze selected item/metric targets, persist
+  independent diagnoses under `item_metadata.metric_analyses`, expose metric-scoped
+  review candidates, and switch run/compare root-cause breakdowns by metric.
+- **Project context** — add bounded reference-document libraries, nested
+  field/custom-variable mapping, useful trace projection, secret
+  redaction, reasoning-model parsing, confidence calibration, and prompt/test
+  previews.
+- **Versioned analyzer rules** — generate draft rules from project material and
+  approved corrections, compare rule lineage, publish immutable snapshots, and move
+  the `production` alias with guarded lifecycle operations.
+- **Project LLM connections** — manage named encrypted provider configurations with
+  default selection, connection testing, URL validation, DNS pinning, redirect
+  blocking, and an explicit opt-in for trusted private endpoints.
+- **Safe document extraction** — support text, DOCX, HTML, and PDF reference files
+  with upload, expansion, page, character, CPU, and memory bounds; add `pypdf`.
+- **Review semantics** — preserve append-only correction history, support metric
+  scope, retain removed candidates as rejected history, and keep approved examples
+  for rule inference rather than injecting them into every item prompt.
+- **SDK/CLI and examples** — point `qym analyze` at the implemented `/api` route,
+  report item-metric summaries, and expand the Text-to-SQL example with business
+  context and judge metrics.
+
+---
+
 ### `d226993` — Repeat runs: samples=k, pass@k, and per-pass views *(July 2026)*
 
 - 🔁 **Native repeat runs** — `Evaluator(..., samples=8)` (or `qym run create --samples 8`) evaluates every dataset item 8 times as **one logical run**: k sequential passes with progressive per-pass metrics in the live TUI, per-(item, pass) checkpointing and resume, and the group set — **Pass@k, Pass^k, Avg@k, Max@k, Consistency, Reliability** — reported automatically

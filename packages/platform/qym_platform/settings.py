@@ -39,6 +39,13 @@ class PlatformSettings(BaseSettings):
 
     # Secrets
     llm_config_encryption_key: str = Field(default="")
+    allow_private_llm_base_urls: bool = Field(
+        default=False,
+        description=(
+            "Allow LLM provider URLs that resolve to loopback, private, link-local, "
+            "or otherwise non-public addresses. Keep disabled in shared deployments."
+        ),
+    )
 
     # Visibility
     hidden_tasks: str = Field(

@@ -207,7 +207,7 @@ qym run compare a1b2c3d4 e5f6a7b8</pre>
 
 <h2><code>qym analyze</code></h2>
 <ul>
-<li><code>qym analyze run &lt;run_id&gt;</code> — triggers AI root-cause analysis on the run's items via <code>POST /v1/runs/{run_id}/analyze</code>. Accepts <code>--concurrency</code> (default <code>20</code>) controlling parallel analysis threads. Reports the count analyzed plus a category breakdown.</li>
+<li><code>qym analyze run &lt;run_id&gt;</code> — triggers AI root-cause analysis on the run's item-metric targets via <code>POST /api/runs/{run_id}/analyze</code>. Accepts <code>--concurrency</code> (default <code>20</code>, range 1–20) controlling parallel analysis requests. Reports the count analyzed plus a category breakdown.</li>
 <li><code>qym analyze summary &lt;run_id&gt;</code> — aggregates already-recorded root-cause categories (from corrections or item metadata) for the run; it does not start new analysis.</li>
 </ul>
 <pre data-lang="bash">qym analyze run a1b2c3d4 --concurrency 10
