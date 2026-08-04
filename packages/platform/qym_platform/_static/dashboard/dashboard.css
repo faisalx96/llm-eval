@@ -5525,7 +5525,7 @@ body.chart-col-resize-active {
   border: 1px solid var(--border-default);
   border-radius: 6px;
   background: var(--bg-elevated);
-  cursor: default;
+  cursor: pointer;
   transition: border-color 0.15s ease, background 0.15s ease;
 }
 
@@ -5538,20 +5538,8 @@ body.chart-col-resize-active {
   background: var(--bg-hover);
 }
 
-.pg-rule-version-open {
-  display: inline-flex;
-  min-width: 0;
-  align-items: center;
-  justify-content: flex-start;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
-}
-
-.pg-rule-version-open:focus-visible {
-  outline: 1px solid var(--accent-primary);
+.pg-rule-version:focus-visible {
+  outline: 2px solid var(--accent-primary);
   outline-offset: 2px;
 }
 
@@ -7102,7 +7090,7 @@ body.chart-col-resize-active {
 }
 .pg-filter-limit-help {
   color: var(--text-muted);
-  font-size: var(--font-sm);
+  font-size: var(--font-xs);
 }
 .pg-filter-score {
   width: 70px;
@@ -7120,37 +7108,40 @@ body.chart-col-resize-active {
 .pg-items-list {
   display: flex;
   flex-direction: column;
-  gap: var(--space-sm);
+  gap: 8px;
   max-height: 360px;
   overflow-y: auto;
-  padding-right: var(--space-xs);
+  padding-right: 4px;
 }
 .pg-items-list::-webkit-scrollbar {
   width: 10px;
 }
 .pg-items-list::-webkit-scrollbar-track {
-  background: var(--bg-base);
+  background: rgba(255, 255, 255, 0.04);
 }
 .pg-items-list::-webkit-scrollbar-thumb {
-  background: color-mix(in srgb, var(--text-muted) 55%, transparent);
-  border: 2px solid var(--bg-base);
+  background: linear-gradient(180deg, rgba(122, 122, 144, 0.82) 0%, rgba(80, 80, 94, 0.92) 100%);
+  border: 2px solid rgba(16, 16, 24, 0.75);
   border-radius: 999px;
 }
 .pg-item-card {
-  background: var(--bg-surface);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--dropdown-radius);
-  padding: var(--space-sm) var(--space-md);
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 10px;
+  padding: 10px 12px;
   cursor: pointer;
-  transition: background 0.15s ease, border-color 0.15s ease;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 .pg-item-card:hover {
-  background: var(--bg-hover);
-  border-color: var(--border-default);
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.15);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
 }
 .pg-item-selected {
-  border-color: var(--accent-primary) !important;
-  background: color-mix(in srgb, var(--accent-primary) 8%, var(--bg-surface)) !important;
+  border-color: rgba(168, 85, 247, 0.6) !important;
+  background: linear-gradient(135deg, rgba(168, 85, 247, 0.1), rgba(168, 85, 247, 0.02)) !important;
+  box-shadow: 0 4px 16px rgba(168, 85, 247, 0.15) !important;
 }
 .pg-item-top {
   display: flex;
@@ -7185,32 +7176,30 @@ body.chart-col-resize-active {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.pg-status-none { color: var(--text-muted); }
+.pg-status-none { color: var(--text-dim); }
 .pg-status-badge.pg-status-none {
-  background: var(--bg-elevated);
-  color: var(--text-muted);
-  border: 1px solid var(--border-default);
+  background: rgba(128, 128, 128, 0.1);
+  color: var(--text-dim);
+  border: 1px solid rgba(128, 128, 128, 0.2);
 }
 .pg-status-badge {
-  display: inline-flex;
-  min-height: var(--badge-height);
-  align-items: center;
-  padding: 0 var(--space-sm);
-  border-radius: 999px;
-  font-size: var(--font-xs);
-  font-weight: 650;
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-size: var(--font-sm);
+  font-weight: 500;
 }
 .pg-status-failed {
-  background: color-mix(in srgb, var(--error) 12%, transparent);
-  color: var(--error);
+  background: rgba(239, 68, 68, 0.12);
+  color: #ef4444;
 }
 .pg-status-passed {
-  background: color-mix(in srgb, var(--success) 12%, transparent);
-  color: var(--success);
+  background: rgba(0, 212, 170, 0.12);
+  color: #00d4aa;
 }
 .pg-status-error {
-  background: color-mix(in srgb, var(--warning) 12%, transparent);
-  color: var(--warning);
+  background: rgba(245, 158, 11, 0.12);
+  color: #f59e0b;
 }
 .pg-show-more {
   display: block;
@@ -7221,7 +7210,7 @@ body.chart-col-resize-active {
   border: 1px dashed var(--border-default);
   border-radius: 6px;
   color: var(--text-muted);
-  font-size: var(--font-sm);
+  font-size: var(--font-xs);
   cursor: pointer;
   text-align: center;
   transition: all 0.15s;
@@ -7233,21 +7222,26 @@ body.chart-col-resize-active {
 
 /* Auto-Preview */
 .pg-auto-indicator {
-  font-size: var(--font-sm);
+  font-size: var(--font-xs);
   color: var(--text-muted);
   font-weight: 400;
   text-transform: none;
   letter-spacing: 0;
 }
 .pg-auto-indicator.pg-auto-updating {
-  color: var(--info);
+  color: #a855f7;
 }
 .pg-preview-loading {
   padding: var(--space-sm) var(--space-md);
-  font-size: var(--font-sm);
-  color: var(--info);
-  background: color-mix(in srgb, var(--info) 6%, transparent);
+  font-size: var(--font-xs);
+  color: #a855f7;
+  background: rgba(168, 85, 247, 0.06);
   border-bottom: 1px solid var(--border-subtle);
+  animation: pg-pulse 1.5s infinite;
+}
+@keyframes pg-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
 }
 .pg-prompt-preview-content {
   display: block;
@@ -7318,10 +7312,11 @@ body.chart-col-resize-active {
 /* Test Results */
 .pg-test-results { display: flex; flex-direction: column; gap: var(--space-md); margin-top: 8px; }
 .pg-test-result-card {
-  background: var(--bg-surface);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--dropdown-radius);
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
   padding: var(--space-lg);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
 }
 .pg-result-header {
   margin-bottom: 12px;
@@ -7474,12 +7469,19 @@ body.chart-col-resize-active {
 .pg-runall-progress {
   margin: var(--space-xl) 0;
   padding: var(--space-xl);
-  background: var(--bg-surface);
-  border: 1px solid var(--border-default);
-  border-radius: var(--dropdown-radius);
+  background: rgba(168, 85, 247, 0.03);
+  border: 1px solid rgba(168, 85, 247, 0.15);
+  border-radius: 16px;
   text-align: center;
   position: relative;
   overflow: hidden;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+}
+.pg-runall-progress::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0; height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(168, 85, 247, 0.5), transparent);
 }
 .pg-progress-icon-container {
   display: inline-flex;
@@ -7487,13 +7489,19 @@ body.chart-col-resize-active {
   justify-content: center;
   width: 48px;
   height: 48px;
-  border-radius: 999px;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-default);
-  margin-bottom: var(--space-md);
+  border-radius: 24px;
+  background: rgba(168, 85, 247, 0.1);
+  border: 1px solid rgba(168, 85, 247, 0.2);
+  margin-bottom: 16px;
+  animation: pgPulseIcon 2s infinite;
 }
 .pg-progress-icon {
   font-size: 24px;
+}
+@keyframes pgPulseIcon {
+  0% { box-shadow: 0 0 0 0 rgba(168, 85, 247, 0.4); }
+  70% { box-shadow: 0 0 0 10px rgba(168, 85, 247, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(168, 85, 247, 0); }
 }
 .pg-progress-text {
   font-size: var(--font-lg);
@@ -7509,33 +7517,48 @@ body.chart-col-resize-active {
 }
 .pg-progress-bar {
   height: 8px;
-  background: var(--bg-elevated);
+  background: rgba(0, 0, 0, 0.4);
   border-radius: 4px;
   overflow: hidden;
+  box-shadow: inset 0 1px 3px rgba(0,0,0,0.5);
   width: 80%;
   margin: 0 auto;
   position: relative;
 }
 .pg-progress-fill {
   height: 100%;
-  background: var(--accent-primary);
+  background: linear-gradient(90deg, #00d4aa, #00a8ff, #a855f7);
+  background-size: 200% 100%;
+  animation: pgGradientMove 2s linear infinite;
   border-radius: 4px;
-  transition: width 0.3s ease;
+  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 0 12px rgba(168, 85, 247, 0.6);
   width: 0%;
+}
+@keyframes pgGradientMove {
+  0% { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
 }
 
 .pg-runall-results { margin-top: var(--space-lg); }
 
 .pg-runall-done {
   padding: var(--space-xl);
-  background: color-mix(in srgb, var(--success) 5%, var(--bg-surface));
-  border: 1px solid color-mix(in srgb, var(--success) 40%, var(--border-default));
-  border-radius: var(--dropdown-radius);
+  background: rgba(0, 212, 170, 0.05);
+  border: 1px solid rgba(0, 212, 170, 0.2);
+  border-radius: 16px;
   text-align: center;
+  animation: pgToastSlideIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+}
+@keyframes pgToastSlideIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 .pg-runall-done-icon {
   font-size: 32px;
-  margin-bottom: var(--space-sm);
+  margin-bottom: 12px;
+  filter: drop-shadow(0 0 8px rgba(0, 212, 170, 0.4));
 }
 .pg-runall-done-text {
   font-size: var(--font-md);
@@ -7543,33 +7566,33 @@ body.chart-col-resize-active {
   line-height: 1.5;
 }
 .pg-runall-done-text strong {
-  color: var(--success);
+  color: #00d4aa;
   font-size: var(--font-lg);
 }
 .pg-runall-done-error {
-  margin-top: var(--space-sm);
-  padding-top: var(--space-sm);
-  border-top: 1px solid color-mix(in srgb, var(--error) 35%, var(--border-subtle));
-  color: var(--error);
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(239, 68, 68, 0.2);
+  color: #ef4444;
   font-size: var(--font-sm);
   font-weight: 500;
 }
 
 /* Additional Instructions */
 .pg-instructions-hint {
-  font-size: var(--font-sm);
+  font-size: var(--font-xs);
   color: var(--text-muted);
   line-height: 1.5;
   margin-bottom: var(--space-sm);
 }
 .pg-instructions-hint code {
-  background: var(--bg-elevated);
+  background: rgba(255, 255, 255, 0.05);
   padding: 1px 5px;
   border-radius: 3px;
   font-family: var(--font-mono);
   font-size: var(--font-sm);
-  color: var(--accent-tertiary-soft);
-  border: 1px solid var(--border-default);
+  color: #c084fc;
+  border: 1px solid rgba(168, 85, 247, 0.2);
 }
 .pg-instructions-textarea {
   width: 100%;
@@ -7658,20 +7681,7 @@ body.chart-col-resize-active {
 }
 
 .pg-document-input {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
-}
-
-.pg-document-dropzone:has(+ .pg-document-input:focus-visible) {
-  outline: 1px solid var(--accent-primary);
-  outline-offset: 2px;
+  display: none;
 }
 
 .pg-document-upload-status {
