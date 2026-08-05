@@ -2901,9 +2901,10 @@
   // RENDERING: TABLE VIEW
   // ═══════════════════════════════════════════════════
 
-  // The three-star AI cluster: concave four-point sparkles in three sizes on
-  // a rising diagonal. The two smaller sparks twinkle via CSS on hover.
-  const ANALYSIS_SPARK_ICON = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false"><path class="spark-main" d="M8.3 2.8C8.3 6.4 11.9 10 15.5 10C11.9 10 8.3 13.6 8.3 17.2C8.3 13.6 4.7 10 1.1 10C4.7 10 8.3 6.4 8.3 2.8Z"></path><path class="spark-minor" d="M18.3 9C18.3 11.5 20.8 14 23.3 14C20.8 14 18.3 16.5 18.3 19C18.3 16.5 15.8 14 13.3 14C15.8 14 18.3 11.5 18.3 9Z"></path><path class="spark-third" d="M18.3 2.1C18.3 3.45 19.65 4.8 21 4.8C19.65 4.8 18.3 6.15 18.3 7.5C18.3 6.15 16.95 4.8 15.6 4.8C16.95 4.8 18.3 3.45 18.3 2.1Z"></path></svg>';
+  // The reference three-spark cluster: one dominant left sparkle with a
+  // compact upper-right sparkle and a medium lower-right sparkle. The two
+  // smaller sparks twinkle via CSS on hover.
+  const ANALYSIS_SPARK_ICON = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false"><path class="spark-main" d="M9.6 2.2C9.6 6.1 13.4 10 17.3 10C13.4 10 9.6 13.9 9.6 17.8C9.6 13.9 5.8 10 1.9 10C5.8 10 9.6 6.1 9.6 2.2Z"></path><path class="spark-minor" d="M16.8 13.05C16.8 15.65 19.4 18.25 22 18.25C19.4 18.25 16.8 20.85 16.8 23.45C16.8 20.85 14.2 18.25 11.6 18.25C14.2 18.25 16.8 15.65 16.8 13.05Z"></path><path class="spark-third" d="M17.15 1C17.15 2.6 18.75 4.2 20.35 4.2C18.75 4.2 17.15 5.8 17.15 7.4C17.15 5.8 15.55 4.2 13.95 4.2C15.55 4.2 17.15 2.6 17.15 1Z"></path></svg>';
 
   // ANALYSIS column cell: a purple chip with the distinct root-cause count
   // when the run has analysis data, a static Analyze action styled like the
@@ -3049,6 +3050,67 @@
       }
     });
     return out;
+  }
+
+  const RUNS_STICKY_COLUMN_LIMITS = [
+    {
+      selector: '.col-status',
+      widthVar: '--runs-col-status-width',
+      minVar: '--runs-col-status-min-width',
+      maxVar: '--runs-col-status-max-width',
+    },
+    {
+      selector: '.col-run',
+      widthVar: '--runs-col-run-width',
+      minVar: '--runs-col-run-min-width',
+      maxVar: '--runs-col-run-max-width',
+    },
+    {
+      selector: '.col-task',
+      widthVar: '--runs-col-task-width',
+      minVar: '--runs-col-task-min-width',
+    },
+    {
+      selector: '.col-model',
+      widthVar: '--runs-col-model-width',
+      minVar: '--runs-col-model-min-width',
+    },
+  ];
+
+  function scheduleRunsStickyColumnSizing() {
+    const table = document.querySelector('.runs-table');
+    if (!table || state.currentView !== 'table') return;
+    if (state._runsStickyColumnFrame) {
+      cancelAnimationFrame(state._runsStickyColumnFrame);
+    }
+    state._runsStickyColumnFrame = requestAnimationFrame(() => {
+      state._runsStickyColumnFrame = null;
+      if (!table.isConnected || state.currentView !== 'table') return;
+
+      table.classList.add('runs-table--measuring-sticky-columns');
+      const computed = getComputedStyle(table);
+      const measured = [];
+      try {
+        RUNS_STICKY_COLUMN_LIMITS.forEach(config => {
+          const header = table.querySelector(`thead ${config.selector}`);
+          if (!header) return;
+          const naturalWidth = Math.ceil(header.getBoundingClientRect().width);
+          const minWidth = Number.parseFloat(computed.getPropertyValue(config.minVar));
+          const maxWidth = config.maxVar
+            ? Number.parseFloat(computed.getPropertyValue(config.maxVar))
+            : Infinity;
+          measured.push({
+            widthVar: config.widthVar,
+            width: Math.min(maxWidth, Math.max(minWidth, naturalWidth)),
+          });
+        });
+      } finally {
+        table.classList.remove('runs-table--measuring-sticky-columns');
+      }
+      measured.forEach(({ widthVar, width }) => {
+        table.style.setProperty(widthVar, `${width}px`);
+      });
+    });
   }
 
   function renderTableView() {
@@ -3798,6 +3860,7 @@
           detail.style.animationDelay = `${i * 30 - elapsed}ms`;
         });
       }
+      scheduleRunsStickyColumnSizing();
       const retry = controlsRow.querySelector('.samples-retry-btn');
       if (retry) {
         retry.addEventListener('click', event => {
@@ -3960,6 +4023,7 @@
           // Collapse instantly: rows can't animate height, so a fade would
           // just hold their space and then snap — instant reads as crisp.
           samplesDetailRows(runId).forEach(detail => detail.remove());
+          scheduleRunsStickyColumnSizing();
         }
       });
     });
@@ -3974,6 +4038,7 @@
       selectAllCheckbox.checked = visibleFilePaths.length > 0 && selectedCount === visibleFilePaths.length;
       selectAllCheckbox.indeterminate = selectedCount > 0 && selectedCount < visibleFilePaths.length;
     }
+    scheduleRunsStickyColumnSizing();
   }
 
   // ═══════════════════════════════════════════════════

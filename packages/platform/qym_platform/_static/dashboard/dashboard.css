@@ -70,6 +70,10 @@
      One aligned density is used across forms and analysis toolbars. */
   --control-height: 24px;
   --control-radius: 5px;
+  --analysis-action-gap: 5px;
+  --analysis-icon-optical-offset: 0.25px;
+  --analysis-action-padding-start: 9px;
+  --analysis-action-padding-end: 11px;
   --dropdown-radius: 7px;
   --dropdown-option-height: 32px;
   --tab-height: 34px;
@@ -2690,12 +2694,18 @@ body.chart-col-resize-active {
 .runs-table {
   --runs-col-select-width: 40px;
   --runs-col-status-width: 164px;
+  --runs-col-status-min-width: 120px;
+  --runs-col-status-max-width: 180px;
   --runs-col-run-width: 308px;
+  --runs-col-run-min-width: 180px;
+  --runs-col-run-max-width: 320px;
   --runs-col-task-width: 150px;
-  --runs-col-dataset-width: 200px;
+  --runs-col-task-min-width: 110px;
   --runs-col-model-width: 220px;
+  --runs-col-model-min-width: 140px;
   --runs-disclosure-size: var(--control-height);
-  --runs-col-analysis-width: 118px;
+  --runs-analysis-value-max-width: 160px;
+  --runs-cell-padding-inline: 12px;
   width: max-content;
   min-width: 100%;
   border-collapse: separate;
@@ -2704,9 +2714,34 @@ body.chart-col-resize-active {
   table-layout: auto;
 }
 
+/* One-frame natural-layout pass used to measure the visible sticky-column
+   values. JavaScript clamps the results and writes the existing width vars,
+   which also drive every chained sticky left offset below. */
+.runs-table.runs-table--measuring-sticky-columns {
+  min-width: 0;
+}
+.runs-table.runs-table--measuring-sticky-columns :is(
+  .col-status,
+  .col-run,
+  .col-task,
+  .col-model
+) {
+  width: auto;
+  min-width: 0;
+  max-width: none;
+}
+.runs-table.runs-table--measuring-sticky-columns .col-task,
+.runs-table.runs-table--measuring-sticky-columns .col-task .tag.task {
+  max-width: none;
+  white-space: nowrap;
+}
+.runs-table.runs-table--measuring-sticky-columns .col-model .tag.model {
+  max-width: none;
+}
+
 .runs-table th,
 .runs-table td {
-  padding: 8px 12px;
+  padding: 8px var(--runs-cell-padding-inline);
 }
 
 .runs-table th {
@@ -2944,14 +2979,14 @@ body.chart-col-resize-active {
   white-space: nowrap;
 }
 
-/* Auto table layout ignores max-width on cells, so the cap lives on the tag
-   itself — the same trick .version-badge uses. One long dataset name plus
-   alias chips must not widen the whole column. */
-.runs-dataset-tag {
+/* Dataset values stay complete and single-line. The table's persistent
+   horizontal scrollbar absorbs long current-view values. */
+.runs-table .runs-dataset-tag {
   display: inline-block;
-  max-width: var(--runs-col-dataset-width);
-  overflow: hidden;
-  text-overflow: ellipsis;
+  text-align: left;
+  max-width: none;
+  overflow: visible;
+  text-overflow: clip;
   white-space: nowrap;
   line-height: var(--badge-height);
   vertical-align: middle;
@@ -2961,7 +2996,16 @@ body.chart-col-resize-active {
   width: var(--runs-col-task-width);
   min-width: var(--runs-col-task-width);
   max-width: var(--runs-col-task-width);
-  white-space: normal;
+  white-space: nowrap;
+}
+
+.runs-table .col-task .tag.task {
+  max-width: none;
+  overflow: visible;
+  overflow-wrap: normal;
+  text-overflow: clip;
+  white-space: nowrap;
+  word-break: normal;
 }
 
 .col-model {
@@ -2971,48 +3015,55 @@ body.chart-col-resize-active {
   white-space: nowrap;
 }
 
+.col-dataset {
+  width: 1%;
+}
+
 .col-analysis {
-  width: var(--runs-col-analysis-width);
-  min-width: var(--runs-col-analysis-width);
-  max-width: var(--runs-col-analysis-width);
+  width: 1%;
   white-space: nowrap;
 }
 .runs-table th.col-analysis,
 .runs-table td.col-analysis {
-  text-align: center;
+  text-align: left;
 }
 
-/* ANALYSIS column: an analyzed run shows its distinct root-cause count as a
-   purple chip; an eligible unanalyzed run shows a static Analyze action on
-   the shared run-detail inline-action recipe. Purple stays the AI accent. */
+/* ANALYSIS column: an analyzed run shows a quiet link to its distinct root
+   causes; an eligible unanalyzed run shows the stronger Analyze action. */
 .run-analysis-chip {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  min-height: var(--badge-height);
-  padding: 0 10px;
-  border-radius: 999px;
-  color: var(--accent-tertiary-soft);
-  border: 1px solid rgba(168, 85, 247, 0.4);
-  background: rgba(168, 85, 247, 0.09);
+  gap: var(--analysis-action-gap);
+  min-height: var(--control-height);
+  height: var(--control-height);
+  padding-block: 0;
+  padding-inline: var(--space-xs);
+  border-radius: var(--control-radius);
+  color: var(--text-secondary);
+  border: 0;
+  background: transparent;
   font-size: var(--font-sm);
-  font-weight: 600;
-  line-height: 1;
+  font-weight: 500;
+  line-height: 1.2;
   text-decoration: none;
   white-space: nowrap;
+  transition: background 0.15s, color 0.15s;
+  max-width: var(--runs-analysis-value-max-width);
 }
 .run-analysis-chip:is(:hover, :focus-visible) {
-  background: rgba(168, 85, 247, 0.18);
+  color: var(--accent-tertiary-soft);
+  background: rgba(168, 85, 247, 0.09);
 }
 /* Table-scale version of the run-detail Auto-Analyze recipe: same purple
    AI gradient, compressed onto the 24px control geometry. */
 .run-analysis-start {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--analysis-action-gap);
   min-height: var(--control-height);
   height: var(--control-height);
-  padding: 0 10px;
+  padding-block: 0;
+  padding-inline: var(--analysis-action-padding-start) var(--analysis-action-padding-end);
   background: linear-gradient(135deg, rgba(168, 85, 247, 0.12), rgba(0, 168, 255, 0.12));
   border: 0;
   border-radius: var(--control-radius);
@@ -3023,12 +3074,16 @@ body.chart-col-resize-active {
   text-decoration: none;
   white-space: nowrap;
   transition: background 0.15s;
+  max-width: var(--runs-analysis-value-max-width);
 }
 .run-analysis-chip svg,
 .run-analysis-start svg {
   width: 16px;
   height: 16px;
   flex: 0 0 auto;
+}
+.run-analysis-start svg {
+  transform: translateY(var(--analysis-icon-optical-offset));
 }
 .run-analysis-start svg :is(.spark-main, .spark-minor, .spark-third),
 .run-analysis-chip svg :is(.spark-main, .spark-minor, .spark-third) {
@@ -3087,6 +3142,7 @@ body.chart-col-resize-active {
 }
 
 .col-version {
+  width: 1%;
   white-space: nowrap;
 }
 
@@ -3098,9 +3154,10 @@ body.chart-col-resize-active {
   background: var(--bg-secondary, rgba(128, 128, 128, 0.1));
   padding: 2px 6px;
   border-radius: 4px;
-  max-width: 140px;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  max-width: none;
+  overflow: visible;
+  text-overflow: clip;
+  white-space: nowrap;
 }
 
 /* ── Sticky columns: freeze first 5 columns on horizontal scroll ── */
@@ -3229,6 +3286,29 @@ body.chart-col-resize-active {
   gap: 6px;
   background: var(--bg-elevated);
   color: var(--text-secondary);
+}
+
+/* Runs-table model values are complete and single-line. Other model-label
+   contexts may still wrap according to their own layout recipes. */
+.runs-table .col-model .tag.model {
+  flex-wrap: nowrap;
+  max-width: none;
+  overflow: visible;
+  text-overflow: clip;
+}
+.runs-table .col-model .model-label {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  white-space: nowrap;
+}
+.runs-table .col-model .model-label-text {
+  min-width: 0;
+  overflow: visible;
+  overflow-wrap: normal;
+  text-overflow: clip;
+  white-space: nowrap;
+  word-break: normal;
 }
 
 .model-label {

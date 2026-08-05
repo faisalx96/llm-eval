@@ -2825,3 +2825,21 @@ def test_runs_table_analysis_column_shows_state_or_static_action() -> None:
     # The runs list API exposes the distinct root-cause count per run.
     assert '"analysis_cause_count"' in runs_api
     assert "metric_analyses" in runs_api
+
+
+def test_runs_table_sticky_columns_size_to_visible_values() -> None:
+    """Sticky value columns measure the current page without wrapping values."""
+    dashboard_js = (DASHBOARD_DIR / "dashboard.js").read_text(encoding="utf-8")
+    styles = (DASHBOARD_DIR / "dashboard.css").read_text(encoding="utf-8")
+
+    assert "const RUNS_STICKY_COLUMN_LIMITS" in dashboard_js
+    assert "function scheduleRunsStickyColumnSizing()" in dashboard_js
+    assert "runs-table--measuring-sticky-columns" in dashboard_js
+    assert "scheduleRunsStickyColumnSizing();" in dashboard_js
+    for column in ("status", "run", "task", "model"):
+        assert f"--runs-col-{column}-min-width" in styles
+    for column in ("status", "run"):
+        assert f"--runs-col-{column}-max-width" in styles
+    assert ".runs-table.runs-table--measuring-sticky-columns" in styles
+    assert ".runs-table .col-model .model-label-text" in styles
+    assert "text-overflow: clip" in styles
