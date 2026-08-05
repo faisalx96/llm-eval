@@ -15,8 +15,10 @@ from qym_platform.api.projects import router as projects_router
 from qym_platform.api.runs import router as runs_router
 from qym_platform.api.ingest import router as ingest_router
 from qym_platform.api.analysis import router as analysis_router
+from qym_platform.api.root_cause_dashboard import router as root_cause_dashboard_router
 from qym_platform.api.product_evals import router as product_evals_router
 from qym_platform.api.datasets import router as datasets_router
+from qym_platform.api.insights import router as insights_router
 
 
 def create_app(settings: PlatformSettings | None = None) -> FastAPI:
@@ -80,8 +82,10 @@ def create_app(settings: PlatformSettings | None = None) -> FastAPI:
     app.include_router(web_router)
     app.include_router(projects_router)
     app.include_router(analysis_router)  # before runs_router (its {run_id:path} is a catch-all)
+    app.include_router(root_cause_dashboard_router)
     app.include_router(product_evals_router)
     app.include_router(datasets_router)
+    app.include_router(insights_router)
     app.include_router(runs_router)
     app.include_router(ingest_router)
 

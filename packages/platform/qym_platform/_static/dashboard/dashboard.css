@@ -66,6 +66,20 @@
   --space-lg: 20px;
   --space-xl: 32px;
 
+  /* Shared component geometry */
+  --control-height: 24px;
+  --control-radius: 5px;
+  --badge-height: 20px;
+  --chip-height: 26px;
+  --dropdown-option-height: 32px;
+  --dropdown-width: 240px;
+  --dropdown-max-height: 320px;
+  --help-marker-size: 12px;
+  --stat-strip-compact-height: 34px;
+  --radius-md: 8px;
+  --radius-pill: 999px;
+  --transition-fast: 150ms ease;
+
   /* Type scale — every element maps to one role:
      xs 10px badge/pill · sm 11px meta/caption/label/table-header ·
      base 12px body/table-cell/code · md 13px card title/sub-header ·
@@ -5653,15 +5667,20 @@ body.chart-col-resize-active {
 }
 
 .pg-rule-version-lifecycle {
-  min-width: 40px;
-  flex-direction: column;
-  gap: calc(var(--space-xs) / 4);
+  width: calc(var(--space-xl) * 2 + var(--space-lg));
+  min-width: calc(var(--space-xl) * 2 + var(--space-lg));
+  flex-direction: row;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  padding-right: var(--space-sm);
+  padding-left: var(--space-sm);
   line-height: 1;
 }
 
 .pg-rule-version-lifecycle .pg-action-icon {
   width: 14px;
   height: 14px;
+  flex: 0 0 auto;
 }
 
 .pg-rule-version-lifecycle-label {
@@ -5669,6 +5688,7 @@ body.chart-col-resize-active {
   font-family: var(--font-sans);
   font-size: var(--font-xs);
   font-weight: 600;
+  white-space: nowrap;
 }
 
 .pg-rule-version-lifecycle:is(button),
@@ -7225,6 +7245,48 @@ body.chart-col-resize-active {
   font-size: var(--font-sm);
   box-sizing: border-box;
 }
+.pg-target-limit-control {
+  position: relative;
+  width: 100%;
+}
+.pg-target-limit-control input {
+  padding-right: calc(var(--space-lg) + var(--space-sm));
+}
+.pg-target-limit-steppers {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  display: grid;
+  width: var(--space-lg);
+  grid-template-rows: 1fr 1fr;
+  border-left: 1px solid var(--border-subtle);
+  background: var(--bg-elevated);
+}
+.pg-target-limit-step {
+  display: grid;
+  width: 100%;
+  min-height: 0;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.pg-target-limit-step + .pg-target-limit-step {
+  border-top: 1px solid var(--border-subtle);
+}
+.pg-target-limit-step .pg-action-icon {
+  width: var(--space-md);
+  height: var(--space-md);
+}
+.pg-target-limit-step:hover,
+.pg-target-limit-step:focus-visible {
+  outline: none;
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
 .pg-filter-limit input:focus {
   outline: none;
   border-color: var(--accent-primary);
@@ -7693,6 +7755,10 @@ body.chart-col-resize-active {
   animation: pgToastSlideIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
 }
+.pg-runall-done.pg-runall-partial {
+  background: var(--warning-dim);
+  border-color: color-mix(in srgb, var(--warning) 28%, transparent);
+}
 @keyframes pgToastSlideIn {
   from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: translateY(0); }
@@ -7718,6 +7784,14 @@ body.chart-col-resize-active {
   color: #ef4444;
   font-size: var(--font-sm);
   font-weight: 500;
+}
+.pg-runall-aggregation-error {
+  margin-top: var(--space-md);
+  padding-top: var(--space-md);
+  border-top: 1px solid color-mix(in srgb, var(--warning) 28%, transparent);
+  color: var(--warning);
+  font-size: var(--font-sm);
+  font-weight: 600;
 }
 
 /* Additional Instructions */

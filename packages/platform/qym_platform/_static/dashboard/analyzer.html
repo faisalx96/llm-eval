@@ -5,12 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>قيِّم • Auto-analysis</title>
   <link rel="icon" type="image/png" href="/static/qym_icon.png">
-  <link rel="stylesheet" href="/static/dashboard.css?v=rules-ux-audit-12-20260730">
+  <link rel="stylesheet" href="/static/dashboard.css?v=aggregation-status-20260802">
   <link rel="stylesheet" href="/static/shell.css">
   <script src="/static/auth.js"></script>
   <script src="/static/shell.js?v=auto-analysis-workspace-20260729"></script>
   <script src="/static/metrics.js"></script>
-  <script src="/static/playground.js?v=rules-ux-audit-12-20260730"></script>
+  <script src="/static/qym_table.js"></script>
+  <script src="/static/ui_components.js?v=design-language-20260802" defer></script>
+  <script src="/static/playground.js?v=aggregation-status-20260802"></script>
   <style>
     /* Typography and color roles follow docs/DESIGN_LANGUAGE.md. */
     .analysis-page {
@@ -50,36 +52,7 @@
       font-family: var(--font-mono);
     }
     .analysis-tabs {
-      display: flex;
-      gap: var(--space-lg);
       margin-top: var(--space-lg);
-      border-bottom: 1px solid var(--border-default);
-    }
-    .analysis-tabs[hidden] {
-      display: none;
-    }
-    .analysis-tab {
-      margin-bottom: -1px;
-      padding: var(--space-sm) 0 var(--space-md);
-      border: 0;
-      border-bottom: 2px solid transparent;
-      background: transparent;
-      color: var(--text-muted);
-      font-family: var(--font-sans);
-      font-size: var(--font-base);
-      font-weight: 600;
-      cursor: pointer;
-    }
-    .analysis-tab:hover {
-      color: var(--text-secondary);
-    }
-    .analysis-tab:disabled {
-      color: var(--text-dim);
-      cursor: not-allowed;
-    }
-    .analysis-tab[aria-selected="true"] {
-      border-bottom-color: var(--accent-primary);
-      color: var(--text-primary);
     }
     .analysis-view-panel[hidden],
     .analysis-project-panel[hidden] {
@@ -1509,6 +1482,1435 @@
       background: var(--bg-hover);
       color: var(--text-primary);
     }
+    .analysis-dashboard {
+      display: grid;
+      gap: var(--space-lg);
+    }
+    .analysis-dashboard[hidden] {
+      display: none !important;
+    }
+    .analysis-dashboard-selected[hidden],
+    .analysis-dashboard-compare[hidden],
+    .analysis-page .playground-footer[hidden] {
+      display: none !important;
+    }
+    .analysis-dashboard-commandbar,
+    .analysis-dashboard-selected,
+    .analysis-dashboard-compare {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: var(--space-sm);
+      padding: var(--space-md);
+      border: 1px solid var(--border-default);
+      border-radius: 8px;
+      background: var(--bg-surface);
+    }
+    .analysis-dashboard-commandbar {
+      align-items: flex-start;
+      justify-content: space-between;
+    }
+    .analysis-dashboard-filter-row,
+    .analysis-dashboard-quick-filters,
+    .analysis-dashboard-control-group,
+    .analysis-dashboard-selected-runs,
+    .analysis-dashboard-compare-actions {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: var(--space-xs);
+    }
+    .analysis-dashboard-filter-row {
+      flex: 1 1 600px;
+    }
+    .analysis-dashboard-quick-filters {
+      flex: 0 0 auto;
+    }
+    .analysis-dashboard-filter-label,
+    .analysis-dashboard-control-label,
+    .analysis-dashboard-selected-label {
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+      font-weight: 650;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+    .analysis-dashboard-filter {
+      flex: 0 1 auto;
+    }
+    .analysis-dashboard-filter > .qym-dropdown__trigger {
+      min-width: calc(var(--dropdown-width) / 2);
+      max-width: var(--dropdown-width);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .analysis-dashboard-filter .qym-dropdown__menu {
+      width: min(360px, calc(100vw - (2 * var(--space-lg))));
+      padding-top: var(--space-xs);
+    }
+    .analysis-dashboard-filter .qym-dropdown__option:has(input:checked) {
+      background: color-mix(in srgb, var(--accent-primary) 10%, var(--bg-surface));
+      color: var(--text-primary);
+    }
+    .analysis-dashboard-filter .qym-dropdown__option-label input {
+      width: var(--space-md);
+      height: var(--space-md);
+      margin: 0;
+      accent-color: var(--accent-primary);
+    }
+    .analysis-dashboard-filter-empty {
+      padding: var(--space-md);
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+      text-align: center;
+    }
+    .analysis-dashboard-selected {
+      justify-content: space-between;
+      border-color: var(--accent-secondary);
+      background: color-mix(in srgb, var(--accent-secondary) 8%, var(--bg-surface));
+    }
+    .analysis-dashboard-kpis {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 0;
+    }
+    .analysis-dashboard-card {
+      min-width: 0;
+      border: 1px solid var(--border-default);
+      border-radius: 8px;
+      background: var(--bg-surface);
+    }
+    .analysis-dashboard-context-card {
+      display: flex;
+      align-self: start;
+      height: 340px;
+      flex-direction: column;
+    }
+    .analysis-dashboard-context-card .analysis-dashboard-card-header {
+      flex: 0 0 auto;
+    }
+    .analysis-dashboard-context-body {
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow-y: auto;
+      scrollbar-gutter: stable;
+    }
+    .analysis-dashboard-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: var(--space-lg);
+    }
+    .analysis-dashboard-card-wide {
+      grid-column: 1 / -1;
+    }
+    .analysis-dashboard-card-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: var(--space-md);
+      padding: var(--space-md) var(--space-lg);
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    .analysis-dashboard-card-header h2 {
+      margin: 0;
+      color: var(--text-primary);
+      font-size: var(--font-lg);
+      font-weight: 600;
+    }
+    .analysis-dashboard-card-header p {
+      margin: var(--space-xs) 0 0;
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+    }
+    .analysis-dashboard-card-body {
+      padding: var(--space-lg);
+    }
+    .insights-card {
+      overflow: visible;
+      background: linear-gradient(180deg, color-mix(in srgb, var(--accent-primary) 3%, var(--bg-surface)), var(--bg-surface) 28%);
+    }
+    .insights-toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: end;
+      gap: var(--space-sm);
+      padding: var(--space-md) var(--space-lg);
+      border-bottom: 1px solid var(--border-subtle);
+      background: var(--bg-elevated);
+    }
+    .insights-filter {
+      display: grid;
+      gap: var(--space-xs);
+    }
+    .insights-filter-label {
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+      font-weight: 600;
+    }
+    .insights-filter .qym-control {
+      min-width: calc(var(--space-xl) + var(--space-xl) + var(--space-lg));
+    }
+    .insights-metric-trigger {
+      min-width: calc(var(--space-xl) + var(--space-xl) + var(--space-xl) + var(--space-lg));
+    }
+    .insights-reset {
+      margin-left: auto;
+    }
+    .insights-stats {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      margin: var(--space-lg);
+      overflow: hidden;
+      background: linear-gradient(135deg, color-mix(in srgb, var(--bg-elevated) 82%, var(--accent-primary)), var(--bg-surface));
+    }
+    .insights-stats .qym-stat-strip__item {
+      position: relative;
+      min-width: 0;
+    }
+    .insights-stat-primary::before {
+      position: absolute;
+      top: 0;
+      right: 0;
+      left: 0;
+      height: 2px;
+      background: var(--accent-primary);
+      content: "";
+    }
+    .insights-stats .qym-stat-strip__label {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .insights-stats .qym-stat-strip__meta {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .insights-stat-delta {
+      font-family: var(--font-mono);
+      font-variant-numeric: tabular-nums;
+    }
+    .insights-stat-delta.is-positive {
+      color: var(--success);
+    }
+    .insights-stat-delta.is-negative {
+      color: var(--error);
+    }
+    .insights-stat-delta.is-neutral {
+      color: var(--text-muted);
+    }
+    .insights-chart-section {
+      padding: 0 var(--space-lg) var(--space-lg);
+    }
+    .insights-chart-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: var(--space-lg);
+      margin-bottom: var(--space-md);
+    }
+    .insights-chart-heading {
+      display: grid;
+      gap: var(--space-xs);
+    }
+    .insights-chart-title {
+      color: var(--text-primary);
+      font-size: var(--font-lg);
+      font-weight: 600;
+    }
+    .insights-chart-copy,
+    .insights-chart-meta {
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+    }
+    .insights-chart-meta {
+      text-align: right;
+    }
+    .insights-legend {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: var(--space-sm);
+      margin-bottom: var(--space-md);
+    }
+    .insights-legend-label {
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+      font-weight: 600;
+    }
+    .insights-legend-item {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-xs);
+      padding: var(--space-xs) var(--space-sm);
+      border-radius: var(--control-radius);
+      border: 1px solid color-mix(in srgb, var(--insights-line-color) 24%, var(--border-subtle));
+      background: var(--bg-elevated);
+      color: var(--text-muted);
+      font-family: var(--font-sans);
+      font-size: var(--font-sm);
+      opacity: 0.62;
+      cursor: pointer;
+    }
+    .insights-legend-item.is-selected {
+      background: color-mix(in srgb, var(--insights-line-color) 10%, var(--bg-elevated));
+      color: var(--text-primary);
+      opacity: 1;
+    }
+    .insights-legend-item:hover,
+    .insights-legend-item:focus-visible {
+      color: var(--text-primary);
+      background: color-mix(in srgb, var(--insights-line-color) 14%, var(--bg-elevated));
+      opacity: 1;
+    }
+    .insights-legend-swatch {
+      width: var(--space-sm);
+      height: var(--space-sm);
+      border-radius: var(--radius-pill);
+      background: var(--insights-line-color);
+    }
+    .insights-chart-stack {
+      display: grid;
+      gap: var(--space-md);
+    }
+    .insights-chart-panel {
+      position: relative;
+      overflow: hidden;
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
+      background: linear-gradient(180deg, color-mix(in srgb, var(--bg-elevated) 38%, var(--bg-base)), var(--bg-base));
+    }
+    .insights-chart-panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-md);
+      padding: var(--space-sm) var(--space-md);
+      border-bottom: 1px solid var(--border-subtle);
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+    }
+    .insights-scale-tag {
+      margin-left: var(--space-xs);
+      vertical-align: middle;
+    }
+    .insights-chart-scroll {
+      overflow-x: auto;
+      overscroll-behavior-inline: contain;
+      scrollbar-gutter: stable;
+    }
+    .insights-chart-panel svg {
+      display: block;
+      width: auto;
+      max-width: none;
+      height: auto;
+    }
+    .insights-plot-surface {
+      fill: color-mix(in srgb, var(--bg-void) 52%, var(--bg-base));
+    }
+    .insights-grid-line {
+      stroke: var(--border-subtle);
+      stroke-width: 1;
+      vector-effect: non-scaling-stroke;
+    }
+    .insights-axis-line {
+      stroke: var(--border-strong);
+      stroke-width: 1;
+      vector-effect: non-scaling-stroke;
+    }
+    .insights-axis-label {
+      fill: var(--text-muted);
+      font-family: var(--font-mono);
+      font-size: var(--font-sm);
+    }
+    .insights-axis-run-label {
+      fill: var(--text-secondary);
+      font-family: var(--font-sans);
+      font-weight: 600;
+    }
+    .insights-axis-run-meta {
+      fill: var(--text-muted);
+      font-family: var(--font-mono);
+      font-weight: 400;
+    }
+    .insights-run-guide {
+      stroke: color-mix(in srgb, var(--border-subtle) 72%, transparent);
+      stroke-width: 1;
+      stroke-dasharray: 3 5;
+      vector-effect: non-scaling-stroke;
+    }
+    .insights-series-glow {
+      fill: none;
+      stroke: var(--insights-line-color);
+      stroke-width: 8;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      opacity: 0.12;
+      pointer-events: none;
+      vector-effect: non-scaling-stroke;
+    }
+    .insights-series-line {
+      fill: none;
+      stroke: var(--insights-line-color);
+      stroke-width: 2.5;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      pointer-events: none;
+      vector-effect: non-scaling-stroke;
+    }
+    .insights-series-point {
+      fill: var(--insights-line-color);
+      stroke: var(--bg-base);
+      stroke-width: 2;
+      vector-effect: non-scaling-stroke;
+      cursor: crosshair;
+    }
+    .insights-series-halo {
+      fill: var(--insights-line-color);
+      opacity: 0.16;
+      pointer-events: none;
+    }
+    .insights-series-point.is-latest {
+      stroke: var(--text-primary);
+      stroke-width: 2.5;
+    }
+    .insights-series-point:hover {
+      stroke: var(--text-primary);
+      outline: none;
+    }
+    .insights-series-glow.is-deemphasized {
+      opacity: 0.02;
+    }
+    .insights-series-line.is-deemphasized,
+    .insights-series-point.is-deemphasized,
+    .insights-series-halo.is-deemphasized {
+      opacity: 0.12;
+    }
+    .insights-series-glow.is-emphasized {
+      opacity: 0.24;
+    }
+    .insights-series-line.is-emphasized {
+      stroke-width: 3.5;
+    }
+    .insights-series-point.is-emphasized {
+      stroke: var(--text-primary);
+      stroke-width: 2.5;
+    }
+    .insights-tooltip {
+      position: absolute;
+      z-index: 5;
+      display: none;
+      min-width: calc(var(--space-xl) + var(--space-xl) + var(--space-xl) + var(--space-xl));
+      padding: var(--space-sm);
+      border: 1px solid var(--border-default);
+      border-radius: var(--control-radius);
+      background: var(--bg-surface);
+      box-shadow: 0 var(--space-sm) var(--space-xl) color-mix(in srgb, var(--bg-void) 54%, transparent);
+      pointer-events: none;
+    }
+    .insights-tooltip.is-visible {
+      display: grid;
+      gap: var(--space-xs);
+    }
+    .insights-tooltip-title {
+      color: var(--text-primary);
+      font-size: var(--font-md);
+      font-weight: 600;
+    }
+    .insights-tooltip-kicker {
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+      font-size: var(--font-sm);
+    }
+    .insights-tooltip-row {
+      display: flex;
+      justify-content: space-between;
+      gap: var(--space-md);
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+    }
+    .insights-tooltip-value {
+      color: var(--text-secondary);
+      font-family: var(--font-mono);
+      font-variant-numeric: tabular-nums;
+    }
+    .insights-tooltip-change {
+      padding: var(--space-xs) var(--space-sm);
+      border-radius: var(--control-radius);
+      background: var(--bg-elevated);
+      color: var(--text-secondary);
+      font-family: var(--font-mono);
+      font-size: var(--font-sm);
+    }
+    .insights-comparison {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: var(--space-sm);
+      margin-top: var(--space-md);
+    }
+    .insights-comparison-item {
+      padding: var(--space-sm) var(--space-md);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--control-radius);
+      background: color-mix(in srgb, var(--bg-elevated) 86%, var(--accent-primary));
+      color: var(--text-secondary);
+      font-size: var(--font-sm);
+      line-height: 1.5;
+    }
+    .insights-comparison-item strong {
+      color: var(--text-primary);
+      font-weight: 600;
+    }
+    .insights-empty {
+      padding: var(--space-xl);
+      color: var(--text-muted);
+      font-size: var(--font-md);
+      text-align: center;
+    }
+    .insights-error {
+      color: var(--error);
+    }
+    .candidate-relationships-card {
+      position: relative;
+      overflow: visible;
+      background: linear-gradient(180deg, color-mix(in srgb, var(--accent-primary) 3%, var(--bg-surface)), var(--bg-surface) 28%);
+    }
+    .candidate-toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: end;
+      gap: var(--space-md);
+      padding: var(--space-md) var(--space-lg);
+      border-bottom: 1px solid var(--border-subtle);
+      background: var(--bg-elevated);
+    }
+    .candidate-toolbar-group {
+      display: grid;
+      gap: var(--space-xs);
+    }
+    .candidate-toolbar-label {
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+      font-weight: 600;
+    }
+    .candidate-category-search {
+      min-width: calc(var(--space-xl) * 8);
+    }
+    .candidate-scope-note {
+      margin-left: auto;
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+    }
+    .candidate-summary {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      margin: var(--space-lg);
+      overflow: hidden;
+      background: linear-gradient(135deg, color-mix(in srgb, var(--bg-elevated) 82%, var(--accent-primary)), var(--bg-surface));
+    }
+    .candidate-summary .qym-stat-strip__item {
+      min-width: 0;
+    }
+    .candidate-summary .qym-stat-strip__label,
+    .candidate-summary .qym-stat-strip__meta {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .candidate-groups {
+      display: grid;
+      gap: var(--space-md);
+      padding: 0 var(--space-lg) var(--space-lg);
+    }
+    .candidate-empty {
+      display: grid;
+      gap: var(--space-sm);
+      padding: var(--space-xl);
+      border: 1px dashed var(--border-default);
+      border-radius: var(--control-radius);
+      background: var(--bg-elevated);
+      color: var(--text-muted);
+      font-size: var(--font-md);
+      line-height: 1.5;
+      text-align: center;
+    }
+    .candidate-empty-title {
+      color: var(--text-primary);
+      font-size: var(--font-xl);
+      font-weight: 650;
+    }
+    .candidate-category {
+      overflow: hidden;
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--control-radius);
+      background: var(--bg-base);
+    }
+    .candidate-category-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-md);
+      padding: var(--space-md);
+      border-bottom: 1px solid var(--border-subtle);
+      background: var(--bg-elevated);
+    }
+    .candidate-category-heading {
+      min-width: 0;
+    }
+    .candidate-category-title {
+      margin: 0;
+      overflow: hidden;
+      color: var(--text-primary);
+      font-size: var(--font-lg);
+      font-weight: 600;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .candidate-category-meta {
+      margin: var(--space-xs) 0 0;
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+    }
+    .candidate-category-body {
+      display: grid;
+      gap: var(--space-md);
+      padding: var(--space-md);
+    }
+    .candidate-relationship {
+      display: grid;
+      gap: var(--space-md);
+      padding: var(--space-md);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--control-radius);
+      background: var(--bg-surface);
+    }
+    .candidate-relationship-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: var(--space-md);
+    }
+    .candidate-relationship-title {
+      min-width: 0;
+    }
+    .candidate-relationship-target {
+      margin: 0;
+      color: var(--text-primary);
+      font-size: var(--font-lg);
+      font-weight: 650;
+      line-height: 1.3;
+    }
+    .candidate-relationship-statement {
+      margin: var(--space-xs) 0 0;
+      color: var(--text-secondary);
+      font-size: var(--font-md);
+      line-height: 1.5;
+    }
+    .candidate-relationship-statement strong {
+      color: var(--text-primary);
+      font-weight: 700;
+    }
+    .candidate-condition {
+      display: grid;
+      gap: var(--space-xs);
+      padding: var(--space-sm) var(--space-md);
+      border-left: 3px solid var(--accent-primary);
+      background: var(--bg-elevated);
+    }
+    .candidate-section-label {
+      color: var(--text-muted);
+      font-size: var(--font-xs);
+      font-weight: 650;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+    .candidate-factor-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: var(--space-xs);
+    }
+    .candidate-factor-chip {
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .candidate-factor-and {
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+      font-size: var(--font-sm);
+      font-weight: 650;
+    }
+    .candidate-bars {
+      display: grid;
+      gap: var(--space-sm);
+    }
+    .candidate-comparison-heading {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: var(--space-md);
+    }
+    .candidate-comparison-title {
+      color: var(--text-primary);
+      font-size: var(--font-sm);
+      font-weight: 650;
+    }
+    .candidate-comparison-note {
+      color: var(--text-muted);
+      font-size: var(--font-xs);
+    }
+    .candidate-bar-row {
+      display: grid;
+      grid-template-columns: minmax(130px, 0.35fr) minmax(0, 1fr) auto;
+      align-items: center;
+      gap: var(--space-sm);
+    }
+    .candidate-bar-label,
+    .candidate-bar-value,
+    .candidate-evidence {
+      color: var(--text-secondary);
+      font-size: var(--font-sm);
+    }
+    .candidate-bar-value {
+      color: var(--text-primary);
+      font-family: var(--font-mono);
+      font-variant-numeric: tabular-nums;
+      text-align: right;
+    }
+    .candidate-bar-track {
+      height: var(--space-sm);
+      overflow: hidden;
+      border-radius: var(--radius-pill);
+      background: var(--bg-elevated);
+    }
+    .candidate-bar-fill {
+      width: var(--candidate-bar-width, 0%);
+      height: 100%;
+      border-radius: inherit;
+      background: var(--accent-primary);
+    }
+    .candidate-bar-fill.is-comparison {
+      background: var(--chart-2);
+    }
+    .candidate-impact {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+      padding: var(--space-sm) var(--space-md);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--control-radius);
+      background: var(--bg-elevated);
+    }
+    .candidate-impact-arrow {
+      display: grid;
+      width: calc(var(--space-lg) + var(--space-xs));
+      height: calc(var(--space-lg) + var(--space-xs));
+      flex: 0 0 auto;
+      place-items: center;
+      border-radius: var(--radius-pill);
+      background: color-mix(in srgb, var(--accent-primary) 15%, var(--bg-surface));
+      color: var(--accent-primary);
+      font-family: var(--font-mono);
+      font-size: var(--font-lg);
+      font-weight: 700;
+    }
+    .candidate-impact-copy {
+      display: grid;
+      gap: 2px;
+      min-width: 0;
+    }
+    .candidate-impact-value {
+      color: var(--text-primary);
+      font-size: var(--font-md);
+      font-weight: 700;
+    }
+    .candidate-impact-note {
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+    }
+    .candidate-relationship-footer {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: var(--space-md);
+    }
+    .candidate-evidence {
+      flex: 1 1 auto;
+    }
+    .candidate-detail-group {
+      display: grid;
+      gap: var(--space-sm);
+      padding: var(--space-md);
+      border-top: 1px solid var(--border-subtle);
+      background: color-mix(in srgb, var(--bg-elevated) 46%, var(--bg-base));
+    }
+    .candidate-detail-heading {
+      color: var(--text-primary);
+      font-size: var(--font-md);
+      font-weight: 600;
+    }
+    .candidate-detail-meta,
+    .candidate-below-threshold {
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+    }
+    .candidate-drawer[hidden] {
+      display: none;
+    }
+    .candidate-drawer {
+      position: fixed;
+      z-index: 30;
+      inset: 0;
+      display: flex;
+      justify-content: flex-end;
+      background: color-mix(in srgb, var(--bg-void) 68%, transparent);
+    }
+    .candidate-drawer-panel {
+      display: flex;
+      width: min(680px, 100%);
+      height: 100%;
+      flex-direction: column;
+      border-left: 1px solid var(--border-strong);
+      background: var(--bg-surface);
+      box-shadow: calc(var(--space-sm) * -1) 0 var(--space-xl) color-mix(in srgb, var(--bg-void) 42%, transparent);
+    }
+    .candidate-drawer-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: var(--space-md);
+      padding: var(--space-lg);
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    .candidate-drawer-title {
+      margin: 0;
+      color: var(--text-primary);
+      font-size: var(--font-xl);
+      font-weight: 650;
+    }
+    .candidate-drawer-copy {
+      margin: var(--space-xs) 0 0;
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+    }
+    .candidate-evidence-list {
+      display: grid;
+      flex: 1 1 auto;
+      gap: var(--space-sm);
+      min-height: 0;
+      overflow-y: auto;
+      padding: var(--space-lg);
+      scrollbar-gutter: stable;
+    }
+    .candidate-evidence-row {
+      display: grid;
+      gap: var(--space-xs);
+      padding: var(--space-md);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--control-radius);
+      background: var(--bg-elevated);
+    }
+    .candidate-evidence-primary {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: var(--space-sm);
+    }
+    .candidate-evidence-primary a {
+      color: var(--text-primary);
+      font-size: var(--font-md);
+      font-weight: 600;
+    }
+    .candidate-evidence-meta {
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+    }
+    .candidate-evidence-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-md);
+      padding: var(--space-md) var(--space-lg);
+      border-top: 1px solid var(--border-subtle);
+    }
+    .candidate-pagination {
+      display: flex;
+      align-items: center;
+      gap: var(--space-xs);
+    }
+    @media (max-width: 760px) {
+      .candidate-summary {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+      .candidate-scope-note {
+        width: 100%;
+        margin-left: 0;
+      }
+      .candidate-bar-row {
+        grid-template-columns: 1fr auto;
+      }
+      .candidate-bar-track {
+        grid-column: 1 / -1;
+        grid-row: 2;
+      }
+    }
+    .analysis-dashboard-bars {
+      display: grid;
+      gap: var(--space-sm);
+    }
+    .analysis-dashboard-bar-value {
+      min-width: 0;
+      overflow: hidden;
+      color: var(--text-secondary);
+      font-size: var(--font-sm);
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .analysis-dashboard-bar-value {
+      color: var(--text-primary);
+      font-family: var(--font-mono);
+      font-variant-numeric: tabular-nums;
+      text-align: right;
+    }
+    .analysis-dashboard-bar-track {
+      height: var(--space-sm);
+      overflow: hidden;
+      border-radius: 999px;
+      background: var(--bg-elevated);
+    }
+    .analysis-dashboard-bar-fill {
+      height: 100%;
+      border-radius: inherit;
+      background: var(--chart-1);
+    }
+    .analysis-dashboard-distribution {
+      display: grid;
+      grid-template-columns: minmax(120px, 0.65fr) minmax(0, 1.7fr);
+      align-items: start;
+      gap: var(--space-lg);
+    }
+    .analysis-dashboard-ring {
+      display: grid;
+      place-items: center;
+      width: min(132px, 100%);
+      aspect-ratio: 1;
+      margin: 0 auto;
+      border-radius: 50%;
+      background: var(--bg-elevated);
+      box-shadow: inset 0 0 0 1px var(--border-default);
+    }
+    .analysis-dashboard-ring::before {
+      grid-area: 1 / 1;
+      width: 76%;
+      height: 76%;
+      border-radius: 50%;
+      background: var(--bg-surface);
+      content: "";
+    }
+    .analysis-dashboard-ring-copy {
+      z-index: 1;
+      display: grid;
+      grid-area: 1 / 1;
+      align-content: center;
+      gap: var(--space-sm);
+      justify-items: center;
+      width: 70%;
+      text-align: center;
+    }
+    .analysis-dashboard-ring-copy strong {
+      color: var(--text-primary);
+      font-family: var(--font-mono);
+      font-size: var(--font-xl);
+      font-variant-numeric: tabular-nums;
+      line-height: 1;
+    }
+    .analysis-dashboard-ring-copy span {
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+      letter-spacing: 0.05em;
+      line-height: 1;
+      text-transform: uppercase;
+    }
+    .analysis-dashboard-distribution-legend,
+    .analysis-dashboard-legend {
+      display: grid;
+      gap: var(--space-sm);
+    }
+    .analysis-dashboard-distribution-item {
+      display: grid;
+      grid-template-columns: var(--space-sm) minmax(130px, 0.9fr) minmax(90px, 1.2fr) 82px;
+      align-items: center;
+      gap: var(--space-sm);
+      min-width: 0;
+    }
+    .analysis-dashboard-legend-item {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+      min-width: 0;
+    }
+    .analysis-dashboard-distribution-label {
+      min-width: 0;
+      overflow: hidden;
+      color: var(--text-secondary);
+      font-family: var(--font-sans);
+      font-size: var(--font-sm);
+      text-align: left;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .analysis-dashboard-category-toggle {
+      justify-self: start;
+      margin-top: var(--space-xs);
+      color: var(--accent-primary);
+    }
+    .analysis-dashboard-distribution-track {
+      height: var(--space-sm);
+      overflow: hidden;
+      border-radius: 999px;
+      background: var(--bg-elevated);
+    }
+    .analysis-dashboard-distribution-fill {
+      height: 100%;
+      min-width: 2px;
+      border-radius: inherit;
+    }
+    .analysis-dashboard-distribution-value,
+    .analysis-dashboard-legend-value {
+      flex: 0 0 auto;
+      color: var(--text-primary);
+      font-family: var(--font-mono);
+      font-size: var(--font-sm);
+      font-variant-numeric: tabular-nums;
+      text-align: right;
+    }
+    .analysis-dashboard-chart-note {
+      margin-top: var(--space-md);
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+    }
+    .analysis-dashboard-score-row {
+      display: grid;
+      grid-template-columns: minmax(120px, 0.9fr) minmax(90px, 2fr) max-content;
+      align-items: center;
+      gap: var(--space-sm);
+    }
+    .analysis-dashboard-run-select {
+      width: 14px;
+      height: 14px;
+      accent-color: var(--accent-primary);
+    }
+    .analysis-dashboard-run-select-label {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+      min-width: 0;
+      color: var(--text-secondary);
+      font-size: var(--font-sm);
+    }
+    .analysis-dashboard-score-direction {
+      margin-bottom: var(--space-md);
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+    }
+    .analysis-dashboard-score-direction strong {
+      color: var(--text-primary);
+      font-weight: 650;
+    }
+    .analysis-dashboard-stacked-chart {
+      display: grid;
+      gap: var(--space-md);
+    }
+    .analysis-dashboard-stacked-row {
+      display: grid;
+      grid-template-columns: minmax(130px, 0.8fr) minmax(0, 2.2fr) max-content;
+      align-items: center;
+      gap: var(--space-md);
+    }
+    .analysis-dashboard-stacked-label {
+      min-width: 0;
+      overflow: hidden;
+      color: var(--text-secondary);
+      font-size: var(--font-sm);
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .analysis-dashboard-stacked-track,
+    .analysis-dashboard-compare-track {
+      display: flex;
+      min-width: 120px;
+      height: var(--space-lg);
+      overflow: hidden;
+      border: 1px solid var(--border-default);
+      border-radius: 5px;
+      background: var(--bg-elevated);
+    }
+    .analysis-dashboard-stacked-segment,
+    .analysis-dashboard-compare-segment {
+      min-width: 2px;
+      height: 100%;
+      transition: opacity 0.15s;
+    }
+    .analysis-dashboard-stacked-segment:hover,
+    .analysis-dashboard-compare-segment:hover {
+      opacity: 0.78;
+    }
+    .analysis-dashboard-stacked-total {
+      color: var(--text-primary);
+      font-family: var(--font-mono);
+      font-size: var(--font-sm);
+      font-variant-numeric: tabular-nums;
+      text-align: right;
+    }
+    .analysis-dashboard-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--space-sm) var(--space-lg);
+      margin-top: var(--space-lg);
+      padding-top: var(--space-md);
+      border-top: 1px solid var(--border-subtle);
+    }
+    .analysis-dashboard-legend-item {
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+    }
+    .analysis-dashboard-legend-swatch {
+      flex: 0 0 auto;
+      width: var(--space-sm);
+      height: var(--space-sm);
+      border-radius: 2px;
+    }
+    .analysis-dashboard-compare-visual {
+      display: grid;
+      gap: var(--space-md);
+      flex: 1 0 100%;
+      width: 100%;
+      padding-top: var(--space-md);
+      border-top: 1px solid var(--border-subtle);
+    }
+    .analysis-dashboard-compare-category {
+      display: grid;
+      grid-template-columns: minmax(180px, 220px) minmax(0, 1fr) 190px;
+      align-items: center;
+      gap: var(--space-md);
+    }
+    .analysis-dashboard-compare-category-name {
+      min-width: 0;
+      overflow: hidden;
+      color: var(--text-secondary);
+      font-size: var(--font-sm);
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .analysis-dashboard-compare-category-values {
+      color: var(--text-primary);
+      font-family: var(--font-mono);
+      font-size: var(--font-sm);
+      font-variant-numeric: tabular-nums;
+      text-align: right;
+      white-space: nowrap;
+    }
+    .analysis-dashboard-compare-segment {
+      position: relative;
+      display: grid;
+      place-items: center;
+      min-width: 0;
+      overflow: hidden;
+      color: var(--bg-void);
+      font-family: var(--font-mono);
+      font-size: var(--font-sm);
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+    .analysis-dashboard-score-up {
+      color: var(--success);
+    }
+    .analysis-dashboard-score-down {
+      color: var(--error);
+    }
+    .analysis-dashboard-score-tied {
+      color: var(--text-muted);
+    }
+    .analysis-dashboard-score-unavailable {
+      color: var(--warning);
+    }
+    .analysis-dashboard-occurrences-card .analysis-dashboard-card-header {
+      align-items: center;
+    }
+    .analysis-dashboard-occurrence-count {
+      flex: 0 0 auto;
+    }
+    .analysis-dashboard-occurrences-body {
+      max-height: 560px;
+      padding: var(--space-md);
+      overflow: auto;
+      scrollbar-gutter: stable;
+    }
+    .analysis-dashboard-occurrence-key {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-md);
+      margin-bottom: var(--space-md);
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+    }
+    .analysis-dashboard-occurrence-source-key {
+      display: flex;
+      align-items: center;
+      gap: var(--space-md);
+      flex-wrap: wrap;
+    }
+    .analysis-dashboard-occurrence-source-item {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-xs);
+    }
+    .analysis-dashboard-occurrence-source-sample {
+      width: var(--space-md);
+      height: var(--space-md);
+      border: 2px solid transparent;
+      border-radius: 50%;
+      background: var(--accent-primary);
+    }
+    .analysis-dashboard-occurrence-source-sample.is-human {
+      border-color: var(--accent-primary);
+      background: transparent;
+    }
+    .analysis-dashboard-occurrence-inspector {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-md);
+      min-height: 66px;
+      margin-bottom: var(--space-md);
+      padding: var(--space-md);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-md);
+      background: var(--bg-elevated);
+    }
+    .analysis-dashboard-occurrence-inspector-copy {
+      min-width: 0;
+    }
+    .analysis-dashboard-occurrence-inspector-category {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+      margin-bottom: var(--space-xs);
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+      font-weight: 650;
+    }
+    .analysis-dashboard-occurrence-inspector-swatch {
+      width: var(--space-sm);
+      height: var(--space-sm);
+      border-radius: 50%;
+      background: var(--occurrence-color, var(--chart-1));
+    }
+    .analysis-dashboard-occurrence-inspector-copy strong {
+      display: block;
+      overflow: hidden;
+      color: var(--text-primary);
+      font-size: var(--font-md);
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .analysis-dashboard-occurrence-inspector-copy p {
+      margin: var(--space-xs) 0 0;
+      overflow: hidden;
+      color: var(--text-secondary);
+      font-size: var(--font-sm);
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .analysis-dashboard-occurrence-inspector-meta {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: var(--space-sm);
+      flex: 0 0 auto;
+      flex-wrap: wrap;
+    }
+    .analysis-dashboard-occurrence-open {
+      color: var(--accent-primary);
+      font-size: var(--font-sm);
+      font-weight: 650;
+      text-decoration: none;
+    }
+    .analysis-dashboard-occurrence-open:hover {
+      text-decoration: underline;
+      text-underline-offset: 2px;
+    }
+    .analysis-dashboard-occurrence-graph {
+      min-width: 760px;
+      overflow: hidden;
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
+      background: var(--bg-surface);
+    }
+    .analysis-dashboard-occurrence-axis,
+    .analysis-dashboard-occurrence-lane {
+      display: grid;
+      grid-template-columns: minmax(170px, 0.75fr) minmax(420px, 4fr);
+    }
+    .analysis-dashboard-occurrence-axis {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      border-bottom: 1px solid var(--border-default);
+      background: var(--bg-elevated);
+    }
+    .analysis-dashboard-occurrence-axis-cell {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-sm);
+      min-width: 0;
+      padding: var(--space-sm) var(--space-md);
+      border-left: 1px solid var(--border-subtle);
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+      font-weight: 650;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+    .analysis-dashboard-occurrence-axis-cell:first-child {
+      border-left: 0;
+    }
+    .analysis-dashboard-occurrence-axis-count,
+    .analysis-dashboard-occurrence-lane-count {
+      font-family: var(--font-mono);
+      font-variant-numeric: tabular-nums;
+    }
+    .analysis-dashboard-occurrence-lane {
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    .analysis-dashboard-occurrence-lane:last-child {
+      border-bottom: 0;
+    }
+    .analysis-dashboard-occurrence-lane:hover {
+      background: color-mix(in srgb, var(--bg-hover) 70%, transparent);
+    }
+    .analysis-dashboard-occurrence-lane-label {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+      min-width: 0;
+      padding: var(--space-md);
+      color: var(--text-primary);
+      font-size: var(--font-sm);
+      font-weight: 650;
+    }
+    .analysis-dashboard-occurrence-lane-swatch {
+      flex: 0 0 auto;
+      width: var(--space-sm);
+      height: var(--space-sm);
+      border-radius: 50%;
+      background: var(--occurrence-color, var(--chart-1));
+    }
+    .analysis-dashboard-occurrence-lane-name {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .analysis-dashboard-occurrence-lane-count {
+      margin-left: auto;
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+    }
+    .analysis-dashboard-occurrence-bucket {
+      display: flex;
+      align-content: center;
+      align-items: center;
+      gap: var(--space-xs);
+      flex-wrap: wrap;
+      min-height: 52px;
+      padding: var(--space-sm) var(--space-md);
+      border-left: 1px solid var(--border-subtle);
+    }
+    .analysis-dashboard-occurrence-dot {
+      position: relative;
+      width: var(--space-md);
+      height: var(--space-md);
+      padding: 0;
+      border: 2px solid var(--occurrence-color, var(--chart-1));
+      border-radius: 50%;
+      background: var(--occurrence-color, var(--chart-1));
+      cursor: pointer;
+    }
+    .analysis-dashboard-occurrence-dot.is-human {
+      border-color: var(--occurrence-color, var(--chart-1));
+      background: transparent;
+      box-shadow: none;
+    }
+    .analysis-dashboard-occurrence-dot:hover,
+    .analysis-dashboard-occurrence-dot:focus-visible,
+    .analysis-dashboard-occurrence-dot[aria-pressed="true"] {
+      z-index: 1;
+      outline: 2px solid var(--text-primary);
+      outline-offset: 2px;
+    }
+    .analysis-dashboard-empty {
+      padding: var(--space-xl);
+      color: var(--text-muted);
+      text-align: center;
+    }
+    .analysis-dashboard-compare {
+      align-items: flex-start;
+      justify-content: space-between;
+      border-color: var(--accent-primary);
+    }
+    .analysis-dashboard-compare-toolbar {
+      display: flex;
+      align-items: center;
+      gap: var(--space-md);
+      flex: 1 0 100%;
+      flex-wrap: wrap;
+      width: 100%;
+      padding: var(--space-md) 0;
+      border-top: 1px solid var(--border-subtle);
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    .analysis-dashboard-compare-copy {
+      min-width: 220px;
+    }
+    .analysis-dashboard-compare-copy h2 {
+      display: block;
+      margin: 0;
+      color: var(--text-primary);
+      font-size: var(--font-lg);
+      font-weight: 600;
+    }
+    .analysis-dashboard-compare-copy span {
+      display: block;
+      margin-top: var(--space-xs);
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+    }
+    .analysis-dashboard-compare > .analysis-dashboard-card-body {
+      flex: 1 0 100%;
+      width: 100%;
+      padding: 0;
+    }
+    .analysis-dashboard-compare-run {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-xs);
+      flex-wrap: wrap;
+    }
+    .analysis-dashboard-compare-visual h2 {
+      margin: 0;
+      color: var(--text-primary);
+      font-size: var(--font-lg);
+      font-weight: 600;
+    }
+    .analysis-dashboard-delta {
+      font-family: var(--font-mono);
+      font-variant-numeric: tabular-nums;
+      font-weight: 700;
+    }
     @media (max-width: 900px) {
       .analysis-context-toggles,
       .analysis-rules-layout,
@@ -1527,6 +2929,33 @@
       }
       .analysis-page .pg-filter-limit {
         grid-column: 1 / -1;
+      }
+      .analysis-dashboard-grid {
+        grid-template-columns: minmax(0, 1fr);
+      }
+      .insights-stats {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+      .insights-comparison {
+        grid-template-columns: minmax(0, 1fr);
+      }
+      .insights-reset {
+        margin-left: 0;
+      }
+      .analysis-dashboard-distribution {
+        grid-template-columns: minmax(130px, 0.7fr) minmax(0, 1.3fr);
+        gap: var(--space-lg);
+      }
+      .analysis-dashboard-score-row,
+      .analysis-dashboard-stacked-row,
+      .analysis-dashboard-compare-category {
+        grid-template-columns: 160px minmax(0, 1fr) 140px;
+      }
+      .analysis-dashboard-score-row .analysis-dashboard-run-select-label {
+        grid-column: 1 / -1;
+      }
+      .analysis-dashboard-score-row .analysis-dashboard-bar-track {
+        grid-column: 2;
       }
       .analysis-project-shell .pg-document-list,
       .analysis-project-shell .pg-rule-merge-sides {
@@ -1550,6 +2979,55 @@
       }
       .analysis-page .pg-filter-limit {
         grid-column: auto;
+      }
+      .analysis-dashboard-kpis {
+        grid-template-columns: repeat(5, minmax(calc(10 * var(--space-md)), 1fr));
+        overflow-x: auto;
+      }
+      .analysis-dashboard-distribution {
+        grid-template-columns: minmax(0, 1fr);
+      }
+      .analysis-dashboard-ring {
+        width: 150px;
+      }
+      .analysis-dashboard-stacked-row,
+      .analysis-dashboard-compare-category {
+        grid-template-columns: minmax(0, 1fr) max-content;
+      }
+      .analysis-dashboard-stacked-track,
+      .analysis-dashboard-compare-track {
+        grid-column: 1 / -1;
+        grid-row: 2;
+      }
+      .analysis-dashboard-stacked-total,
+      .analysis-dashboard-compare-category-values {
+        grid-column: 2;
+        grid-row: 1;
+      }
+      .analysis-dashboard-commandbar,
+      .analysis-dashboard-selected,
+      .analysis-dashboard-compare {
+        align-items: stretch;
+        flex-direction: column;
+      }
+      .insights-toolbar,
+      .insights-chart-header {
+        align-items: stretch;
+        flex-direction: column;
+      }
+      .insights-filter .qym-control,
+      .insights-metric-trigger {
+        width: 100%;
+      }
+      .insights-chart-meta {
+        text-align: left;
+      }
+      .analysis-dashboard-filter-row,
+      .analysis-dashboard-quick-filters,
+      .analysis-dashboard-control-group,
+      .analysis-dashboard-selected-runs,
+      .analysis-dashboard-compare-actions {
+        width: 100%;
       }
       .analysis-target-tools,
       .analysis-diagnosis-header,
@@ -1620,6 +3098,7 @@
       }
     }
   </style>
+  <link rel="stylesheet" href="/static/ui_components.css?v=design-language-20260802">
 </head>
 <body>
   <main class="analysis-page">
@@ -1631,15 +3110,17 @@
         <span aria-hidden="true">·</span>
         <span>Workspace <span class="analysis-meta-value">metric failure diagnosis</span></span>
       </div>
-      <nav class="analysis-tabs" id="analysis-tabs" role="tablist" aria-label="Auto-analysis views" hidden>
-        <button class="analysis-tab" id="analysis-run-tab" type="button" role="tab"
+      <nav class="analysis-tabs qym-tabs" id="analysis-tabs" role="tablist" aria-label="Auto-analysis views" hidden>
+        <button class="analysis-tab qym-tabs__tab" id="analysis-dashboard-tab" type="button" role="tab"
+          aria-selected="false" aria-controls="analysis-dashboard-view" data-analysis-view="dashboard">Dashboard</button>
+        <button class="analysis-tab qym-tabs__tab" id="analysis-run-tab" type="button" role="tab"
           aria-selected="true" aria-controls="analysis-run-view" data-analysis-view="run">Analyze run</button>
-        <button class="analysis-tab" id="analysis-diagnosis-tab" type="button" role="tab"
+        <button class="analysis-tab qym-tabs__tab" id="analysis-diagnosis-tab" type="button" role="tab"
           aria-selected="false" aria-controls="analysis-diagnosis-view" data-analysis-view="diagnosis"
           aria-disabled="true" disabled tabindex="-1" title="Select a run to configure diagnosis categories">Diagnosis categories</button>
-        <button class="analysis-tab" id="analysis-rules-tab" type="button" role="tab"
+        <button class="analysis-tab qym-tabs__tab" id="analysis-rules-tab" type="button" role="tab"
           aria-selected="false" aria-controls="analysis-rules-view" data-analysis-view="rules" tabindex="-1">Production rules</button>
-        <button class="analysis-tab" id="analysis-documents-tab" type="button" role="tab"
+        <button class="analysis-tab qym-tabs__tab" id="analysis-documents-tab" type="button" role="tab"
           aria-selected="false" aria-controls="analysis-documents-view" data-analysis-view="documents" tabindex="-1">Documents</button>
       </nav>
     </header>
@@ -1651,6 +3132,101 @@
       <h2>Select a run to start analysis</h2>
       <p>The Analyze run workspace requires an explicit run. Go to the Runs page and choose Auto-analysis for the run you want to diagnose. Production rules and Documents remain available in the project tabs above.</p>
       <a class="analysis-primary-link" id="analysis-go-runs" href="#">Select a run from Runs</a>
+    </section>
+    <section class="analysis-dashboard analysis-view-panel" id="analysis-dashboard-view" role="tabpanel"
+      aria-labelledby="analysis-dashboard-tab" hidden>
+      <div class="analysis-dashboard-commandbar">
+        <div class="analysis-dashboard-quick-filters" role="group" aria-label="Dashboard date range">
+          <span class="analysis-dashboard-filter-label">Runs</span>
+          <div class="qym-segmented" data-qym-segmented-key="dashboard-range">
+            <button class="qym-segmented__option" type="button" data-dashboard-range="all" aria-pressed="true">All</button>
+            <button class="qym-segmented__option" type="button" data-dashboard-range="today" aria-pressed="false">Today</button>
+            <button class="qym-segmented__option" type="button" data-dashboard-range="7d" aria-pressed="false">7d</button>
+            <button class="qym-segmented__option" type="button" data-dashboard-range="30d" aria-pressed="false">30d</button>
+          </div>
+        </div>
+        <div class="analysis-dashboard-filter-row" id="analysis-dashboard-filters"></div>
+        <button class="qym-inline-action qym-inline-action--neutral" id="analysis-dashboard-clear" type="button">Clear filters <span class="qym-tag qym-tag--count" id="analysis-dashboard-filter-count">0</span></button>
+      </div>
+      <div class="analysis-dashboard-selected" id="analysis-dashboard-selected" hidden>
+        <div><span class="analysis-dashboard-selected-label">Compare runs</span><div class="analysis-dashboard-selected-runs" id="analysis-dashboard-selected-runs"></div></div>
+        <div class="analysis-dashboard-compare-actions">
+          <button class="qym-inline-action qym-inline-action--accent" id="analysis-dashboard-compare" type="button">Compare selected</button>
+          <button class="qym-inline-action qym-inline-action--neutral" id="analysis-dashboard-clear-selected" type="button">Clear selection</button>
+        </div>
+      </div>
+      <div class="analysis-dashboard-compare" id="analysis-dashboard-compare-view" hidden></div>
+      <div class="analysis-dashboard-kpis qym-stat-strip" id="analysis-dashboard-kpis"></div>
+      <div class="analysis-dashboard-grid">
+        <section class="analysis-dashboard-card analysis-dashboard-context-card">
+          <header class="analysis-dashboard-card-header"><div><h2>Root-cause distribution</h2><p>Ranked categories for the active scope.</p></div></header>
+          <div class="analysis-dashboard-card-body analysis-dashboard-context-body" id="analysis-dashboard-category-chart"></div>
+        </section>
+        <section class="analysis-dashboard-card analysis-dashboard-context-card">
+          <header class="analysis-dashboard-card-header"><div><h2>Run score context</h2><p>Direction-aware scores for the selected metric.</p></div></header>
+          <div class="analysis-dashboard-card-body analysis-dashboard-context-body analysis-dashboard-score-scroll" id="analysis-dashboard-score-chart"></div>
+        </section>
+        <section class="analysis-dashboard-card analysis-dashboard-card-wide">
+          <header class="analysis-dashboard-card-header"><div><h2>Run × category</h2><p>Stacked category bars make repeated and changing root causes easy to spot.</p></div></header>
+          <div class="analysis-dashboard-card-body" id="analysis-dashboard-heatmap"></div>
+        </section>
+        <section class="analysis-dashboard-card analysis-dashboard-card-wide candidate-relationships-card" id="candidate-relationships-card" aria-labelledby="candidate-relationships-title">
+          <header class="analysis-dashboard-card-header">
+            <div>
+              <h2 id="candidate-relationships-title">Candidate relationships</h2>
+              <p>Project-wide statistical associations between safe execution fields and diagnosed root-cause categories.</p>
+            </div>
+            <span class="qym-tag qym-tag--count" id="candidate-relationship-count">— candidates</span>
+          </header>
+
+          <div class="candidate-toolbar" aria-label="Candidate relationship controls">
+            <div class="candidate-toolbar-group">
+              <span class="candidate-toolbar-label">Direction</span>
+              <div class="qym-segmented" data-qym-segmented-key="candidate-direction" role="group" aria-label="Relationship direction">
+                <button class="qym-segmented__option" type="button" data-candidate-direction="all" aria-pressed="true">All</button>
+                <button class="qym-segmented__option" type="button" data-candidate-direction="more_common" aria-pressed="false">More common</button>
+                <button class="qym-segmented__option" type="button" data-candidate-direction="less_common" aria-pressed="false">Less common</button>
+              </div>
+            </div>
+            <label class="candidate-toolbar-group" for="candidate-category-search">
+              <span class="candidate-toolbar-label">Category search</span>
+              <input class="qym-control qym-search candidate-category-search" id="candidate-category-search" type="search" placeholder="Find a category" autocomplete="off">
+            </label>
+            <span class="candidate-scope-note" id="candidate-scope-note">Loading project analysis…</span>
+          </div>
+
+          <div class="qym-stat-strip candidate-summary" id="candidate-summary" aria-label="Candidate relationship summary">
+            <div class="qym-stat-strip__item"><div class="qym-stat-strip__label">Surviving candidates</div><div class="qym-stat-strip__value" id="candidate-surviving-count">—</div><div class="qym-stat-strip__meta">Passed all policy gates</div></div>
+            <div class="qym-stat-strip__item"><div class="qym-stat-strip__label">Represented categories</div><div class="qym-stat-strip__value" id="candidate-category-count">—</div><div class="qym-stat-strip__meta">With at least one association</div></div>
+            <div class="qym-stat-strip__item"><div class="qym-stat-strip__label">Analyzed executions</div><div class="qym-stat-strip__value" id="candidate-analyzed-count">—</div><div class="qym-stat-strip__meta">Complete project scope</div></div>
+            <div class="qym-stat-strip__item"><div class="qym-stat-strip__label">Diagnosis coverage</div><div class="qym-stat-strip__value" id="candidate-coverage-value">—</div><div class="qym-stat-strip__meta">Metric-scoped diagnoses</div></div>
+          </div>
+
+          <div class="candidate-groups" id="candidate-groups" aria-live="polite">
+            <div class="candidate-empty"><span class="candidate-empty-title">Loading candidate relationships</span><span>Analyzing stable run-item-metric executions across the project.</span></div>
+          </div>
+        </section>
+        <div class="candidate-drawer" id="candidate-evidence-drawer" hidden>
+          <section class="candidate-drawer-panel" role="dialog" aria-modal="true" aria-labelledby="candidate-evidence-title">
+            <header class="candidate-drawer-header">
+              <div>
+                <h2 class="candidate-drawer-title" id="candidate-evidence-title">Matching executions</h2>
+                <p class="candidate-drawer-copy" id="candidate-evidence-copy">Loading executions that match this condition…</p>
+              </div>
+              <button class="qym-icon-action" id="candidate-evidence-close" type="button" aria-label="Close matching executions">×</button>
+            </header>
+            <div class="candidate-evidence-list" id="candidate-evidence-list" aria-live="polite"></div>
+            <footer class="candidate-evidence-footer">
+              <span class="candidate-evidence-meta" id="candidate-evidence-range">—</span>
+              <div class="qym-pagination candidate-pagination" id="candidate-evidence-pagination" aria-label="Relationship occurrence pages"></div>
+            </footer>
+          </section>
+        </div>
+        <section class="analysis-dashboard-card analysis-dashboard-card-wide analysis-dashboard-occurrences-card">
+          <header class="analysis-dashboard-card-header"><div><h2>Diagnosis occurrence map</h2><p>Every dot is one saved diagnosis, grouped by root-cause category.</p></div><span class="analysis-dashboard-occurrence-count qym-tag qym-tag--count qym-tag--accent" id="analysis-dashboard-occurrence-count">0 occurrences</span></header>
+          <div class="analysis-dashboard-card-body analysis-dashboard-occurrences-body" id="analysis-dashboard-occurrences"></div>
+        </section>
+      </div>
     </section>
     <div id="analyzer-host" hidden></div>
   </main>
@@ -1669,15 +3245,34 @@
       const runId = decodeURIComponent(params.get('run') || (projectRunMatch && projectRunMatch[2]) || (legacyRunMatch && legacyRunMatch[1]) || '');
       const requestedMetric = params.get('metric') || '';
       const requestedView = params.get('scope');
+      const DASHBOARD_COMPARE_ALL_METRICS = '__all__';
       const state = {
-        currentView: ['diagnosis', 'rules', 'documents'].includes(requestedView)
+        currentView: ['dashboard', 'diagnosis', 'rules', 'documents'].includes(requestedView)
           ? requestedView
-          : (requestedView === 'project' ? 'rules' : 'run'),
+          : (requestedView === 'project' ? 'rules' : (runId ? 'run' : 'dashboard')),
         contextRunId: '',
         data: null,
         metric: '',
         metrics: [],
         selectedMetrics: [],
+        dashboard: {
+          payload: null,
+          filters: {},
+          filterFacets: null,
+          openFilterKey: '',
+          selectedRuns: [],
+          compareGroup: 'category',
+          compareMeasure: 'count',
+          range: 'all',
+          compareScoreMetric: '',
+          baselineRunId: '',
+          categoryDistributionExpanded: false,
+          compareOpen: false,
+          comparePayload: null,
+          requestSequence: 0,
+          occurrencesSequence: 0,
+          compareSequence: 0,
+        },
       };
       document.getElementById('analysis-project-meta').textContent = projectSlug || 'current run';
 
@@ -1726,7 +3321,7 @@
 
       function setAnalyzerView(view, options = {}) {
         const diagnosisTab = document.getElementById('analysis-diagnosis-tab');
-        const requestedNextView = ['diagnosis', 'rules', 'documents'].includes(view) ? view : 'run';
+        const requestedNextView = ['dashboard', 'diagnosis', 'rules', 'documents'].includes(view) ? view : 'run';
         const nextView = requestedNextView === 'diagnosis' && diagnosisTab && diagnosisTab.disabled
           ? 'run'
           : requestedNextView;
@@ -1740,11 +3335,18 @@
         const projectView = document.getElementById('analysis-project-view');
         const runView = document.getElementById('analysis-run-view');
         const diagnosisView = document.getElementById('analysis-diagnosis-view');
+        const dashboardView = document.getElementById('analysis-dashboard-view');
+        const landing = document.getElementById('analysis-landing');
+        const runFooter = document.querySelector('#analyzer-host .playground-footer');
         if (projectView) projectView.hidden = !['rules', 'documents'].includes(nextView);
         if (runView) runView.hidden = nextView !== 'run';
         if (diagnosisView) diagnosisView.hidden = nextView !== 'diagnosis';
+        if (dashboardView) dashboardView.hidden = nextView !== 'dashboard';
+        if (landing) landing.hidden = nextView !== 'run' || Boolean(runId);
+        if (runFooter) runFooter.hidden = nextView !== 'run' || !runId;
         if (['rules', 'documents'].includes(nextView)) setProjectView(nextView);
         if (nextView !== 'run') closeInputMapping();
+        if (nextView === 'dashboard') loadDashboard().catch(error => showDashboardError(error));
         if (options.updateUrl !== false) {
           const nextParams = new URLSearchParams(window.location.search);
           nextParams.set('scope', nextView);
@@ -1754,15 +3356,6 @@
 
       document.querySelectorAll('[data-analysis-view]').forEach(tab => {
         tab.addEventListener('click', () => setAnalyzerView(tab.dataset.analysisView));
-        tab.addEventListener('keydown', event => {
-          if (!['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
-          event.preventDefault();
-          const tabs = Array.from(document.querySelectorAll('[data-analysis-view]:not(:disabled)'));
-          const currentIndex = tabs.indexOf(tab);
-          const offset = event.key === 'ArrowRight' ? 1 : -1;
-          const nextTab = tabs[(currentIndex + offset + tabs.length) % tabs.length];
-          setAnalyzerView(nextTab.dataset.analysisView, { focus: true });
-        });
       });
 
       function analyzerRows() {
@@ -1843,6 +3436,730 @@
         updateMetricSummary();
       }
 
+      function dashboardQuery(extra = {}) {
+        const query = new URLSearchParams();
+        const filters = state.dashboard.filters || {};
+        Object.entries(filters).forEach(([key, values]) => {
+          (Array.isArray(values) ? values : []).forEach(value => query.append(key, value));
+        });
+        if (state.dashboard.range !== 'all') {
+          const days = state.dashboard.range === 'today' ? 0 : Number(state.dashboard.range.replace('d', ''));
+          const from = new Date();
+          if (days === 0) from.setHours(0, 0, 0, 0);
+          else from.setDate(from.getDate() - days);
+          query.set('from_date', from.toISOString());
+        }
+        Object.entries(extra).forEach(([key, value]) => {
+          if (value == null || value === '') return;
+          query.delete(key);
+          (Array.isArray(value) ? value : [value]).forEach(item => query.append(key, item));
+        });
+        return query;
+      }
+
+      function dashboardLabel(value) {
+        return String(value == null || value === '' ? 'Unspecified' : value);
+      }
+
+      const DASHBOARD_CHART_COLORS = ['var(--chart-1)', 'var(--chart-2)', 'var(--chart-3)', 'var(--chart-4)', 'var(--chart-5)'];
+
+      function dashboardChartColor(index) {
+        return DASHBOARD_CHART_COLORS[index % DASHBOARD_CHART_COLORS.length];
+      }
+
+      function dashboardValueKey(value) {
+        return String(value == null ? '' : value)
+          .toLocaleLowerCase()
+          .replace(/[^\p{L}\p{N}]+/gu, ' ')
+          .trim();
+      }
+
+      function dashboardRunName(payload, runIdValue) {
+        return (payload.facets?.runs || []).find(run => run.run_id === runIdValue)?.run_name || runIdValue;
+      }
+
+      function dashboardFilterCount() {
+        const filterValues = Object.values(state.dashboard.filters || {});
+        return filterValues.reduce((count, values) => count + (Array.isArray(values) ? values.length : 0), 0) +
+          (state.dashboard.range !== 'all' ? 1 : 0);
+      }
+
+      function dashboardFacetValue(key, item) {
+        if (key === 'run_id') return String(item?.run_id || item?.value || '');
+        return String(typeof item === 'string' ? item : (item?.value || ''));
+      }
+
+      const DASHBOARD_FACET_KEYS = {
+        run_id: 'runs',
+        task: 'tasks',
+        dataset: 'datasets',
+        model: 'models',
+        metric: 'metrics',
+        category: 'categories',
+        detail: 'details',
+        source: 'sources',
+        review_status: 'review_statuses',
+      };
+
+      function dashboardFilterOptions(payload, key) {
+        const facetKey = DASHBOARD_FACET_KEYS[key] || key;
+        const incoming = payload.facets?.[facetKey] || [];
+        if (!state.dashboard.filterFacets) state.dashboard.filterFacets = payload.facets || {};
+        const baseline = state.dashboard.filterFacets[facetKey] || incoming;
+        const seen = new Set();
+        const values = [...baseline, ...incoming].filter(item => {
+          const value = dashboardFacetValue(key, item);
+          if (!value || seen.has(value)) return false;
+          seen.add(value);
+          return true;
+        });
+        const liveCounts = new Map(incoming.filter(item => typeof item !== 'string' && item?.value != null).map(item => [String(item.value), Number(item.count) || 0]));
+        return values.map(item => {
+          const value = dashboardFacetValue(key, item);
+          const label = key === 'run_id' ? String(item?.run_name || item?.label || value) : dashboardLabel(typeof item === 'string' ? item : item?.value);
+          const hasCount = typeof item !== 'string' && item?.count != null;
+          const count = liveCounts.has(value) ? liveCounts.get(value) : 0;
+          return { value, label: hasCount || liveCounts.has(value) ? label + ' · ' + formatDashboardNumber(count) : label };
+        });
+      }
+
+      function reopenDashboardFilter(host) {
+        if (!state.dashboard.openFilterKey) return;
+        const wrapper = Array.from(host.querySelectorAll('.qym-dropdown')).find(item => item.dataset.dashboardFilter === state.dashboard.openFilterKey);
+        if (!wrapper) return;
+        wrapper.classList.add('is-open');
+        wrapper.querySelector('.qym-dropdown__trigger')?.setAttribute('aria-expanded', 'true');
+      }
+
+      function renderDashboardFilterControls(payload) {
+        const host = document.getElementById('analysis-dashboard-filters');
+        if (!host) return;
+        const definitions = [
+          ['run_id', 'Runs'], ['task', 'Tasks'], ['dataset', 'Datasets'], ['model', 'Models'], ['metric', 'Metrics'],
+          ['category', 'Categories'], ['detail', 'Details'], ['source', 'Source'], ['review_status', 'Review'],
+        ];
+        host.innerHTML = definitions.map(([key, label]) => [key, label, dashboardFilterOptions(payload, key)]).map(([key, label, options]) => {
+          const activeSelection = new Set(state.dashboard.filters[key] || []);
+          const selected = activeSelection.size ? activeSelection : new Set(options.map(option => option.value));
+          const buttonLabel = activeSelection.size ? (activeSelection.size + ' selected') : ('All ' + label);
+          const optionsHtml = options.map(option =>
+            '<div class="qym-dropdown__option" data-qym-dropdown-search-text="' + escapeAttr(option.label) + '">' +
+              '<label class="qym-dropdown__option-label"><input type="checkbox" value="' + escapeAttr(option.value) + '"' +
+                (selected.has(option.value) ? ' checked' : '') + ' /><span class="qym-dropdown__option-text">' + escapeHtml(option.label) + '</span></label></div>'
+          ).join('');
+          const menuId = 'analysis-dashboard-filter-' + key;
+          return '<div class="analysis-dashboard-filter qym-dropdown" data-dashboard-filter="' + escapeAttr(key) + '">' +
+            '<button type="button" class="qym-control qym-select qym-dropdown__trigger" aria-expanded="false" aria-haspopup="true" aria-controls="' + escapeAttr(menuId) + '">' + escapeHtml(buttonLabel) + '</button>' +
+            '<div class="qym-dropdown__menu" id="' + escapeAttr(menuId) + '" role="group" aria-label="' + escapeAttr(label + ' filter options') + '">' +
+              '<input class="qym-control qym-search qym-dropdown__search" type="search" aria-label="Search ' + escapeAttr(label) + '" placeholder="Search ' + escapeAttr(label) + '" />' +
+              '<div class="qym-dropdown__actions"><button type="button" class="qym-inline-action qym-inline-action--neutral" data-dashboard-filter-action="all">Select all</button><button type="button" class="qym-inline-action qym-inline-action--neutral" data-dashboard-filter-action="none">Clear</button></div>' +
+              (optionsHtml || '<div class="analysis-dashboard-filter-empty">No options match the current scope.</div>') + '</div></div>';
+        }).join('');
+        function updateFilterTrigger(wrapper, key, label) {
+          const selected = new Set(state.dashboard.filters[key] || []);
+          const trigger = wrapper.querySelector('.qym-dropdown__trigger');
+          if (!trigger) return;
+          trigger.textContent = selected.size ? (selected.size + ' selected') : ('All ' + label);
+        }
+        host.querySelectorAll('.qym-dropdown').forEach(wrapper => {
+          const key = wrapper.dataset.dashboardFilter;
+          const label = definitions.find(definition => definition[0] === key)?.[1] || key;
+          wrapper.querySelectorAll('input[type="checkbox"]').forEach(input => {
+            input.addEventListener('change', () => {
+              state.dashboard.filters[key] = Array.from(wrapper.querySelectorAll('input:checked')).map(node => node.value);
+              if (!state.dashboard.filters[key].length) delete state.dashboard.filters[key];
+              state.dashboard.openFilterKey = key;
+              updateFilterTrigger(wrapper, key, label);
+              const count = document.getElementById('analysis-dashboard-filter-count');
+              if (count) count.textContent = String(dashboardFilterCount());
+              loadDashboard().catch(error => showDashboardError(error));
+            });
+          });
+          wrapper.querySelectorAll('[data-dashboard-filter-action]').forEach(action => {
+            action.addEventListener('click', event => {
+              event.preventDefault();
+              event.stopPropagation();
+              const actionName = action.dataset.dashboardFilterAction;
+              if (actionName === 'all') {
+                delete state.dashboard.filters[key];
+                wrapper.querySelectorAll('input[type="checkbox"]').forEach(input => { input.checked = true; });
+              } else if (actionName === 'none') {
+                delete state.dashboard.filters[key];
+                wrapper.querySelectorAll('input[type="checkbox"]').forEach(input => { input.checked = false; });
+              }
+              state.dashboard.openFilterKey = key;
+              updateFilterTrigger(wrapper, key, label);
+              const count = document.getElementById('analysis-dashboard-filter-count');
+              if (count) count.textContent = String(dashboardFilterCount());
+              loadDashboard().catch(error => showDashboardError(error));
+            });
+          });
+        });
+        const count = document.getElementById('analysis-dashboard-filter-count');
+        if (count) count.textContent = String(dashboardFilterCount());
+        reopenDashboardFilter(host);
+      }
+
+      function syncDashboardToggle(selector, key, value) {
+        document.querySelectorAll(selector).forEach(button => {
+          button.setAttribute('aria-pressed', button.dataset[key] === value ? 'true' : 'false');
+        });
+      }
+
+      function formatDashboardNumber(value, digits = 0) {
+        if (value == null || Number.isNaN(Number(value))) return '—';
+        return Number(value).toLocaleString(undefined, { maximumFractionDigits: digits });
+      }
+
+      function formatDashboardScore(value, spec) {
+        if (value == null || Number.isNaN(Number(value))) return '—';
+        const precision = spec && spec.precision != null ? Number(spec.precision) : 3;
+        const unit = spec && spec.unit ? ' ' + spec.unit : '';
+        return Number(value).toLocaleString(undefined, { maximumFractionDigits: precision }) + unit;
+      }
+
+      function dashboardStatusClass(status) {
+        return status === 'improved' ? 'qym-badge--success' : (status === 'regressed' ? 'qym-badge--danger' : (status === 'unavailable' ? 'qym-badge--warning' : 'qym-badge--neutral'));
+      }
+
+      function dashboardOccurrenceSourceClass(value) {
+        const source = String(value || '').trim().toLocaleLowerCase();
+        return source === 'human' ? ' is-human' : ' is-ai';
+      }
+
+      function renderDashboardKpis(payload) {
+        const host = document.getElementById('analysis-dashboard-kpis');
+        if (!host) return;
+        const summary = payload.summary || {};
+        const category = summary.most_repeated_category;
+        const coverage = summary.failure_coverage || {};
+        host.innerHTML = [
+          ['Diagnosis occurrences', formatDashboardNumber(summary.diagnosis_occurrences), 'Current saved diagnoses'],
+          ['Affected items', formatDashboardNumber(summary.affected_run_item_pairs), formatDashboardNumber(summary.runs_with_diagnoses) + ' runs'],
+          ['Categories', formatDashboardNumber(summary.categories), 'Typography-normalized labels'],
+          ['Most repeated', category ? formatDashboardNumber(category.count) : '—', category ? dashboardLabel(category.category) : 'No diagnoses yet'],
+          ['Failure coverage', formatDashboardNumber((Number(coverage.rate || 0) * 100), 1) + '%', formatDashboardNumber(coverage.diagnosed_failed_pairs) + ' of ' + formatDashboardNumber(coverage.failed_pairs) + ' failed items'],
+        ].map(item => '<div class="qym-stat-strip__item"><div class="qym-stat-strip__label">' + escapeHtml(item[0]) + '</div><div class="qym-stat-strip__value">' + escapeHtml(item[1]) + '</div><div class="qym-stat-strip__meta" title="' + escapeAttr(item[2]) + '">' + escapeHtml(item[2]) + '</div></div>').join('');
+      }
+
+      function renderDashboardCategoryDistribution(payload) {
+        const host = document.getElementById('analysis-dashboard-category-chart');
+        if (!host) return;
+        const rows = payload.groups?.by_category || [];
+        if (!rows.length) {
+          host.innerHTML = '<div class="analysis-dashboard-empty">No root-cause categories match the current controls.</div>';
+          return;
+        }
+        const total = rows.reduce((sum, row) => sum + (Number(row.count) || 0), 0);
+        const collapsedLimit = 8;
+        const expanded = state.dashboard.categoryDistributionExpanded;
+        const visibleRows = expanded ? rows : rows.slice(0, collapsedLimit);
+        let offset = 0;
+        const ringStops = visibleRows.map((row, index) => {
+          const share = total ? (Number(row.count) || 0) / total * 100 : 0;
+          const start = offset;
+          offset += share;
+          return dashboardChartColor(index) + ' ' + start.toFixed(2) + '% ' + offset.toFixed(2) + '%';
+        });
+        if (offset < 100) ringStops.push('var(--bg-elevated) ' + offset.toFixed(2) + '% 100%');
+        const max = Math.max(...visibleRows.map(row => Number(row.count) || 0), 1);
+        const legend = visibleRows.map((row, index) => {
+          const count = Number(row.count) || 0;
+          const share = total ? count / total * 100 : 0;
+          return '<div class="analysis-dashboard-distribution-item"><span class="analysis-dashboard-legend-swatch" style="background:' + dashboardChartColor(index) + '"></span>' +
+            '<span class="analysis-dashboard-distribution-label">' + escapeHtml(dashboardLabel(row.category)) + '</span>' +
+            '<div class="analysis-dashboard-distribution-track"><div class="analysis-dashboard-distribution-fill" style="width:' + Math.max(2, count / max * 100) + '%;background:' + dashboardChartColor(index) + '"></div></div>' +
+            '<span class="analysis-dashboard-distribution-value">' + formatDashboardNumber(count) + ' · ' + formatDashboardNumber(share, 1) + '%</span></div>';
+        }).join('');
+        const remainingCount = Math.max(rows.length - collapsedLimit, 0);
+        const toggle = remainingCount
+          ? '<button class="analysis-dashboard-category-toggle qym-inline-action qym-inline-action--neutral" type="button" data-dashboard-category-toggle aria-expanded="' + (expanded ? 'true' : 'false') + '" aria-controls="analysis-dashboard-category-list">' + (expanded ? 'Show top ' + formatDashboardNumber(collapsedLimit) : '+' + formatDashboardNumber(remainingCount) + ' more categories') + '</button>'
+          : '';
+        host.innerHTML = '<div class="analysis-dashboard-distribution"><div class="analysis-dashboard-ring" style="background:conic-gradient(' + ringStops.join(',') + ')"><div class="analysis-dashboard-ring-copy"><strong>' + formatDashboardNumber(total) + '</strong><span>diagnoses</span></div></div><div class="analysis-dashboard-distribution-legend" id="analysis-dashboard-category-list">' + legend + toggle + '</div></div>';
+        host.querySelector('[data-dashboard-category-toggle]')?.addEventListener('click', () => {
+          state.dashboard.categoryDistributionExpanded = !state.dashboard.categoryDistributionExpanded;
+          renderDashboardCategoryDistribution(payload);
+        });
+      }
+
+      function syncDashboardRunChecks() {
+        document.querySelectorAll('.analysis-dashboard-run-select').forEach(input => {
+          input.checked = state.dashboard.selectedRuns.includes(input.dataset.runId);
+        });
+      }
+
+      function closeDashboardCompare() {
+        state.dashboard.compareOpen = false;
+        state.dashboard.comparePayload = null;
+        state.dashboard.compareSequence += 1;
+        const compareView = document.getElementById('analysis-dashboard-compare-view');
+        if (compareView) {
+          compareView.hidden = true;
+          compareView.removeAttribute('aria-busy');
+        }
+      }
+
+      function updateDashboardRunSelection(input) {
+        const runIdValue = input.dataset.runId;
+        if (!runIdValue) return;
+        if (input.checked) {
+          if (!state.dashboard.selectedRuns.includes(runIdValue)) {
+            if (state.dashboard.selectedRuns.length >= 8) {
+              input.checked = false;
+              showStatus('warning', 'Run comparison limit reached', 'Select up to eight runs at a time.');
+              return;
+            }
+            state.dashboard.selectedRuns.push(runIdValue);
+          }
+        } else {
+          state.dashboard.selectedRuns = state.dashboard.selectedRuns.filter(value => value !== runIdValue);
+        }
+        closeDashboardCompare();
+        renderDashboardSelection();
+      }
+
+      function bindDashboardRunSelection(host) {
+        host.querySelectorAll('.analysis-dashboard-run-select').forEach(input => {
+          input.addEventListener('change', () => updateDashboardRunSelection(input));
+        });
+      }
+
+      function renderDashboardScoreChart(payload) {
+        const score = payload.scores || {};
+        const rows = score.runs || [];
+        const host = document.getElementById('analysis-dashboard-score-chart');
+        if (!host) return;
+        if (!rows.length) {
+          host.innerHTML = '<div class="analysis-dashboard-empty">Select a metric with numeric scores to compare runs.</div>';
+          return;
+        }
+        const values = rows.map(row => row.average).filter(value => value != null);
+        const min = values.length ? Math.min(...values, 0) : 0;
+        const max = values.length ? Math.max(...values, 1) : 1;
+        const span = Math.max(max - min, 1e-9);
+        const direction = rows.find(row => row.spec?.direction)?.spec?.direction || 'maximize';
+        const best = values.length ? (direction === 'minimize' ? Math.min(...values) : Math.max(...values)) : null;
+        host.innerHTML = '<div class="analysis-dashboard-score-direction">' + escapeHtml(direction === 'minimize' ? 'Lower is better' : 'Higher is better') + (score.metric_name ? ' · ' + escapeHtml(score.metric_name) : '') + '. <strong>Select two or more runs below to compare.</strong></div><div class="analysis-dashboard-bars">' + rows.map((row, index) => {
+          const width = row.average == null ? 0 : ((row.average - min) / span) * 100;
+          const runName = dashboardRunName(payload, row.run_id);
+          const checked = state.dashboard.selectedRuns.includes(row.run_id) ? ' checked' : '';
+          const isBest = best != null && row.average === best;
+          return '<div class="analysis-dashboard-score-row"><label class="analysis-dashboard-run-select-label"><input type="checkbox" class="analysis-dashboard-run-select" data-run-id="' + escapeAttr(row.run_id) + '"' + checked + ' aria-label="Select ' + escapeAttr(runName) + ' for comparison" /><span>' + escapeHtml(runName) + '</span></label>' +
+            '<div class="analysis-dashboard-bar-track"><div class="analysis-dashboard-bar-fill" style="width:' + Math.max(row.average == null ? 0 : 3, width) + '%;background:' + dashboardChartColor(index) + '"></div></div>' +
+            '<span class="analysis-dashboard-bar-value' + (isBest ? ' analysis-dashboard-score-up' : '') + '">' + escapeHtml(formatDashboardScore(row.average, row.spec)) + '</span></div>';
+        }).join('') + '</div>';
+        bindDashboardRunSelection(host);
+      }
+
+      function renderDashboardHeatmap(payload) {
+        const host = document.getElementById('analysis-dashboard-heatmap');
+        if (!host) return;
+        const runs = (payload.groups?.by_run || []).filter(run => (Number(run.occurrence_count) || 0) > 0);
+        const categories = (payload.groups?.by_category || []).slice(0, 12);
+        if (!runs.length || !categories.length) {
+          host.innerHTML = '<div class="analysis-dashboard-empty">Run × category appears after at least one diagnosis is saved.</div>';
+          return;
+        }
+        const hasOther = runs.some(run => {
+          const visible = (run.categories || []).filter(entry => categories.some(category => dashboardValueKey(category.category) === dashboardValueKey(entry.value))).reduce((sum, entry) => sum + (Number(entry.count) || 0), 0);
+          return (Number(run.occurrence_count) || 0) > visible;
+        });
+        const legend = categories.map((category, index) => '<div class="analysis-dashboard-legend-item"><span class="analysis-dashboard-legend-swatch" style="background:' + dashboardChartColor(index) + '"></span><span>' + escapeHtml(dashboardLabel(category.category)) + '</span></div>').join('') + (hasOther ? '<div class="analysis-dashboard-legend-item"><span class="analysis-dashboard-legend-swatch" style="background:var(--border-strong)"></span><span>Other categories</span></div>' : '');
+        const rows = runs.map(run => {
+          const counts = Object.fromEntries((run.categories || []).map(entry => [dashboardValueKey(entry.value), Number(entry.count) || 0]));
+          const visibleTotal = categories.reduce((sum, category) => sum + (counts[dashboardValueKey(category.category)] || 0), 0);
+          const total = Math.max(Number(run.occurrence_count) || 0, visibleTotal);
+          const segments = categories.map((category, index) => {
+            const count = counts[dashboardValueKey(category.category)] || 0;
+            if (!count || !total) return '';
+            const share = count / total * 100;
+            return '<span class="analysis-dashboard-stacked-segment" style="width:' + share.toFixed(2) + '%;background:' + dashboardChartColor(index) + '" title="' + escapeAttr(dashboardLabel(category.category) + ': ' + formatDashboardNumber(count)) + '" aria-label="' + escapeAttr(dashboardLabel(category.category) + ': ' + formatDashboardNumber(count)) + '"></span>';
+          }).join('');
+          const other = Math.max(total - visibleTotal, 0);
+          const otherSegment = other ? '<span class="analysis-dashboard-stacked-segment" style="width:' + (other / total * 100).toFixed(2) + '%;background:var(--border-strong)" title="' + escapeAttr('Other categories: ' + formatDashboardNumber(other)) + '" aria-label="' + escapeAttr('Other categories: ' + formatDashboardNumber(other)) + '"></span>' : '';
+          return '<div class="analysis-dashboard-stacked-row"><span class="analysis-dashboard-stacked-label" title="' + escapeAttr(run.run_name || run.run_id) + '">' + escapeHtml(run.run_name || run.run_id) + '</span><div class="analysis-dashboard-stacked-track" role="img" aria-label="' + escapeAttr((run.run_name || run.run_id) + ': ' + formatDashboardNumber(total) + ' root-cause occurrences') + '">' + segments + otherSegment + '</div><span class="analysis-dashboard-stacked-total">' + formatDashboardNumber(total) + '</span></div>';
+        }).join('');
+        const note = (payload.groups?.by_category || []).length > categories.length
+          ? '<p class="analysis-dashboard-chart-note">Showing the ' + formatDashboardNumber(categories.length) + ' most repeated categories. Filter categories to focus the view.</p>'
+          : '';
+        host.innerHTML = '<div class="analysis-dashboard-stacked-chart">' + rows + '</div><div class="analysis-dashboard-legend" aria-label="Category legend">' + legend + '</div>' + note;
+      }
+
+      function renderDashboardSelection() {
+        const panel = document.getElementById('analysis-dashboard-selected');
+        const host = document.getElementById('analysis-dashboard-selected-runs');
+        if (!panel || !host) return;
+        panel.hidden = state.dashboard.selectedRuns.length === 0;
+        const runs = state.dashboard.payload?.facets?.runs || [];
+        host.innerHTML = state.dashboard.selectedRuns.map(runId => {
+          const run = runs.find(candidate => candidate.run_id === runId);
+          return '<span class="qym-chip">' + escapeHtml(run?.run_name || runId) + '<button class="qym-icon-action" type="button" data-dashboard-remove-run="' + escapeAttr(runId) + '" aria-label="Remove ' + escapeAttr(run?.run_name || runId) + '">×</button></span>';
+        }).join('');
+        const compare = document.getElementById('analysis-dashboard-compare');
+        if (compare) {
+          const ready = state.dashboard.selectedRuns.length >= 2;
+          compare.disabled = !ready;
+          compare.textContent = ready ? 'Compare selected' : 'Select 2+ runs';
+        }
+        host.querySelectorAll('[data-dashboard-remove-run]').forEach(button => button.addEventListener('click', () => {
+          state.dashboard.selectedRuns = state.dashboard.selectedRuns.filter(value => value !== button.dataset.dashboardRemoveRun);
+          closeDashboardCompare();
+          renderDashboardSelection();
+        }));
+        syncDashboardRunChecks();
+      }
+
+      async function loadDashboardOccurrences() {
+        const host = document.getElementById('analysis-dashboard-occurrences');
+        if (!host || !projectSlug) return;
+        const countNode = document.getElementById('analysis-dashboard-occurrence-count');
+        const requestSequence = ++state.dashboard.occurrencesSequence;
+        const pageLimit = 500;
+        const query = dashboardQuery({ limit: pageLimit, offset: 0 });
+        host.innerHTML = '<div class="analysis-dashboard-empty">Loading the complete diagnosis occurrence map…</div>';
+
+        async function fetchOccurrencePage(offset) {
+          query.set('offset', String(offset));
+          const response = await fetch(apiUrl('api/projects/' + encodeURIComponent(projectSlug) + '/root-cause-dashboard/occurrences?' + query.toString()));
+          if (!response.ok) {
+            throw new Error('Could not load diagnosis occurrences (HTTP ' + response.status + ').');
+          }
+          const page = await response.json();
+          if (requestSequence !== state.dashboard.occurrencesSequence) return;
+          return page;
+        }
+
+        const data = await fetchOccurrencePage(0);
+        if (!data) return;
+        const occurrenceTotal = Number(data.total || 0);
+        const rows = [...(data.occurrences || [])];
+        while (rows.length < occurrenceTotal) {
+          const page = await fetchOccurrencePage(rows.length);
+          if (!page) return;
+          const nextRows = page.occurrences || [];
+          if (!nextRows.length) break;
+          rows.push(...nextRows);
+        }
+        if (countNode) countNode.textContent = formatDashboardNumber(occurrenceTotal) + ' occurrence' + (occurrenceTotal === 1 ? '' : 's');
+        if (!rows.length) {
+          host.innerHTML = '<div class="analysis-dashboard-empty">No diagnosis occurrences match the current controls.</div>';
+          return;
+        }
+
+        const configuredCategories = state.dashboard.payload?.groups?.by_category || [];
+        const configuredCategoryIndexes = new Map(configuredCategories.map((entry, index) => [dashboardValueKey(entry.category), index]));
+        const groupedCategories = new Map();
+        rows.forEach((row, index) => {
+          const key = dashboardValueKey(row.category);
+          if (!groupedCategories.has(key)) {
+            groupedCategories.set(key, { category: dashboardLabel(row.category), entries: [] });
+          }
+          groupedCategories.get(key).entries.push({ row, index });
+        });
+        const categories = Array.from(groupedCategories.entries()).map(([key, group]) => ({
+          ...group,
+          key,
+          colorIndex: configuredCategoryIndexes.has(key) ? configuredCategoryIndexes.get(key) : configuredCategories.length + groupedCategories.size,
+        })).sort((left, right) => right.entries.length - left.entries.length || left.category.localeCompare(right.category));
+        categories.forEach((category, index) => {
+          if (!configuredCategoryIndexes.has(category.key)) category.colorIndex = configuredCategories.length + index;
+        });
+        const sourceKey = '<div class="analysis-dashboard-occurrence-source-key" aria-label="Diagnosis source legend">' +
+          '<span class="analysis-dashboard-occurrence-source-item"><span class="analysis-dashboard-occurrence-source-sample" aria-hidden="true"></span>AI</span>' +
+          '<span class="analysis-dashboard-occurrence-source-item"><span class="analysis-dashboard-occurrence-source-sample is-human" aria-hidden="true"></span>Human</span></div>';
+        const axis = '<div class="analysis-dashboard-occurrence-axis" role="row"><div class="analysis-dashboard-occurrence-axis-cell" role="columnheader">Category</div><div class="analysis-dashboard-occurrence-axis-cell" role="columnheader"><span>Diagnoses</span><span class="analysis-dashboard-occurrence-axis-count">' + formatDashboardNumber(rows.length) + '</span></div></div>';
+        const lanes = categories.map(category => {
+          const color = dashboardChartColor(category.colorIndex);
+          const dots = category.entries.map(entry => {
+            const row = entry.row;
+            const source = String(row.source || '').trim().toLocaleLowerCase() === 'human' ? 'human' : 'ai';
+            const item = row.item_id || (Number.isFinite(Number(row.item_index)) ? 'item ' + formatDashboardNumber(Number(row.item_index) + 1) : 'item');
+            const score = row.score == null ? 'unscored' : formatDashboardScore(row.score, null);
+            const label = category.category + '. ' + (row.detail || 'No detail') + '. ' + (row.run_name || row.run_id) + '. Metric ' + (row.metric_name || 'unscoped') + '. ' + item + '. Score ' + score + '. Source ' + source + '.';
+            const dotAttributes = ' class="analysis-dashboard-occurrence-dot' + dashboardOccurrenceSourceClass(row.source) + '" data-dashboard-occurrence-index="' + entry.index + '" style="--occurrence-color:' + color + '" aria-label="' + escapeAttr(label) + '" title="' + escapeAttr(label) + '"';
+            return '<button' + dotAttributes + ' type="button" aria-pressed="false"></button>';
+          }).join('');
+          const diagnoses = '<div class="analysis-dashboard-occurrence-bucket" role="gridcell" aria-label="' + escapeAttr(category.category + ': ' + formatDashboardNumber(category.entries.length) + ' diagnoses') + '">' + dots + '</div>';
+          return '<div class="analysis-dashboard-occurrence-lane" role="row"><div class="analysis-dashboard-occurrence-lane-label" role="rowheader" style="--occurrence-color:' + color + '"><span class="analysis-dashboard-occurrence-lane-swatch" aria-hidden="true"></span><span class="analysis-dashboard-occurrence-lane-name" title="' + escapeAttr(category.category) + '">' + escapeHtml(category.category) + '</span><span class="analysis-dashboard-occurrence-lane-count">' + formatDashboardNumber(category.entries.length) + '</span></div>' + diagnoses + '</div>';
+        }).join('');
+        host.innerHTML = '<div class="analysis-dashboard-occurrence-key"><span>Each dot is one diagnosis. Select or focus a dot to inspect it.</span>' + sourceKey + '</div>' +
+          '<div class="analysis-dashboard-occurrence-inspector" id="analysis-dashboard-occurrence-inspector" aria-live="polite"></div>' +
+          '<div class="analysis-dashboard-occurrence-graph" role="grid" aria-label="Diagnosis occurrences grouped by root-cause category">' + axis + lanes + '</div>';
+
+        const inspector = document.getElementById('analysis-dashboard-occurrence-inspector');
+        const dots = Array.from(host.querySelectorAll('[data-dashboard-occurrence-index]'));
+        function selectOccurrence(index) {
+          const row = rows[index];
+          if (!row || !inspector) return;
+          dots.forEach(dot => dot.setAttribute('aria-pressed', Number(dot.dataset.dashboardOccurrenceIndex) === index ? 'true' : 'false'));
+          const categoryKey = dashboardValueKey(row.category);
+          const category = categories.find(entry => entry.key === categoryKey);
+          const color = dashboardChartColor(category?.colorIndex || 0);
+          const source = String(row.source || '').trim().toLocaleLowerCase() === 'human' ? 'human' : 'ai';
+          const sourceLabel = source === 'human' ? 'Human' : 'AI';
+          const score = row.score == null ? 'Unscored' : formatDashboardScore(row.score, null);
+          const itemId = row.item_id || (Number.isFinite(Number(row.item_index)) ? String(Number(row.item_index)) : '');
+          const item = itemId ? (row.item_id || 'Item ' + formatDashboardNumber(Number(row.item_index) + 1)) : 'Item';
+          const context = (row.run_name || row.run_id) + ' · ' + item + (row.note ? ' · ' + row.note : '');
+          const runId = row.run_id == null ? '' : String(row.run_id);
+          const runLink = runId
+            ? '<a class="analysis-dashboard-occurrence-open" href="' + escapeAttr(projectUrl('runs/' + encodeURIComponent(runId)) + (itemId ? '?item=' + encodeURIComponent(itemId) : '')) + '">Open run →</a>'
+            : '';
+          inspector.style.setProperty('--occurrence-color', color);
+          inspector.innerHTML = '<div class="analysis-dashboard-occurrence-inspector-copy"><span class="analysis-dashboard-occurrence-inspector-category"><span class="analysis-dashboard-occurrence-inspector-swatch" aria-hidden="true"></span>' + escapeHtml(dashboardLabel(row.category)) + '</span><strong title="' + escapeAttr(row.detail || 'No detail') + '">' + escapeHtml(row.detail || 'No detail') + '</strong><p title="' + escapeAttr(context) + '">' + escapeHtml(context) + '</p></div>' +
+            '<div class="analysis-dashboard-occurrence-inspector-meta"><span class="qym-tag qym-tag--data">' + escapeHtml(row.metric_name || 'unscoped') + '</span><span class="qym-tag qym-tag--data">' + escapeHtml(score) + '</span><span class="qym-tag">' + escapeHtml(sourceLabel) + '</span>' + runLink + '</div>';
+        }
+        dots.forEach(dot => {
+          const index = Number(dot.dataset.dashboardOccurrenceIndex);
+          dot.addEventListener('click', () => selectOccurrence(index));
+          dot.addEventListener('focus', () => selectOccurrence(index));
+        });
+        selectOccurrence(0);
+      }
+
+      function dashboardCompareMeasureValue(row) {
+        if (state.dashboard.compareMeasure === 'share') return row.share == null ? null : Number(row.share) * 100;
+        if (state.dashboard.compareMeasure === 'score') return row.average_score == null ? null : Number(row.average_score);
+        return Number(row.count == null ? row.occurrence_count : row.count) || 0;
+      }
+
+      function dashboardCompareMeasureLabel() {
+        return state.dashboard.compareMeasure === 'share' ? 'Share' : (state.dashboard.compareMeasure === 'score' ? 'Average score' : 'Occurrences');
+      }
+
+      function formatDashboardCompareValue(value) {
+        if (value == null || Number.isNaN(Number(value))) return '—';
+        if (state.dashboard.compareMeasure === 'share') return formatDashboardNumber(value, 1) + '%';
+        if (state.dashboard.compareMeasure === 'score') return formatDashboardScore(value, null);
+        return formatDashboardNumber(value);
+      }
+
+      function renderDashboardCompare(payload, { preserveControls = false } = {}) {
+        const host = document.getElementById('analysis-dashboard-compare-view');
+        if (!host) return;
+        state.dashboard.compareOpen = true;
+        state.dashboard.comparePayload = payload;
+        const rows = payload.score_comparison || [];
+        const compareMetricNames = Array.from(new Set([
+          ...(payload.runs || []).flatMap(run => run.metrics || []),
+          payload.score_metric,
+          state.dashboard.compareScoreMetric,
+        ].filter(metricName => metricName && metricName !== DASHBOARD_COMPARE_ALL_METRICS))).sort((left, right) => left.localeCompare(right));
+        state.dashboard.compareScoreMetric = payload.score_metric || state.dashboard.compareScoreMetric || compareMetricNames[0] || '';
+        const metric = state.dashboard.compareScoreMetric === DASHBOARD_COMPARE_ALL_METRICS
+          ? 'All metrics'
+          : (state.dashboard.compareScoreMetric || 'selected metric');
+        const best = payload.summary?.best_run_id;
+        state.dashboard.baselineRunId = payload.baseline_run_id || state.dashboard.selectedRuns[0] || '';
+        const runName = runId => (payload.runs || []).find(run => run.run_id === runId)?.run_name || runId;
+        const compatibility = payload.score_compatibility || {};
+        const group = state.dashboard.compareGroup;
+        const measureLabel = dashboardCompareMeasureLabel();
+        const groupLabel = group === 'run' ? 'Run' : (group === 'metric' ? 'Metric' : 'Category');
+        const compareLegend = state.dashboard.selectedRuns.map((runId, index) => '<div class="analysis-dashboard-legend-item"><span class="analysis-dashboard-legend-swatch" style="background:' + dashboardChartColor(index) + '"></span><span>' + escapeHtml(runName(runId)) + '</span></div>').join('');
+        let visualRows = '';
+        let visualRowCount = 0;
+        if (group === 'run') {
+          const runRows = payload.run_summary || [];
+          const values = runRows.map(row => dashboardCompareMeasureValue(row)).filter(value => value != null);
+          const maxMagnitude = values.length ? Math.max(...values.map(value => Math.abs(value))) : 0;
+          visualRowCount = runRows.length;
+          visualRows = runRows.slice(0, 12).map(row => {
+            const value = dashboardCompareMeasureValue(row);
+            const formatted = formatDashboardCompareValue(value);
+            const index = Math.max(state.dashboard.selectedRuns.indexOf(row.run_id), 0);
+            const width = value == null ? 0 : (maxMagnitude ? Math.max(3, Math.abs(value) / maxMagnitude * 100) : 3);
+            const label = row.run_name || runName(row.run_id);
+            const segment = value == null ? '' : '<span class="analysis-dashboard-compare-segment" style="width:' + width.toFixed(2) + '%;background:' + dashboardChartColor(index) + '" title="' + escapeAttr(label + ': ' + formatted) + '" aria-label="' + escapeAttr(label + ': ' + formatted) + '">' + escapeHtml(formatted) + '</span>';
+            return '<div class="analysis-dashboard-compare-category"><span class="analysis-dashboard-compare-category-name" title="' + escapeAttr(label) + '">' + escapeHtml(label) + '</span><div class="analysis-dashboard-compare-track" role="img" aria-label="' + escapeAttr(label + ': ' + formatted) + '">' + segment + '</div><span class="analysis-dashboard-compare-category-values">' + escapeHtml(formatted) + '</span></div>';
+          }).join('');
+        } else {
+          const matrix = group === 'metric' ? (payload.metric_matrix || []) : (payload.category_matrix || []);
+          const labelKey = group === 'metric' ? 'metric_name' : 'category';
+          visualRowCount = matrix.length;
+          visualRows = matrix.slice(0, 12).map(entry => {
+            const label = dashboardLabel(entry[labelKey]);
+            const cells = state.dashboard.selectedRuns.map(runId => entry.runs?.[runId] || {});
+            const values = cells.map(cell => dashboardCompareMeasureValue(cell));
+            const weights = values.map(value => value == null ? 0 : Math.max(Math.abs(value), 1e-9));
+            const totalWeight = weights.reduce((sum, value) => sum + value, 0);
+            const segments = cells.map((cell, index) => {
+              const value = values[index];
+              if (value == null || !totalWeight) return '';
+              const formatted = formatDashboardCompareValue(value);
+              const width = weights[index] / totalWeight * 100;
+              return '<span class="analysis-dashboard-compare-segment" style="width:' + width.toFixed(2) + '%;background:' + dashboardChartColor(index) + '" title="' + escapeAttr(runName(state.dashboard.selectedRuns[index]) + ': ' + formatted) + '" aria-label="' + escapeAttr(runName(state.dashboard.selectedRuns[index]) + ': ' + formatted) + '">' + (width >= 12 ? escapeHtml(formatted) : '') + '</span>';
+            }).join('');
+            const formattedValues = values.map(formatDashboardCompareValue);
+            return '<div class="analysis-dashboard-compare-category"><span class="analysis-dashboard-compare-category-name" title="' + escapeAttr(label) + '">' + escapeHtml(label) + '</span><div class="analysis-dashboard-compare-track" role="img" aria-label="' + escapeAttr(label + ': ' + formattedValues.join(' · ')) + '">' + segments + '</div><span class="analysis-dashboard-compare-category-values">' + escapeHtml(formattedValues.join(' · ')) + '</span></div>';
+          }).join('');
+        }
+        const comparisonCopy = group === 'run'
+          ? 'Each bar represents one selected run. Filters and the chosen measure apply here.'
+          : 'Each row compares the selected runs by ' + measureLabel.toLocaleLowerCase() + ' within that ' + groupLabel.toLocaleLowerCase() + '.';
+        const visualBody = visualRows || '<div class="analysis-dashboard-empty">No comparison data matches the current filters.</div>';
+        const matrixHtml = '<div class="analysis-dashboard-compare-visual"><div><h2>' + escapeHtml(groupLabel + ' · ' + measureLabel) + '</h2><p class="analysis-dashboard-chart-note">' + escapeHtml(comparisonCopy) + '</p></div>' + (group === 'run' ? '' : '<div class="analysis-dashboard-legend" aria-label="Run legend">' + compareLegend + '</div>') + visualBody + (visualRowCount > 12 ? '<p class="analysis-dashboard-chart-note">Showing the 12 most repeated ' + escapeHtml(groupLabel.toLocaleLowerCase()) + ' values.</p>' : '') + '</div>';
+        const metricOptions = '<option value="' + DASHBOARD_COMPARE_ALL_METRICS + '"' + (state.dashboard.compareScoreMetric === DASHBOARD_COMPARE_ALL_METRICS ? ' selected' : '') + '>All</option>' + compareMetricNames.map(metricName => '<option value="' + escapeAttr(metricName) + '"' + (metricName === state.dashboard.compareScoreMetric ? ' selected' : '') + '>' + escapeHtml(metricName) + '</option>').join('');
+        const comparisonToolbar = '<div class="analysis-dashboard-compare-toolbar" aria-label="Comparison configuration">' +
+          '<div class="analysis-dashboard-control-group" role="group" aria-label="Group comparison data"><span class="analysis-dashboard-control-label">Group by</span><div class="qym-segmented" data-qym-segmented-key="dashboard-compare-group">' +
+          ['category', 'run', 'metric'].map(value => '<button class="qym-segmented__option" type="button" data-dashboard-compare-group="' + value + '" aria-pressed="' + (state.dashboard.compareGroup === value ? 'true' : 'false') + '">' + escapeHtml(value.charAt(0).toLocaleUpperCase() + value.slice(1)) + '</button>').join('') + '</div></div>' +
+          '<div class="analysis-dashboard-control-group" role="group" aria-label="Comparison measure"><span class="analysis-dashboard-control-label">Measure</span><div class="qym-segmented" data-qym-segmented-key="dashboard-compare-measure">' +
+          [['count', 'Occurrences'], ['share', 'Share'], ['score', 'Average score']].map(option => '<button class="qym-segmented__option" type="button" data-dashboard-compare-measure="' + option[0] + '" aria-pressed="' + (state.dashboard.compareMeasure === option[0] ? 'true' : 'false') + '">' + option[1] + '</button>').join('') + '</div></div>' +
+          '<label class="analysis-dashboard-control-group"><span class="analysis-dashboard-control-label" for="analysis-dashboard-compare-score-metric">Score metric</span><select id="analysis-dashboard-compare-score-metric" class="qym-control qym-select" aria-label="Comparison score metric"' + (compareMetricNames.length ? '' : ' disabled') + '>' + metricOptions + '</select></label></div>';
+        host.hidden = false;
+        host.removeAttribute('aria-busy');
+        const compatibilityNote = compatibility.comparable ? 'Higher/lower is interpreted using the metric direction.' : ('Comparison unavailable: ' + (compatibility.reason || 'metric semantics differ.'));
+        const comparisonCopyHtml = '<h2>Run comparison · ' + escapeHtml(metric) + '</h2><span>' + escapeHtml(compatibilityNote) + '</span>';
+        const comparisonActionsHtml = '<label class="analysis-dashboard-control-group"><span class="analysis-dashboard-control-label" for="analysis-dashboard-baseline">Baseline</span><select id="analysis-dashboard-baseline" class="qym-control qym-select">' + state.dashboard.selectedRuns.map(runId => '<option value="' + escapeAttr(runId) + '"' + (runId === state.dashboard.baselineRunId ? ' selected' : '') + '>' + escapeHtml(runName(runId)) + '</option>').join('') + '</select></label>' + rows.map(row => {
+          const status = row.comparison_status || 'tied';
+          const deltaValue = row.improvement_delta;
+          const delta = deltaValue == null ? '—' : ((deltaValue > 0 ? '+' : '') + formatDashboardNumber(deltaValue, 3));
+          const statusLabel = status === 'baseline' ? 'Baseline' : (status === 'improved' ? '↑ Better' : (status === 'regressed' ? '↓ Worse' : (status === 'unavailable' ? 'Unavailable' : '↔ Tied')));
+          const bestTag = row.run_id === best ? '<span class="qym-tag qym-tag--success">Best</span>' : '';
+          const deltaTag = status === 'baseline' || status === 'unavailable' ? '' : '<span class="analysis-dashboard-delta">' + escapeHtml(delta) + '</span>';
+          return '<span class="analysis-dashboard-compare-run">' + bestTag + '<span class="qym-tag">' + escapeHtml(runName(row.run_id)) + '</span><span class="qym-badge ' + dashboardStatusClass(status) + '">' + escapeHtml(statusLabel) + deltaTag + '</span></span>';
+        }).join('');
+        const keepToolbar = preserveControls && host.querySelector('.analysis-dashboard-compare-toolbar');
+        if (keepToolbar) {
+          host.querySelector('.analysis-dashboard-compare-copy').innerHTML = comparisonCopyHtml;
+          host.querySelector('.analysis-dashboard-compare-actions').innerHTML = comparisonActionsHtml;
+          host.querySelector('.analysis-dashboard-compare-visual').outerHTML = matrixHtml;
+          host.querySelectorAll('[data-dashboard-compare-group]').forEach(button => {
+            button.setAttribute('aria-pressed', String(button.dataset.dashboardCompareGroup === state.dashboard.compareGroup));
+          });
+          host.querySelectorAll('[data-dashboard-compare-measure]').forEach(button => {
+            button.setAttribute('aria-pressed', String(button.dataset.dashboardCompareMeasure === state.dashboard.compareMeasure));
+          });
+          const metricSelect = host.querySelector('#analysis-dashboard-compare-score-metric');
+          if (metricSelect) {
+            metricSelect.value = state.dashboard.compareScoreMetric;
+            metricSelect.disabled = false;
+          }
+        } else {
+          host.innerHTML = '<div class="analysis-dashboard-compare-copy">' + comparisonCopyHtml + '</div><div class="analysis-dashboard-compare-actions">' + comparisonActionsHtml + '</div>' + comparisonToolbar + matrixHtml;
+        }
+        host.querySelector('#analysis-dashboard-baseline')?.addEventListener('change', event => {
+          state.dashboard.baselineRunId = event.target.value || '';
+          loadDashboardCompare().catch(error => showDashboardError(error));
+        });
+        if (!keepToolbar) {
+          host.querySelectorAll('[data-dashboard-compare-group]').forEach(button => button.addEventListener('click', () => {
+            state.dashboard.compareGroup = button.dataset.dashboardCompareGroup || 'category';
+            renderDashboardCompare(state.dashboard.comparePayload || payload, { preserveControls: true });
+          }));
+          host.querySelectorAll('[data-dashboard-compare-measure]').forEach(button => button.addEventListener('click', () => {
+            state.dashboard.compareMeasure = button.dataset.dashboardCompareMeasure || 'count';
+            renderDashboardCompare(state.dashboard.comparePayload || payload, { preserveControls: true });
+          }));
+          host.querySelector('#analysis-dashboard-compare-score-metric')?.addEventListener('change', event => {
+            state.dashboard.compareScoreMetric = event.target.value || '';
+            loadDashboardCompare().catch(error => showDashboardError(error));
+          });
+        }
+      }
+
+      function syncDashboardCompareScoreMetric(payload) {
+        const metricNames = Array.from(new Set([...(payload.facets?.score_metrics || payload.facets?.metrics || []), ...(payload.scores?.runs || []).map(row => row.metric_name).filter(Boolean)]));
+        if (state.dashboard.compareScoreMetric === DASHBOARD_COMPARE_ALL_METRICS) return;
+        if (state.dashboard.compareScoreMetric && metricNames.includes(state.dashboard.compareScoreMetric)) return;
+        state.dashboard.compareScoreMetric = payload.scores?.metric_name || metricNames[0] || '';
+      }
+
+      function renderDashboard(payload) {
+        state.dashboard.payload = payload;
+        renderDashboardFilterControls(payload);
+        syncDashboardCompareScoreMetric(payload);
+        renderDashboardKpis(payload);
+        renderDashboardCategoryDistribution(payload);
+        renderDashboardScoreChart(payload);
+        renderDashboardHeatmap(payload);
+        renderDashboardSelection();
+        syncDashboardToggle('[data-dashboard-range]', 'dashboardRange', state.dashboard.range);
+        loadDashboardOccurrences().catch(error => showDashboardError(error));
+      }
+
+      function showDashboardError(error) {
+        const host = document.getElementById('analysis-dashboard-kpis');
+        if (host) host.innerHTML = '<div class="analysis-dashboard-empty">' + escapeHtml(error.message || 'Failed to load the root-cause dashboard.') + '</div>';
+      }
+
+      async function loadDashboard() {
+        if (!projectSlug) return;
+        const refreshCompare = state.dashboard.compareOpen && state.dashboard.selectedRuns.length >= 2;
+        const requestSequence = ++state.dashboard.requestSequence;
+        state.dashboard.compareSequence += 1;
+        const compareView = document.getElementById('analysis-dashboard-compare-view');
+        if (compareView) {
+          compareView.hidden = !refreshCompare;
+          if (refreshCompare) compareView.setAttribute('aria-busy', 'true');
+        }
+        const response = await fetch(apiUrl('api/projects/' + encodeURIComponent(projectSlug) + '/root-cause-dashboard?' + dashboardQuery().toString()));
+        if (!response.ok) {
+          if (requestSequence !== state.dashboard.requestSequence) return;
+          if (refreshCompare) closeDashboardCompare();
+          throw new Error('Could not load the root-cause dashboard (HTTP ' + response.status + ').');
+        }
+        const payload = await response.json();
+        if (requestSequence !== state.dashboard.requestSequence) return;
+        renderDashboard(payload);
+        if (refreshCompare) {
+          try {
+            await loadDashboardCompare();
+          } catch (error) {
+            closeDashboardCompare();
+            showStatus('warning', 'Comparison unavailable', error.message || 'The selected runs do not match the current filters.');
+          }
+        }
+      }
+
+      async function loadDashboardCompare() {
+        if (state.dashboard.selectedRuns.length < 2) {
+          closeDashboardCompare();
+          showStatus('warning', 'Select more runs', 'Choose at least two runs from the score cards before comparing.');
+          return;
+        }
+        state.dashboard.compareOpen = true;
+        const compareView = document.getElementById('analysis-dashboard-compare-view');
+        const preserveControls = Boolean(compareView?.querySelector('.analysis-dashboard-compare-toolbar'));
+        if (compareView) {
+          compareView.hidden = false;
+          compareView.setAttribute('aria-busy', 'true');
+        }
+        const requestSequence = ++state.dashboard.compareSequence;
+        const query = dashboardQuery({ run_id: state.dashboard.selectedRuns });
+        query.delete('run_id');
+        state.dashboard.selectedRuns.forEach(runId => query.append('run_id', runId));
+        if (state.dashboard.compareScoreMetric) query.set('score_metric', state.dashboard.compareScoreMetric);
+        if (state.dashboard.baselineRunId) query.set('baseline_run_id', state.dashboard.baselineRunId);
+        const response = await fetch(apiUrl('api/projects/' + encodeURIComponent(projectSlug) + '/root-cause-dashboard/compare?' + query.toString()));
+        if (!response.ok) {
+          if (requestSequence !== state.dashboard.compareSequence) return;
+          closeDashboardCompare();
+          throw new Error('Could not compare the selected runs (HTTP ' + response.status + ').');
+        }
+        const payload = await response.json();
+        if (requestSequence !== state.dashboard.compareSequence) return;
+        renderDashboardCompare(payload, { preserveControls });
+      }
+
+      document.querySelectorAll('[data-dashboard-range]').forEach(button => button.addEventListener('click', () => {
+        state.dashboard.range = button.dataset.dashboardRange || 'all';
+        syncDashboardToggle('[data-dashboard-range]', 'dashboardRange', state.dashboard.range);
+        loadDashboard().catch(error => showDashboardError(error));
+      }));
+      document.getElementById('analysis-dashboard-clear')?.addEventListener('click', () => {
+        state.dashboard.filters = {};
+        state.dashboard.openFilterKey = '';
+        state.dashboard.range = 'all';
+        syncDashboardToggle('[data-dashboard-range]', 'dashboardRange', 'all');
+        loadDashboard().catch(error => showDashboardError(error));
+      });
+      document.getElementById('analysis-dashboard-compare')?.addEventListener('click', () => loadDashboardCompare().catch(error => showDashboardError(error)));
+      document.getElementById('analysis-dashboard-clear-selected')?.addEventListener('click', () => {
+        state.dashboard.selectedRuns = [];
+        closeDashboardCompare();
+        renderDashboardSelection();
+      });
       function runSummaryValue(value) {
         return escapeHtml(value || '—');
       }
@@ -2381,10 +4698,25 @@
             };
           }
         });
-        showStatus('success', 'Analysis complete', String(data.total_analyzed || 0) + ' metric targets analyzed. Open the run to review the results.');
+        if (data.aggregation_error) {
+          showStatus(
+            'warning',
+            'Analysis saved; aggregation failed',
+            'Raw diagnoses were preserved. Open the run and use Aggregate results to retry.'
+          );
+        } else {
+          showStatus('success', 'Analysis complete', String(data.total_analyzed || 0) + ' metric targets analyzed. Open the run to review the results.');
+        }
       }
 
       async function loadRun() {
+        const dashboardTab = document.getElementById('analysis-dashboard-tab');
+        if (!projectSlug && dashboardTab) {
+          dashboardTab.disabled = true;
+          dashboardTab.setAttribute('aria-disabled', 'true');
+          dashboardTab.setAttribute('title', 'Open Auto-analysis from a project to view the dashboard');
+          if (state.currentView === 'dashboard') state.currentView = 'run';
+        }
         if (!runId) {
           document.getElementById('analysis-go-runs').href = projectSlug ? projectUrl() : rootPath + '/';
           const runsResponse = await fetch(apiUrl(
@@ -2405,6 +4737,8 @@
             document.getElementById('analysis-loading').hidden = true;
             document.getElementById('analysis-tabs').hidden = false;
             document.getElementById('analysis-landing').hidden = false;
+            setAnalyzerView('dashboard', { updateUrl: false });
+            loadDashboard().catch(error => showDashboardError(error));
             return;
           }
           state.contextRunId = contextRun.file_path || contextRun.run_id || '';
@@ -2465,5 +4799,6 @@
       });
     })();
   </script>
+  <script src="/static/candidate_relationships.js?v=candidate-relationships-20260805-2"></script>
 </body>
 </html>

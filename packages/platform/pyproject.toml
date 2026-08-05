@@ -30,7 +30,8 @@ dependencies = [
     # which the Docker image ships and the product-evals service executes.
     "pandas>=2.0.0",
     "dataiku-api-client>=13.0.0",
-    "openai>=1.0.0",
+    "openai>=1.40.0",
+    "scipy>=1.9.0",
     "cryptography>=42.0.0",
     # used by qym_platform.tools.backfill_item_domain
     "sqlglot>=23.0.0",

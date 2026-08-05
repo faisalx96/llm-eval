@@ -199,9 +199,9 @@ evaluator = Evaluator(
 )
 ```
 
-Metrics can still read the original names (`sql_prompt`, `sql_context`) and the mapped names (`question`, `schema`).
+The metric's `input_data` receives the mapped dict (`question`, `schema`). Metrics can also request either the original names (`sql_prompt`, `sql_context`) or the mapped names (`question`, `schema`) as individual parameters.
 
-For a single-column CSV, both the task and a metric's `input_data` parameter keep receiving the original scalar value for backward compatibility. The declared column name is also available as an individual metric parameter and judge placeholder. For example, `input_col="question"` keeps `input_data == "What is AI?"` while satisfying a metric parameter or judge placeholder named `question`. With `input_mapping={"prompt": "question"}`, the mapped name is exposed without changing `input_data`.
+Without `input_mapping`, a single-column CSV keeps its scalar metric input for backward compatibility. For example, `input_col="question"` keeps `input_data == "What is AI?"` while also satisfying a metric parameter or judge placeholder named `question`. When `input_mapping={"prompt": "question"}` renames that column, metric `input_data` becomes `{"question": "What is AI?"}`. The original and mapped names remain available as individual metric parameters and judge placeholders.
 
 ### Task with Model Routing (For Multi-Model)
 
@@ -559,7 +559,7 @@ def my_metric(output, expected):
 
 # 3-parameter metric: receives output, expected, and input
 def my_metric(output, expected, input_data):
-    # Can use the original input for evaluation
+    # Uses the dataset input, with configured field-name mappings applied
     return 1.0 if input_data["category"] in output else 0.0
 
 # Task-metadata metric: reads metadata from the task-output envelope
@@ -575,7 +575,7 @@ The parameter **names matter** for keyword argument matching. Use these exact na
 |----------|---------------|------------------|
 | 1st | `output` | What your task returned |
 | 2nd | `expected` | The `expected_output` from dataset (or `None`) |
-| 3rd | `input_data` | The original `input` from dataset |
+| 3rd | `input_data` | The dataset `input`; if `input_mapping` renames a field, the mapped name is used |
 | named | `item_metadata` | Metadata from the dataset item |
 | named | `task_metadata` | Metadata returned by the task-output envelope |
 | named | any dict input key | That individual input value; for mapped CSV inputs, both original and mapped names are available |
@@ -885,7 +885,7 @@ evaluator = Evaluator(
 )
 ```
 
-Without `input_mapping`, your task parameters should match the CSV column names (`def task(sql_prompt, sql_context): ...`). With `input_mapping`, the original input remains visible in saved results and the UI, while the task receives the mapped parameter names.
+Without `input_mapping`, your task parameters should match the CSV column names (`def task(sql_prompt, sql_context): ...`). With `input_mapping`, the original input remains visible in saved results and the UI, while the task and metric `input_data` use the mapped parameter names.
 
 **Tracing behavior:** If your Langfuse credentials are set, runs created from CSV will still emit Langfuse traces (useful if your task expects `trace_id`). If credentials are not set, evaluation still runs (without tracing).
 

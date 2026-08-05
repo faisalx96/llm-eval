@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>قيِّم • Run Detail</title>
   <link rel="icon" type="image/png" href="/static/qym_icon.png">
-  <link rel="stylesheet" href="/static/dashboard.css?v=estimator-mark-20260717">
+  <link rel="stylesheet" href="/static/dashboard.css?v=aggregation-status-20260802">
   <link rel="stylesheet" href="/static/shell.css">
   <script src="/static/auth.js"></script>
   <script src="/static/shell.js?v=base-path-20260719"></script>
@@ -1731,6 +1731,72 @@
     }
     .root-cause-metric-control .filter-select {
       min-width: 150px;
+    }
+    .root-cause-breakdown-header {
+      justify-content: space-between;
+    }
+    .root-cause-breakdown-title {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-xs);
+      min-width: 0;
+    }
+    .aggregate-results-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: var(--space-xs);
+      padding: var(--space-xs) var(--space-sm);
+      border: 1px solid var(--border-default);
+      border-radius: var(--space-xs);
+      background: var(--bg-elevated);
+      color: var(--text-secondary);
+      font-family: var(--font-sans);
+      font-size: var(--font-sm);
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s, color 0.15s;
+    }
+    .aggregate-results-btn:hover {
+      background: var(--bg-hover);
+      border-color: var(--border-strong);
+      color: var(--text-primary);
+    }
+    .aggregate-results-btn:focus-visible {
+      outline: 2px solid var(--accent-primary);
+      outline-offset: calc(var(--space-xs) / 2);
+    }
+    .aggregate-results-btn:disabled {
+      cursor: wait;
+      opacity: 0.65;
+    }
+    .aggregate-results-btn svg,
+    .root-cause-aggregation-status svg {
+      width: var(--space-md);
+      height: var(--space-md);
+      flex: 0 0 auto;
+    }
+    .root-cause-aggregation-status {
+      display: flex;
+      align-items: flex-start;
+      gap: var(--space-sm);
+      margin-bottom: var(--space-md);
+      padding: var(--space-sm) var(--space-md);
+      border: 1px solid var(--border-default);
+      border-radius: var(--space-xs);
+      background: var(--bg-elevated);
+      color: var(--text-secondary);
+      font-size: var(--font-sm);
+      line-height: 1.5;
+    }
+    .root-cause-aggregation-status.pending {
+      border-color: color-mix(in srgb, var(--info) 35%, var(--border-default));
+      color: var(--info);
+    }
+    .root-cause-aggregation-status.failed {
+      border-color: color-mix(in srgb, var(--error) 35%, var(--border-default));
+      background: var(--error-dim);
+      color: var(--error);
     }
     .breakdown-errors.task-error-group .breakdown-icon,
     .breakdown-errors.task-error-group .breakdown-header { color: var(--error); }
@@ -4978,6 +5044,12 @@
         return Number.isFinite(n) && n > 0 ? n : null;
       })();
 
+      // Optional deep link supplied by the diagnosis occurrence map.
+      const TARGET_ITEM_ID = (() => {
+        const params = new URLSearchParams(window.location.search);
+        return params.get('item') || params.get('item_id') || '';
+      })();
+
       function apiUrl(path) {
         return API_ROOT + path.replace(/^\.?\/?/, '');
       }
@@ -5089,6 +5161,8 @@
         complexityValues: [],
         domainValues: [],
         rootCauseValues: [],
+        analysisAggregationStatus: null,
+        aggregationRequestPending: false,
         allMetadataKeys: [],
         selectedCategories: new Set(),   // which metadata keys to show as breakdowns
         categoryFilters: {},             // custom category filters: key -> null|[values]
@@ -5106,6 +5180,7 @@
         langfuseHost: '',
         langfuseProjectId: '',
         hasRenderedItems: false,
+        targetItemScrolled: false,
       };
 
       const IS_EXPORT = !!window.__QYM_EXPORT__;
@@ -5711,6 +5786,7 @@
         const run = state.run;
         const snap = state.snapshot;
         state.allMetrics = snap.metric_names || run.metric_names || [];
+        state.analysisAggregationStatus = run.metadata?.analysis_aggregation || null;
 
         // Pass scope: swap every row's reduced metric values AND its
         // output/latency/status/trace for the viewed pass's slice, once, so
@@ -7728,6 +7804,96 @@
         });
       }
 
+      function aggregationStatusMatchesCurrentMetric(status) {
+        if (!status || typeof status !== 'object') return false;
+        const metrics = Array.isArray(status.metrics) ? status.metrics : null;
+        if (!metrics || metrics.length === 0 || state.rootCauseMetric === 'all') return true;
+        return metrics.includes(state.rootCauseMetric);
+      }
+
+      function aggregateResultsButtonHtml() {
+        if (IS_EXPORT) return '';
+        const pending = state.aggregationRequestPending;
+        return '<button type="button" class="aggregate-results-btn" id="aggregate-results-btn"' +
+          (pending ? ' disabled aria-busy="true"' : '') +
+          ' title="Canonicalize saved diagnoses without rerunning item analysis">' +
+          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 7h-6V1"/><path d="M20 7a9 9 0 1 0 2 7"/></svg>' +
+          '<span>' + (pending ? 'Aggregating\u2026' : 'Aggregate results') + '</span></button>';
+      }
+
+      function aggregationStatusHtml() {
+        const status = state.analysisAggregationStatus;
+        if (!aggregationStatusMatchesCurrentMetric(status)) return '';
+        if (status.status === 'pending') {
+          return '<div class="root-cause-aggregation-status pending" role="status" aria-live="polite">' +
+            '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>' +
+            '<span>Aggregating saved categories, subcauses, and solutions\u2026</span></div>';
+        }
+        if (status.status === 'failed') {
+          return '<div class="root-cause-aggregation-status failed" role="status" aria-live="polite">' +
+            '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4M12 17h.01"/></svg>' +
+            '<span><strong>Aggregation failed.</strong> Saved diagnoses are shown without consolidation. Select Aggregate results to retry.</span></div>';
+        }
+        return '';
+      }
+
+      async function aggregateSavedResults() {
+        if (state.aggregationRequestPending || IS_EXPORT) return;
+        const runId = state.run?.file_path || RUN_ID || '';
+        if (!runId) return;
+        const metric = state.rootCauseMetric === 'all' ? null : state.rootCauseMetric;
+        state.aggregationRequestPending = true;
+        state.analysisAggregationStatus = {
+          status: 'pending',
+          metrics: metric ? [metric] : null,
+        };
+        renderRootCauseSection();
+
+        try {
+          const response = await fetch(apiUrl('api/runs/' + runId + '/aggregate-analysis'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ metric: metric }),
+          });
+          const payload = await response.json().catch(() => ({}));
+          if (!response.ok) throw new Error(payload.detail || 'Aggregation failed');
+
+          const latestResponse = await fetch(apiUrl('api/runs/' + runId));
+          if (!latestResponse.ok) throw new Error('Aggregation completed, but the updated run could not be loaded.');
+          const latest = await latestResponse.json();
+          if (!latest.run || !latest.snapshot) throw new Error('The updated run data is incomplete.');
+          state.run = latest.run;
+          state.snapshot = latest.snapshot;
+          state.aggregationRequestPending = false;
+          processRun();
+          buildCategoryDropdowns();
+          renderRootCauseSection();
+          renderItems();
+          const changed = Number(payload.aggregated || 0);
+          showToast(
+            'success',
+            'Aggregation complete',
+            changed > 0 ? changed + ' saved labels consolidated.' : 'Saved labels were already canonical.'
+          );
+        } catch (error) {
+          state.aggregationRequestPending = false;
+          state.analysisAggregationStatus = {
+            status: 'failed',
+            metrics: metric ? [metric] : null,
+            error: error.message || 'Aggregation failed',
+          };
+          renderRootCauseSection();
+          showToast('error', 'Aggregation failed', error.message || 'Saved diagnoses were not changed.');
+        }
+      }
+
+      function wireAggregateResultsButton(section) {
+        const button = section.querySelector('#aggregate-results-btn');
+        if (button && !state.aggregationRequestPending) {
+          button.addEventListener('click', aggregateSavedResults);
+        }
+      }
+
       function renderSankeyDiagram(rows, filteredItemIds, metricFilter) {
         const container = document.getElementById('sankey-diagram-container');
         if (!container) return;
@@ -8514,7 +8680,8 @@
         let html = '<div class="root-cause-title-row"><h3 class="section-title">Root Cause Analysis <button class="auto-analyze-btn" id="auto-analyze-btn" title="AI-powered root cause analysis" style="margin-left:12px;"><span class="ai-icon">\uD83E\uDD16</span> Auto-Analyze</button></h3>' +
           rootCauseMetricControlHtml() + '</div>';
         html += '<div class="comparison-stats"><div class="breakdown-section breakdown-root-cause">';
-        html += '<div class="breakdown-header"><span class="breakdown-icon">\u2666</span> Categories &amp; Subcauses</div>';
+        html += '<div class="breakdown-header root-cause-breakdown-header"><span class="root-cause-breakdown-title"><span class="breakdown-icon">\u2666</span> Categories &amp; Subcauses</span>' + aggregateResultsButtonHtml() + '</div>';
+        html += aggregationStatusHtml();
         html += '<div class="breakdown-grid">';
 
         for (const cat of catStats) {
@@ -8546,6 +8713,7 @@
         // Render Sankey diagram
         renderSankeyDiagram(rows, filteredItemIds, state.rootCauseMetric);
         wireRootCauseMetricControl(section);
+        wireAggregateResultsButton(section);
 
         // Sankey highlight helpers scoped to this section
         var sankeyContainer = section.querySelector('#sankey-diagram-container');
@@ -8751,6 +8919,15 @@
         if (!host || !grid || anchorTop == null) return;
         const currentTop = grid.getBoundingClientRect().top;
         host.scrollTop += currentTop - anchorTop;
+      }
+
+      function scrollToTargetItem() {
+        if (!TARGET_ITEM_ID || state.targetItemScrolled || state.itemDetailView === 'heatmap') return;
+        const target = Array.from(document.querySelectorAll('#items-grid .item-card[data-item-id]'))
+          .find(node => node.dataset.itemId === TARGET_ITEM_ID);
+        if (!target) return;
+        state.targetItemScrolled = true;
+        requestAnimationFrame(() => target.scrollIntoView({ behavior: 'smooth', block: 'center' }));
       }
 
       function scheduleBreakdownRender(preserveAnchor = false) {
@@ -8968,6 +9145,10 @@
         updateClearButton();
 
         const totalPages = Math.max(1, Math.ceil(items.length / state.pageSize));
+        if (!state.hasRenderedItems && TARGET_ITEM_ID) {
+          const targetIndex = items.findIndex(({ row }) => String(row.item_id || row.index) === TARGET_ITEM_ID);
+          if (targetIndex >= 0) state.page = Math.floor(targetIndex / state.pageSize) + 1;
+        }
         if (state.page > totalPages) state.page = totalPages;
         const start = (state.page - 1) * state.pageSize;
         const pageItems = items.slice(start, start + state.pageSize);
@@ -9250,7 +9431,7 @@
             outputBlockHtml = '<div class="item-run-output"><div class="output-header"><span class="output-status-cluster"><span class="run-label">' + outputLabel + '</span>' + statusIndicator + durationPart + timePart + '</span><span class="output-actions">' + copyBtn + traceChip + langfuseChip + '</span></div><div class="output-text ' + (status === 'error' ? 'score-1' : '') + '">' + renderMarkdownSafe(output) + '</div><div class="metric-scores-inline">' + metricScoresHtml + '</div>' + _renderTraceChips(row.trace_stats, row.retry_count) + metricEditHtml + perMetricAnalysisHtml + toggleHtml + metricDetailsHtml + '</div>';
           }
 
-          return '<div class="item-card' + (lensPass ? ' pass-lensed' : '') + '">' +
+          return '<div class="item-card' + (lensPass ? ' pass-lensed' : '') + '" data-item-id="' + escapeAttr(itemId) + '">' +
             '<div class="item-header"><span class="item-index" title="ID: ' + escapeHtml(itemId) + '">#' + (row.index + 1) + '</span><span style="font-size:var(--font-xs);color:var(--text-muted);">(' + escapeHtml(displayItemId) + ')</span><button class="copy-btn" data-item-id="' + escapeAttr(itemId) + '" title="Copy all fields">' + COPY_ICON + '</button></div>' +
             '<div class="item-input-row"><div class="input-label">INPUT <button class="copy-btn" data-copy-text="' + escapeAttr(typeof input === 'object' ? JSON.stringify(input,null,2) : String(input)) + '" title="Copy input">' + COPY_ICON + '</button></div><div class="input-text">' + renderMarkdownSafe(input) + '</div></div>' +
             (expected ? '<div class="item-expected-row"><div class="expected-label">EXPECTED OUTPUT <button class="copy-btn" data-copy-text="' + escapeAttr(typeof expected === 'object' ? JSON.stringify(expected,null,2) : String(expected)) + '" title="Copy expected">' + COPY_ICON + '</button></div><div class="expected-text collapsed">' + renderMarkdownSafe(expected) + '</div><button class="expected-toggle" onclick="this.previousElementSibling.classList.toggle(\'collapsed\'); this.textContent = this.previousElementSibling.classList.contains(\'collapsed\') ? \'Show more \u25BC\' : \'Show less \u25B2\';">Show more \u25BC</button></div>' : '') +
@@ -9272,6 +9453,7 @@
         }
 
         state.hasRenderedItems = true;
+        scrollToTargetItem();
 
         wireMetricEditHandlers();
         wireRootCauseHandlers();

@@ -55,6 +55,7 @@ from qym_platform.permissions import (
     has_project_access,
 )
 from qym_platform.services.run_lifecycle import reconcile_stale_running_run
+from qym_platform.services.root_cause_cleanup import purge_run_root_cause_analysis
 from qym_platform.services.root_cause_changes import (
     apply_root_cause_change,
     replace_metric_review_candidate,
@@ -2794,7 +2795,12 @@ def delete_run(
     if not can_delete_run(db, principal, run):
         raise HTTPException(status_code=403, detail="Permission denied")
 
-    # Soft-delete: mark as deleted instead of removing data
+    # Soft-delete the evaluation data, but remove its root-cause analysis at
+    # the same transaction boundary.  Otherwise review candidates remain
+    # visible while every review mutation rejects the deleted run.
+    analysis_cleanup = purge_run_root_cause_analysis(db, run.id)
+
+    # Soft-delete: mark as deleted instead of removing evaluation data.
     snapshot = run.audit_snapshot()
     run.deleted_at = utc_now_naive()
     run.deleted_by_user_id = principal.user.id
@@ -2805,7 +2811,10 @@ def delete_run(
         entity_type="run",
         entity_id=run.id,
         before=snapshot,
-        after={"deleted_at": run.deleted_at.isoformat()},
+        after={
+            "deleted_at": run.deleted_at.isoformat(),
+            "root_cause_analysis_cleanup": analysis_cleanup,
+        },
     )
     db.add(audit)
     db.commit()

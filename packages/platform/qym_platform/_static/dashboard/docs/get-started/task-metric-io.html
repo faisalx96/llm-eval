@@ -57,7 +57,7 @@ Evaluator(
         "sql_context": "schema",
     },
 )</pre>
-<p>The original input dict is preserved for saved artifacts and display. Metrics can request either the original names (<code>sql_prompt</code>, <code>sql_context</code>) or the mapped names (<code>question</code>, <code>schema</code>) as parameters.</p>
+<p>The original input dict is preserved for saved artifacts and display. Metric <code>input_data</code> uses the mapped names, while metrics can still request either the original names (<code>sql_prompt</code>, <code>sql_context</code>) or the mapped names (<code>question</code>, <code>schema</code>) as individual parameters.</p>
 
 <h3>Auto-injected parameters</h3>
 <p>Three parameter names are special. If your task declares any of them, qym fills them in automatically — they are <strong>not</strong> drawn from the item input:</p>
@@ -112,7 +112,7 @@ Evaluator(
   <tbody>
     <tr><td><code>output</code></td><td>What the task returned (see the envelope note below).</td></tr>
     <tr><td><code>expected</code></td><td>The item's <code>expected_output</code> (or <code>None</code>).</td></tr>
-    <tr><td><code>input_data</code></td><td>The original item <code>input</code>.</td></tr>
+    <tr><td><code>input_data</code></td><td>The item <code>input</code>, using mapped field names when <code>input_mapping</code> applies.</td></tr>
     <tr><td><code>task_metadata</code></td><td>The hidden metadata dict returned by the task-output envelope, or <code>{}</code>.</td></tr>
     <tr><td><code>metadata</code> or <code>item_metadata</code></td><td>The item's <code>metadata</code> dict. Both names resolve to the same value.</td></tr>
     <tr><td>any key in a dict input</td><td>That individual input value. If <code>input_mapping</code> is set, both the original and mapped names are recognized.</td></tr>

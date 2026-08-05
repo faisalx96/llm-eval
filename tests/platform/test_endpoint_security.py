@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 import sys
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from cryptography.fernet import Fernet
@@ -27,6 +27,7 @@ if "openai" not in sys.modules:
     sys.modules["openai"] = MagicMock()
 
 from qym_platform.app import create_app
+from qym_platform.api import analysis as analysis_api
 from qym_platform.db.base import Base
 from qym_platform.db.models import (
     ApiKey,
@@ -46,6 +47,7 @@ from qym_platform.db.models import (
 )
 from qym_platform.deps import get_db
 from qym_platform.security import api_key_prefix, hash_api_key
+from qym_platform.services.analysis_aggregation import AnalysisAggregationError
 
 
 @pytest.fixture()
@@ -287,6 +289,13 @@ def test_run_mutation_permissions_enforced(client, session_factory) -> None:
     )
     assert denied_analyze.status_code == 403
 
+    denied_aggregate = client.post(
+        "/api/runs/run-1/aggregate-analysis",
+        headers=_headers("other@example.com"),
+        json={},
+    )
+    assert denied_aggregate.status_code == 403
+
     owner_document = client.post(
         "/api/runs/run-1/analysis-documents",
         headers=_headers("owner@example.com"),
@@ -386,6 +395,90 @@ def test_run_mutation_permissions_enforced(client, session_factory) -> None:
     )
     assert deleted.status_code == 200
     assert deleted.json() == {"ok": True, "document_id": document_id}
+
+
+def test_saved_analysis_can_be_aggregated_from_the_run(
+    client, session_factory, monkeypatch
+) -> None:
+    with session_factory() as session:
+        _seed_platform_data(session)
+        item = (
+            session.query(RunItem)
+            .filter(RunItem.run_id == "run-1", RunItem.item_id == "item-1")
+            .one()
+        )
+        item.item_metadata = {
+            "metric_analyses": {
+                "judge": {
+                    "source": "ai",
+                    "root_cause": "Reasoning Error",
+                    "root_cause_detail": "Incorrect grouping",
+                }
+            }
+        }
+        session.commit()
+
+    monkeypatch.setattr(
+        analysis_api,
+        "_get_llm_config",
+        lambda *_args, **_kwargs: {"llm_model": "test-model"},
+    )
+    monkeypatch.setattr(analysis_api, "build_client", lambda *_args: object())
+
+    response = client.post(
+        "/api/runs/run-1/aggregate-analysis",
+        headers=_headers("owner@example.com"),
+        json={},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "succeeded"
+    assert response.json()["categories"] == {"Reasoning Error": 1}
+    with session_factory() as session:
+        run = session.get(Run, "run-1")
+        assert run is not None
+        assert run.run_metadata["analysis_aggregation"]["status"] == "succeeded"
+        assert run.run_metadata["analysis_aggregation"]["aggregated"] == 0
+
+
+def test_saved_analysis_aggregation_failure_is_persisted_for_the_run_ui(
+    client, session_factory, monkeypatch
+) -> None:
+    with session_factory() as session:
+        _seed_platform_data(session)
+
+    monkeypatch.setattr(
+        analysis_api,
+        "_get_llm_config",
+        lambda *_args, **_kwargs: {"llm_model": "test-model"},
+    )
+    monkeypatch.setattr(analysis_api, "build_client", lambda *_args: object())
+    monkeypatch.setattr(
+        analysis_api,
+        "_aggregate_run_analysis_results",
+        AsyncMock(
+            side_effect=AnalysisAggregationError(
+                "root_cause_detail aggregation quality retry failed"
+            )
+        ),
+    )
+
+    response = client.post(
+        "/api/runs/run-1/aggregate-analysis",
+        headers=_headers("owner@example.com"),
+        json={},
+    )
+
+    assert response.status_code == 502
+    assert response.headers["X-Qym-Aggregation-Status"] == "failed"
+    assert "quality retry failed" in response.json()["detail"]
+    with session_factory() as session:
+        run = session.get(Run, "run-1")
+        assert run is not None
+        status = run.run_metadata["analysis_aggregation"]
+        assert status["status"] == "failed"
+        assert status["metrics"] is None
+        assert "quality retry failed" in status["error"]
 
 
 def test_regular_member_cannot_repoint_preserved_llm_key(

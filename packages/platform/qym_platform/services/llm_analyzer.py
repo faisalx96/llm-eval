@@ -1023,6 +1023,7 @@ def get_few_shot_examples(
             .filter(
                 ReviewCorrection.task == task,
                 Run.project_id == project_id,
+                Run.deleted_at.is_(None),
                 ReviewCorrection.id.in_(correction_ids),
                 ReviewCorrection.status == CorrectionStatus.APPROVED,
                 ReviewCorrection.is_active.is_(True),
@@ -1037,6 +1038,7 @@ def get_few_shot_examples(
         .filter(
             ReviewCorrection.task == task,
             Run.project_id == project_id,
+            Run.deleted_at.is_(None),
             ReviewCorrection.status == CorrectionStatus.APPROVED,
             ReviewCorrection.is_active.is_(True),
         )
@@ -1059,6 +1061,7 @@ def get_all_approved_examples(
         .filter(
             ReviewCorrection.task == task,
             Run.project_id == project_id,
+            Run.deleted_at.is_(None),
             ReviewCorrection.status == CorrectionStatus.APPROVED,
             ReviewCorrection.is_active.is_(True),
         )
@@ -1735,7 +1738,7 @@ async def analyze_single_item(
         kwargs: dict[str, Any] = dict(
             model=model,
             messages=messages,
-            temperature=temperature if temperature is not None else 0.2,
+            temperature=temperature if temperature is not None else 0.0,
         )
         # Compatibility helper retries without JSON mode for providers that reject it.
         kwargs["response_format"] = {"type": "json_object"}

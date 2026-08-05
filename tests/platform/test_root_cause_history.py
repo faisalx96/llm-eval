@@ -80,7 +80,10 @@ from qym_platform.db.models import (
     User,
     UserRole,
 )
-from qym_platform.services.analysis_aggregation import AnalysisAggregationError
+from qym_platform.services.analysis_aggregation import (
+    AggregationResponse,
+    AnalysisAggregationError,
+)
 from qym_platform.services import llm_analyzer as llm_analyzer_service
 from qym_platform.services.llm_analyzer import (
     ROOT_CAUSE_CATEGORIES,
@@ -1728,6 +1731,7 @@ async def test_analyze_single_item_sends_max_tokens_and_records_provenance() -> 
         max_tokens=321,
     )
 
+    assert create.await_args.kwargs["temperature"] == 0.0
     assert create.await_args.kwargs["max_tokens"] == 321
     assert result.analyzer_model == "test-model"
     assert result.provider_request_id == "provider-request-1"
@@ -2303,9 +2307,9 @@ async def test_zero_target_aggregation_is_a_noop_without_llm_calls(
         "root_cause_source": "ai",
     }
     db_session.commit()
-    create = AsyncMock()
+    parse = AsyncMock()
     client = SimpleNamespace(
-        chat=SimpleNamespace(completions=SimpleNamespace(create=create))
+        chat=SimpleNamespace(completions=SimpleNamespace(parse=parse))
     )
 
     categories, changed = await _aggregate_run_analysis_results(
@@ -2322,7 +2326,84 @@ async def test_zero_target_aggregation_is_a_noop_without_llm_calls(
 
     assert categories == {"Reasoning Error": 1}
     assert changed == 0
-    create.assert_not_awaited()
+    parse.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_forced_aggregation_reprocesses_saved_labels_and_records_status(
+    db_session: Session,
+) -> None:
+    actor, _reviewer, run, item = _seed_run(db_session)
+    item.item_metadata = {
+        "metric_analyses": {
+            "accuracy": {
+                "source": "ai",
+                "root_cause": "Reasoning Error",
+                "root_cause_detail": "Failure variant one",
+            },
+            "format": {
+                "source": "ai",
+                "root_cause": "Reasoning Error",
+                "root_cause_detail": "Failure variant two",
+            },
+        }
+    }
+    db_session.commit()
+    client = SimpleNamespace(
+        chat=SimpleNamespace(
+            completions=SimpleNamespace(
+                parse=AsyncMock(
+                    return_value=SimpleNamespace(
+                        choices=[
+                            SimpleNamespace(
+                                message=SimpleNamespace(
+                                    parsed=AggregationResponse.model_validate(
+                                        {
+                                            "category_clusters": [],
+                                            "detail_clusters": [
+                                                {
+                                                    "canonical_label": (
+                                                        "Shared failure mechanism"
+                                                    ),
+                                                    "member_ids": ["d0", "d1"],
+                                                }
+                                            ],
+                                        }
+                                    )
+                                )
+                            )
+                        ]
+                    )
+                )
+            )
+        )
+    )
+
+    categories, changed = await _aggregate_run_analysis_results(
+        db=db_session,
+        run=run,
+        all_items=[item],
+        analysis_targets=[],
+        new_results=[],
+        client=client,
+        model="test-model",
+        analyzer_config={"root_cause_categories": ["Reasoning Error"]},
+        principal=Principal(user=actor, auth_type="none"),
+        force=True,
+    )
+    db_session.commit()
+    db_session.refresh(item)
+    db_session.refresh(run)
+
+    assert categories == {"Reasoning Error": 2}
+    assert changed == 2
+    metric_analyses = item.item_metadata["metric_analyses"]
+    assert {
+        analysis["root_cause_detail"] for analysis in metric_analyses.values()
+    } == {"Shared failure mechanism"}
+    assert run.run_metadata["analysis_aggregation"]["status"] == "succeeded"
+    assert run.run_metadata["analysis_aggregation"]["metrics"] is None
+    assert run.run_metadata["analysis_aggregation"]["aggregated"] == 2
 
 
 @pytest.mark.asyncio
@@ -2347,11 +2428,11 @@ async def test_failed_aggregation_restores_raw_new_labels(
         ),
     ]
     invalid_response = SimpleNamespace(
-        choices=[SimpleNamespace(message=SimpleNamespace(content='{"groups": []}'))]
+        choices=[SimpleNamespace(message=SimpleNamespace(parsed=None, refusal=None))]
     )
     client = SimpleNamespace(
         chat=SimpleNamespace(
-            completions=SimpleNamespace(create=AsyncMock(return_value=invalid_response))
+            completions=SimpleNamespace(parse=AsyncMock(return_value=invalid_response))
         )
     )
 

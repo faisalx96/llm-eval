@@ -718,6 +718,13 @@ class AnalyzeRequest(BaseModel):
     )
 
 
+class AggregateAnalysisRequest(BaseModel):
+    """Re-run canonicalization over already-saved AI diagnoses."""
+
+    metric: Optional[str] = None
+    connection_id: Optional[str] = None
+
+
 class PreviewRequest(BaseModel):
     """Request to preview the LLM messages for an item."""
 
@@ -994,6 +1001,7 @@ def _collect_task_root_cause_catalog(
         .filter(
             ReviewCorrection.task == run.task,
             Run.project_id == run.project_id,
+            Run.deleted_at.is_(None),
             ReviewCorrection.status == CorrectionStatus.APPROVED,
             ReviewCorrection.is_active.is_(True),
         )
@@ -1250,6 +1258,7 @@ async def _aggregate_run_analysis_results(
     analyzer_config: dict[str, Any] | None,
     principal: Principal,
     metric_scope: set[str] | None = None,
+    force: bool = False,
 ) -> tuple[dict[str, int], int]:
     """Aggregate new and previously saved AI labels across the entire run."""
     successful_item_ids = {result.item_id for result in new_results if not result.error}
@@ -1261,8 +1270,15 @@ async def _aggregate_run_analysis_results(
     )
     combined_results = [*new_results, *(binding.result for binding in bindings)]
     if not combined_results:
+        if force:
+            _record_run_aggregation_status(
+                run,
+                status="succeeded",
+                metric_scope=metric_scope,
+                aggregated=0,
+            )
         return {}, 0
-    if not analysis_targets and not new_results:
+    if not analysis_targets and not new_results and not force:
         return _category_counts(combined_results), 0
 
     labels_before = [
@@ -1279,8 +1295,6 @@ async def _aggregate_run_analysis_results(
             known_details=(analyzer_config or {}).get("root_cause_details") or [],
             known_category_details=(analyzer_config or {}).get("category_details_map")
             or {},
-            known_solutions=(analyzer_config or {}).get("solution_categories")
-            or SOLUTION_CATEGORIES,
         )
     except AnalysisAggregationError:
         for result, before in zip(combined_results, labels_before):
@@ -1296,7 +1310,37 @@ async def _aggregate_run_analysis_results(
         bindings,
         principal,
     )
-    return categories, changed_new_results + changed_saved_results
+    aggregated = changed_new_results + changed_saved_results
+    _record_run_aggregation_status(
+        run,
+        status="succeeded",
+        metric_scope=metric_scope,
+        aggregated=aggregated,
+    )
+    return categories, aggregated
+
+
+def _record_run_aggregation_status(
+    run: Run,
+    *,
+    status: Literal["succeeded", "failed"],
+    metric_scope: set[str] | None,
+    aggregated: int = 0,
+    error: str | None = None,
+) -> dict[str, Any]:
+    """Persist the latest aggregation outcome for the run-detail UI."""
+    payload: dict[str, Any] = {
+        "status": status,
+        "metrics": sorted(metric_scope) if metric_scope is not None else None,
+        "aggregated": int(aggregated),
+        "updated_at": to_api_timestamp(utc_now_naive()),
+    }
+    if error:
+        payload["error"] = str(error)[:2000]
+    metadata = dict(run.run_metadata) if isinstance(run.run_metadata, dict) else {}
+    metadata["analysis_aggregation"] = payload
+    run.run_metadata = metadata
+    return payload
 
 
 def _raw_run_analysis_counts(
@@ -1735,6 +1779,77 @@ async def _analyze_targets_batch(
     return results
 
 
+@router.post("/api/runs/{run_id:path}/aggregate-analysis")
+async def aggregate_saved_analysis_results(
+    run_id: str,
+    request: AggregateAnalysisRequest,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_ui_principal),
+) -> Dict[str, Any]:
+    """Canonicalize saved AI diagnoses without rerunning item analysis."""
+    run = Run.active(db).filter(Run.id == run_id).first()
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+    if not _can_operate_analyzer(db, principal, run):
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    all_items, scores_by_item = _load_run_items_and_scores(db, run)
+    _validate_requested_metric(run, scores_by_item, request.metric)
+    metric_scope = {request.metric} if request.metric else None
+    llm_config = _get_llm_config(db, run.project_id, request.connection_id)
+    categories, category_details_map = _collect_task_root_cause_catalog(
+        db, run, all_items
+    )
+    analyzer_config = _analysis_config_with_project_context(
+        db,
+        run,
+        {
+            "root_cause_categories": categories,
+            "category_details_map": category_details_map,
+        },
+    )
+
+    try:
+        category_counts, aggregated = await _aggregate_run_analysis_results(
+            db=db,
+            run=run,
+            all_items=all_items,
+            analysis_targets=[],
+            new_results=[],
+            client=build_client(llm_config),
+            model=llm_config.get("llm_model", "gpt-4o-mini"),
+            analyzer_config=analyzer_config,
+            principal=principal,
+            metric_scope=metric_scope,
+            force=True,
+        )
+        db.commit()
+    except AnalysisAggregationError as exc:
+        db.rollback()
+        aggregation_status = _record_run_aggregation_status(
+            run,
+            status="failed",
+            metric_scope=metric_scope,
+            error=str(exc),
+        )
+        db.commit()
+        logger.warning(
+            "Saved analysis aggregation failed for run %s: %s", run_id, exc
+        )
+        raise HTTPException(
+            status_code=502,
+            detail=str(exc),
+            headers={"X-Qym-Aggregation-Status": aggregation_status["status"]},
+        ) from exc
+
+    return {
+        "status": "succeeded",
+        "categories": category_counts,
+        "aggregated": aggregated,
+        "metric": request.metric,
+    }
+
+
 @router.post("/api/runs/{run_id:path}/analyze")
 async def analyze_run_items(
     run_id: str,
@@ -1829,6 +1944,13 @@ async def analyze_run_items(
         )
     except AnalysisAggregationError as exc:
         db.rollback()
+        _record_run_aggregation_status(
+            run,
+            status="failed",
+            metric_scope=metric_scope,
+            error=str(exc),
+        )
+        logger.warning("Analysis aggregation failed for run %s: %s", run_id, exc)
         categories = _raw_run_analysis_counts(
             all_items,
             analysis_targets,
@@ -2026,6 +2148,17 @@ async def analyze_run_items_stream(
                         )
                     except AnalysisAggregationError as exc:
                         db.rollback()
+                        _record_run_aggregation_status(
+                            run,
+                            status="failed",
+                            metric_scope=metric_scope,
+                            error=str(exc),
+                        )
+                        logger.warning(
+                            "Analysis aggregation failed for run %s: %s",
+                            run_id,
+                            exc,
+                        )
                         categories = _raw_run_analysis_counts(
                             all_items,
                             analysis_targets,
@@ -3245,8 +3378,6 @@ async def analyze_test(
             known_details=(analyzer_config or {}).get("root_cause_details") or [],
             known_category_details=(analyzer_config or {}).get("category_details_map")
             or {},
-            known_solutions=(analyzer_config or {}).get("solution_categories")
-            or SOLUTION_CATEGORIES,
         )
     except AnalysisAggregationError as exc:
         for result, labels in zip(analyzed_results, raw_labels):
@@ -3295,6 +3426,7 @@ def get_corrections(
         .filter(
             ReviewCorrection.task == run.task,
             Run.project_id == run.project_id,
+            Run.deleted_at.is_(None),
             ReviewCorrection.status == CorrectionStatus.APPROVED,
             ReviewCorrection.is_active.is_(True),
         )
@@ -3390,6 +3522,7 @@ def get_analysis_config(
         .filter(
             ReviewCorrection.task == run.task,
             Run.project_id == run.project_id,
+            Run.deleted_at.is_(None),
             ReviewCorrection.status == CorrectionStatus.APPROVED,
             ReviewCorrection.is_active.is_(True),
         )

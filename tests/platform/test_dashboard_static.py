@@ -12,6 +12,10 @@ DOCS_JS = DASHBOARD_DIR / "docs.js"
 DOCS_CSS = DASHBOARD_DIR / "docs.css"
 RUNS_API = ROOT / "packages" / "platform" / "qym_platform" / "api" / "runs.py"
 ANALYSIS_API = ROOT / "packages" / "platform" / "qym_platform" / "api" / "analysis.py"
+OVERVIEW_HTML = DASHBOARD_DIR / "overview.html"
+ANALYZER_HTML = DASHBOARD_DIR / "analyzer.html"
+INSIGHTS_JS = DASHBOARD_DIR / "insights.js"
+CANDIDATE_RELATIONSHIPS_JS = DASHBOARD_DIR / "candidate_relationships.js"
 
 
 def test_docs_page_switch_is_atomic_and_layout_stable() -> None:
@@ -51,6 +55,34 @@ def test_empty_dashboard_links_to_first_run_docs() -> None:
     assert 'href="/docs-guide#get-started/first-run"' in markup
     assert "qym --task-file my_task.py" not in markup
     assert "emptyDocsLink.href = apiUrl('docs-guide#get-started/first-run');" in source
+
+
+def test_analysis_dashboard_contains_project_wide_candidate_relationships() -> None:
+    markup = ANALYZER_HTML.read_text(encoding="utf-8")
+    overview = OVERVIEW_HTML.read_text(encoding="utf-8")
+    source = CANDIDATE_RELATIONSHIPS_JS.read_text(encoding="utf-8")
+
+    assert 'id="candidate-relationships-card"' in markup
+    assert 'id="candidate-relationships-title"' in markup
+    assert 'data-candidate-direction="more_common"' in markup
+    assert 'data-candidate-direction="less_common"' in markup
+    assert 'id="candidate-category-search"' in markup
+    assert 'id="candidate-evidence-drawer"' in markup
+    assert '<script src="/static/candidate_relationships.js?v=candidate-relationships-20260805-2"></script>' in markup
+    assert 'id="insights-card"' not in markup
+    assert 'Metric trends across runs' not in markup
+    assert markup.index('id="candidate-relationships-card"') < markup.index(
+        '<section class="analysis-dashboard-card analysis-dashboard-card-wide analysis-dashboard-occurrences-card">'
+    )
+    assert 'id="candidate-relationships-card"' not in overview
+    assert "function loadAnalysis()" in source
+    assert "insights/relationships" in source
+    assert "See matching executions" in source
+    assert "Longer bar = more occurrences" in source
+    assert "All conditions present" in source
+    assert "Analysis details" in source
+    # The legacy timeline remains available for later relocation.
+    assert "if (!el('insights-card')) return;" in INSIGHTS_JS.read_text(encoding="utf-8")
 
 
 def test_repeat_run_rows_render_pass_dot_strip() -> None:
@@ -1036,6 +1068,9 @@ def test_auto_analysis_is_a_first_class_project_page() -> None:
     assert '>Publish</span>' in playground
     assert '>Promote</span>' in playground
     assert '>Live</span>' in playground
+    assert 'lifecycle-label">Publish</span>\' + _icon(\'upload\')' in playground
+    assert 'lifecycle-label">Promote</span>\' + _icon(\'rocket\')' in playground
+    assert 'lifecycle-label">Live</span>\' + _icon(\'checkFilled\')' in playground
     assert "_icon('merge')" in playground
     assert "M6 4v4c0 4 2 6 6 6h6" in playground
     assert "candidate.is_active;" in playground
@@ -1128,8 +1163,12 @@ def test_auto_analysis_is_a_first_class_project_page() -> None:
     assert "Aggregating root causes\\u2026" in playground
     assert "labels consolidated" in playground
     assert 'id="pg-target-limit"' in playground
-    assert 'id="pg-target-limit-decrease"' not in playground
-    assert 'id="pg-target-limit-increase"' not in playground
+    assert 'class="pg-target-limit-control"' in playground
+    assert 'data-target-limit-step="increase"' in playground
+    assert 'data-target-limit-step="decrease"' in playground
+    assert "_icon('chevronUp')" in playground
+    assert "_icon('chevronDown')" in playground
+    assert "targetLimit.dispatchEvent(new Event('input'" in playground
     assert 'maxlength="4"' in playground
     assert 'placeholder="All"' in playground
     assert "Empty = all" not in playground
@@ -1179,6 +1218,15 @@ def test_auto_analysis_page_uses_first_class_run_rules_and_document_tabs() -> No
     assert "Choose another run" not in analyzer
     assert ">Select all</button>" in analyzer
     assert ">Clear</button>" in analyzer
+    assert ">Apply</button>" not in analyzer
+    assert "updateFilterTrigger(wrapper, key, label);" in analyzer
+    assert "state.dashboard.openFilterKey = key;" in analyzer
+    assert "reopenDashboardFilter(host);" in analyzer
+    assert "filterFacets: null" in analyzer
+    assert "run_id: 'runs'" in analyzer
+    assert "review_status: 'review_statuses'" in analyzer
+    assert "No options match the current scope." in analyzer
+    assert ").filter(definition => definition[2].length)" not in analyzer
     assert 'class="analysis-run-context" aria-label="Run information"' in analyzer
     assert 'analysis-run-context-label">Run ID' not in analyzer
     assert "Production rules" in analyzer
@@ -1186,11 +1234,27 @@ def test_auto_analysis_page_uses_first_class_run_rules_and_document_tabs() -> No
     assert 'role="tablist"' in analyzer
     assert 'id="analysis-rules-tab"' in analyzer
     assert 'id="analysis-documents-tab"' in analyzer
+    assert 'id="analysis-dashboard-tab"' in analyzer
+    assert 'data-analysis-view="dashboard"' in analyzer
+    assert 'id="analysis-dashboard-view"' in analyzer
+    assert 'src="/static/qym_table.js"' in analyzer
+    assert "analysis-dashboard-toolbar" not in analyzer
+    assert "analysis-dashboard-compare-toolbar" in analyzer
+    assert 'data-dashboard-compare-group="' in analyzer
+    assert 'data-dashboard-compare-measure="' in analyzer
+    assert "analysis-dashboard-compare-score-metric" in analyzer
+    assert 'data-dashboard-measure="failure"' not in analyzer
+    assert 'data-dashboard-outcome=' not in analyzer
+    assert "root-cause-dashboard/compare" in analyzer
+    assert "root-cause-dashboard/occurrences" in analyzer
+    assert "comparison_status" in analyzer
+    assert "score_compatibility" in analyzer or "Comparison unavailable" in analyzer
     assert 'id="analysis-run-tab"' in analyzer
     assert 'id="analysis-diagnosis-tab"' in analyzer
     assert 'aria-controls="analysis-diagnosis-view"' in analyzer
     assert 'aria-disabled="true" disabled' in analyzer
     assert "setAnalyzerView(state.currentView" in analyzer
+    assert "landing.hidden = nextView !== 'run' || Boolean(runId);" in analyzer
     assert "nextParams.set('scope', nextView)" in analyzer
     assert "Project documents" in analyzer
     assert 'data-context-view="\' + item[3] + \'"' in analyzer
@@ -1221,6 +1285,12 @@ def test_auto_analysis_page_uses_first_class_run_rules_and_document_tabs() -> No
     assert "max-height: 420px" in analyzer
     assert "max-height: 640px" in analyzer
     assert "grid-template-columns: minmax(220px, 0.46fr) minmax(0, 1.54fr);" in analyzer
+    lifecycle_styles = styles.split(".pg-rule-version-lifecycle {", 1)[1].split("}", 1)[0]
+    assert "flex-direction: row;" in lifecycle_styles
+    assert "justify-content: space-between;" in lifecycle_styles
+    assert "gap: var(--space-sm);" in lifecycle_styles
+    assert ".pg-target-limit-control" in styles
+    assert "min-height: 36px;" in styles
     footer_style = analyzer.split(".analysis-project-footer {", 1)[1].split("}", 1)[0]
     assert "position: fixed" not in footer_style
     assert "border-top: 1px solid var(--border-subtle);" in footer_style
@@ -1240,6 +1310,125 @@ def test_auto_analysis_page_uses_first_class_run_rules_and_document_tabs() -> No
     assert "analysis-document-scope-note" not in playground
 
 
+def test_root_cause_dashboard_wires_visual_distribution_and_multi_run_compare() -> None:
+    analyzer = (DASHBOARD_DIR / "analyzer.html").read_text(encoding="utf-8")
+    dashboard_script = analyzer.split("const rootPath", 1)[1]
+
+    # The distribution card is rendered explicitly; it is not left as an
+    # empty placeholder when the dashboard payload arrives.
+    assert "renderDashboardCategoryDistribution(payload);" in dashboard_script
+    assert "analysis-dashboard-ring" in dashboard_script
+    assert "analysis-dashboard-distribution-label" in dashboard_script
+    assert '<span class="analysis-dashboard-distribution-label">' in dashboard_script
+    assert "data-dashboard-focus" not in dashboard_script
+    assert "focusDashboardFilter" not in dashboard_script
+    assert "bindDashboardFocus" not in dashboard_script
+    ring_hole = _rule(analyzer, ".analysis-dashboard-ring::before {")
+    assert "width: 76%;" in ring_hole
+    assert "height: 76%;" in ring_hole
+    distribution_item = _rule(analyzer, ".analysis-dashboard-distribution-item {")
+    assert "display: grid;" in distribution_item
+    assert "grid-template-columns:" in distribution_item
+    assert "82px;" in distribution_item
+    assert "<span>diagnoses</span>" in dashboard_script
+    assert "categoryDistributionExpanded" in dashboard_script
+    assert "data-dashboard-category-toggle" in dashboard_script
+    assert "+' + formatDashboardNumber(remainingCount) + ' more categories'" in dashboard_script
+
+    # Run selection is available from the score context and is capped with a
+    # visible compare affordance instead of requiring a hidden table mode.
+    assert "bindDashboardRunSelection(host);" in dashboard_script
+    assert "Select 2+ runs" in dashboard_script
+    assert "compare.disabled = !ready;" in dashboard_script
+    assert "analysis-dashboard-stacked-segment" in dashboard_script
+    assert "analysis-dashboard-compare-visual" in dashboard_script
+    assert "dashboardCompareMeasureValue" in dashboard_script
+    assert "payload.metric_matrix" in dashboard_script
+    assert "payload.run_summary" in dashboard_script
+    assert "payload.facets?.score_metrics" in dashboard_script
+    assert "state.dashboard.compareOpen" in dashboard_script
+    assert "renderDashboardCompare(payload, { preserveControls });" in dashboard_script
+    assert "await loadDashboardCompare();" in dashboard_script
+    assert "query.set('score_metric', state.dashboard.compareScoreMetric);" in dashboard_script
+    assert "state.dashboard.compareScoreMetric = event.target.value || '';" in dashboard_script
+    assert "loadDashboardCompare().catch(error => showDashboardError(error));" in dashboard_script
+    assert "renderDashboardCompare(state.dashboard.comparePayload || payload, { preserveControls: true });" in dashboard_script
+    assert "host.querySelector('.analysis-dashboard-compare-visual').outerHTML = matrixHtml;" in dashboard_script
+    assert "improvement_delta" in dashboard_script
+    assert "requestSequence !== state.dashboard.requestSequence" in dashboard_script
+    assert "occurrencesSequence" in dashboard_script
+
+    # Filter actions distinguish an empty scope from selecting every option.
+    assert "DASHBOARD_NONE_FILTER" not in dashboard_script
+    assert "state.dashboard.filters[key] = [DASHBOARD_NONE_FILTER];" not in dashboard_script
+
+
+def test_root_cause_compare_controls_update_in_place() -> None:
+    analyzer = (DASHBOARD_DIR / "analyzer.html").read_text(encoding="utf-8")
+    dashboard_script = analyzer.split("const rootPath", 1)[1]
+
+    assert "renderDashboardCompare(payload, { preserveControls });" in dashboard_script
+    assert (
+        "renderDashboardCompare(state.dashboard.comparePayload || payload, "
+        "{ preserveControls: true });"
+    ) in dashboard_script
+    assert (
+        "host.querySelector('.analysis-dashboard-compare-visual').outerHTML = "
+        "matrixHtml;"
+    ) in dashboard_script
+    assert "if (!keepToolbar)" in dashboard_script
+    assert "const DASHBOARD_COMPARE_ALL_METRICS = '__all__';" in dashboard_script
+    assert ">All</option>" in dashboard_script
+    assert "if (state.dashboard.compareScoreMetric === DASHBOARD_COMPARE_ALL_METRICS) return;" in dashboard_script
+
+
+def test_root_cause_dashboard_keeps_context_compact_and_themes_drilldowns() -> None:
+    analyzer = (DASHBOARD_DIR / "analyzer.html").read_text(encoding="utf-8")
+
+    assert analyzer.count('class="analysis-dashboard-card analysis-dashboard-context-card"') == 2
+    context_card = _rule(analyzer, ".analysis-dashboard-context-card {")
+    assert "height: 340px;" in context_card
+    assert "flex-direction: column;" in context_card
+    context_body = _rule(analyzer, ".analysis-dashboard-context-body {")
+    assert "overflow-y: auto;" in context_body
+    assert "scrollbar-gutter: stable;" in context_body
+
+    assert "Current breakdown" not in analyzer
+    assert "analysis-dashboard-breakdown" not in analyzer
+    compare_category = _rule(analyzer, ".analysis-dashboard-compare-category {")
+    assert "grid-template-columns: minmax(180px, 220px) minmax(0, 1fr) 190px;" in compare_category
+    assert "text-align: right;" in _rule(
+        analyzer, ".analysis-dashboard-compare-category-values {"
+    )
+
+    assert "runFooter.hidden = nextView !== 'run' || !runId;" in analyzer
+    assert ".analysis-page .playground-footer[hidden]" in analyzer
+    assert "analysis-dashboard-occurrence-count" in analyzer
+    assert "Diagnosis occurrence map" in analyzer
+    assert "analysis-dashboard-occurrence-graph" in analyzer
+    assert "analysis-dashboard-occurrence-lane" in analyzer
+    assert "analysis-dashboard-occurrence-dot" in analyzer
+    assert "analysis-dashboard-occurrence-inspector" in analyzer
+    occurrence_dot = _rule(analyzer, ".analysis-dashboard-occurrence-dot {")
+    assert "border: 2px solid var(--occurrence-color, var(--chart-1));" in occurrence_dot
+    assert "box-shadow" not in occurrence_dot
+    occurrence_dot_active = _rule(
+        analyzer,
+        '.analysis-dashboard-occurrence-dot[aria-pressed="true"] {',
+    )
+    assert "transform" not in occurrence_dot_active
+    assert "dashboardOccurrenceBucket" not in analyzer
+    assert "grouped by root-cause category" in analyzer
+    assert "<span>Diagnoses</span>" in analyzer
+    assert "const outcomes =" not in analyzer
+    assert "data-dashboard-occurrence-index" in analyzer
+    assert "role=\"grid\"" in analyzer
+    assert "window.QymDataTable.render" not in analyzer
+    assert "const pageLimit = 500;" in analyzer
+    assert "while (rows.length < occurrenceTotal)" in analyzer
+    assert "const occurrenceTotal = Number(data.total || 0);" in analyzer
+
+
 def test_root_cause_breakdowns_support_metric_scoping() -> None:
     for page_name in ("run.html", "compare.html"):
         source = (DASHBOARD_DIR / page_name).read_text(encoding="utf-8")
@@ -1250,6 +1439,24 @@ def test_root_cause_breakdowns_support_metric_scoping() -> None:
         assert "getRowRootCauseAnalyses(row, state.rootCauseMetric)" in source
         assert "analysis.root_cause_detail" in source
         assert "renderSankeyDiagram" in source
+
+
+def test_aggregation_failure_is_visible_and_retryable_from_the_run() -> None:
+    run = (DASHBOARD_DIR / "run.html").read_text(encoding="utf-8")
+    analyzer = (DASHBOARD_DIR / "analyzer.html").read_text(encoding="utf-8")
+    playground = (DASHBOARD_DIR / "playground.js").read_text(encoding="utf-8")
+    analysis_api = ANALYSIS_API.read_text(encoding="utf-8")
+
+    assert '@router.post("/api/runs/{run_id:path}/aggregate-analysis")' in analysis_api
+    assert "analysis_aggregation" in analysis_api
+    assert "analysisAggregationStatus" in run
+    assert "root-cause-breakdown-header" in run
+    assert "Aggregate results" in run
+    assert "aggregateSavedResults" in run
+    assert "Aggregation failed" in run
+    assert "Analysis saved; aggregation failed" in analyzer
+    assert "Analysis saved; aggregation failed" in playground
+    assert "pg-runall-partial" in playground
 
 
 def test_shell_and_run_detail_normalize_trailing_slashes_before_route_parsing() -> None:

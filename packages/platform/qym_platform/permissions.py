@@ -67,6 +67,10 @@ def can_delete_run(db: Session, principal: Principal, run: Run) -> bool:
 
 
 def apply_reviewable_run_filter(query: Query, db: Session, principal: Principal) -> Query:
+    # Review candidates are editable only while their run is active.  Keep
+    # this invariant in the shared filter so soft-deleted runs cannot leak into
+    # the queue (where the mutation endpoints correctly reject them).
+    query = query.filter(Run.deleted_at.is_(None))
     if principal.auth_type == "none" or principal.user.role == UserRole.ADMIN:
         return query
 

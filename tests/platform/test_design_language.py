@@ -112,6 +112,8 @@ class TestTypographyTokens:
             "--font-title: 22px",
             "--font-stat: 26px",
             "--accent-tertiary-soft: #c084fc",
+            "--control-height: 24px",
+            "--control-radius: 5px",
         ):
             assert decl in css, f"dashboard.css :root lost token declaration '{decl}'"
         shell = (DASHBOARD_DIR / "shell.css").read_text(encoding="utf-8")
@@ -164,6 +166,60 @@ class TestColorRamp:
 
 
 class TestSharedComponents:
+    def test_shared_ui_primitives_and_auto_analysis_wiring(self):
+        """Canonical controls back the auto-analysis dashboard, not local variants."""
+        css_path = DASHBOARD_DIR / "ui_components.css"
+        js_path = DASHBOARD_DIR / "ui_components.js"
+        assert css_path.exists() and js_path.exists()
+        css = css_path.read_text(encoding="utf-8")
+        js = js_path.read_text(encoding="utf-8")
+        analyzer = (DASHBOARD_DIR / "analyzer.html").read_text(encoding="utf-8")
+
+        control = re.search(r"\.qym-control \{(.*?)\}", css, re.S)
+        assert control
+        assert "height: var(--control-height)" in control.group(1)
+        assert "border-radius: var(--control-radius)" in control.group(1)
+        assert "font-size: var(--font-sm)" in control.group(1)
+        assert "font-family: var(--font-sans)" in control.group(1)
+
+        dropdown_option = re.search(r"\.qym-dropdown__option \{(.*?)\}", css, re.S)
+        assert dropdown_option
+        assert "min-height: var(--dropdown-option-height)" in dropdown_option.group(1)
+        stat_item = re.search(r"\.qym-stat-strip__item \{(.*?)\}", css, re.S)
+        assert stat_item and "border-left: 1px solid var(--border-subtle)" in stat_item.group(1)
+        assert "font-size: var(--font-md)" in re.search(
+            r"\.qym-stat-strip__label \{(.*?)\}", css, re.S
+        ).group(1)
+        assert "font-size: var(--font-xl)" in re.search(
+            r"\.qym-stat-strip__value \{(.*?)\}", css, re.S
+        ).group(1)
+        assert "@media (prefers-reduced-motion: reduce)" in css
+
+        assert all(key in js for key in ("ArrowLeft", "ArrowRight", "Home", "End"))
+        assert "ResizeObserver" in js
+        assert "qym-segmented__indicator" in js
+        assert "aria-describedby" in js
+
+        assert 'src="/static/ui_components.js' in analyzer and " defer" in analyzer
+        assert analyzer.index("</style>") < analyzer.index('href="/static/ui_components.css')
+        assert 'class="analysis-tabs qym-tabs"' in analyzer
+        assert 'class="analysis-tab qym-tabs__tab"' in analyzer
+        assert 'class="analysis-dashboard-kpis qym-stat-strip"' in analyzer
+        assert "qym-stat-strip__item" in analyzer
+        assert "qym-badge" in analyzer and "qym-tag--data" in analyzer
+        assert "analysis-dashboard-multi" not in analyzer
+        assert "analysis-dashboard-kpi\"" not in analyzer
+
+        filter_markup = analyzer.split(
+            "return '<div class=\"analysis-dashboard-filter", 1
+        )[1].split("}).join('');", 1)[0]
+        assert filter_markup.index("qym-dropdown__search") < filter_markup.index(
+            "qym-dropdown__actions"
+        ) < filter_markup.index("optionsHtml")
+        assert "data-dashboard-filter-only" not in analyzer
+        assert ">Select all</button>" in analyzer
+        assert ">Clear</button>" in analyzer
+
     def test_qdt_table_reference_implementation(self):
         """.qdt-table is the blessed table recipe — keep it on-spec."""
         css = (DASHBOARD_DIR / "dashboard.css").read_text(encoding="utf-8")

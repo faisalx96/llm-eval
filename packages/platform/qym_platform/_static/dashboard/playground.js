@@ -200,6 +200,8 @@ window.QymPlayground = (function () {
       upload: '<path d="M12 14V4"></path><path d="m7 9 5-5 5 5"></path><path d="M5 14v6h14v-6"></path>',
       rocket: '<path d="M4.5 16.5c-1.5 1.3-2 5-2 5s3.7-.5 5-2a2.2 2.2 0 0 0-.1-2.9 2.2 2.2 0 0 0-2.9-.1Z"></path><path d="m12 15-3-3a22 22 0 0 1 2-4A13 13 0 0 1 22 2c0 2.7-.8 7.2-6 10a22 22 0 0 1-4 3Z"></path><path d="M9 12H4s.6-3 2-4c1.6-1.1 5 0 5 0"></path><path d="M12 15v5s3-.6 4-2c1.1-1.6 0-5 0-5"></path><circle cx="16" cy="8" r="1"></circle>',
       chevron: '<path d="m9 18 6-6-6-6"></path>',
+      chevronUp: '<path d="m6 15 6-6 6 6"></path>',
+      chevronDown: '<path d="m6 9 6 6 6-6"></path>',
       plus: '<path d="M12 5v14M5 12h14"></path>',
       trash: '<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v5M14 11v5"></path>',
     };
@@ -986,13 +988,13 @@ window.QymPlayground = (function () {
       var created = version.created_at ? new Date(version.created_at).toLocaleString() : 'Unknown date';
       var lifecycleAction = '';
       if (version.status === 'draft' && _canActivateRuleVersions) {
-        lifecycleAction = '<button class="pg-rule-version-lifecycle pg-rule-version-lifecycle-draft" type="button" data-publish-rule-version="' + _escAttr(version.id) + '" title="Publish v' + version.version + '" aria-label="Publish version ' + version.version + '">' + _icon('upload') + '<span class="pg-rule-version-lifecycle-label">Publish</span></button>';
+        lifecycleAction = '<button class="pg-rule-version-lifecycle pg-rule-version-lifecycle-draft" type="button" data-publish-rule-version="' + _escAttr(version.id) + '" title="Publish v' + version.version + '" aria-label="Publish version ' + version.version + '"><span class="pg-rule-version-lifecycle-label">Publish</span>' + _icon('upload') + '</button>';
       } else if (version.status === 'published' && !version.is_active && _canActivateRuleVersions) {
-        lifecycleAction = '<button class="pg-rule-version-lifecycle pg-rule-version-lifecycle-published" type="button" data-activate-rule-version="' + _escAttr(version.id) + '" title="Promote v' + version.version + ' to production" aria-label="Promote version ' + version.version + ' to production">' + _icon('rocket') + '<span class="pg-rule-version-lifecycle-label">Promote</span></button>';
+        lifecycleAction = '<button class="pg-rule-version-lifecycle pg-rule-version-lifecycle-published" type="button" data-activate-rule-version="' + _escAttr(version.id) + '" title="Promote v' + version.version + ' to production" aria-label="Promote version ' + version.version + ' to production"><span class="pg-rule-version-lifecycle-label">Promote</span>' + _icon('rocket') + '</button>';
       } else if (version.is_active) {
-        lifecycleAction = '<span class="pg-rule-version-lifecycle pg-rule-version-production" title="Live version" aria-label="Live version">' + _icon('checkFilled') + '<span class="pg-rule-version-lifecycle-label">Live</span></span>';
+        lifecycleAction = '<span class="pg-rule-version-lifecycle pg-rule-version-production" title="Live version" aria-label="Live version"><span class="pg-rule-version-lifecycle-label">Live</span>' + _icon('checkFilled') + '</span>';
       } else {
-        lifecycleAction = '<span class="pg-rule-version-lifecycle" title="' + _escAttr(state) + '" aria-label="' + _escAttr(state) + '">' + _icon('check') + '<span class="pg-rule-version-lifecycle-label">' + _esc(state) + '</span></span>';
+        lifecycleAction = '<span class="pg-rule-version-lifecycle" title="' + _escAttr(state) + '" aria-label="' + _escAttr(state) + '"><span class="pg-rule-version-lifecycle-label">' + _esc(state) + '</span>' + _icon('check') + '</span>';
       }
 
       var menuActions = [];
@@ -1156,7 +1158,13 @@ window.QymPlayground = (function () {
     filterBody += '<label class="pg-filter-check"><span class="custom-checkbox"><input type="checkbox" id="pg-allow-human-overwrite" /><span class="checkmark"></span></span><span>Re-analyze human labels</span></label>';
     filterBody += '</div></div>';
     filterBody += '<div class="pg-filter-limit"><label class="pg-filter-label" for="pg-target-limit">Analyze limit</label>' +
-      '<input type="text" id="pg-target-limit" inputmode="numeric" pattern="[0-9]*" maxlength="4" placeholder="All" autocomplete="off" /></div>';
+      '<div class="pg-target-limit-control">' +
+        '<input type="text" id="pg-target-limit" inputmode="numeric" pattern="[0-9]*" maxlength="4" placeholder="All" autocomplete="off" />' +
+        '<div class="pg-target-limit-steppers" role="group" aria-label="Adjust analyze limit">' +
+          '<button class="pg-target-limit-step" type="button" data-target-limit-step="increase" aria-label="Increase analyze limit" aria-controls="pg-target-limit">' + _icon('chevronUp') + '</button>' +
+          '<button class="pg-target-limit-step" type="button" data-target-limit-step="decrease" aria-label="Decrease analyze limit" aria-controls="pg-target-limit">' + _icon('chevronDown') + '</button>' +
+        '</div>' +
+      '</div></div>';
     filterBody += '</div>';
     filterBody += '<div id="pg-matched-section">';
     filterBody += _buildMatchedItemsTable();
@@ -2720,6 +2728,19 @@ window.QymPlayground = (function () {
         if (targetLimit.value !== digits) targetLimit.value = digits;
         _updateFooterCount();
       });
+      document.querySelectorAll('[data-target-limit-step]').forEach(function (stepButton) {
+        stepButton.addEventListener('click', function (event) {
+          event.preventDefault();
+          var direction = stepButton.dataset.targetLimitStep === 'decrease' ? -1 : 1;
+          var current = parseInt(targetLimit.value, 10);
+          var next = Number.isFinite(current) ? current + direction : (direction > 0 ? 1 : '');
+          if (next !== '' && next < 1) next = '';
+          if (next !== '') next = Math.min(next, Math.pow(10, targetLimit.maxLength || 4) - 1);
+          targetLimit.value = next === '' ? '' : String(next);
+          targetLimit.dispatchEvent(new Event('input', { bubbles: true }));
+          targetLimit.focus();
+        });
+      });
       targetLimit.addEventListener('blur', function () {
         if (targetLimit.value && parseInt(targetLimit.value, 10) < 1) targetLimit.value = '';
         _updateFooterCount();
@@ -3224,6 +3245,7 @@ window.QymPlayground = (function () {
     function finishRunAll(data) {
       var analyzed = Number(data.total_analyzed || 0);
       var aggregated = Number(data.aggregated || 0);
+      var aggregationError = String(data.aggregation_error || '').trim();
       var completionText = analyzed > 0
         ? 'Analyzed <strong>' + analyzed + '</strong> metric failures successfully'
         : 'Existing root-cause analysis checked successfully';
@@ -3234,22 +3256,35 @@ window.QymPlayground = (function () {
         fill.style.transition = 'width 0.3s ease-out';
         fill.style.width = '100%';
       }
-      if (progressText) progressText.textContent = 'Analysis Complete!';
-      if (subtext) subtext.textContent = 'Finalizing results...';
+      if (progressText) {
+        progressText.textContent = aggregationError
+          ? 'Analysis saved; aggregation failed'
+          : 'Analysis Complete!';
+      }
+      if (subtext) {
+        subtext.textContent = aggregationError
+          ? 'Raw diagnoses were saved without consolidation. You can retry from the run page.'
+          : 'Finalizing results...';
+      }
 
       var resultsEl = document.getElementById('pg-runall-results');
       if (resultsEl) {
-        resultsEl.innerHTML = '<div class="pg-runall-done">' +
-          '<div class="pg-runall-done-icon">\u2728</div>' +
+        resultsEl.innerHTML = '<div class="pg-runall-done' + (aggregationError ? ' pg-runall-partial' : '') + '">' +
+          '<div class="pg-runall-done-icon">' + (aggregationError ? '\u26A0\uFE0F' : '\u2728') + '</div>' +
           '<div class="pg-runall-done-text">' + completionText +
           (data.errors > 0 ? '<div class="pg-runall-done-error">\u26A0\uFE0F ' + data.errors + ' metric analyses failed</div>' : '') +
+          (aggregationError ? '<div class="pg-runall-aggregation-error">Aggregation failed: ' + _esc(aggregationError) + '</div>' : '') +
           '</div></div>';
       }
 
       if (_opts.showToast) {
-        var toastText = analyzed + ' metric failures analyzed';
-        if (aggregated > 0) toastText += ' · ' + aggregated + ' labels consolidated';
-        _opts.showToast('success', 'Analysis Complete', toastText);
+        if (aggregationError) {
+          _opts.showToast('error', 'Aggregation Failed', 'Analysis was saved without label consolidation.');
+        } else {
+          var toastText = analyzed + ' metric failures analyzed';
+          if (aggregated > 0) toastText += ' · ' + aggregated + ' labels consolidated';
+          _opts.showToast('success', 'Analysis Complete', toastText);
+        }
       }
       if (_opts.onAnalysisComplete) _opts.onAnalysisComplete(data);
 
