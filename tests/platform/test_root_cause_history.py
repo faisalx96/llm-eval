@@ -89,6 +89,8 @@ from qym_platform.services.llm_analyzer import (
     ROOT_CAUSE_CATEGORIES,
     RULE_WRITER_SYSTEM_PROMPT,
     AnalysisResult,
+    _render_trace_evidence,
+    _useful_trace_content,
     analyze_single_item,
     build_analysis_prompt,
     get_all_approved_examples,
@@ -99,6 +101,7 @@ from qym_platform.services.llm_analyzer import (
 from qym_platform.services.root_cause_changes import (
     apply_root_cause_change,
     build_ai_state,
+    replace_metric_review_candidate,
 )
 
 
@@ -1188,16 +1191,27 @@ def test_build_analysis_prompt_includes_only_useful_trace_evidence(
     )
 
     assert "TRACE EVIDENCE:" in system_content
-    assert '"step": "ChatCompletion"' in system_content
-    assert '"chat_history":' in system_content
+    trace_steps = _useful_trace_content(item)
+    trace_evidence = _render_trace_evidence(trace_steps)
+    assert trace_evidence.startswith("STEP 1: ChatCompletion (llm)")
+    assert "INPUT:\nsystem: You are a SQL agent." in trace_evidence
+    assert "user: Use the archived orders table." in trace_evidence
+    assert "CALLS:\nquery_sql: sql: select * from archived_orders" in trace_evidence
+    assert "REASONING:\nThe customer key may be stale." in trace_evidence
+    assert "RESPONSE:\nThe join returned no rows." in trace_evidence
+    assert "STEP 2: tool:query_sql (tool)" in trace_evidence
+    assert "RESULT:\nerror: table unavailable" in trace_evidence
+    assert "chat_history" not in trace_evidence
+    assert "internal_responses" not in trace_evidence
+    assert "{" not in trace_evidence
+    assert "[" not in trace_evidence
     assert "You are a SQL agent." in system_content
     assert "Use the archived orders table." in system_content
-    assert '"internal_responses":' in system_content
     assert "The join returned no rows." in system_content
     assert system_content.count("The customer key may be stale.") == 1
-    assert '"name": "query_sql"' in system_content
+    assert "query_sql: sql: select * from archived_orders" in system_content
     assert "table unavailable" in system_content
-    assert '"classification": "noisy_reasoning"' in system_content
+    assert "classification: noisy_reasoning" in system_content
     assert "TRACE ID:" not in system_content
     assert "TRACE URL:" not in system_content
     assert '"span_id"' not in system_content
@@ -1212,6 +1226,98 @@ def test_build_analysis_prompt_includes_only_useful_trace_evidence(
     assert "call-123" not in system_content
     assert "linked-trace" not in system_content
     assert "trace-secret" not in system_content
+
+
+def test_trace_projection_keeps_middle_reasoning_and_removes_repeated_history(
+    db_session: Session,
+) -> None:
+    _, _, _, item = _seed_run(db_session)
+    item.trace_id = "trace-steps"
+    db_session.add_all(
+        [
+            Span(
+                run_id=item.run_id,
+                trace_id=item.trace_id,
+                span_id="step-1",
+                name="plan",
+                kind="INTERNAL",
+                status="OK",
+                start_time_ns=1,
+                attributes={
+                    "openinference.span.kind": "LLM",
+                    "llm.input_messages.0.message.role": "system",
+                    "llm.input_messages.0.message.content": "Use the balance tool.",
+                    "llm.input_messages.1.message.role": "user",
+                    "llm.input_messages.1.message.content": "Request current balance.",
+                    "llm.output_messages.0.message.role": "assistant",
+                    "llm.output_messages.0.message.content": "I will check it.",
+                    "llm.output_messages.0.message.reasoning": "The account needs a live lookup.",
+                    "llm.output_messages.0.message.tool_calls.0.tool_call.function.name": "lookup_balance",
+                    "llm.output_messages.0.message.tool_calls.0.tool_call.function.arguments": '{"account":"a-1"}',
+                },
+                events=[],
+            ),
+            Span(
+                run_id=item.run_id,
+                trace_id=item.trace_id,
+                span_id="step-2",
+                parent_span_id="step-1",
+                name="lookup_balance",
+                kind="INTERNAL",
+                status="OK",
+                start_time_ns=2,
+                attributes={
+                    "openinference.span.kind": "TOOL",
+                    "tool.name": "lookup_balance",
+                    "input.value": '{"account":"a-1"}',
+                    "output.value": '{"balance":"$10"}',
+                },
+                events=[],
+            ),
+            Span(
+                run_id=item.run_id,
+                trace_id=item.trace_id,
+                span_id="step-3",
+                parent_span_id="step-1",
+                name="answer",
+                kind="INTERNAL",
+                status="OK",
+                start_time_ns=3,
+                attributes={
+                    "openinference.span.kind": "LLM",
+                    "llm.input_messages.0.message.role": "system",
+                    "llm.input_messages.0.message.content": "Use the balance tool.",
+                    "llm.input_messages.1.message.role": "user",
+                    "llm.input_messages.1.message.content": "Request current balance.",
+                    "llm.input_messages.2.message.role": "assistant",
+                    "llm.input_messages.2.message.content": "I will check it.",
+                    "llm.input_messages.2.message.tool_calls.0.tool_call.function.name": "lookup_balance",
+                    "llm.input_messages.2.message.tool_calls.0.tool_call.function.arguments": '{"account":"a-1"}',
+                    "llm.input_messages.2.message.reasoning": "The account needs a live lookup.",
+                    "llm.input_messages.3.message.role": "tool",
+                    "llm.input_messages.3.message.content": '{"balance":"$10"}',
+                    "llm.output_messages.0.message.role": "assistant",
+                    "llm.output_messages.0.message.content": "The current balance is $10.",
+                    "llm.output_messages.0.message.reasoning": "The tool returned a single current balance.",
+                },
+                events=[],
+            ),
+        ]
+    )
+    db_session.commit()
+
+    steps = _useful_trace_content(item)
+    rendered = _render_trace_evidence(steps)
+
+    assert [step["step"] for step in steps] == ["plan", "lookup_balance", "answer"]
+    assert steps[0]["reasoning"] == "The account needs a live lookup."
+    assert steps[2]["reasoning"] == "The tool returned a single current balance."
+    assert rendered.count("system: Use the balance tool.") == 1
+    assert rendered.count("user: Request current balance.") == 1
+    assert "STEP 2: lookup_balance (tool)" in rendered
+    assert "RESULT:\nbalance: $10" in rendered
+    assert rendered.count("The account needs a live lookup.") == 1
+    assert "The tool returned a single current balance." in rendered
 
 
 def test_build_analysis_prompt_ignores_legacy_project_description(
@@ -1834,6 +1940,98 @@ def test_analysis_targets_include_every_failed_metric_and_skip_each_completed_me
     ]
 
 
+def test_analysis_targets_protect_human_labels_per_metric(
+    db_session: Session,
+) -> None:
+    _, _, run, item = _seed_run(db_session)
+    run.metrics = ["accuracy", "format"]
+    format_score = RunItemScore(
+        run_id=run.id,
+        item_id=item.item_id,
+        metric_name="format",
+        score_numeric=0.2,
+    )
+    item.item_metadata = {
+        "root_cause": "Legacy AI",
+        "root_cause_source": "ai",
+        "metric_analyses": {
+            "accuracy": {"source": "human", "root_cause": "Manual Category"},
+            "format": {"source": "ai", "root_cause": "Old Category"},
+        },
+    }
+    db_session.add(format_score)
+    db_session.commit()
+    scores = db_session.query(RunItemScore).filter(RunItemScore.run_id == run.id).all()
+    scores_by_item = {
+        item.item_id: {score.metric_name: score for score in scores}
+    }
+
+    protected = _filter_analysis_targets(
+        run,
+        AnalyzeRequest(
+            metrics=["accuracy", "format"],
+            item_filter="failed",
+            only_unanalyzed=False,
+            allow_human_overwrite=False,
+        ),
+        [item],
+        scores_by_item,
+        {},
+    )
+    assert [(target.item_id, metric) for target, metric in protected] == [
+        (item.item_id, "format")
+    ]
+
+    human_override = _filter_analysis_targets(
+        run,
+        AnalyzeRequest(
+            metrics=["accuracy", "format"],
+            item_filter="failed",
+            only_unanalyzed=True,
+            allow_human_overwrite=True,
+        ),
+        [item],
+        scores_by_item,
+        {},
+    )
+    assert [(target.item_id, metric) for target, metric in human_override] == [
+        (item.item_id, "accuracy")
+    ]
+
+
+def test_analysis_targets_protect_human_detail_only_labels(
+    db_session: Session,
+) -> None:
+    _, _, run, item = _seed_run(db_session)
+    item.item_metadata = {
+        "metric_analyses": {
+            "accuracy": {
+                "source": "human",
+                "root_cause_note": "Reviewer explanation without a category yet",
+            }
+        }
+    }
+    db_session.commit()
+    score = (
+        db_session.query(RunItemScore)
+        .filter(
+            RunItemScore.run_id == run.id,
+            RunItemScore.item_id == item.item_id,
+            RunItemScore.metric_name == "accuracy",
+        )
+        .one()
+    )
+
+    targets = _filter_analysis_targets(
+        run,
+        AnalyzeRequest(item_filter="failed", only_unanalyzed=True),
+        [item],
+        {item.item_id: {"accuracy": score}},
+        {},
+    )
+    assert targets == []
+
+
 def test_unknown_requested_metric_is_rejected(db_session: Session) -> None:
     _actor, _reviewer, run, item = _seed_run(db_session)
 
@@ -1990,6 +2188,7 @@ def test_analysis_results_are_saved_by_metric_with_legacy_item_summary(
             metric_name="accuracy",
             root_cause="Reasoning Error",
             root_cause_detail="Wrong join key",
+            root_cause_reason="The output shows the model joined records using the wrong key.",
             root_cause_note="The metric explanation identifies the join mismatch.",
             confidence=0.9,
             solution="Add Output Validation",
@@ -2017,9 +2216,15 @@ def test_analysis_results_are_saved_by_metric_with_legacy_item_summary(
 
     assert errors == 0
     assert [payload["metric_name"] for payload in payloads] == ["accuracy", "format"]
+    assert payloads[0]["root_cause_reason"] == (
+        "The output shows the model joined records using the wrong key."
+    )
     assert (
         item.item_metadata["metric_analyses"]["accuracy"]["root_cause"]
         == "Reasoning Error"
+    )
+    assert item.item_metadata["metric_analyses"]["accuracy"]["root_cause_reason"] == (
+        "The output shows the model joined records using the wrong key."
     )
     assert (
         item.item_metadata["metric_analyses"]["format"]["root_cause"] == "Wrong Format"
@@ -2031,6 +2236,9 @@ def test_analysis_results_are_saved_by_metric_with_legacy_item_summary(
         == "rule-version-v1"
     )
     assert item.item_metadata["root_cause"] == "Reasoning Error"
+    assert item.item_metadata["root_cause_reason"] == (
+        "The output shows the model joined records using the wrong key."
+    )
     assert item.item_metadata["root_cause_metric_name"] == "accuracy"
     candidates = (
         db_session.query(ReviewCorrection)
@@ -2196,6 +2404,74 @@ def test_new_analysis_overwrites_old_item_and_metric_analysis(
     assert active_candidate.metric_name == "accuracy"
     assert active_candidate.ai_root_cause == "Dataset Issue"
     assert active_candidate.ai_root_cause_detail == "Expected SQL mismatches request"
+
+
+def test_save_analysis_results_preserves_human_metric_without_explicit_overwrite(
+    db_session: Session,
+) -> None:
+    actor, _, run, item = _seed_run(db_session)
+    human_analysis = {
+        "source": "human",
+        "root_cause": "Manual Category",
+        "root_cause_detail": "Manual detail",
+        "root_cause_note": "Keep this reviewer explanation.",
+    }
+    item.item_metadata = {
+        "root_cause": "Legacy AI",
+        "root_cause_source": "ai",
+        "metric_analyses": {"accuracy": human_analysis},
+    }
+    db_session.commit()
+    human_candidate = replace_metric_review_candidate(
+        db_session,
+        run=run,
+        item=item,
+        metric_name="accuracy",
+        analysis=human_analysis,
+        actor_user_id=actor.id,
+        actor_source="human",
+    )
+    assert human_candidate is not None
+    db_session.commit()
+
+    result = AnalysisResult(
+        item_id=item.item_id,
+        metric_name="accuracy",
+        root_cause="Fresh AI Category",
+        root_cause_detail="Fresh AI detail",
+        root_cause_note="Fresh AI note",
+        confidence=0.92,
+    )
+    _save_analysis_results(
+        db_session,
+        run,
+        [(item, "accuracy")],
+        [result],
+        Principal(user=actor, auth_type="none"),
+    )
+    db_session.refresh(item)
+    db_session.refresh(human_candidate)
+
+    assert item.item_metadata["metric_analyses"]["accuracy"] == human_analysis
+    assert human_candidate.is_active is True
+    assert human_candidate.human_root_cause == "Manual Category"
+
+    _save_analysis_results(
+        db_session,
+        run,
+        [(item, "accuracy")],
+        [result],
+        Principal(user=actor, auth_type="none"),
+        allow_human_overwrite=True,
+    )
+    db_session.refresh(item)
+    db_session.refresh(human_candidate)
+
+    assert item.item_metadata["metric_analyses"]["accuracy"]["source"] == "ai"
+    assert item.item_metadata["metric_analyses"]["accuracy"]["root_cause"] == (
+        "Fresh AI Category"
+    )
+    assert human_candidate.is_active is False
 
 
 def test_persisted_ai_labels_can_be_reaggregated_without_changing_feedback(
@@ -2661,7 +2937,9 @@ def test_rule_writer_accepts_compatible_provider_output_shapes(
         llm_analyzer_service.infer_analysis_rules(
             SimpleNamespace(),
             "test-model",
-            reference_documents=[],
+            reference_documents=[
+                {"name": "Evidence policy", "content": "Use the supplied evidence."}
+            ],
             corrections=[],
         )
     )
@@ -2697,7 +2975,9 @@ def test_rule_writer_uses_reasoning_when_content_is_empty(
         llm_analyzer_service.infer_analysis_rules(
             SimpleNamespace(),
             "test-model",
-            reference_documents=[],
+            reference_documents=[
+                {"name": "Evidence policy", "content": "Use the supplied evidence."}
+            ],
             corrections=[],
         )
     )
@@ -2754,7 +3034,9 @@ def test_rule_updater_preserves_existing_ids_and_allows_add_edit_delete(
                     "instruction": "Remove this stale rule.",
                 },
             ],
-            reference_documents=[],
+            reference_documents=[
+                {"name": "Evidence policy", "content": "Use the supplied evidence."}
+            ],
             corrections=[],
         )
     )
@@ -3884,7 +4166,8 @@ def test_build_analysis_prompt_projects_nested_metric_metadata() -> None:
     assert "SELECTED METADATA:" in system_content
     assert '"reason": "bad join"' in system_content
     assert '"missing": [' in system_content
-    assert "unused" not in system_content
+    selected_metadata = system_content.split("SELECTED METADATA:\n", 1)[1]
+    assert '"unused": true' not in selected_metadata
 
 
 def test_build_analysis_prompt_projects_metric_metadata_by_metric_name() -> None:
@@ -3930,7 +4213,8 @@ def test_build_analysis_prompt_projects_metric_metadata_by_metric_name() -> None
     assert '"reason": "bad join"' in system_content
     assert '"format": {' in system_content
     assert '"reason": "valid json"' in system_content
-    assert "missing" not in system_content
+    selected_metadata = system_content.split("SELECTED METADATA:\n", 1)[1]
+    assert '"missing": "city"' not in selected_metadata
 
 
 def test_build_analysis_prompt_includes_only_selected_metric_metadata_by_default() -> None:

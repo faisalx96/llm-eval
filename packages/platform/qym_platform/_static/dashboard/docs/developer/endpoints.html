@@ -231,6 +231,10 @@ curl -s -X POST "https://qym.example.com/v1/datasets:upload" \
     <tr><td><code>DELETE /api/runs/{run_id}/analysis-rule-versions/{version_id}</code></td><td>Delete a rule version while leaving at least one live version; requires run-owner or project-manager rights.</td></tr>
     <tr><td><code>POST /api/runs/{run_id}/analysis-rule-versions/{version_id}/restore</code></td><td>Restore a deleted rule version. Platform admin only.</td></tr>
     <tr><td><code>DELETE /api/runs/{run_id}/analysis-rule-versions/{version_id}/permanent</code></td><td>Permanently remove a soft-deleted rule version. Platform admin only.</td></tr>
+    <tr><td><code>/api/projects/{project_slug}/analysis-config</code></td><td>Project-scoped analysis configuration; this is the no-run equivalent of the run-scoped config endpoint.</td></tr>
+    <tr><td><code>/api/projects/{project_slug}/analysis-documents</code></td><td>Project-scoped document library routes (<code>GET</code>/<code>POST</code>), with <code>PATCH</code>/<code>DELETE</code> on <code>/{document_id}</code>; usable without a run.</td></tr>
+    <tr><td><code>/api/projects/{project_slug}/analysis-context</code></td><td>Save the project analysis-rule draft/version without selecting a run.</td></tr>
+    <tr><td><code>/api/projects/{project_slug}/analysis-rule-versions...</code></td><td>Project-scoped rule history and lifecycle routes mirroring the run-scoped version endpoints.</td></tr>
     <tr><td><code>GET /api/corrections</code></td><td>List corrections with filters: <code>project_slug</code>, <code>task</code>, <code>dataset</code>, <code>model</code>, <code>run_name</code>, <code>source</code>, <code>conf_min</code>/<code>conf_max</code> (0&ndash;100), <code>status</code>, <code>search</code>, <code>limit</code> (1&ndash;500).</td></tr>
     <tr><td><code>GET /api/corrections/{correction_id}</code></td><td>One correction.</td></tr>
     <tr><td><code>PUT /api/corrections/{correction_id}</code></td><td>Edit a correction.</td></tr>

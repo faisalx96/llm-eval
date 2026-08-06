@@ -855,6 +855,12 @@ class ReviewCorrection(Base):
     scores_snapshot: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
 
     ai_root_cause: Mapped[str] = mapped_column(String(200))
+    # Plural category storage. The singular columns remain as the primary
+    # category for compatibility with existing queries and clients.
+    ai_root_causes: Mapped[Optional[list[str]]] = mapped_column(JSON, nullable=True)
+    ai_category_taxonomy: Mapped[Optional[dict[str, Any]]] = mapped_column(
+        JSON, nullable=True
+    )
     ai_root_cause_detail: Mapped[str] = mapped_column(Text, default="")
     ai_root_cause_note: Mapped[str] = mapped_column(Text, default="")
     ai_confidence: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
@@ -862,6 +868,10 @@ class ReviewCorrection(Base):
     ai_solution_note: Mapped[str] = mapped_column(Text, default="")
 
     human_root_cause: Mapped[str] = mapped_column(String(200))
+    human_root_causes: Mapped[Optional[list[str]]] = mapped_column(JSON, nullable=True)
+    human_category_taxonomy: Mapped[Optional[dict[str, Any]]] = mapped_column(
+        JSON, nullable=True
+    )
     human_root_cause_detail: Mapped[str] = mapped_column(Text, default="")
     human_root_cause_note: Mapped[str] = mapped_column(Text, default="")
     human_solution: Mapped[str] = mapped_column(String(200), default="")

@@ -155,6 +155,11 @@ each AI analysis result.
 
 The version endpoints are:
 
+The same version lifecycle is available without selecting a run through the
+project-scoped prefix `/api/projects/{project_slug}`. These endpoints use the
+project's active rules and permissions directly, so a project with zero runs
+can still maintain its rule library.
+
 | Method | Path | Purpose |
 | --- | --- | --- |
 | `GET` | `/api/runs/{run_id}/analysis-rule-versions` | List versions, status, aliases, lineage, hashes, and production pointer. |

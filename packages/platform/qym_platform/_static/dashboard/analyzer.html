@@ -5,19 +5,20 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>قيِّم • Auto-analysis</title>
   <link rel="icon" type="image/png" href="/static/qym_icon.png">
-  <link rel="stylesheet" href="/static/dashboard.css?v=aggregation-status-20260802">
+  <link rel="stylesheet" href="/static/dashboard.css?v=accessibility-responsive-20260806">
   <link rel="stylesheet" href="/static/shell.css">
   <script src="/static/auth.js"></script>
-  <script src="/static/shell.js?v=auto-analysis-workspace-20260729"></script>
+  <script src="/static/shell.js?v=accessibility-responsive-20260806"></script>
   <script src="/static/metrics.js"></script>
   <script src="/static/qym_table.js"></script>
   <script src="/static/ui_components.js?v=design-language-20260802" defer></script>
-  <script src="/static/playground.js?v=aggregation-status-20260802"></script>
+  <script src="/static/playground.js?v=accessibility-responsive-20260806"></script>
   <style>
     /* Typography and color roles follow docs/DESIGN_LANGUAGE.md. */
     .analysis-page {
-      --analysis-page-width: 1180px;
+      --analysis-page-width: 1120px;
       width: 100%;
+      min-width: 0;
       max-width: var(--analysis-page-width);
       margin: 0 auto;
       padding: var(--space-xl) var(--space-lg);
@@ -113,6 +114,25 @@
     }
     .analysis-error {
       color: var(--error);
+    }
+    .analysis-error h2 {
+      margin: 0;
+      color: var(--text-primary);
+      font-size: var(--font-xl);
+      font-weight: 650;
+    }
+    .analysis-error p {
+      max-width: 680px;
+      margin: var(--space-sm) auto var(--space-lg);
+      color: var(--text-muted);
+      font-size: var(--font-base);
+      line-height: 1.6;
+    }
+    .analysis-error-actions {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: var(--space-sm);
     }
     .analysis-status {
       display: none;
@@ -395,10 +415,16 @@
     }
     .analysis-diagnosis-header p {
       max-width: 720px;
-      margin: 0;
+      margin: var(--space-xs) 0 0;
       color: var(--text-muted);
       font-size: var(--font-sm);
       line-height: 1.5;
+    }
+    .analysis-diagnosis-header h2 {
+      margin: 0;
+      color: var(--text-primary);
+      font-size: var(--font-lg);
+      font-weight: 600;
     }
     .analysis-diagnosis-stat {
       display: inline-flex;
@@ -450,6 +476,7 @@
       gap: var(--space-sm);
     }
     #analysis-diagnosis-view .pg-category-name {
+      margin: 0;
       color: var(--text-primary);
       font-size: var(--font-md);
       font-weight: 600;
@@ -704,7 +731,7 @@
     .analysis-subheading .analysis-run-label {
       white-space: nowrap;
     }
-    .analysis-subheading h4 {
+    .analysis-subheading h3 {
       margin: 0;
       color: var(--text-secondary);
       font-size: var(--font-sm);
@@ -800,13 +827,20 @@
     }
     .analysis-project-shell .pg-rule-item-head {
       display: grid;
-      grid-template-columns: 28px minmax(0, 1fr) auto auto;
+      grid-template-columns: minmax(0, 1fr) auto;
       align-items: center;
       gap: var(--space-sm);
       padding: var(--space-sm);
     }
     .analysis-project-shell .pg-rule-item-head:hover {
       background: var(--bg-hover);
+    }
+    .analysis-project-shell .pg-rule-toggle {
+      display: grid;
+      grid-template-columns: 28px minmax(0, 1fr) auto;
+      min-width: 0;
+      align-items: center;
+      gap: var(--space-sm);
     }
     .analysis-project-shell .pg-rule-item-number {
       color: var(--text-muted);
@@ -869,7 +903,7 @@
       flex-wrap: wrap;
       gap: var(--space-sm);
     }
-    .analysis-rule-toolbar-title h4 {
+    .analysis-rule-toolbar-title h3 {
       margin: 0;
       color: var(--text-primary);
       font-size: var(--font-md);
@@ -3029,6 +3063,16 @@
       .analysis-dashboard-compare-actions {
         width: 100%;
       }
+      .analysis-dashboard-filter-row,
+      .analysis-dashboard-compare-toolbar,
+      .analysis-dashboard-compare-visual,
+      .analysis-dashboard-compare > .analysis-dashboard-card-body,
+      .analysis-action-copy {
+        flex: 0 1 auto;
+      }
+      .analysis-dashboard-compare-copy {
+        min-width: 0;
+      }
       .analysis-target-tools,
       .analysis-diagnosis-header,
       .analysis-project-footer,
@@ -3047,6 +3091,13 @@
         width: 100%;
         box-sizing: border-box;
         justify-content: center;
+      }
+      .analysis-run-footer .pg-connection {
+        flex: 0 1 auto;
+        max-width: none;
+      }
+      .analysis-project-footer .pg-context-status {
+        min-width: 0;
       }
       .analysis-project-shell .pg-rule-inference-content {
         grid-template-columns: minmax(0, 1fr);
@@ -3080,10 +3131,13 @@
         text-align: right;
       }
       .analysis-project-shell .pg-rule-item-head {
+        grid-template-columns: minmax(0, 1fr) auto;
+      }
+      .analysis-project-shell .pg-rule-toggle {
         grid-template-columns: 24px minmax(0, 1fr) auto;
       }
       .analysis-project-shell .pg-rule-remove {
-        grid-column: 3;
+        grid-column: auto;
       }
       .analysis-project-shell .pg-rule-compare-picker {
         width: auto;
@@ -3101,9 +3155,9 @@
   <link rel="stylesheet" href="/static/ui_components.css?v=design-language-20260802">
 </head>
 <body>
-  <main class="analysis-page">
+  <div class="analysis-page" role="region" aria-labelledby="analysis-title">
     <header class="analysis-hero">
-      <h1 class="analysis-title">Auto-analysis</h1>
+      <h1 class="analysis-title" id="analysis-title">Auto-analysis</h1>
       <p class="analysis-description">Diagnose failed metric targets with a focused run workspace and reusable project guidance.</p>
       <div class="analysis-meta">
         <span>Project <span class="analysis-meta-value" id="analysis-project-meta">loading</span></span>
@@ -3127,7 +3181,14 @@
 
     <div class="analysis-status" id="analysis-status" role="status" aria-live="polite"></div>
     <div class="analysis-loading" id="analysis-loading">Loading the analysis workspace…</div>
-    <div class="analysis-error" id="analysis-error" hidden></div>
+    <div class="analysis-error" id="analysis-error" role="alert" hidden>
+      <h2 id="analysis-error-title">Unable to load auto-analysis</h2>
+      <p id="analysis-error-message"></p>
+      <div class="analysis-error-actions">
+        <button class="analysis-primary-link" id="analysis-error-retry" type="button">Retry</button>
+        <a class="analysis-secondary-link" id="analysis-error-runs" href="/">Open Runs</a>
+      </div>
+    </div>
     <section class="analysis-landing" id="analysis-landing" hidden>
       <h2>Select a run to start analysis</h2>
       <p>The Analyze run workspace requires an explicit run. Go to the Runs page and choose Auto-analysis for the run you want to diagnose. Production rules and Documents remain available in the project tabs above.</p>
@@ -3229,7 +3290,7 @@
       </div>
     </section>
     <div id="analyzer-host" hidden></div>
-  </main>
+  </div>
 
   <script>
     (() => {
@@ -3246,6 +3307,8 @@
       const requestedMetric = params.get('metric') || '';
       const requestedView = params.get('scope');
       const DASHBOARD_COMPARE_ALL_METRICS = '__all__';
+      let inputMappingOpener = null;
+      let inputMappingEscapeHandler = null;
       const state = {
         currentView: ['dashboard', 'diagnosis', 'rules', 'documents'].includes(requestedView)
           ? requestedView
@@ -3281,8 +3344,16 @@
       }
 
       function projectUrl(suffix = '') {
+        if (!projectSlug) return rootPath + '/';
         const clean = String(suffix || '').replace(/^\/+/, '');
         return rootPath + '/projects/' + encodeURIComponent(projectSlug) + (clean ? '/' + clean : '');
+      }
+
+      function runUrl(id) {
+        const cleanId = encodeURIComponent(String(id || ''));
+        return projectSlug
+          ? projectUrl('runs/' + cleanId)
+          : rootPath + '/run/' + cleanId + '/analyzer';
       }
 
       function analysisViewUrl(view) {
@@ -3343,7 +3414,10 @@
         if (diagnosisView) diagnosisView.hidden = nextView !== 'diagnosis';
         if (dashboardView) dashboardView.hidden = nextView !== 'dashboard';
         if (landing) landing.hidden = nextView !== 'run' || Boolean(runId);
-        if (runFooter) runFooter.hidden = nextView !== 'run' || !runId;
+        if (runFooter) {
+          const noTargets = runFooter.dataset.noTargets === 'true';
+          runFooter.hidden = nextView !== 'run' || !runId || noTargets;
+        }
         if (['rules', 'documents'].includes(nextView)) setProjectView(nextView);
         if (nextView !== 'run') closeInputMapping();
         if (nextView === 'dashboard') loadDashboard().catch(error => showDashboardError(error));
@@ -3903,7 +3977,7 @@
           const context = (row.run_name || row.run_id) + ' · ' + item + (row.note ? ' · ' + row.note : '');
           const runId = row.run_id == null ? '' : String(row.run_id);
           const runLink = runId
-            ? '<a class="analysis-dashboard-occurrence-open" href="' + escapeAttr(projectUrl('runs/' + encodeURIComponent(runId)) + (itemId ? '?item=' + encodeURIComponent(itemId) : '')) + '">Open run →</a>'
+            ? '<a class="analysis-dashboard-occurrence-open" href="' + escapeAttr(runUrl(runId) + (itemId ? '?item=' + encodeURIComponent(itemId) : '')) + '">Open run →</a>'
             : '';
           inspector.style.setProperty('--occurrence-color', color);
           inspector.innerHTML = '<div class="analysis-dashboard-occurrence-inspector-copy"><span class="analysis-dashboard-occurrence-inspector-category"><span class="analysis-dashboard-occurrence-inspector-swatch" aria-hidden="true"></span>' + escapeHtml(dashboardLabel(row.category)) + '</span><strong title="' + escapeAttr(row.detail || 'No detail') + '">' + escapeHtml(row.detail || 'No detail') + '</strong><p title="' + escapeAttr(context) + '">' + escapeHtml(context) + '</p></div>' +
@@ -4161,7 +4235,7 @@
         renderDashboardSelection();
       });
       function runSummaryValue(value) {
-        return escapeHtml(value || '—');
+        return '<span dir="auto">' + escapeHtml(value || '—') + '</span>';
       }
 
       function createRunCard() {
@@ -4177,7 +4251,7 @@
                 '<li class="analysis-run-context-item"><span class="analysis-run-context-label">Model</span><span class="analysis-run-context-value">' + runSummaryValue(run.model_name) + '</span></li>' +
                 '<li class="analysis-run-context-item"><span class="analysis-run-context-label">Dataset</span><span class="analysis-run-context-value">' + runSummaryValue(run.dataset_name) + '</span></li>' +
               '</ul></div>' +
-            '<a class="analysis-secondary-link" href="' + projectUrl('runs/' + encodeURIComponent(runId)) + '">View run</a></div>' +
+            '<a class="analysis-secondary-link" href="' + runUrl(runId) + '">View run</a></div>' +
           '<div class="analysis-metrics"><div class="analysis-metric-heading"><span class="analysis-run-label">Metrics to analyze</span>' +
             '<span class="analysis-metric-actions"><button class="analysis-metric-action" id="analysis-metrics-all" type="button">Select all</button>' +
             '<button class="analysis-metric-action" id="analysis-metrics-none" type="button">Clear</button></span></div>' +
@@ -4288,13 +4362,32 @@
 
       function closeInputMapping() {
         const backdrop = document.getElementById('analysis-mapping-backdrop');
-        if (backdrop) backdrop.hidden = true;
+        if (!backdrop || backdrop.hidden) return;
+        backdrop.hidden = true;
+        if (inputMappingEscapeHandler) {
+          document.removeEventListener('keydown', inputMappingEscapeHandler);
+          inputMappingEscapeHandler = null;
+        }
+        const opener = inputMappingOpener;
+        inputMappingOpener = null;
+        if (opener && document.contains(opener)) opener.focus();
       }
 
       function openInputMapping() {
         const backdrop = document.getElementById('analysis-mapping-backdrop');
         if (!backdrop) return;
+        if (!backdrop.hidden) return;
+        inputMappingOpener = document.activeElement && document.activeElement !== document.body
+          ? document.activeElement : null;
         backdrop.hidden = false;
+        if (!inputMappingEscapeHandler) {
+          inputMappingEscapeHandler = event => {
+            if (event.key !== 'Escape' || backdrop.hidden) return;
+            event.preventDefault();
+            closeInputMapping();
+          };
+          document.addEventListener('keydown', inputMappingEscapeHandler);
+        }
         document.getElementById('analysis-mapping-close').focus();
       }
 
@@ -4328,9 +4421,6 @@
         backdrop.addEventListener('click', event => {
           if (event.target === backdrop) closeInputMapping();
         });
-        document.addEventListener('keydown', event => {
-          if (event.key === 'Escape' && !backdrop.hidden) closeInputMapping();
-        });
       }
 
       function organizeAnalyzerWorkspace() {
@@ -4350,6 +4440,7 @@
         runPanel.setAttribute('aria-labelledby', 'analysis-run-tab');
 
         const inference = document.querySelector('#analyzer-host .pg-rule-inference-options');
+        const inferenceEmpty = document.querySelector('#analyzer-host #pg-infer-source-empty');
         const inferencePrevious = inference && inference.previousElementSibling;
         const rulesHint = inferencePrevious && inferencePrevious.classList.contains('pg-instructions-hint') ? inferencePrevious : null;
         const ruleList = document.getElementById('pg-rule-list');
@@ -4379,7 +4470,7 @@
           '<p>Create rules from the project’s enabled documents and approved examples.</p></div>';
         const rulesSourceBody = document.createElement('div');
         rulesSourceBody.className = 'analysis-target-body';
-        [rulesHint, inference].forEach(node => { if (node) rulesSourceBody.append(node); });
+        [rulesHint, inference, inferenceEmpty].forEach(node => { if (node) rulesSourceBody.append(node); });
         rulesSourceCard.append(rulesSourceHeader, rulesSourceBody);
         rulesPanel.append(rulesSourceCard);
 
@@ -4412,13 +4503,13 @@
         rulesLayout.className = 'analysis-rules-layout';
         const versionColumn = document.createElement('section');
         versionColumn.className = 'analysis-version-column';
-        versionColumn.innerHTML = '<div class="analysis-subheading analysis-version-heading"><div class="analysis-version-heading-copy"><h4>Version graph</h4><div class="analysis-version-legend"><span>Solid fork · dashed merge</span><span class="analysis-version-node-key"><i class="analysis-version-node analysis-version-node-live" aria-hidden="true"></i>Live</span><span class="analysis-version-node-key"><i class="analysis-version-node" aria-hidden="true"></i>Not live</span></div></div></div>';
+        versionColumn.innerHTML = '<div class="analysis-subheading analysis-version-heading"><div class="analysis-version-heading-copy"><h3>Version graph</h3><div class="analysis-version-legend"><span>Solid fork · dashed merge</span><span class="analysis-version-node-key"><i class="analysis-version-node analysis-version-node-live" aria-hidden="true"></i>Live</span><span class="analysis-version-node-key"><i class="analysis-version-node" aria-hidden="true"></i>Not live</span></div></div></div>';
         if (versionList) versionColumn.append(versionList);
         const ruleColumn = document.createElement('section');
         ruleColumn.className = 'analysis-rule-column';
         const toolbar = document.createElement('div');
         toolbar.className = 'analysis-rule-toolbar';
-        const toolbarHeading = document.createElement('h4');
+        const toolbarHeading = document.createElement('h3');
         toolbarHeading.textContent = 'Rules in viewed version';
         const toolbarTitle = document.createElement('div');
         toolbarTitle.className = 'analysis-rule-toolbar-title';
@@ -4535,7 +4626,7 @@
         diagnosisPanel.hidden = true;
         const diagnosisHeader = document.createElement('header');
         diagnosisHeader.className = 'analysis-diagnosis-header';
-        diagnosisHeader.innerHTML = '<p>Manage the labels available to the analyzer and inspect the approved examples behind each category.</p>' +
+        diagnosisHeader.innerHTML = '<div><h2>Diagnosis categories</h2><p>Manage the labels available to the analyzer and inspect the approved examples behind each category.</p></div>' +
           '<div class="analysis-diagnosis-summary" aria-label="Diagnosis category summary">' +
             '<span class="analysis-diagnosis-stat"><strong id="analysis-category-count">0</strong> categories</span>' +
             '<span class="analysis-diagnosis-stat"><strong id="analysis-example-count">0</strong> examples</span>' +
@@ -4689,7 +4780,9 @@
             row.item_metadata.metric_analyses[result.metric_name] = {
               source: 'ai',
               root_cause: result.root_cause,
+              root_causes: Array.isArray(result.root_causes) ? result.root_causes : (result.root_cause ? [result.root_cause] : []),
               root_cause_detail: result.root_cause_detail || '',
+              root_cause_reason: result.root_cause_reason || '',
               root_cause_note: result.root_cause_note || '',
               confidence: result.confidence,
               solution: result.solution || '',
@@ -4709,7 +4802,50 @@
         }
       }
 
+      function prepareAnalysisLoad() {
+        document.getElementById('analysis-loading').hidden = false;
+        document.getElementById('analysis-error').hidden = true;
+        document.getElementById('analysis-tabs').hidden = true;
+        document.getElementById('analyzer-host').hidden = true;
+      }
+
+      function showAnalyzerLoadError(error) {
+        const message = error && error.message
+          ? error.message
+          : 'Failed to load auto-analysis.';
+        document.getElementById('analysis-loading').hidden = true;
+        document.getElementById('analysis-tabs').hidden = true;
+        document.getElementById('analyzer-host').hidden = true;
+        const node = document.getElementById('analysis-error');
+        const messageNode = document.getElementById('analysis-error-message');
+        const runsLink = document.getElementById('analysis-error-runs');
+        if (messageNode) messageNode.textContent = message;
+        if (runsLink) runsLink.href = projectSlug ? projectUrl() : rootPath + '/';
+        node.hidden = false;
+      }
+
+      function initializePlayground(projectScoped) {
+        window.QymPlayground.init({
+          container: document.getElementById('analyzer-host'),
+          apiUrl: apiUrl,
+          projectScoped: !!projectScoped,
+          projectSlug: projectScoped ? projectSlug : '',
+          dedicatedPage: true,
+          getRunId: () => state.contextRunId,
+          getRows: projectScoped ? () => [] : analyzerRows,
+          getMetric: projectScoped ? () => null : () => state.metric || null,
+          getMetrics: projectScoped ? () => [] : () => state.selectedMetrics.slice(),
+          getThreshold: projectScoped ? () => 0.8 : metricThreshold,
+          onAnalysisComplete: projectScoped ? null : applyAnalysisResults,
+          reviewsUrl: projectSlug ? projectUrl('reviews') : '',
+          showToast: showStatus,
+          escapeHtml: escapeHtml,
+        });
+        return window.QymPlayground.open();
+      }
+
       async function loadRun() {
+        prepareAnalysisLoad();
         const dashboardTab = document.getElementById('analysis-dashboard-tab');
         if (!projectSlug && dashboardTab) {
           dashboardTab.disabled = true;
@@ -4718,52 +4854,23 @@
           if (state.currentView === 'dashboard') state.currentView = 'run';
         }
         if (!runId) {
+          if (!projectSlug) {
+            throw new Error('Open Auto-analysis from a project or choose a run first.');
+          }
           document.getElementById('analysis-go-runs').href = projectSlug ? projectUrl() : rootPath + '/';
-          const runsResponse = await fetch(apiUrl(
-            'api/runs?limit=1&project_slug=' + encodeURIComponent(projectSlug)
-          ));
-          if (!runsResponse.ok) {
-            throw new Error('Could not load project analysis settings (HTTP ' + runsResponse.status + ').');
-          }
-          const runsPayload = await runsResponse.json();
-          const projectRuns = [];
-          Object.values((runsPayload && runsPayload.tasks) || {}).forEach(models => {
-            Object.values(models || {}).forEach(runs => {
-              (runs || []).forEach(run => projectRuns.push(run));
-            });
-          });
-          const contextRun = projectRuns[0];
-          if (!contextRun) {
-            document.getElementById('analysis-loading').hidden = true;
-            document.getElementById('analysis-tabs').hidden = false;
-            document.getElementById('analysis-landing').hidden = false;
-            setAnalyzerView('dashboard', { updateUrl: false });
-            loadDashboard().catch(error => showDashboardError(error));
-            return;
-          }
-          state.contextRunId = contextRun.file_path || contextRun.run_id || '';
+          state.contextRunId = '';
           document.getElementById('analysis-loading').hidden = true;
           document.getElementById('analyzer-host').hidden = false;
-          window.QymPlayground.init({
-            container: document.getElementById('analyzer-host'),
-            apiUrl: apiUrl,
-            dedicatedPage: true,
-            getRunId: () => state.contextRunId,
-            getRows: () => [],
-            getMetric: () => null,
-            getMetrics: () => [],
-            getThreshold: () => 0.8,
-            reviewsUrl: projectSlug ? projectUrl('reviews') : '',
-            showToast: showStatus,
-            escapeHtml: escapeHtml,
-          });
-          window.QymPlayground.open();
+          await initializePlayground(true);
           organizeWhenReady();
           return;
         }
         const response = await fetch(apiUrl('api/runs/' + encodeURIComponent(runId)));
         if (!response.ok) throw new Error('Could not load this run (HTTP ' + response.status + ').');
         const data = await response.json();
+        if (data && data.error) {
+          throw new Error(typeof data.error === 'string' ? data.error : 'Could not load this run.');
+        }
         if (!data.run || !data.snapshot) throw new Error('The run data is incomplete.');
         state.data = data;
         state.contextRunId = data.run.file_path || data.run.run_id || runId;
@@ -4773,30 +4880,19 @@
         document.title = 'قيِّم • Auto-analysis • ' + (data.run.run_name || runId);
         document.getElementById('analysis-loading').hidden = true;
         document.getElementById('analyzer-host').hidden = false;
-        window.QymPlayground.init({
-          container: document.getElementById('analyzer-host'),
-          apiUrl: apiUrl,
-          dedicatedPage: true,
-          getRunId: () => state.contextRunId,
-          getRows: analyzerRows,
-          getMetric: () => state.metric || null,
-          getMetrics: () => state.selectedMetrics.slice(),
-          getThreshold: metricThreshold,
-          onAnalysisComplete: applyAnalysisResults,
-          reviewsUrl: projectSlug ? projectUrl('reviews') : '',
-          showToast: showStatus,
-          escapeHtml: escapeHtml,
-        });
-        window.QymPlayground.open();
+        await initializePlayground(false);
         organizeWhenReady();
       }
 
-      loadRun().catch(error => {
-        document.getElementById('analysis-loading').hidden = true;
-        const node = document.getElementById('analysis-error');
-        node.hidden = false;
-        node.textContent = error.message || 'Failed to load auto-analysis.';
+      document.getElementById('analysis-error-retry').addEventListener('click', () => {
+        const retry = document.getElementById('analysis-error-retry');
+        retry.disabled = true;
+        loadRun().catch(showAnalyzerLoadError).finally(() => {
+          retry.disabled = false;
+        });
       });
+
+      loadRun().catch(showAnalyzerLoadError);
     })();
   </script>
   <script src="/static/candidate_relationships.js?v=candidate-relationships-20260805-2"></script>

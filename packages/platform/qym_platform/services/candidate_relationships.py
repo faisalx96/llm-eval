@@ -92,6 +92,7 @@ _DIAGNOSIS_KEYS = {
     "root_cause",
     "root_cause_detail",
     "root_cause_note",
+    "root_cause_reason",
     "root_cause_source",
     "root_cause_confidence",
     "root_cause_metric_name",

@@ -28,6 +28,7 @@ from qym_platform.db.models import (
 )
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
+from qym_platform.services.root_cause_categories import analysis_root_causes
 
 
 DEFAULT_PASS_THRESHOLD = 0.8
@@ -74,6 +75,11 @@ def normalize_label(value: Any) -> str:
 def _display_label(value: Any, fallback: str = "Unspecified") -> str:
     text = unicodedata.normalize("NFKC", str(value or "")).strip()
     return re.sub(r"\s+", " ", text) or fallback
+
+
+def _display_categories(state: Mapping[str, Any]) -> str:
+    categories = analysis_root_causes(state)
+    return ", ".join(categories)
 
 
 def _unique(values: Iterable[Any]) -> tuple[str, ...]:
@@ -167,30 +173,31 @@ def _metric_analysis_entries(run: Run, item: RunItem) -> list[dict[str, Any]]:
         for raw_metric, raw_analysis in metric_analyses.items():
             if not isinstance(raw_analysis, dict):
                 continue
-            category = _display_label(raw_analysis.get("root_cause"), "")
-            if not category:
+            categories = analysis_root_causes(raw_analysis)
+            if not categories:
                 continue
             if raw_analysis.get("error"):
                 continue
             metric_name = str(raw_metric or "").strip() or "unscoped"
-            entries.append(
-                {
-                    "metric_name": metric_name,
-                    "category": category,
-                    "detail": _display_label(raw_analysis.get("root_cause_detail"), "Unspecified"),
-                    "note": str(raw_analysis.get("root_cause_note") or "").strip(),
-                    "confidence": raw_analysis.get("confidence"),
-                    "source": str(
-                        raw_analysis.get("source")
-                        or raw_analysis.get("root_cause_source")
-                        or "unknown"
-                    ).strip().lower(),
-                }
-            )
+            for category in categories:
+                entries.append(
+                    {
+                        "metric_name": metric_name,
+                        "category": category,
+                        "detail": _display_label(raw_analysis.get("root_cause_detail"), "Unspecified"),
+                        "note": str(raw_analysis.get("root_cause_note") or "").strip(),
+                        "confidence": raw_analysis.get("confidence"),
+                        "source": str(
+                            raw_analysis.get("source")
+                            or raw_analysis.get("root_cause_source")
+                            or "unknown"
+                        ).strip().lower(),
+                    }
+                )
         return entries
 
-    category = _display_label(meta.get("root_cause"), "")
-    if not category or str(meta.get("analysis_error") or "").strip():
+    categories = analysis_root_causes(meta)
+    if not categories or str(meta.get("analysis_error") or "").strip():
         return []
     metrics = list(run.metrics or [])
     metric_name = str(meta.get("root_cause_metric_name") or "").strip()
@@ -205,6 +212,7 @@ def _metric_analysis_entries(run: Run, item: RunItem) -> list[dict[str, Any]]:
             "confidence": meta.get("root_cause_confidence"),
             "source": str(meta.get("root_cause_source") or "legacy").strip().lower(),
         }
+        for category in categories
     ]
 
 
@@ -244,8 +252,8 @@ def _load_changes(db: Session, run_ids: Sequence[str]) -> list[dict[str, Any]]:
     for revision in revisions:
         before = revision.before_state if isinstance(revision.before_state, dict) else {}
         after = revision.after_state if isinstance(revision.after_state, dict) else {}
-        before_category = _display_label(before.get("root_cause"), "")
-        after_category = _display_label(after.get("root_cause"), "")
+        before_category = _display_categories(before)
+        after_category = _display_categories(after)
         events.append(
             {
                 "id": f"revision:{revision.id}",
@@ -282,8 +290,8 @@ def _load_changes(db: Session, run_ids: Sequence[str]) -> list[dict[str, Any]]:
         item_id = ":".join(parts[1:-1]) if len(parts) >= 3 else ""
         before = row.before if isinstance(row.before, dict) else {}
         after = row.after if isinstance(row.after, dict) else {}
-        before_category = _display_label(before.get("root_cause"), "")
-        after_category = _display_label(after.get("root_cause"), "")
+        before_category = _display_categories(before)
+        after_category = _display_categories(after)
         events.append(
             {
                 "id": f"audit:{row.id}",

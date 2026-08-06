@@ -112,6 +112,14 @@
     return apiUrl(`projects/${encoded}${cleanSuffix ? `/${cleanSuffix}` : ''}`);
   }
 
+  function analyzerUrlForRun(run) {
+    const slug = state.currentProject && state.currentProject.slug;
+    const runId = run && (run.file_path || run.run_id || '');
+    return slug
+      ? projectUrl(slug, `analysis?run=${encodeURIComponent(runId)}`)
+      : apiUrl(`run/${encodeURIComponent(runId)}/analyzer`);
+  }
+
   function navigateTo(url) {
     if (window.QymShell && typeof window.QymShell.navigateTo === 'function') {
       window.QymShell.navigateTo(url);
@@ -3292,7 +3300,7 @@
           </td>
           <td class="col-analysis" onclick="event.stopPropagation()">
             ${status !== 'RUNNING' && status !== 'PENDING'
-              ? `<a class="run-analysis-link" href="${projectUrl(state.currentProject && state.currentProject.slug, `analysis?run=${encodeURIComponent(run.run_id)}`)}">Analyze</a>`
+              ? `<a class="run-analysis-link" href="${analyzerUrlForRun(run)}">Analyze</a>`
               : '<span class="run-analysis-unavailable">Not ready</span>'}
           </td>
           <td class="col-dataset">

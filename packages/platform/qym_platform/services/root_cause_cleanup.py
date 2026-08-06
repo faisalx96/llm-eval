@@ -14,8 +14,12 @@ from qym_platform.db.models import AuditLog, ReviewCorrection, RootCauseRevision
 _MANAGED_METADATA_KEYS = frozenset(
     {
         "root_cause",
+        "root_causes",
+        "root_cause_categories",
+        "category_taxonomy",
         "root_cause_detail",
         "root_cause_note",
+        "root_cause_reason",
         "root_cause_source",
         "root_cause_confidence",
         "root_cause_metric_name",

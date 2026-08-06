@@ -224,6 +224,73 @@ def _seed_api_key(session: Session, *, token: str, scopes: list[str]) -> None:
     session.commit()
 
 
+def test_project_analysis_context_works_without_runs(client, session_factory) -> None:
+    with session_factory() as session:
+        manager = User(
+            id="empty-project-manager",
+            email="empty-project-manager@example.com",
+            role=UserRole.MEMBER,
+        )
+        project = Project(
+            id="empty-project",
+            name="Empty Project",
+            slug="empty-project",
+            created_by_user_id=manager.id,
+        )
+        membership = ProjectMembership(
+            project_id=project.id,
+            user_id=manager.id,
+            role=ProjectRole.MANAGER,
+            added_by_user_id=manager.id,
+        )
+        session.add_all([manager, project, membership])
+        session.commit()
+
+    config = client.get(
+        "/api/projects/empty-project/analysis-config",
+        headers=_headers("empty-project-manager@example.com"),
+    )
+    assert config.status_code == 200
+    assert config.json()["total_items"] == 0
+    assert config.json()["analysis_rules"] == []
+
+    empty_documents = client.get(
+        "/api/projects/empty-project/analysis-documents",
+        headers=_headers("empty-project-manager@example.com"),
+    )
+    assert empty_documents.status_code == 200
+    assert empty_documents.json()["documents"] == []
+
+    uploaded = client.post(
+        "/api/projects/empty-project/analysis-documents",
+        headers=_headers("empty-project-manager@example.com"),
+        files={"file": ("rubric.txt", b"Use evidence.", "text/plain")},
+    )
+    assert uploaded.status_code == 200
+    assert uploaded.json()["document"]["content"] == "Use evidence."
+
+    versions = client.get(
+        "/api/projects/empty-project/analysis-rule-versions",
+        headers=_headers("empty-project-manager@example.com"),
+    )
+    assert versions.status_code == 200
+    assert versions.json()["versions"] == []
+
+    draft = client.post(
+        "/api/projects/empty-project/analysis-rule-versions",
+        headers=_headers("empty-project-manager@example.com"),
+        json={"description": "First project draft"},
+    )
+    assert draft.status_code == 200
+    assert draft.json()["version"]["status"] == "draft"
+
+    denied = client.get(
+        "/api/projects/empty-project/analysis-config",
+        headers=_headers("not-a-project-member@example.com"),
+    )
+    assert denied.status_code == 403
+
+
 def test_proxy_headers_auto_provisions_new_user(client, session_factory):
     response = client.get("/api/runs", headers=_headers("new.user@example.com"))
     assert response.status_code == 200

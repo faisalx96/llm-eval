@@ -2026,7 +2026,9 @@
       const st = c.status || 'pending';
       const isSelected = state.selected.has(c.id);
       const isEditing = state.editingId === c.id;
-      const aiChanged = c.ai_root_cause !== c.human_root_cause;
+      const aiCategories = reviewRootCauseCategories(c, 'ai');
+      const humanCategories = reviewRootCauseCategories(c, 'human');
+      const aiChanged = aiCategories.join('\u0000').toLocaleLowerCase() !== humanCategories.join('\u0000').toLocaleLowerCase();
       const detailChanged = c.ai_root_cause_detail !== c.human_root_cause_detail;
 
       const corrector = c.corrected_by ? (c.corrected_by.display_name || c.corrected_by.email) : '';
@@ -2080,7 +2082,7 @@
               </div>
               <div class="diff-field">
                 <div class="diff-label">Root Cause Category</div>
-                <div class="diff-value ${c.ai_root_cause ? (aiChanged ? 'removed' : '') : 'is-empty'}">${c.ai_root_cause ? escapeHtml(c.ai_root_cause) : '<span class="diff-empty">—</span>'}</div>
+                <div class="diff-value ${aiCategories.length ? (aiChanged ? 'removed' : '') : 'is-empty'}">${aiCategories.length ? escapeHtml(aiCategories.join(' · ')) : '<span class="diff-empty">—</span>'}</div>
               </div>
               <div class="diff-field">
                 <div class="diff-label">Root Cause Detail</div>
@@ -2100,7 +2102,7 @@
               ${isEditing ? renderEditForm(c) : `
                 <div class="diff-field">
                   <div class="diff-label">Root Cause Category</div>
-                  <div class="diff-value ${c.human_root_cause ? (aiChanged ? 'changed' : '') : 'is-empty'}">${c.human_root_cause ? escapeHtml(c.human_root_cause) : '<span class="diff-empty">—</span>'}</div>
+                  <div class="diff-value ${humanCategories.length ? (aiChanged ? 'changed' : '') : 'is-empty'}">${humanCategories.length ? escapeHtml(humanCategories.join(' · ')) : '<span class="diff-empty">—</span>'}</div>
                 </div>
                 <div class="diff-field">
                   <div class="diff-label">Root Cause Detail</div>
@@ -2177,6 +2179,19 @@
       `;
     }
 
+    function reviewRootCauseCategories(correction, source) {
+      const plural = correction && (source ? correction[`${source}_root_causes`] : correction.root_causes);
+      const singular = correction && (source ? correction[`${source}_root_cause`] : correction.root_cause);
+      const raw = Array.isArray(plural) ? plural : (singular ? [singular] : []);
+      const seen = new Set();
+      return raw.map(value => String(value || '').trim()).filter(value => {
+        const key = value.toLocaleLowerCase();
+        if (!value || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      }).slice(0, 3);
+    }
+
     function renderHistory(c) {
       const history = Array.isArray(c.history) ? c.history : [];
       if (!history.length) return '';
@@ -2187,7 +2202,8 @@
             ${history.map(entry => {
               const after = entry.after_state || {};
               const review = entry.review;
-              const rootCause = after.root_cause ? escapeHtml(after.root_cause) : '<span class="history-empty">Cleared</span>';
+              const afterCategories = reviewRootCauseCategories(after, '');
+              const rootCause = afterCategories.length ? escapeHtml(afterCategories.join(' · ')) : '<span class="history-empty">Cleared</span>';
               const detail = after.root_cause_detail ? ` / ${escapeHtml(after.root_cause_detail)}` : '';
               const solution = after.solution ? ` | Solution: ${escapeHtml(after.solution)}` : '';
               const note = after.root_cause_note ? `<div class="history-note">${escapeHtml(after.root_cause_note)}</div>` : '';
@@ -2223,7 +2239,7 @@
       return `
         <div class="edit-field">
           <label>Root Cause Category</label>
-          <input type="text" data-edit-field="human_root_cause" value="${escapeHtml(c.human_root_cause)}" />
+          <input type="text" data-edit-field="human_root_causes" value="${escapeHtml(reviewRootCauseCategories(c, 'human').join(', '))}" placeholder="Category 1, Category 2, Category 3" />
         </div>
         <div class="edit-field">
           <label>Root Cause Detail</label>
@@ -2353,7 +2369,11 @@
           const card = btn.closest('.correction-card');
           const body = {};
           card.querySelectorAll('[data-edit-field]').forEach(field => {
-            body[field.dataset.editField] = field.value;
+            if (field.dataset.editField === 'human_root_causes') {
+              body.human_root_causes = field.value.split(',').map(value => value.trim()).filter(Boolean).slice(0, 3);
+            } else {
+              body[field.dataset.editField] = field.value;
+            }
           });
           try {
             const updated = await apiAction('PUT', `api/corrections/${id}`, body);

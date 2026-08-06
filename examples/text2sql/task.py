@@ -45,7 +45,7 @@ async def text2sql_task(
     Returns:
         Generated SQL query
     """
-    model = model_name or "openai/gpt-4o-mini"
+    model = model_name or "openai/gpt-5.6-luna-pro"
 
     user_message = f"""Schema:
 {schema}

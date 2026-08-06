@@ -982,7 +982,7 @@ def test_auto_analysis_is_a_first_class_project_page() -> None:
     assert "else if (rest === 'analysis') page = 'analysis';" in shell
     assert 'id="analysis-run-select"' not in analyzer
     assert "api/runs?limit=200&project_slug=" not in analyzer
-    assert "api/runs?limit=1&project_slug=" in analyzer
+    assert "api/runs?limit=1&project_slug=" not in analyzer
     assert "Select a run to start analysis" in analyzer
     assert "Select a run from Runs" in analyzer
     assert "Production rules and Documents remain available" in analyzer
@@ -1015,8 +1015,16 @@ def test_auto_analysis_is_a_first_class_project_page() -> None:
     assert '<details class="pg-rule-inference-options">' in playground
     assert 'pg-rule-inference-content' in playground
     assert 'pg-infer-source-summary' in playground
-    assert '2 of 2 sources enabled' in playground
+    assert 'documents · ' in playground
+    assert 'approved examples' in playground
+    assert 'Rules cannot be generated yet' in playground
+    assert 'This project has neither an' in playground
+    assert 'enabled project document nor an approved ' in playground
+    assert 'pg-infer-source-empty' in playground
+    assert 'function _inferenceSourceState()' in playground
     assert "function _syncInferenceSourceSummary()" in playground
+    assert "function _syncInferenceSourceAvailability()" in playground
+    assert "NO_INFERENCE_SOURCES" in analysis_api
     assert 'pg-context-action-group' in playground
     assert 'pg-context-action-divider' in playground
     assert 'pg-context-feedback' in playground
@@ -1118,11 +1126,15 @@ def test_auto_analysis_is_a_first_class_project_page() -> None:
     assert "cfg.analysis_rules = rules" in playground
     assert 'id="pg-document-input"' in playground
     assert "cfg.include_project_documents = documentsToggle.checked" in playground
-    assert "'/analysis-documents'" in playground
+    assert "analysis-documents" in playground
     assert "Project documents" in playground
     assert "_updateReferenceDocumentSelection" in playground
     assert 'class="pg-document-select"' in playground
     assert "_deleteReferenceDocument" in playground
+    assert "function _confirmReferenceDocumentDeletion(referenceDocument)" in playground
+    assert "Keep document" in playground
+    assert "confirmLabel: 'Delete document'" in playground
+    assert "confirmClass: 'shell-btn-danger'" in playground
     assert '@router.get("/api/runs/{run_id:path}/analysis-documents")' in analysis_api
     assert '@router.patch("/api/runs/{run_id:path}/analysis-documents/{document_id}")' in analysis_api
     assert '@router.delete("/api/runs/{run_id:path}/analysis-documents/{document_id}")' in analysis_api
@@ -1134,6 +1146,14 @@ def test_auto_analysis_is_a_first_class_project_page() -> None:
     assert '@router.post("/api/runs/{run_id:path}/analysis-documents")' in analysis_api
     assert '@router.patch("/api/runs/{run_id:path}/analysis-context")' in analysis_api
     assert '@router.post("/api/runs/{run_id:path}/analysis-rules/infer")' in analysis_api
+    assert '@router.get("/api/projects/{project_slug}/analysis-config")' in analysis_api
+    assert '@router.get("/api/projects/{project_slug}/analysis-documents")' in analysis_api
+    assert '@router.patch("/api/projects/{project_slug}/analysis-context")' in analysis_api
+    assert '@router.post("/api/projects/{project_slug}/analysis-rules/infer")' in analysis_api
+    assert 'projectScoped: !!projectScoped' in analyzer
+    assert 'await initializePlayground(true)' in analyzer
+    assert 'id="analysis-error-retry"' in analyzer
+    assert 'role="alert"' in analyzer
     assert '"/api/runs/{run_id:path}/analysis-rule-versions/{version_ref}:publish"' in analysis_api
     assert '"/api/runs/{run_id:path}/analysis-rule-versions/{version_ref}:compare"' in analysis_api
     assert '"/api/runs/{run_id:path}/analysis-rule-aliases/{alias_name}"' in analysis_api
@@ -1154,14 +1174,37 @@ def test_auto_analysis_is_a_first_class_project_page() -> None:
     assert "(analysis.root_cause || '+ Category')" in run
     assert "'>Edit</button>'" not in run
     assert 'id="analysis-metric-list"' in analyzer
-    assert "getMetrics: () => state.selectedMetrics.slice()" in analyzer
+    assert "getMetrics: projectScoped ? () => [] : () => state.selectedMetrics.slice()" in analyzer
     assert "body.metrics = _getSelectedMetrics()" in playground
+    assert "var _selectedTarget = null;" in playground
+    assert 'data-metric-name="' in playground
+    assert "function _resolveSelectedTarget(matchedItems)" in playground
+    assert "_selectTarget(card.dataset.itemId, card.dataset.metricName || null)" in playground
+    assert "metric: metricName || null" in playground
+    assert "metric: testTarget.metric_name || null" in playground
+    assert "item_ids: [testItemId], metric: _opts.getMetric ? _opts.getMetric() : null" not in playground
+    assert "function _isHumanMetricAnalysis(md, metricName)" in playground
+    assert "function _getHumanOverwriteTargets(matchedItems)" in playground
+    assert "function _confirmHumanOverwrite(targets)" in playground
+    assert "Keep human labels" in playground
+    assert "if (_opts.dedicatedPage) return;" in playground
+    assert "e.target.closest('[role=\"dialog\"][aria-modal=\"true\"]')" in playground
+    assert "event.stopPropagation();" in playground
+    assert "let inputMappingOpener = null;" in analyzer
+    assert "let inputMappingEscapeHandler = null;" in analyzer
+    assert "document.removeEventListener('keydown', inputMappingEscapeHandler)" in analyzer
+    assert "if (opener && document.contains(opener)) opener.focus();" in analyzer
     assert "getMetric: function () { return null; }" in compare
     assert "row.item_metadata.metric_analyses[result.metric_name]" in compare
+    assert "def _is_human_metric_analysis(" in analysis_api
+    assert "allow_human_overwrite: bool = False" in analysis_api
+    assert "allow_human_overwrite=request.allow_human_overwrite" in analysis_api
     assert '"type": "aggregating"' in analysis_api
     assert "evt.type === 'aggregating'" in playground
     assert "Aggregating root causes\\u2026" in playground
     assert "labels consolidated" in playground
+    assert "if (_opts.onAnalysisComplete) _opts.onAnalysisComplete(data);" in playground
+    assert "_onFilterChange();" in playground
     assert 'id="pg-target-limit"' in playground
     assert 'class="pg-target-limit-control"' in playground
     assert 'data-target-limit-step="increase"' in playground
@@ -1187,6 +1230,32 @@ def test_auto_analysis_is_a_first_class_project_page() -> None:
     assert ">Input mapping</button>" in analyzer
     assert "Advanced run configuration" not in analyzer
     assert "state.wizardStep" not in analyzer
+
+
+def test_auto_analysis_accessibility_and_responsive_contracts() -> None:
+    analyzer = ANALYZER_HTML.read_text(encoding="utf-8")
+    playground = (DASHBOARD_DIR / "playground.js").read_text(encoding="utf-8")
+    styles = (DASHBOARD_DIR / "dashboard.css").read_text(encoding="utf-8")
+    shell = (DASHBOARD_DIR / "shell.js").read_text(encoding="utf-8")
+
+    assert 'class="analysis-page" role="region" aria-labelledby="analysis-title"' in analyzer
+    assert '<main class="analysis-page">' not in analyzer
+    assert '--analysis-page-width: 1120px;' in analyzer
+    assert 'class="pg-items-list" role="listbox" aria-label="Matching analysis targets"' in playground
+    assert 'role="option" tabindex="0" aria-selected="' in playground
+    assert "card.addEventListener('keydown'" in playground
+    assert 'id="pg-document-dropzone" for="pg-document-input" role="button" tabindex="0"' in playground
+    assert "documentDropzone.addEventListener('keydown'" in playground
+    assert 'class="pg-rule-version-open" type="button"' in playground
+    assert 'role="group" aria-label="Version ' in playground
+    assert 'class="pg-rule-toggle" data-toggle-rule="' in playground
+    assert '<section class="pg-context-panel" aria-labelledby="pg-context-title">' in playground
+    assert 'dir="auto"' in playground
+    assert '.pg-item-card:focus-visible' in styles
+    assert '.pg-document-dropzone:focus-visible' in styles
+    assert "window.matchMedia('(max-width: 760px)')" in shell
+    assert '.analysis-dashboard-compare-visual,' in analyzer
+    assert 'flex: 0 1 auto;' in analyzer
 
 
 def test_playground_pages_load_matching_asset_revisions() -> None:
@@ -1280,6 +1349,11 @@ def test_auto_analysis_page_uses_first_class_run_rules_and_document_tabs() -> No
     assert "No approved examples in this category yet." in playground
     assert "Remove category from this analysis" in playground
     assert "pg-category-example-data" in playground
+    assert 'data-taxonomy-field="description"' in playground
+    assert 'data-taxonomy-field="when_to_use"' in playground
+    assert "cfg.category_taxonomy = taxonomyMap" in playground
+    assert "function _categoryTaxonomyFor" in playground
+    assert ".pg-category-taxonomy" in styles
     assert "instructionsBody.append(instructions)" in analyzer
     assert analyzer.index("runPanel.append(instructionsCard)") < analyzer.index("runPanel.append(targetCard)")
     assert "max-height: 420px" in analyzer
@@ -1302,7 +1376,8 @@ def test_auto_analysis_page_uses_first_class_run_rules_and_document_tabs() -> No
     assert "newRuleTitle.scrollIntoView" in playground
     assert 'class="pg-hl-category" style="color:' not in playground
     assert "pg-hl-rule-title" in playground
-    assert ".pg-hl-rule-title { color: var(--accent-primary);" in styles
+    assert ".pg-hl-rule-title { color: var(--accent-secondary);" in styles
+    assert ".pg-hl-json-key { color: var(--accent-secondary);" in styles
 
     # The shared Compare modal keeps using the untouched controller markup;
     # the dedicated page applies its organization only after page-mode render.
@@ -1401,7 +1476,7 @@ def test_root_cause_dashboard_keeps_context_compact_and_themes_drilldowns() -> N
         analyzer, ".analysis-dashboard-compare-category-values {"
     )
 
-    assert "runFooter.hidden = nextView !== 'run' || !runId;" in analyzer
+    assert "runFooter.hidden = nextView !== 'run' || !runId || noTargets;" in analyzer
     assert ".analysis-page .playground-footer[hidden]" in analyzer
     assert "analysis-dashboard-occurrence-count" in analyzer
     assert "Diagnosis occurrence map" in analyzer

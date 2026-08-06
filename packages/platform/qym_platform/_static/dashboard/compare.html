@@ -5,13 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>قيِّم • Compare Runs</title>
   <link rel="icon" type="image/png" href="./static/qym_icon.png">
-  <link rel="stylesheet" href="./static/dashboard.css?v=aggregation-status-20260802">
+  <link rel="stylesheet" href="./static/dashboard.css?v=accessibility-responsive-20260806">
   <link rel="stylesheet" href="./static/shell.css">
   <script src="./static/auth.js"></script>
   <script src="./static/shell.js"></script>
   <script src="./static/metrics.js"></script>
   <script src="./static/trace_viewer.js"></script>
-  <script src="./static/playground.js?v=aggregation-status-20260802"></script>
+  <script src="./static/playground.js?v=accessibility-responsive-20260806"></script>
   <style>
     /* Typography/color rules: docs/DESIGN_LANGUAGE.md — tokens only (var(--font-*), var(--text-*)). */
     /* Compare-specific styles */
@@ -4582,6 +4582,7 @@
         'Knowledge Gap',
         'Dataset Issue',
       ];
+      const MAX_ROOT_CAUSE_CATEGORIES = 3;
 
       const ROOT_CAUSE_COLORS = {
         'Hallucination': '#ef4444',
@@ -5405,6 +5406,7 @@
       const SWEEP_INTERNAL_METADATA_KEYS = new Set([
         'root_cause',
         'root_cause_detail',
+        'root_cause_reason',
         'root_cause_note',
         'root_cause_source',
         'root_cause_confidence',
@@ -6987,9 +6989,9 @@
               if (md.domain != null && md.domain !== '') {
                 for (const d of parseMetaList(md.domain)) domainSet.add(d);
               }
-              if (md.root_cause != null && md.root_cause !== '') rootCauseSet.add(String(md.root_cause));
+              rootCauseCategories(md).forEach(category => rootCauseSet.add(category));
               for (const analysis of getRowRootCauseAnalyses(row, 'all')) {
-                if (analysis.root_cause) rootCauseSet.add(String(analysis.root_cause));
+                rootCauseCategories(analysis).forEach(category => rootCauseSet.add(category));
               }
             }
           }
@@ -7012,7 +7014,7 @@
         }
 
         // Auto-select categories for breakdown chips
-        const EXCLUDED_CATEGORY_KEYS = new Set(['root_cause', 'root_cause_detail', 'root_cause_note', 'root_cause_source', 'root_cause_confidence', 'solution', 'solution_note', 'solution_source', 'task_started_at_ms', 'retry_count', 'analysis_error', 'trace_stats']);
+        const EXCLUDED_CATEGORY_KEYS = new Set(['root_cause', 'root_causes', 'root_cause_detail', 'root_cause_reason', 'root_cause_note', 'root_cause_source', 'root_cause_confidence', 'solution', 'solution_note', 'solution_source', 'task_started_at_ms', 'retry_count', 'analysis_error', 'trace_stats']);
         const MAX_CARDINALITY = 30;
         if (state.selectedCategories.size === 0) {
           for (const k of state.allMetadataKeys) {
@@ -7690,7 +7692,7 @@
 
       // #3: Render complexity/domain metadata breakdown with avg score, avg latency & consistency
       function getCategoryChipKeys() {
-        const EXCLUDED = new Set(['root_cause', 'root_cause_detail', 'root_cause_note', 'root_cause_source', 'root_cause_confidence', 'solution', 'solution_note', 'solution_source', 'task_started_at_ms', 'retry_count', 'analysis_error']);
+        const EXCLUDED = new Set(['root_cause', 'root_causes', 'root_cause_detail', 'root_cause_reason', 'root_cause_note', 'root_cause_source', 'root_cause_confidence', 'solution', 'solution_note', 'solution_source', 'task_started_at_ms', 'retry_count', 'analysis_error']);
         const MAX_CARD = 30;
         const keys = [];
         for (const k of state.allMetadataKeys) {
@@ -8461,29 +8463,49 @@
       var _sankeyResizeObserver = null;
       var _sankeyResizeTimeout = null;
 
+      function rootCauseCategories(value) {
+        const raw = value && typeof value === 'object' && !Array.isArray(value)
+          ? (Object.prototype.hasOwnProperty.call(value, 'root_causes')
+            ? value.root_causes
+            : (Object.prototype.hasOwnProperty.call(value, 'root_cause_categories')
+              ? value.root_cause_categories : value.root_cause))
+          : value;
+        const values = Array.isArray(raw) ? raw : (raw ? [raw] : []);
+        const seen = new Set();
+        return values.map(value => String(value || '').trim()).filter(value => {
+          const key = value.toLocaleLowerCase();
+          if (!value || seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        }).slice(0, MAX_ROOT_CAUSE_CATEGORIES);
+      }
+
       function getRowRootCauseAnalyses(row, metricFilter) {
         const md = row?.item_metadata || {};
         const metricAnalyses = md.metric_analyses && typeof md.metric_analyses === 'object'
           ? md.metric_analyses
           : {};
         const isValid = analysis => analysis && typeof analysis === 'object' &&
-          !analysis.error && String(analysis.root_cause || '').trim();
+          !analysis.error && rootCauseCategories(analysis).length;
         const metricEntries = Object.entries(metricAnalyses)
           .filter(([, analysis]) => isValid(analysis));
         if (metricFilter === 'all' && metricEntries.length) {
-          return metricEntries.map(([metricName, analysis]) => ({ ...analysis, metric_name: metricName }));
+          return metricEntries.map(([metricName, analysis]) => ({ ...analysis, root_causes: rootCauseCategories(analysis), root_cause: rootCauseCategories(analysis)[0] || '', metric_name: metricName }));
         }
         if (metricFilter !== 'all') {
           const analysis = metricAnalyses[metricFilter];
-          if (isValid(analysis)) return [{ ...analysis, metric_name: metricFilter }];
+          if (isValid(analysis)) return [{ ...analysis, root_causes: rootCauseCategories(analysis), root_cause: rootCauseCategories(analysis)[0] || '', metric_name: metricFilter }];
           if (metricEntries.length) return [];
         }
-        const legacyCategory = String(md.root_cause || '').trim();
         const legacyMetric = String(md.root_cause_metric_name || '').trim();
+        const legacyCategories = rootCauseCategories(md);
+        if (legacyMetric && md.root_cause_source !== 'human' &&
+            !isValid(metricAnalyses[legacyMetric])) return [];
         const canUseLegacy = metricFilter === 'all' || legacyMetric === metricFilter ||
           (!legacyMetric && state.allMetrics.length <= 1);
-        return legacyCategory && canUseLegacy ? [{
-          root_cause: legacyCategory,
+        return legacyCategories.length && canUseLegacy ? [{
+          root_causes: legacyCategories,
+          root_cause: legacyCategories[0],
           root_cause_detail: md.root_cause_detail || '',
           solution: md.solution || '',
           metric_name: legacyMetric,
@@ -8523,13 +8545,14 @@
             if (!itemId) continue;
             if (!filteredItemIds.has(itemId)) continue;
             for (const analysis of getRowRootCauseAnalyses(row, metricFilter)) {
-              const rc = analysis.root_cause || '';
               const sol = analysis.solution || '';
-              if (!rc || !sol) continue;
-              const key = rc + '|||' + sol;
-              links[key] = (links[key] || 0) + 1;
-              rcCounts[rc] = (rcCounts[rc] || 0) + 1;
-              solCounts[sol] = (solCounts[sol] || 0) + 1;
+              if (!sol) continue;
+              for (const rc of rootCauseCategories(analysis)) {
+                const key = rc + '|||' + sol;
+                links[key] = (links[key] || 0) + 1;
+                rcCounts[rc] = (rcCounts[rc] || 0) + 1;
+                solCounts[sol] = (solCounts[sol] || 0) + 1;
+              }
             }
           }
         }
@@ -8942,13 +8965,14 @@
             if (!itemId) continue;
             if (!filteredItemIds.has(itemId)) continue;
             for (const analysis of getRowRootCauseAnalyses(row, state.rootCauseMetric)) {
-              const rcRaw = String(analysis.root_cause || '');
-              if (!rcRaw) continue;
               const rcDetail = analysis.root_cause_detail || '';
-              if (!rcCategories[rcRaw]) rcCategories[rcRaw] = { count: 0, subcauses: {} };
-              rcCategories[rcRaw].count++;
-              if (rcDetail) {
-                rcCategories[rcRaw].subcauses[rcDetail] = (rcCategories[rcRaw].subcauses[rcDetail] || 0) + 1;
+              for (const rcRaw of rootCauseCategories(analysis)) {
+                if (!rcRaw) continue;
+                if (!rcCategories[rcRaw]) rcCategories[rcRaw] = { count: 0, subcauses: {} };
+                rcCategories[rcRaw].count++;
+                if (rcDetail) {
+                  rcCategories[rcRaw].subcauses[rcDetail] = (rcCategories[rcRaw].subcauses[rcDetail] || 0) + 1;
+                }
               }
             }
           }
@@ -8975,7 +8999,11 @@
               autoAnalyzeHtml +
             '</div></div>';
           var aaBtn0 = section.querySelector('#auto-analyze-btn');
-          if (aaBtn0) aaBtn0.addEventListener('click', function () { QymPlayground.open(); });
+          if (aaBtn0) aaBtn0.addEventListener('click', function () {
+            QymPlayground.open().catch(function (error) {
+              showToast('error', 'Auto-analysis', error.message || 'Could not load the analyzer.');
+            });
+          });
           wireRootCauseMetricControl(section);
           return;
         }
@@ -9077,7 +9105,11 @@
 
         // Wire auto-analyze button
         var aaBtn = section.querySelector('#auto-analyze-btn');
-        if (aaBtn) aaBtn.addEventListener('click', function () { QymPlayground.open(); });
+        if (aaBtn) aaBtn.addEventListener('click', function () {
+          QymPlayground.open().catch(function (error) {
+            showToast('error', 'Auto-analysis', error.message || 'Could not load the analyzer.');
+          });
+        });
       }
 
       function getFilteredItems() {
@@ -9171,7 +9203,8 @@
               const matchesNamed = namedFilters.length > 0 && rowData.some(r => {
                 if (!r) return false;
                 const values = getRowRootCauseAnalyses(r, state.rootCauseMetric)
-                  .map(analysis => String(analysis.root_cause || '').toLowerCase());
+                  .flatMap(analysis => rootCauseCategories(analysis))
+                  .map(value => value.toLowerCase());
                 return namedFilters.some(f => values.includes(f.toLowerCase()));
               });
               // Show row if ANY run has no root cause (partial match)
@@ -9524,7 +9557,8 @@
             // Root cause + Solution badges + feedback (only for failed items)
             let rootCauseHtml = '';
             const itemPassed = pfClass === 'pass';
-            const rowRc = row.item_metadata?.root_cause || '';
+            const rowRcs = rootCauseCategories(row.item_metadata);
+            const rowRc = rowRcs[0] || '';
             const rowRcDetail = row.item_metadata?.root_cause_detail || '';
             const rowRcNote = row.item_metadata?.root_cause_note || '';
             const rowRcSource = row.item_metadata?.root_cause_source || '';
@@ -9550,7 +9584,7 @@
 
               // Category badge
               let rcCategoryBadge = '';
-              if (rowRc) {
+              if (rowRcs.length) {
                 const aiClass = isAi ? ' ai-suggested' : '';
                 let confidenceDot = '';
                 const aiIcon = isAi ? '<span class="ai-indicator" title="AI suggested">\uD83E\uDD16</span>' : '';
@@ -9558,7 +9592,10 @@
                   const confColor = rowRcConfidence >= 0.8 ? '#22c55e' : rowRcConfidence >= 0.5 ? '#eab308' : '#ef4444';
                   confidenceDot = `<span class="confidence-dot" style="background:${confColor};" title="Confidence: ${Math.round(rowRcConfidence * 100)}%"></span>`;
                 }
-                rcCategoryBadge = `<span class="meta-badge badge-root-cause${aiClass}" data-rc-item="${escapeAttr(itemId)}" data-rc-run-idx="${runIdx}" style="border-color: ${rcColor}40; color: ${rcColor}; background: ${rcColor}15;max-width:100%;box-sizing:border-box;display:inline-flex;" title="Category: ${escapeAttr(rowRc)}. Click to change.">${aiIcon}${escapeHtml(rowRc)}${confidenceDot}</span>`;
+                rcCategoryBadge = rowRcs.map(category => {
+                  const categoryColor = rootCauseColor(category);
+                  return `<span class="meta-badge badge-root-cause${aiClass}" data-rc-item="${escapeAttr(itemId)}" data-rc-run-idx="${runIdx}" style="border-color: ${categoryColor}40; color: ${categoryColor}; background: ${categoryColor}15;max-width:100%;box-sizing:border-box;display:inline-flex;" title="Category: ${escapeAttr(category)}. Click to change.">${aiIcon}${escapeHtml(category)}${confidenceDot}</span>`;
+                }).join('');
               } else if (!itemPassed) {
                 rcCategoryBadge = `<button class="root-cause-assign-btn rc-category-assign" data-rc-item="${escapeAttr(itemId)}" data-rc-run-idx="${runIdx}" title="Assign root cause category"><span class="badge-icon">+</span>Category</button>`;
               }
@@ -9629,7 +9666,7 @@
           // #5/#6: Build item metadata row — complexity & domain as first-class badges
           let itemMetadataHtml = '';
           {
-            const SPECIAL_KEYS = ['complexity', 'domain', 'root_cause', 'root_cause_detail', 'root_cause_note', 'root_cause_source', 'root_cause_confidence', 'solution', 'solution_note', 'solution_source'];
+            const SPECIAL_KEYS = ['complexity', 'domain', 'root_cause', 'root_causes', 'root_cause_detail', 'root_cause_reason', 'root_cause_note', 'root_cause_source', 'root_cause_confidence', 'solution', 'solution_note', 'solution_source'];
             const metaRow = rowData.find(r => r);
             const md = metaRow?.item_metadata || {};
             if (typeof md === 'object') {
@@ -10286,7 +10323,7 @@
         const run = state.runs[runIdx];
         const rows = run?.snapshot?.rows || [];
         const row = findRowByCompareId(rows, itemId);
-        const currentRC = row?.item_metadata?.root_cause || '';
+        let selectedCategories = rootCauseCategories(row?.item_metadata);
 
         // Build options: predefined + any custom values already in data
         const allOptions = [...ROOT_CAUSE_PRESETS];
@@ -10298,19 +10335,51 @@
         dropdown.className = 'root-cause-dropdown';
 
         let html = '';
-        html += `<div class="rc-option ${!currentRC ? 'active' : ''}" data-rc-value=""><span class="rc-dot" style="background: var(--text-muted);"></span> None (clear)</div>`;
+        html += '<div class="rc-option" data-rc-value=""><span class="rc-dot" style="background: var(--text-muted);"></span> None (clear)</div>';
         html += '<div class="rc-divider"></div>';
-
-        for (const opt of allOptions) {
-          const color = rootCauseColor(opt);
-          const isActive = opt === currentRC;
-          html += `<div class="rc-option ${isActive ? 'active' : ''}" data-rc-value="${escapeAttr(opt)}"><span class="rc-dot" style="background: ${color};"></span> ${escapeHtml(opt)}</div>`;
-        }
-
+        html += '<div class="rc-category-options"></div>';
+        html += '<div class="rc-category-count" style="padding:4px 10px;color:var(--text-muted);font-size:var(--font-xs);"></div>';
         html += '<div class="rc-divider"></div>';
         html += `<div class="rc-custom-input"><input type="text" placeholder="Custom cause..." /><button>Add</button></div>`;
+        html += '<button type="button" class="rc-save-btn" data-rc-save style="width:100%;margin-top:6px;">Save categories</button>';
 
         dropdown.innerHTML = html;
+
+        const optionsContainer = dropdown.querySelector('.rc-category-options');
+        const countLabel = dropdown.querySelector('.rc-category-count');
+        const sameCategory = (left, right) => String(left).trim().toLocaleLowerCase() === String(right).trim().toLocaleLowerCase();
+        const refreshSelection = () => {
+          dropdown.querySelectorAll('.rc-option[data-rc-value]').forEach(option => {
+            const value = option.dataset.rcValue || '';
+            option.classList.toggle('active', value === ''
+              ? selectedCategories.length === 0
+              : selectedCategories.some(category => sameCategory(category, value)));
+          });
+          if (countLabel) countLabel.textContent = selectedCategories.length + ' / ' + MAX_ROOT_CAUSE_CATEGORIES + ' categories selected';
+        };
+        const bindOptions = () => {
+          dropdown.querySelectorAll('.rc-option[data-rc-value]').forEach(option => {
+            option.addEventListener('click', () => {
+              const value = String(option.dataset.rcValue || '').trim();
+              if (!value) selectedCategories = [];
+              else {
+                const index = selectedCategories.findIndex(category => sameCategory(category, value));
+                if (index >= 0) selectedCategories.splice(index, 1);
+                else if (selectedCategories.length < MAX_ROOT_CAUSE_CATEGORIES) selectedCategories.push(value);
+              }
+              refreshSelection();
+            });
+          });
+        };
+        const renderOptions = () => {
+          optionsContainer.innerHTML = allOptions.map(opt => {
+            const color = rootCauseColor(opt);
+            return '<div class="rc-option" data-rc-value="' + escapeAttr(opt) + '"><span class="rc-dot" style="background:' + color + ';"></span> ' + escapeHtml(opt) + '</div>';
+          }).join('');
+          bindOptions();
+          refreshSelection();
+        };
+        renderOptions();
 
         // Position near the anchor element, flipping above if it would clip the bottom
         document.body.appendChild(dropdown);
@@ -10326,32 +10395,27 @@
         dropdown.style.left = Math.min(rect.left, window.innerWidth - dropdown.offsetWidth - 8) + 'px';
         dropdown.style.maxHeight = Math.max(spaceBelow, spaceAbove) + 'px';
 
-        // Wire option clicks
-        dropdown.querySelectorAll('.rc-option').forEach(opt => {
-          opt.addEventListener('click', async () => {
-            await saveRootCause(itemId, runIdx, opt.dataset.rcValue);
-            dropdown.remove();
-          });
-        });
-
         // Wire custom input
         const customInput = dropdown.querySelector('.rc-custom-input input');
         const customBtn = dropdown.querySelector('.rc-custom-input button');
-        customBtn.addEventListener('click', async () => {
+        const addCustomCategory = () => {
           const val = customInput.value.trim();
-          if (val) {
-            await saveRootCause(itemId, runIdx, val);
-            dropdown.remove();
+          if (!val || selectedCategories.length >= MAX_ROOT_CAUSE_CATEGORIES || allOptions.some(option => sameCategory(option, val))) return;
+          allOptions.push(val);
+          selectedCategories.push(val);
+          customInput.value = '';
+          renderOptions();
+        };
+        customBtn.addEventListener('click', addCustomCategory);
+        customInput.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            addCustomCategory();
           }
         });
-        customInput.addEventListener('keydown', async (e) => {
-          if (e.key === 'Enter') {
-            const val = customInput.value.trim();
-            if (val) {
-              await saveRootCause(itemId, runIdx, val);
-              dropdown.remove();
-            }
-          }
+        dropdown.querySelector('[data-rc-save]').addEventListener('click', async () => {
+          await saveRootCause(itemId, runIdx, selectedCategories);
+          dropdown.remove();
         });
 
         // Close on outside click or scroll (but not scroll within the dropdown itself)
@@ -10372,7 +10436,8 @@
         }, 0);
       }
 
-      async function saveRootCause(itemId, runIdx, rootCause) {
+      async function saveRootCause(itemId, runIdx, rootCauses) {
+        const categories = rootCauseCategories({ root_causes: rootCauses });
         const runId = state.runs[runIdx]?.run?.file_path;
         if (!runId) return;
         const run = state.runs[runIdx];
@@ -10384,7 +10449,7 @@
           const res = await fetch(apiUrl('api/runs/update_root_cause'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ item_id: rawItemId, root_cause: rootCause, run_id: runId }),
+            body: JSON.stringify({ item_id: rawItemId, root_causes: categories, run_id: runId }),
           });
           const data = await res.json().catch(() => ({}));
           if (!res.ok || data.error) {
@@ -10395,11 +10460,13 @@
           // Update local state: set root_cause only on this run's item
           if (row) {
             if (!row.item_metadata) row.item_metadata = {};
-            if (rootCause) {
-              row.item_metadata.root_cause = rootCause;
+            if (categories.length) {
+              row.item_metadata.root_causes = categories;
+              row.item_metadata.root_cause = categories[0];
               row.item_metadata.root_cause_source = 'human';
               delete row.item_metadata.root_cause_confidence;
             } else {
+              delete row.item_metadata.root_causes;
               delete row.item_metadata.root_cause;
               delete row.item_metadata.root_cause_source;
               delete row.item_metadata.root_cause_confidence;
@@ -10407,13 +10474,11 @@
           }
 
           // Update root cause values set
-          if (rootCause && !state.rootCauseValues.includes(rootCause)) {
-            state.rootCauseValues.push(rootCause);
-            state.rootCauseValues.sort();
-          }
+          categories.forEach(category => { if (!state.rootCauseValues.includes(category)) state.rootCauseValues.push(category); });
+          state.rootCauseValues.sort();
 
           // Ensure root_cause is in allMetadataKeys
-          if (rootCause && !state.allMetadataKeys.includes('root_cause')) {
+          if (categories.length && !state.allMetadataKeys.includes('root_cause')) {
             state.allMetadataKeys.push('root_cause');
             state.allMetadataKeys.sort();
           }
@@ -10484,7 +10549,7 @@
                 if (runId) {
                   await fetch(apiUrl('api/runs/update_root_cause'), {
                     method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ item_id: rid, root_cause: r.item_metadata?.root_cause || '', root_cause_detail: '', run_id: runId }),
+                    body: JSON.stringify({ item_id: rid, root_causes: rootCauseCategories(r.item_metadata), root_cause_detail: '', run_id: runId }),
                   }).catch(() => {});
                 }
                 if (r.item_metadata) delete r.item_metadata.root_cause_detail;
@@ -10553,7 +10618,7 @@
           const res = await fetch(apiUrl('api/runs/update_root_cause'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ item_id: rawItemId, root_cause: existingCategory, root_cause_detail: detail, run_id: runId }),
+            body: JSON.stringify({ item_id: rawItemId, root_causes: rootCauseCategories(row?.item_metadata), root_cause_detail: detail, run_id: runId }),
           });
           const data = await res.json().catch(() => ({}));
           if (!res.ok || data.error) { console.error('Failed to save root cause detail:', data.error); return; }
@@ -10663,7 +10728,7 @@
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               item_id: rawItemId,
-              root_cause: row?.item_metadata?.root_cause || '',
+              root_causes: rootCauseCategories(row?.item_metadata),
               root_cause_detail: row?.item_metadata?.root_cause_detail || '',
               solution: solution,
               run_id: runId
@@ -11233,7 +11298,9 @@
             const md = row.item_metadata || {};
             const vals = category === 'domain'
               ? parseMetaList(md.domain)
-              : [String(md[category] ?? '')];
+              : category === 'root_cause'
+                ? [...rootCauseCategories(md), ...getRowRootCauseAnalyses(row, 'all').flatMap(analysis => rootCauseCategories(analysis))]
+                : [String(md[category] ?? '')];
             vals.forEach(val => {
               if (itemCounts[val] !== undefined) itemCounts[val]++;
             });
@@ -11251,7 +11318,7 @@
               const anyMissingRc = state.runs.some(run => {
                 const rRows = run.snapshot?.rows || [];
                 const rRow = findRowByCompareId(rRows, getRowCompareId(row));
-                return !rRow || !rRow.item_metadata?.root_cause;
+                return !rRow || getRowRootCauseAnalyses(rRow, 'all').length === 0;
               });
               if (anyMissingRc) noRcCount++;
             }
@@ -11891,7 +11958,9 @@
                           row.item_metadata.metric_analyses[result.metric_name] = {
                               source: 'ai',
                               root_cause: result.root_cause,
+                              root_causes: rootCauseCategories(result),
                               root_cause_detail: result.root_cause_detail || '',
+                              root_cause_reason: result.root_cause_reason || '',
                               root_cause_note: result.root_cause_note || '',
                               confidence: result.confidence,
                               solution: result.solution || '',
@@ -11904,9 +11973,9 @@
               // Update root cause values
               for (var j = 0; j < (data.results || []).length; j++) {
                   var res = data.results[j];
-                  if (res.root_cause && !state.rootCauseValues.includes(res.root_cause)) {
-                      state.rootCauseValues.push(res.root_cause);
-                  }
+                  rootCauseCategories(res).forEach(function (category) {
+                      if (!state.rootCauseValues.includes(category)) state.rootCauseValues.push(category);
+                  });
               }
               state.rootCauseValues.sort();
               if (typeof buildCategoryDropdowns === 'function') buildCategoryDropdowns();

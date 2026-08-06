@@ -11,6 +11,11 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, ConfigDict, Field
+from qym_platform.services.root_cause_categories import (
+    category_taxonomy_for_categories,
+    normalize_category_taxonomy,
+    normalize_root_causes,
+)
 
 if TYPE_CHECKING:
     from qym_platform.services.llm_analyzer import AnalysisResult
@@ -468,6 +473,31 @@ def _apply_mapping(
     for result in results:
         if result.error:
             continue
+        if attribute == "root_cause":
+            categories = normalize_root_causes(
+                getattr(result, "root_causes", None) or result.root_cause
+            )
+            mapped_categories = [
+                mapping.get(_label_key(category), category)
+                for category in categories
+            ]
+            taxonomy = normalize_category_taxonomy(
+                getattr(result, "category_taxonomy", None)
+            )
+            taxonomy_by_fold = {
+                label.casefold(): entry for label, entry in taxonomy.items()
+            }
+            mapped_taxonomy: dict[str, dict[str, str]] = {}
+            for category, mapped_category in zip(categories, mapped_categories):
+                entry = taxonomy_by_fold.get(category.casefold())
+                if entry:
+                    mapped_taxonomy.setdefault(mapped_category, dict(entry))
+            result.root_causes = normalize_root_causes(mapped_categories)
+            result.root_cause = result.root_causes[0] if result.root_causes else ""
+            result.category_taxonomy = category_taxonomy_for_categories(
+                mapped_taxonomy, result.root_causes
+            )
+            continue
         original = _clean_label(getattr(result, attribute, ""))
         if not original:
             continue
@@ -483,6 +513,16 @@ def _relocate_details_to_dominant_categories(
 
     for result in results:
         if result.error:
+            continue
+        # A multi-category diagnosis is intentionally allowed to keep the
+        # same detail under several causes. The old dominant-category cleanup
+        # remains useful for historical single-category results in the same
+        # aggregation batch.
+        if len(
+            normalize_root_causes(
+                getattr(result, "root_causes", None) or result.root_cause
+            )
+        ) > 1:
             continue
         detail_key = _label_key(_clean_label(result.root_cause_detail))
         category = _clean_label(result.root_cause)
@@ -500,9 +540,16 @@ def _relocate_details_to_dominant_categories(
     for result in results:
         if result.error:
             continue
+        if len(
+            normalize_root_causes(
+                getattr(result, "root_causes", None) or result.root_cause
+            )
+        ) > 1:
+            continue
         detail_key = _label_key(_clean_label(result.root_cause_detail))
         dominant_key = dominant_category_by_detail.get(detail_key)
         if dominant_key:
+            result.root_causes = [category_labels[dominant_key]]
             result.root_cause = category_labels[dominant_key]
 
 
@@ -530,7 +577,13 @@ async def aggregate_analysis_categories(
     category_catalog = _build_catalog(
         field_name="category",
         id_prefix="c",
-        values=(result.root_cause for result in successful),
+        values=(
+            category
+            for result in successful
+            for category in normalize_root_causes(
+                getattr(result, "root_causes", None) or result.root_cause
+            )
+        ),
         preferred_values=known_categories,
     )
     detail_preferences = [
@@ -575,7 +628,10 @@ async def aggregate_analysis_categories(
 
     counts: dict[str, int] = {}
     for result in successful:
-        category = _clean_label(result.root_cause)
-        if category:
-            counts[category] = counts.get(category, 0) + 1
+        categories = normalize_root_causes(
+            getattr(result, "root_causes", None) or result.root_cause
+        )
+        for category in categories:
+            if category:
+                counts[category] = counts.get(category, 0) + 1
     return counts

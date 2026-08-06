@@ -46,6 +46,7 @@ from qym_platform.permissions import (
     can_delete_run,
     can_review_run,
     can_view_run,
+    has_project_access,
     is_project_manager,
 )
 from qym_platform.secrets import resolve_llm_api_key
@@ -81,6 +82,14 @@ from qym_platform.services.root_cause_changes import (
     extract_analysis_state,
     replace_metric_review_candidate,
 )
+from qym_platform.services.root_cause_categories import (
+    DEFAULT_MAX_ROOT_CAUSE_CATEGORIES,
+    DEFAULT_ROOT_CAUSE_TAXONOMY,
+    analysis_root_causes,
+    merge_category_taxonomies,
+    normalize_category_taxonomy,
+    normalize_root_causes,
+)
 from qym_platform.settings import PlatformSettings
 from sqlalchemy import String, and_, cast, func, or_, tuple_
 from sqlalchemy.exc import IntegrityError
@@ -95,12 +104,69 @@ _DOCUMENT_EXTRACTION_LIMITER = CapacityLimiter(2)
 
 MappingSource = Union[str, List[str]]
 
+_PROJECT_ANALYSIS_SCOPE_PREFIX = "project:"
+
+
+@dataclass(frozen=True)
+class _ProjectAnalysisScope:
+    """Run-shaped project scope used by analyzer context endpoints."""
+
+    id: str
+    project_id: str
+    task: str | None = None
+    owner_user_id: str | None = None
+    deleted_at: Any = None
+
 
 def _can_operate_analyzer(db: Session, principal: Principal, run: Run) -> bool:
     """Allow analyzer spending/mutation to the run owner or project managers."""
     return run.owner_user_id == principal.user.id or is_project_manager(
         db, principal, run.project_id
     )
+
+
+def _project_analysis_scope_key(project_slug: str) -> str:
+    return _PROJECT_ANALYSIS_SCOPE_PREFIX + str(project_slug or "").strip()
+
+
+def _resolve_analysis_scope(
+    db: Session,
+    principal: Principal,
+    scope_id: str,
+    *,
+    modify: bool = False,
+) -> Run | _ProjectAnalysisScope:
+    """Resolve either a run or an explicitly project-scoped analyzer context."""
+    if scope_id.startswith(_PROJECT_ANALYSIS_SCOPE_PREFIX):
+        project_slug = scope_id[len(_PROJECT_ANALYSIS_SCOPE_PREFIX) :].strip()
+        project = (
+            db.query(Project)
+            .filter(Project.slug == project_slug, Project.is_active.is_(True))
+            .first()
+        )
+        if project is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+        if not has_project_access(db, principal, project.id):
+            raise HTTPException(status_code=403, detail="Access denied")
+        if modify and not is_project_manager(db, principal, project.id):
+            raise HTTPException(
+                status_code=403, detail="Project manager access required"
+            )
+        return _ProjectAnalysisScope(
+            id=scope_id,
+            project_id=project.id,
+        )
+
+    run = Run.active(db).filter(Run.id == scope_id).first()
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+    if not can_view_run(db, principal, run):
+        raise HTTPException(status_code=403, detail="Access denied")
+    if modify and not _can_operate_analyzer(db, principal, run):
+        raise HTTPException(
+            status_code=403, detail="Analyzer owner or manager access required"
+        )
+    return run
 
 
 def _active_analysis_rule_version(
@@ -671,6 +737,13 @@ class AnalyzerDocumentSelection(BaseModel):
     selected: bool
 
 
+class CategoryTaxonomyConfig(BaseModel):
+    """Definition and selection criteria for one root-cause category."""
+
+    description: str = Field(default="", max_length=2_000)
+    when_to_use: str = Field(default="", max_length=2_000)
+
+
 class PlaygroundConfig(BaseModel):
     """Configuration overrides for the AI evaluator playground."""
 
@@ -684,8 +757,15 @@ class PlaygroundConfig(BaseModel):
     additional_instructions: Optional[str] = Field(default=None, max_length=20_000)
     custom_variable_mapping: Optional[Dict[str, MappingSource]] = None
     root_cause_categories: Optional[List[str]] = Field(default=None, max_length=100)
+    max_root_cause_categories: Optional[int] = Field(
+        default=None, ge=1, le=10
+    )
     root_cause_details: Optional[List[str]] = Field(default=None, max_length=500)
     category_details_map: Optional[Dict[str, List[str]]] = None
+    category_taxonomy: Optional[Dict[str, CategoryTaxonomyConfig]] = None
+    # Accept the plural spelling from external clients while emitting the
+    # canonical singular map internally.
+    category_taxonomies: Optional[Dict[str, CategoryTaxonomyConfig]] = None
     solution_categories: Optional[List[str]] = Field(default=None, max_length=100)
     include_fields: Optional[Dict[str, bool]] = None
     field_mapping: Optional[Dict[str, MappingSource]] = (
@@ -869,8 +949,18 @@ def _playground_config_to_analyzer(
         cfg["system_prompt"] = pg.system_prompt
     if pg.root_cause_categories is not None:
         cfg["root_cause_categories"] = pg.root_cause_categories
+    if pg.max_root_cause_categories is not None:
+        cfg["max_root_cause_categories"] = pg.max_root_cause_categories
     if pg.category_details_map is not None:
         cfg["category_details_map"] = pg.category_details_map
+    category_taxonomy = pg.category_taxonomy
+    if category_taxonomy is None:
+        category_taxonomy = pg.category_taxonomies
+    if category_taxonomy is not None:
+        cfg["category_taxonomy"] = {
+            category: definition.model_dump()
+            for category, definition in category_taxonomy.items()
+        }
     if pg.root_cause_details is not None:
         cfg["root_cause_details"] = pg.root_cause_details
     if pg.solution_categories is not None:
@@ -991,34 +1081,55 @@ def _ordered_unique(values: List[str]) -> List[str]:
 
 def _collect_task_root_cause_catalog(
     db: Session,
-    run: Run,
+    run: Run | _ProjectAnalysisScope,
     items: List[RunItem],
 ) -> tuple[List[str], Dict[str, List[str]]]:
     """Collect root-cause categories and a category→details mapping from approved corrections."""
-    task_corrections = (
+    corrections_query = (
         db.query(ReviewCorrection)
         .join(Run, Run.id == ReviewCorrection.run_id)
         .filter(
-            ReviewCorrection.task == run.task,
             Run.project_id == run.project_id,
             Run.deleted_at.is_(None),
             ReviewCorrection.status == CorrectionStatus.APPROVED,
             ReviewCorrection.is_active.is_(True),
         )
         .order_by(ReviewCorrection.created_at.desc())
-        .all()
     )
+    if not isinstance(run, _ProjectAnalysisScope):
+        corrections_query = corrections_query.filter(ReviewCorrection.task == run.task)
+    task_corrections = corrections_query.all()
 
     correction_categories: list[str] = []
     # Build category → details mapping from approved corrections
     cat_details_map: Dict[str, List[str]] = {}
     for correction in task_corrections:
-        cat = correction.human_root_cause or ""
+        categories = normalize_root_causes(
+            correction.human_root_causes
+            or correction.human_root_cause
+        )
         detail = correction.human_root_cause_detail or ""
-        if cat:
-            correction_categories.append(cat)
+        if categories:
+            correction_categories.extend(categories)
             if detail:
-                cat_details_map.setdefault(cat, []).append(detail)
+                for category in categories:
+                    cat_details_map.setdefault(category, []).append(detail)
+
+    # Include categories already present on this run even before a review
+    # candidate has been approved, so the analyzer can preserve current
+    # vocabulary when re-running or aggregating a run.
+    for item in items:
+        metadata = item.item_metadata if isinstance(item.item_metadata, dict) else {}
+        for analysis in [metadata, *(
+            value
+            for value in (metadata.get("metric_analyses") or {}).values()
+            if isinstance(value, dict)
+        )]:
+            correction_categories.extend(analysis_root_causes(analysis))
+            detail = str(analysis.get("root_cause_detail") or "").strip()
+            for category in analysis_root_causes(analysis):
+                if detail:
+                    cat_details_map.setdefault(category, []).append(detail)
 
     all_categories = _ordered_unique(
         list(ROOT_CAUSE_CATEGORIES) + correction_categories
@@ -1031,12 +1142,87 @@ def _collect_task_root_cause_catalog(
     return all_categories, cat_details_map
 
 
+def _collect_task_root_cause_taxonomy(
+    db: Session,
+    run: Run | _ProjectAnalysisScope,
+    items: List[RunItem],
+) -> Dict[str, Dict[str, str]]:
+    """Collect built-in and learned category definitions for analyzer prompts."""
+    corrections_query = (
+        db.query(ReviewCorrection)
+        .join(Run, Run.id == ReviewCorrection.run_id)
+        .filter(
+            Run.project_id == run.project_id,
+            Run.deleted_at.is_(None),
+            ReviewCorrection.status == CorrectionStatus.APPROVED,
+            ReviewCorrection.is_active.is_(True),
+        )
+        .order_by(ReviewCorrection.created_at.desc(), ReviewCorrection.id.desc())
+    )
+    if not isinstance(run, _ProjectAnalysisScope):
+        corrections_query = corrections_query.filter(ReviewCorrection.task == run.task)
+    task_corrections = corrections_query.all()
+
+    # Older corrections do not have taxonomy columns, so use getattr for
+    # compatibility with long-lived workers during a rolling migration.
+    learned: list[Any] = []
+    for correction in reversed(task_corrections):
+        learned.append(
+            getattr(correction, "ai_category_taxonomy", None)
+        )
+        learned.append(
+            getattr(correction, "human_category_taxonomy", None)
+        )
+
+    for item in items:
+        metadata = item.item_metadata if isinstance(item.item_metadata, dict) else {}
+        learned.append(metadata.get("category_taxonomy"))
+        metric_analyses = metadata.get("metric_analyses")
+        if isinstance(metric_analyses, dict):
+            learned.extend(
+                analysis.get("category_taxonomy")
+                for analysis in metric_analyses.values()
+                if isinstance(analysis, dict)
+            )
+
+    return merge_category_taxonomies(DEFAULT_ROOT_CAUSE_TAXONOMY, *learned)
+
+
+def _analysis_config_with_category_catalog(
+    db: Session,
+    run: Run,
+    items: List[RunItem],
+    analyzer_config: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    """Add the task category catalog without overriding explicit playground edits."""
+    config = dict(analyzer_config or {})
+    categories, details = _collect_task_root_cause_catalog(db, run, items)
+    taxonomy = _collect_task_root_cause_taxonomy(db, run, items)
+    if "root_cause_categories" not in config:
+        config["root_cause_categories"] = _ordered_unique(
+            categories + list(taxonomy.keys())
+        )
+    if "category_details_map" not in config:
+        config["category_details_map"] = details
+    config["category_taxonomy"] = merge_category_taxonomies(
+        taxonomy, config.get("category_taxonomy")
+    )
+    return config or None
+
+
 def _analysis_result_payload(result: AnalysisResult) -> Dict[str, Any]:
     return {
         "item_id": result.item_id,
         "metric_name": result.metric_name,
         "root_cause": result.root_cause,
+        "root_causes": normalize_root_causes(
+            getattr(result, "root_causes", None) or result.root_cause
+        ),
+        "category_taxonomy": normalize_category_taxonomy(
+            getattr(result, "category_taxonomy", None)
+        ),
         "root_cause_detail": result.root_cause_detail,
+        "root_cause_reason": result.root_cause_reason,
         "root_cause_note": result.root_cause_note,
         "confidence": result.confidence,
         "solution": result.solution,
@@ -1056,10 +1242,13 @@ def _analysis_result_payload(result: AnalysisResult) -> Dict[str, Any]:
 def _category_counts(results: List[AnalysisResult]) -> Dict[str, int]:
     counts: Dict[str, int] = {}
     for result in results:
-        category = str(result.root_cause or "").strip()
-        if result.error or not category:
+        categories = normalize_root_causes(
+            getattr(result, "root_causes", None) or result.root_cause
+        )
+        if result.error or not categories:
             continue
-        counts[category] = counts.get(category, 0) + 1
+        for category in categories:
+            counts[category] = counts.get(category, 0) + 1
     return counts
 
 
@@ -1071,6 +1260,8 @@ class _PersistedAnalysisBinding:
     original_root_cause: str
     original_root_cause_detail: str
     original_solution: str
+    original_root_causes: tuple[str, ...] = ()
+    original_category_taxonomy: dict[str, dict[str, str]] | None = None
 
 
 def _persisted_ai_analysis_bindings(
@@ -1092,8 +1283,13 @@ def _persisted_ai_analysis_bindings(
 
     for item in items:
         meta = item.item_metadata if isinstance(item.item_metadata, dict) else {}
-        root_cause = str(meta.get("root_cause") or "").strip()
+        root_causes = analysis_root_causes(meta)
+        root_cause = root_causes[0] if root_causes else ""
         root_cause_detail = str(meta.get("root_cause_detail") or "").strip()
+        root_cause_reason = str(meta.get("root_cause_reason") or "").strip()
+        category_taxonomy = normalize_category_taxonomy(
+            meta.get("category_taxonomy")
+        )
         legacy_metric_name = str(meta.get("root_cause_metric_name") or "").strip()
         metric_analyses = meta.get("metric_analyses")
         valid_metric_analyses = (
@@ -1104,7 +1300,7 @@ def _persisted_ai_analysis_bindings(
                 if isinstance(analysis, dict)
                 and analysis.get("source") == "ai"
                 and not analysis.get("error")
-                and str(analysis.get("root_cause") or "").strip()
+                and analysis_root_causes(analysis)
             }
             if isinstance(metric_analyses, dict)
             else {}
@@ -1128,7 +1324,10 @@ def _persisted_ai_analysis_bindings(
                     result=AnalysisResult(
                         item_id=item.item_id,
                         root_cause=root_cause,
+                        root_causes=root_causes,
+                        category_taxonomy=category_taxonomy,
                         root_cause_detail=root_cause_detail,
+                        root_cause_reason=root_cause_reason,
                         root_cause_note=str(meta.get("root_cause_note") or ""),
                         confidence=float(meta.get("root_cause_confidence") or 0.0),
                         solution=str(meta.get("solution") or ""),
@@ -1137,14 +1336,21 @@ def _persisted_ai_analysis_bindings(
                     original_root_cause=root_cause,
                     original_root_cause_detail=root_cause_detail,
                     original_solution=str(meta.get("solution") or ""),
+                    original_root_causes=tuple(root_causes),
+                    original_category_taxonomy=category_taxonomy,
                 )
             )
 
         for metric_name, raw_analysis in valid_metric_analyses.items():
             if (item.item_id, metric_name) in target_keys:
                 continue
-            metric_root_cause = str(raw_analysis.get("root_cause") or "").strip()
+            metric_root_causes = analysis_root_causes(raw_analysis)
+            metric_root_cause = metric_root_causes[0] if metric_root_causes else ""
             metric_detail = str(raw_analysis.get("root_cause_detail") or "").strip()
+            metric_reason = str(raw_analysis.get("root_cause_reason") or "").strip()
+            metric_taxonomy = normalize_category_taxonomy(
+                raw_analysis.get("category_taxonomy")
+            )
             bindings.append(
                 _PersistedAnalysisBinding(
                     item=item,
@@ -1153,7 +1359,10 @@ def _persisted_ai_analysis_bindings(
                         item_id=item.item_id,
                         metric_name=metric_name,
                         root_cause=metric_root_cause,
+                        root_causes=metric_root_causes,
+                        category_taxonomy=metric_taxonomy,
                         root_cause_detail=metric_detail,
+                        root_cause_reason=metric_reason,
                         root_cause_note=str(raw_analysis.get("root_cause_note") or ""),
                         confidence=float(raw_analysis.get("confidence") or 0.0),
                         solution=str(raw_analysis.get("solution") or ""),
@@ -1162,6 +1371,8 @@ def _persisted_ai_analysis_bindings(
                     original_root_cause=metric_root_cause,
                     original_root_cause_detail=metric_detail,
                     original_solution=str(raw_analysis.get("solution") or ""),
+                    original_root_causes=tuple(metric_root_causes),
+                    original_category_taxonomy=metric_taxonomy,
                 )
             )
 
@@ -1179,9 +1390,20 @@ def _persist_aggregated_bindings(
         binding
         for binding in bindings
         if (
-            binding.result.root_cause != binding.original_root_cause
+            tuple(
+                normalize_root_causes(
+                    getattr(binding.result, "root_causes", None)
+                    or binding.result.root_cause
+                )
+            )
+            != binding.original_root_causes
+            or binding.result.root_cause != binding.original_root_cause
             or binding.result.root_cause_detail != binding.original_root_cause_detail
             or binding.result.solution != binding.original_solution
+            or normalize_category_taxonomy(
+                getattr(binding.result, "category_taxonomy", None)
+            )
+            != (binding.original_category_taxonomy or {})
         )
     ]
     actor_user_id = principal.user.id if principal.auth_type != "none" else None
@@ -1195,7 +1417,15 @@ def _persist_aggregated_bindings(
             else {}
         )
         state["root_cause"] = binding.result.root_cause
+        state["root_causes"] = normalize_root_causes(
+            getattr(binding.result, "root_causes", None)
+            or binding.result.root_cause
+        )
+        state["category_taxonomy"] = normalize_category_taxonomy(
+            getattr(binding.result, "category_taxonomy", None)
+        )
         state["root_cause_detail"] = binding.result.root_cause_detail
+        state["root_cause_reason"] = binding.result.root_cause_reason
         state["solution"] = binding.result.solution
         apply_root_cause_change(
             db,
@@ -1219,7 +1449,15 @@ def _persist_aggregated_bindings(
         for binding in item_bindings:
             analysis = dict(metric_analyses.get(binding.metric_name) or {})
             analysis["root_cause"] = binding.result.root_cause
+            analysis["root_causes"] = normalize_root_causes(
+                getattr(binding.result, "root_causes", None)
+                or binding.result.root_cause
+            )
+            analysis["category_taxonomy"] = normalize_category_taxonomy(
+                getattr(binding.result, "category_taxonomy", None)
+            )
             analysis["root_cause_detail"] = binding.result.root_cause_detail
+            analysis["root_cause_reason"] = binding.result.root_cause_reason
             analysis["solution"] = binding.result.solution
             metric_analyses[binding.metric_name] = analysis
             if (
@@ -1227,7 +1465,10 @@ def _persist_aggregated_bindings(
                 and meta.get("root_cause_metric_name") == binding.metric_name
             ):
                 meta["root_cause"] = binding.result.root_cause
+                meta["root_causes"] = analysis["root_causes"]
+                meta["category_taxonomy"] = analysis["category_taxonomy"]
                 meta["root_cause_detail"] = binding.result.root_cause_detail
+                meta["root_cause_reason"] = binding.result.root_cause_reason
                 meta["solution"] = binding.result.solution
         meta["metric_analyses"] = metric_analyses
         item.item_metadata = meta
@@ -1282,7 +1523,18 @@ async def _aggregate_run_analysis_results(
         return _category_counts(combined_results), 0
 
     labels_before = [
-        (result.root_cause, result.root_cause_detail, result.solution)
+        (
+            tuple(
+                normalize_root_causes(
+                    getattr(result, "root_causes", None) or result.root_cause
+                )
+            ),
+            result.root_cause_detail,
+            result.solution,
+            normalize_category_taxonomy(
+                getattr(result, "category_taxonomy", None)
+            ),
+        )
         for result in combined_results
     ]
     try:
@@ -1298,10 +1550,27 @@ async def _aggregate_run_analysis_results(
         )
     except AnalysisAggregationError:
         for result, before in zip(combined_results, labels_before):
-            result.root_cause, result.root_cause_detail, result.solution = before
+            categories, detail, solution, category_taxonomy = before
+            result.root_causes = list(categories)
+            result.root_cause = categories[0] if categories else ""
+            result.root_cause_detail = detail
+            result.solution = solution
+            result.category_taxonomy = category_taxonomy
         raise
     changed_new_results = sum(
-        (result.root_cause, result.root_cause_detail, result.solution) != before
+        (
+            tuple(
+                normalize_root_causes(
+                    getattr(result, "root_causes", None) or result.root_cause
+                )
+            ),
+            result.root_cause_detail,
+            result.solution,
+            normalize_category_taxonomy(
+                getattr(result, "category_taxonomy", None)
+            ),
+        )
+        != before
         for result, before in zip(new_results, labels_before)
     )
     changed_saved_results = _persist_aggregated_bindings(
@@ -1367,6 +1636,7 @@ def _save_analysis_results(
     principal: Principal,
     analyzer_connection_id: str | None = None,
     analyzer_rule_version_id: str | None = None,
+    allow_human_overwrite: bool = False,
 ) -> tuple[list[Dict[str, Any]], int]:
     response_results: list[Dict[str, Any]] = []
     error_count = 0
@@ -1382,24 +1652,66 @@ def _save_analysis_results(
         if item is None:
             continue
 
+        # The LLM call can run for a long time. Refresh the row so the guard
+        # observes a human edit committed by another request during analysis.
+        db.refresh(item)
         original_meta = (
             dict(item.item_metadata) if isinstance(item.item_metadata, dict) else {}
         )
-        successful = [result for result in item_results if not result.error]
+        # Re-check ownership at the persistence boundary. Target selection
+        # happens before the LLM call, so a reviewer can add a human label
+        # while analysis is running. Never let that late edit be overwritten
+        # unless the request explicitly opted into human-label replacement.
+        persistable_results = [
+            result
+            for result in item_results
+            if not (
+                result.metric_name
+                and not allow_human_overwrite
+                and _is_human_metric_analysis(original_meta, result.metric_name)
+            )
+        ]
+        successful = [result for result in persistable_results if not result.error]
 
         # Keep the legacy item-level summary for older consumers, but review
         # candidates are created independently for each metric below.
-        if successful and original_meta.get("root_cause_source") != "human":
+        primary_overwrites_legacy_human = False
+        if successful and allow_human_overwrite:
+            legacy_source = str(
+                original_meta.get("root_cause_source") or ""
+            ).strip().lower()
+            legacy_metric = str(
+                original_meta.get("root_cause_metric_name") or ""
+            ).strip()
+            primary_overwrites_legacy_human = (
+                legacy_source == "human"
+                and (
+                    not legacy_metric
+                    or legacy_metric == str(successful[0].metric_name or "").strip()
+                )
+            )
+        if successful and (
+            original_meta.get("root_cause_source") != "human"
+            or primary_overwrites_legacy_human
+        ):
             primary = successful[0]
             item.item_metadata = build_item_metadata(
                 original_meta,
                 build_ai_state(
                     root_cause=primary.root_cause,
+                    root_causes=normalize_root_causes(
+                        getattr(primary, "root_causes", None) or primary.root_cause
+                    ),
                     root_cause_detail=primary.root_cause_detail,
+                    root_cause_reason=primary.root_cause_reason,
                     root_cause_note=primary.root_cause_note,
                     confidence=primary.confidence,
                     solution=primary.solution,
                     solution_note=primary.solution_note,
+                    category_taxonomy=merge_category_taxonomies(
+                        original_meta.get("category_taxonomy"),
+                        getattr(primary, "category_taxonomy", None),
+                    ),
                 ),
             )
             item.item_metadata["root_cause_metric_name"] = primary.metric_name
@@ -1411,7 +1723,7 @@ def _save_analysis_results(
         )
         metric_analyses = dict(meta.get("metric_analyses") or {})
         item_errors: list[str] = []
-        for result in item_results:
+        for result in persistable_results:
             metric_name = str(result.metric_name or "").strip()
             if not metric_name:
                 continue
@@ -1427,11 +1739,25 @@ def _save_analysis_results(
                     "prompt_hash": result.prompt_hash,
                 }
                 continue
+            previous_metric_analysis = metric_analyses.get(metric_name)
+            previous_metric_taxonomy = (
+                previous_metric_analysis.get("category_taxonomy")
+                if isinstance(previous_metric_analysis, dict)
+                else None
+            )
             metric_analyses[metric_name] = {
                 "source": "ai",
                 "root_cause": result.root_cause,
+                "root_causes": normalize_root_causes(
+                    getattr(result, "root_causes", None) or result.root_cause
+                ),
                 "root_cause_detail": result.root_cause_detail,
+                "root_cause_reason": result.root_cause_reason,
                 "root_cause_note": result.root_cause_note,
+                "category_taxonomy": merge_category_taxonomies(
+                    previous_metric_taxonomy,
+                    getattr(result, "category_taxonomy", None),
+                ),
                 "confidence": result.confidence,
                 "solution": result.solution,
                 "solution_note": result.solution_note,
@@ -1445,6 +1771,15 @@ def _save_analysis_results(
                 "total_tokens": result.total_tokens,
                 "analyzed_at": to_api_timestamp(utc_now_naive()),
             }
+        if successful:
+            taxonomy_sources = [meta.get("category_taxonomy")]
+            taxonomy_sources.extend(
+                getattr(result, "category_taxonomy", None)
+                for result in successful
+            )
+            merged_taxonomy = merge_category_taxonomies(*taxonomy_sources)
+            if merged_taxonomy:
+                meta["category_taxonomy"] = merged_taxonomy
         meta["metric_analyses"] = metric_analyses
         if item_errors:
             meta["analysis_error"] = "; ".join(item_errors)
@@ -1518,6 +1853,35 @@ def _metric_passed(
     return score.score_numeric >= threshold
 
 
+def _is_human_metric_analysis(
+    metadata: dict[str, Any] | None, metric_name: str
+) -> bool:
+    """Return whether a metric diagnosis is owned by a human reviewer.
+
+    Newer rows store the source inside ``metric_analyses``. Older rows may only
+    have the legacy item-level source, optionally tied to a metric by
+    ``root_cause_metric_name``. Keep both representations protected while
+    making the decision per metric rather than per item.
+    """
+    md = metadata if isinstance(metadata, dict) else {}
+    metric = str(metric_name or "").strip()
+    metric_analyses = md.get("metric_analyses")
+    if isinstance(metric_analyses, dict):
+        analysis = metric_analyses.get(metric)
+        if isinstance(analysis, dict):
+            source = str(
+                analysis.get("source") or analysis.get("root_cause_source") or ""
+            ).strip().lower()
+            if source == "human":
+                return True
+
+    legacy_source = str(md.get("root_cause_source") or "").strip().lower()
+    if legacy_source != "human":
+        return False
+    legacy_metric = str(md.get("root_cause_metric_name") or "").strip()
+    return not legacy_metric or legacy_metric == metric
+
+
 def _analysis_metric_names(
     run: Run,
     scores_by_item: dict[str, dict[str, RunItemScore]],
@@ -1586,9 +1950,6 @@ def _filter_analysis_targets(
         if request.item_ids and item.item_id not in request.item_ids:
             continue
 
-        if md.get("root_cause_source") == "human" and not request.allow_human_overwrite:
-            continue
-
         is_error = bool(item.error)
         if request.item_filter == "errors" and not is_error:
             continue
@@ -1604,10 +1965,10 @@ def _filter_analysis_targets(
                 continue
 
         if request.root_cause is not None:
-            item_rc = md.get("root_cause", "")
-            if "__none__" in request.root_cause and not item_rc:
+            item_categories = analysis_root_causes(md)
+            if "__none__" in request.root_cause and not item_categories:
                 pass
-            elif item_rc not in request.root_cause:
+            elif not any(category in request.root_cause for category in item_categories):
                 continue
 
         item_scores = scores_by_item.get(item.item_id, {})
@@ -1649,7 +2010,14 @@ def _filter_analysis_targets(
                         continue
 
             existing_analysis = metric_analyses.get(metric_name)
-            if request.only_unanalyzed and isinstance(existing_analysis, dict):
+            is_human_analysis = _is_human_metric_analysis(md, metric_name)
+            if is_human_analysis and not request.allow_human_overwrite:
+                continue
+            if (
+                request.only_unanalyzed
+                and not is_human_analysis
+                and isinstance(existing_analysis, dict)
+            ):
                 if existing_analysis.get("root_cause"):
                     continue
             targets.append((item, metric_name))
@@ -1797,16 +2165,13 @@ async def aggregate_saved_analysis_results(
     _validate_requested_metric(run, scores_by_item, request.metric)
     metric_scope = {request.metric} if request.metric else None
     llm_config = _get_llm_config(db, run.project_id, request.connection_id)
-    categories, category_details_map = _collect_task_root_cause_catalog(
-        db, run, all_items
-    )
     analyzer_config = _analysis_config_with_project_context(
         db,
         run,
-        {
-            "root_cause_categories": categories,
-            "category_details_map": category_details_map,
-        },
+        None,
+    )
+    analyzer_config = _analysis_config_with_category_catalog(
+        db, run, all_items, analyzer_config
     )
 
     try:
@@ -1886,6 +2251,9 @@ async def analyze_run_items(
         db,
         run,
         _playground_config_to_analyzer(request.config),
+    )
+    analyzer_config = _analysis_config_with_category_catalog(
+        db, run, all_items, analyzer_config
     )
     client = build_client(llm_config)
     model = llm_config.get("llm_model", "gpt-4o-mini")
@@ -1971,6 +2339,7 @@ async def analyze_run_items(
         analyzer_rule_version_id=(analyzer_config or {}).get(
             "_analysis_rule_version_id"
         ),
+        allow_human_overwrite=request.allow_human_overwrite,
     )
 
     return {
@@ -2034,6 +2403,9 @@ async def analyze_run_items_stream(
             run,
             _playground_config_to_analyzer(request.config),
         )
+        analyzer_config = _analysis_config_with_category_catalog(
+            db, run, all_items, analyzer_config
+        )
         client = build_client(llm_config)
         model = llm_config.get("llm_model", "gpt-4o-mini")
 
@@ -2094,7 +2466,14 @@ async def analyze_run_items_stream(
                     "item_id": result.item_id,
                     "metric_name": result.metric_name,
                     "root_cause": result.root_cause,
+                    "root_causes": normalize_root_causes(
+                        getattr(result, "root_causes", None) or result.root_cause
+                    ),
+                    "category_taxonomy": normalize_category_taxonomy(
+                        getattr(result, "category_taxonomy", None)
+                    ),
                     "root_cause_detail": result.root_cause_detail,
+                    "root_cause_reason": result.root_cause_reason,
                     "error": result.error,
                 }
             )
@@ -2178,6 +2557,7 @@ async def analyze_run_items_stream(
                             analyzer_rule_version_id=(analyzer_config or {}).get(
                                 "_analysis_rule_version_id"
                             ),
+                            allow_human_overwrite=request.allow_human_overwrite,
                         )
                     except Exception as exc:
                         db.rollback()
@@ -2228,17 +2608,8 @@ def _analysis_document_payload(document: AnalyzerDocument) -> Dict[str, Any]:
 
 def _document_library_run(
     db: Session, principal: Principal, run_id: str, *, modify: bool = False
-) -> Run:
-    run = Run.active(db).filter(Run.id == run_id).first()
-    if not run:
-        raise HTTPException(status_code=404, detail="Run not found")
-    if not can_view_run(db, principal, run):
-        raise HTTPException(status_code=403, detail="Access denied")
-    if modify and not _can_operate_analyzer(db, principal, run):
-        raise HTTPException(
-            status_code=403, detail="Analyzer owner or manager access required"
-        )
-    return run
+) -> Run | _ProjectAnalysisScope:
+    return _resolve_analysis_scope(db, principal, run_id, modify=modify)
 
 
 @router.get("/api/runs/{run_id:path}/analysis-documents")
@@ -2374,9 +2745,7 @@ def update_analysis_context(
     principal: Principal = Depends(require_ui_principal),
 ) -> Dict[str, Any]:
     """Update the active working rules version."""
-    run = Run.active(db).filter(Run.id == run_id).first()
-    if not run:
-        raise HTTPException(status_code=404, detail="Run not found")
+    run = _resolve_analysis_scope(db, principal, run_id)
     if not is_project_manager(db, principal, run.project_id):
         raise HTTPException(status_code=403, detail="Project manager access required")
     project = db.get(Project, run.project_id)
@@ -2425,9 +2794,7 @@ async def infer_project_analysis_rules(
     principal: Principal = Depends(require_ui_principal),
 ) -> Dict[str, Any]:
     """Run the rule-writer agent over selected documents and approved examples."""
-    run = Run.active(db).filter(Run.id == run_id).first()
-    if not run:
-        raise HTTPException(status_code=404, detail="Run not found")
+    run = _resolve_analysis_scope(db, principal, run_id)
     if not is_project_manager(db, principal, run.project_id):
         raise HTTPException(
             status_code=403, detail="Project manager access required"
@@ -2438,31 +2805,70 @@ async def infer_project_analysis_rules(
     if not (request.include_documents or request.include_examples):
         raise HTTPException(
             status_code=422,
-            detail="Select at least one source for rules inference",
+            detail={
+                "code": "NO_INFERENCE_SOURCES_SELECTED",
+                "message": (
+                    "Choose at least one source before generating rules: turn on "
+                    "Project documents or Approved examples."
+                ),
+                "documents_selected": False,
+                "approved_examples_selected": False,
+            },
         )
 
-    selected_documents = (
-        (
-            db.query(AnalyzerDocument)
-            .filter(
-                AnalyzerDocument.project_id == run.project_id,
-                AnalyzerDocument.enabled.is_(True),
+    enabled_documents = (
+        db.query(AnalyzerDocument)
+        .filter(
+            AnalyzerDocument.project_id == run.project_id,
+            AnalyzerDocument.enabled.is_(True),
+        )
+        .order_by(AnalyzerDocument.created_at.asc(), AnalyzerDocument.id.asc())
+        .all()
+    )
+    usable_documents = [
+        document
+        for document in enabled_documents
+        if str(document.content or "").strip()
+    ]
+    selected_documents = usable_documents if request.include_documents else []
+    approved_examples = get_all_approved_examples(
+        db,
+        task=run.task,
+        project_id=run.project_id,
+    )
+    corrections = approved_examples if request.include_examples else []
+    if not selected_documents and not corrections:
+        action = "updated" if request.mode == "update" else "generated"
+        if not usable_documents and not approved_examples:
+            message = (
+                f"Rules cannot be {action} yet. This project has neither an "
+                "enabled project document nor an approved example. Add and "
+                "enable a project document, or approve an example, then try again."
             )
-            .order_by(AnalyzerDocument.created_at.asc(), AnalyzerDocument.id.asc())
-            .all()
+        elif request.include_documents and not usable_documents:
+            message = (
+                f"Rules cannot be {action} yet. No enabled project documents are "
+                "available, and Approved examples are turned off. Turn on "
+                "Approved examples or add and enable a project document, then "
+                "try again."
+            )
+        else:
+            message = (
+                f"Rules cannot be {action} yet. No approved examples are "
+                "available, and Project documents are turned off. Turn on "
+                "Project documents or approve an example, then try again."
+            )
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "NO_INFERENCE_SOURCES",
+                "message": message,
+                "documents_available": len(usable_documents),
+                "approved_examples_available": len(approved_examples),
+                "documents_selected": request.include_documents,
+                "approved_examples_selected": request.include_examples,
+            },
         )
-        if request.include_documents
-        else []
-    )
-    corrections = (
-        get_all_approved_examples(
-            db,
-            task=run.task,
-            project_id=run.project_id,
-        )
-        if request.include_examples
-        else []
-    )
     llm_config = _get_llm_config(db, run.project_id, request.connection_id)
     target_version = (
         _resolve_analysis_rule_version(
@@ -2582,11 +2988,7 @@ def list_project_analysis_rule_versions(
     principal: Principal = Depends(require_ui_principal),
 ) -> Dict[str, Any]:
     """List immutable rule history for the run's project."""
-    run = Run.active(db).filter(Run.id == run_id).first()
-    if not run:
-        raise HTTPException(status_code=404, detail="Run not found")
-    if not can_view_run(db, principal, run):
-        raise HTTPException(status_code=403, detail="Access denied")
+    run = _resolve_analysis_scope(db, principal, run_id)
     is_admin = principal.user.role == UserRole.ADMIN
     query = db.query(ProjectAnalysisRuleVersion).filter(
         ProjectAnalysisRuleVersion.project_id == run.project_id
@@ -2637,9 +3039,7 @@ def create_project_analysis_rule_version(
     principal: Principal = Depends(require_ui_principal),
 ) -> Dict[str, Any]:
     """Create a mutable draft, optionally cloning a version or alias."""
-    run = Run.active(db).filter(Run.id == run_id).first()
-    if not run:
-        raise HTTPException(status_code=404, detail="Run not found")
+    run = _resolve_analysis_scope(db, principal, run_id)
     if not is_project_manager(db, principal, run.project_id):
         raise HTTPException(
             status_code=403, detail="Project manager access required"
@@ -2681,9 +3081,7 @@ def publish_project_analysis_rule_version(
     principal: Principal = Depends(require_ui_principal),
 ) -> Dict[str, Any]:
     """Publish and lock a draft, optionally moving an alias to it."""
-    run = Run.active(db).filter(Run.id == run_id).first()
-    if not run:
-        raise HTTPException(status_code=404, detail="Run not found")
+    run = _resolve_analysis_scope(db, principal, run_id)
     if not is_project_manager(db, principal, run.project_id):
         raise HTTPException(
             status_code=403, detail="Project manager access required"
@@ -2733,9 +3131,7 @@ def set_project_analysis_rule_alias(
     principal: Principal = Depends(require_ui_principal),
 ) -> Dict[str, Any]:
     """Point an alias at a published project rule version."""
-    run = Run.active(db).filter(Run.id == run_id).first()
-    if not run:
-        raise HTTPException(status_code=404, detail="Run not found")
+    run = _resolve_analysis_scope(db, principal, run_id)
     if not is_project_manager(db, principal, run.project_id):
         raise HTTPException(
             status_code=403, detail="Project manager access required"
@@ -2768,11 +3164,7 @@ def compare_project_analysis_rule_versions(
     principal: Principal = Depends(require_ui_principal),
 ) -> Dict[str, Any]:
     """Compare rule identities and content between two versions."""
-    run = Run.active(db).filter(Run.id == run_id).first()
-    if not run:
-        raise HTTPException(status_code=404, detail="Run not found")
-    if not can_view_run(db, principal, run):
-        raise HTTPException(status_code=403, detail="Access denied")
+    run = _resolve_analysis_scope(db, principal, run_id)
     target = _resolve_analysis_rule_version(db, run.project_id, version_ref)
     base_version = _resolve_analysis_rule_version(db, run.project_id, base)
 
@@ -2829,9 +3221,7 @@ def merge_project_analysis_rule_versions(
     principal: Principal = Depends(require_ui_principal),
 ) -> Dict[str, Any]:
     """Preview or apply a three-way merge between two rule-version branches."""
-    run = Run.active(db).filter(Run.id == run_id).first()
-    if not run:
-        raise HTTPException(status_code=404, detail="Run not found")
+    run = _resolve_analysis_scope(db, principal, run_id)
     if not is_project_manager(db, principal, run.project_id):
         raise HTTPException(
             status_code=403, detail="Project manager access required"
@@ -2922,9 +3312,7 @@ def activate_project_analysis_rule_version(
     principal: Principal = Depends(require_ui_principal),
 ) -> Dict[str, Any]:
     """Make an available historical rules version active for the project."""
-    run = Run.active(db).filter(Run.id == run_id).first()
-    if not run:
-        raise HTTPException(status_code=404, detail="Run not found")
+    run = _resolve_analysis_scope(db, principal, run_id)
     if not is_project_manager(db, principal, run.project_id):
         raise HTTPException(
             status_code=403, detail="Project manager access required"
@@ -2970,9 +3358,7 @@ def delete_project_analysis_rule_version(
     principal: Principal = Depends(require_ui_principal),
 ) -> Dict[str, Any]:
     """Permanently delete a project rules version."""
-    run = Run.active(db).filter(Run.id == run_id).first()
-    if not run:
-        raise HTTPException(status_code=404, detail="Run not found")
+    run = _resolve_analysis_scope(db, principal, run_id)
     if not can_delete_run(db, principal, run):
         raise HTTPException(
             status_code=403,
@@ -3072,9 +3458,7 @@ def restore_project_analysis_rule_version(
     principal: Principal = Depends(require_ui_principal),
 ) -> Dict[str, Any]:
     """Restore a soft-deleted rules version. Platform admins only."""
-    run = Run.active(db).filter(Run.id == run_id).first()
-    if not run:
-        raise HTTPException(status_code=404, detail="Run not found")
+    run = _resolve_analysis_scope(db, principal, run_id)
     if principal.user.role != UserRole.ADMIN:
         raise HTTPException(status_code=403, detail="Admin only")
     version = (
@@ -3113,9 +3497,7 @@ def permanently_delete_project_analysis_rule_version(
     principal: Principal = Depends(require_ui_principal),
 ) -> Dict[str, Any]:
     """Permanently remove a soft-deleted rules version. Platform admins only."""
-    run = Run.active(db).filter(Run.id == run_id).first()
-    if not run:
-        raise HTTPException(status_code=404, detail="Run not found")
+    run = _resolve_analysis_scope(db, principal, run_id)
     if principal.user.role != UserRole.ADMIN:
         raise HTTPException(status_code=403, detail="Admin only")
     version = (
@@ -3245,6 +3627,9 @@ def analyze_preview(
         run,
         _playground_config_to_analyzer(request.config),
     )
+    analyzer_config = _analysis_config_with_category_catalog(
+        db, run, [item], analyzer_config
+    )
     prompt_item = item
     prompt_config = analyzer_config
     prompt_kwargs = dict(config=prompt_config)
@@ -3299,6 +3684,9 @@ async def analyze_test(
         db,
         run,
         _playground_config_to_analyzer(request.config),
+    )
+    analyzer_config = _analysis_config_with_category_catalog(
+        db, run, items, analyzer_config
     )
     client = build_client(llm_config)
     model = llm_config.get("llm_model", "gpt-4o-mini")
@@ -3365,7 +3753,18 @@ async def analyze_test(
 
     aggregation_error: str | None = None
     raw_labels = [
-        (result.root_cause, result.root_cause_detail, result.solution)
+        (
+            tuple(
+                normalize_root_causes(
+                    getattr(result, "root_causes", None) or result.root_cause
+                )
+            ),
+            result.root_cause_detail,
+            result.solution,
+            normalize_category_taxonomy(
+                getattr(result, "category_taxonomy", None)
+            ),
+        )
         for result in analyzed_results
     ]
     try:
@@ -3381,7 +3780,12 @@ async def analyze_test(
         )
     except AnalysisAggregationError as exc:
         for result, labels in zip(analyzed_results, raw_labels):
-            result.root_cause, result.root_cause_detail, result.solution = labels
+            categories, detail, solution, category_taxonomy = labels
+            result.root_causes = list(categories)
+            result.root_cause = categories[0] if categories else ""
+            result.root_cause_detail = detail
+            result.solution = solution
+            result.category_taxonomy = category_taxonomy
         categories = _category_counts(analyzed_results)
         aggregation_error = str(exc)
     results = [
@@ -3389,7 +3793,14 @@ async def analyze_test(
             "item_id": result.item_id,
             "metric_name": result.metric_name,
             "root_cause": result.root_cause,
+            "root_causes": normalize_root_causes(
+                getattr(result, "root_causes", None) or result.root_cause
+            ),
+            "category_taxonomy": normalize_category_taxonomy(
+                getattr(result, "category_taxonomy", None)
+            ),
             "root_cause_detail": result.root_cause_detail,
+            "root_cause_reason": result.root_cause_reason,
             "root_cause_note": result.root_cause_note,
             "confidence": result.confidence,
             "solution": result.solution,
@@ -3441,9 +3852,21 @@ def get_corrections(
                 "id": c.id,
                 "item_id": c.item_id,
                 "human_root_cause": c.human_root_cause,
+                "human_root_causes": normalize_root_causes(
+                    c.human_root_causes or c.human_root_cause
+                ),
+                "human_category_taxonomy": normalize_category_taxonomy(
+                    getattr(c, "human_category_taxonomy", None)
+                ),
                 "human_root_cause_detail": c.human_root_cause_detail,
                 "human_root_cause_note": c.human_root_cause_note,
                 "ai_root_cause": c.ai_root_cause,
+                "ai_root_causes": normalize_root_causes(
+                    c.ai_root_causes or c.ai_root_cause
+                ),
+                "ai_category_taxonomy": normalize_category_taxonomy(
+                    getattr(c, "ai_category_taxonomy", None)
+                ),
                 "ai_root_cause_detail": c.ai_root_cause_detail,
                 "ai_root_cause_note": c.ai_root_cause_note,
                 "ai_confidence": c.ai_confidence,
@@ -3472,11 +3895,7 @@ def get_analysis_config(
     principal: Principal = Depends(require_ui_principal),
 ) -> Dict[str, Any]:
     """Return analysis configuration for the frontend."""
-    run = Run.active(db).filter(Run.id == run_id).first()
-    if not run:
-        raise HTTPException(status_code=404, detail="Run not found")
-    if not can_view_run(db, principal, run):
-        raise HTTPException(status_code=403, detail="Access denied")
+    run = _resolve_analysis_scope(db, principal, run_id)
     project = db.get(Project, run.project_id)
 
     connections = (
@@ -3502,7 +3921,11 @@ def get_analysis_config(
         (c for c in usable if c.is_default), usable[0] if usable else None
     )
 
-    items = db.query(RunItem).filter(RunItem.run_id == run.id).all()
+    items = (
+        []
+        if isinstance(run, _ProjectAnalysisScope)
+        else db.query(RunItem).filter(RunItem.run_id == run.id).all()
+    )
     total = len(items)
     with_rc = sum(
         1
@@ -3516,24 +3939,34 @@ def get_analysis_config(
         and i.item_metadata.get("root_cause_source") == "ai"
     )
 
-    approved_corrections = (
+    corrections_query = (
         db.query(ReviewCorrection)
         .join(Run, Run.id == ReviewCorrection.run_id)
         .filter(
-            ReviewCorrection.task == run.task,
             Run.project_id == run.project_id,
             Run.deleted_at.is_(None),
             ReviewCorrection.status == CorrectionStatus.APPROVED,
             ReviewCorrection.is_active.is_(True),
         )
         .order_by(ReviewCorrection.created_at.desc(), ReviewCorrection.id.desc())
-        .all()
     )
+    if not isinstance(run, _ProjectAnalysisScope):
+        corrections_query = corrections_query.filter(ReviewCorrection.task == run.task)
+    approved_corrections = corrections_query.all()
     correction_count = len(approved_corrections)
+    enabled_document_count = (
+        db.query(AnalyzerDocument)
+        .filter(
+            AnalyzerDocument.project_id == run.project_id,
+            AnalyzerDocument.enabled.is_(True),
+        )
+        .count()
+    )
 
     all_categories, category_details_map = _collect_task_root_cause_catalog(
         db, run, items
     )
+    category_taxonomy = _collect_task_root_cause_taxonomy(db, run, items)
     correction_runs = _load_runs_map(
         db, {correction.run_id for correction in approved_corrections}
     )
@@ -3541,14 +3974,16 @@ def get_analysis_config(
         category: [] for category in all_categories
     }
     for correction in approved_corrections:
-        category = str(
-            correction.human_root_cause or correction.ai_root_cause or ""
-        ).strip()
-        if not category:
+        categories = normalize_root_causes(
+            correction.human_root_causes
+            or correction.human_root_cause
+            or correction.ai_root_causes
+            or correction.ai_root_cause
+        )
+        if not categories:
             continue
         example_run = correction_runs.get(correction.run_id)
-        category_examples.setdefault(category, []).append(
-            {
+        example = {
                 "id": correction.id,
                 "item_id": correction.item_id,
                 "metric_name": correction.metric_name,
@@ -3571,7 +4006,8 @@ def get_analysis_config(
                 "output": _normalize_snapshot_value(correction.output_snapshot),
                 "created_at": to_api_timestamp(correction.created_at),
             }
-        )
+        for category in categories:
+            category_examples.setdefault(category, []).append(example)
     active_rule_version = (
         _active_analysis_rule_version(db, project.id) if project else None
     )
@@ -3603,10 +4039,14 @@ def get_analysis_config(
         "items_ai_assigned": ai_assigned,
         "items_without_root_cause": total - with_rc,
         "correction_bank_size": correction_count,
+        "approved_example_count": correction_count,
+        "enabled_document_count": enabled_document_count,
         "default_system_prompt": DEFAULT_SYSTEM_PROMPT,
         "default_categories": all_categories,
+        "max_root_cause_categories": DEFAULT_MAX_ROOT_CAUSE_CATEGORIES,
         "default_solution_categories": SOLUTION_CATEGORIES,
         "category_details_map": category_details_map,
+        "category_taxonomy": category_taxonomy,
         "category_example_counts": {
             category: len(examples)
             for category, examples in category_examples.items()
@@ -3617,6 +4057,298 @@ def get_analysis_config(
             [d for dets in category_details_map.values() for d in dets]
         ),
     }
+
+
+# ── Project-scoped analyzer context endpoints ───────────────────────
+
+
+@router.get("/api/projects/{project_slug}/analysis-config")
+def get_project_analysis_config(
+    project_slug: str,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_ui_principal),
+) -> Dict[str, Any]:
+    """Return analyzer configuration without requiring a project run."""
+    return get_analysis_config(
+        run_id=_project_analysis_scope_key(project_slug),
+        db=db,
+        principal=principal,
+    )
+
+
+@router.get("/api/projects/{project_slug}/analysis-documents")
+def list_project_analysis_documents(
+    project_slug: str,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_ui_principal),
+) -> Dict[str, Any]:
+    return list_analysis_documents(
+        run_id=_project_analysis_scope_key(project_slug),
+        db=db,
+        principal=principal,
+    )
+
+
+@router.post("/api/projects/{project_slug}/analysis-documents")
+async def upload_project_analysis_document(
+    project_slug: str,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_ui_principal),
+) -> Dict[str, Any]:
+    return await upload_analysis_document(
+        run_id=_project_analysis_scope_key(project_slug),
+        file=file,
+        db=db,
+        principal=principal,
+    )
+
+
+@router.patch("/api/projects/{project_slug}/analysis-documents/{document_id}")
+def select_project_analysis_document(
+    project_slug: str,
+    document_id: str,
+    request: AnalyzerDocumentSelection,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_ui_principal),
+) -> Dict[str, Any]:
+    return select_analysis_document(
+        run_id=_project_analysis_scope_key(project_slug),
+        document_id=document_id,
+        request=request,
+        db=db,
+        principal=principal,
+    )
+
+
+@router.delete("/api/projects/{project_slug}/analysis-documents/{document_id}")
+def delete_project_analysis_document(
+    project_slug: str,
+    document_id: str,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_ui_principal),
+) -> Dict[str, Any]:
+    return delete_analysis_document(
+        run_id=_project_analysis_scope_key(project_slug),
+        document_id=document_id,
+        db=db,
+        principal=principal,
+    )
+
+
+@router.patch("/api/projects/{project_slug}/analysis-context")
+def update_project_analysis_context(
+    project_slug: str,
+    request: AnalysisContextUpdate,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_ui_principal),
+) -> Dict[str, Any]:
+    return update_analysis_context(
+        run_id=_project_analysis_scope_key(project_slug),
+        request=request,
+        db=db,
+        principal=principal,
+    )
+
+
+@router.post("/api/projects/{project_slug}/analysis-rules/infer")
+async def infer_project_scoped_analysis_rules(
+    project_slug: str,
+    request: RuleInferenceRequest,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_ui_principal),
+) -> Dict[str, Any]:
+    return await infer_project_analysis_rules(
+        run_id=_project_analysis_scope_key(project_slug),
+        request=request,
+        db=db,
+        principal=principal,
+    )
+
+
+@router.get("/api/projects/{project_slug}/analysis-rule-versions")
+def list_project_scoped_analysis_rule_versions(
+    project_slug: str,
+    include_deleted: bool = Query(default=False),
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_ui_principal),
+) -> Dict[str, Any]:
+    return list_project_analysis_rule_versions(
+        run_id=_project_analysis_scope_key(project_slug),
+        include_deleted=include_deleted,
+        db=db,
+        principal=principal,
+    )
+
+
+@router.get("/api/projects/{project_slug}/analysis-rule-lineage")
+def get_project_scoped_analysis_rule_lineage(
+    project_slug: str,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_ui_principal),
+) -> Dict[str, Any]:
+    return get_project_analysis_rule_lineage(
+        run_id=_project_analysis_scope_key(project_slug),
+        db=db,
+        principal=principal,
+    )
+
+
+@router.post("/api/projects/{project_slug}/analysis-rule-versions")
+def create_project_scoped_analysis_rule_version(
+    project_slug: str,
+    request: AnalysisRuleVersionCreate,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_ui_principal),
+) -> Dict[str, Any]:
+    return create_project_analysis_rule_version(
+        run_id=_project_analysis_scope_key(project_slug),
+        request=request,
+        db=db,
+        principal=principal,
+    )
+
+
+@router.post(
+    "/api/projects/{project_slug}/analysis-rule-versions/{version_ref}:publish"
+)
+def publish_project_scoped_analysis_rule_version(
+    project_slug: str,
+    version_ref: str,
+    request: AnalysisRuleVersionPublish,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_ui_principal),
+) -> Dict[str, Any]:
+    return publish_project_analysis_rule_version(
+        run_id=_project_analysis_scope_key(project_slug),
+        version_ref=version_ref,
+        request=request,
+        db=db,
+        principal=principal,
+    )
+
+
+@router.post("/api/projects/{project_slug}/analysis-rule-aliases/{alias_name}")
+def set_project_scoped_analysis_rule_alias(
+    project_slug: str,
+    alias_name: str,
+    request: AnalysisRuleAliasUpdate,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_ui_principal),
+) -> Dict[str, Any]:
+    return set_project_analysis_rule_alias(
+        run_id=_project_analysis_scope_key(project_slug),
+        alias_name=alias_name,
+        request=request,
+        db=db,
+        principal=principal,
+    )
+
+
+@router.get(
+    "/api/projects/{project_slug}/analysis-rule-versions/{version_ref}:compare"
+)
+def compare_project_scoped_analysis_rule_versions(
+    project_slug: str,
+    version_ref: str,
+    base: str = Query(...),
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_ui_principal),
+) -> Dict[str, Any]:
+    return compare_project_analysis_rule_versions(
+        run_id=_project_analysis_scope_key(project_slug),
+        version_ref=version_ref,
+        base=base,
+        db=db,
+        principal=principal,
+    )
+
+
+@router.post(
+    "/api/projects/{project_slug}/analysis-rule-versions/{target_ref}:merge"
+)
+def merge_project_scoped_analysis_rule_versions(
+    project_slug: str,
+    target_ref: str,
+    request: AnalysisRuleMergeRequest,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_ui_principal),
+) -> Dict[str, Any]:
+    return merge_project_analysis_rule_versions(
+        run_id=_project_analysis_scope_key(project_slug),
+        target_ref=target_ref,
+        request=request,
+        db=db,
+        principal=principal,
+    )
+
+
+@router.post(
+    "/api/projects/{project_slug}/analysis-rule-versions/{version_id}/activate"
+)
+def activate_project_scoped_analysis_rule_version(
+    project_slug: str,
+    version_id: str,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_ui_principal),
+) -> Dict[str, Any]:
+    return activate_project_analysis_rule_version(
+        run_id=_project_analysis_scope_key(project_slug),
+        version_id=version_id,
+        db=db,
+        principal=principal,
+    )
+
+
+@router.delete(
+    "/api/projects/{project_slug}/analysis-rule-versions/{version_id}"
+)
+def delete_project_scoped_analysis_rule_version(
+    project_slug: str,
+    version_id: str,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_ui_principal),
+) -> Dict[str, Any]:
+    return delete_project_analysis_rule_version(
+        run_id=_project_analysis_scope_key(project_slug),
+        version_id=version_id,
+        db=db,
+        principal=principal,
+    )
+
+
+@router.post(
+    "/api/projects/{project_slug}/analysis-rule-versions/{version_id}/restore"
+)
+def restore_project_scoped_analysis_rule_version(
+    project_slug: str,
+    version_id: str,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_ui_principal),
+) -> Dict[str, Any]:
+    return restore_project_analysis_rule_version(
+        run_id=_project_analysis_scope_key(project_slug),
+        version_id=version_id,
+        db=db,
+        principal=principal,
+    )
+
+
+@router.delete(
+    "/api/projects/{project_slug}/analysis-rule-versions/{version_id}/permanent"
+)
+def permanently_delete_project_scoped_analysis_rule_version(
+    project_slug: str,
+    version_id: str,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_ui_principal),
+) -> Dict[str, Any]:
+    return permanently_delete_project_analysis_rule_version(
+        run_id=_project_analysis_scope_key(project_slug),
+        version_id=version_id,
+        db=db,
+        principal=principal,
+    )
 
 
 # ── Correction Management Endpoints (for /reviews page) ─────────────
@@ -3728,12 +4460,30 @@ def _serialize_review_fields(
         "output_snapshot": _normalize_snapshot_value(c.output_snapshot),
         "scores_snapshot": _normalize_snapshot_value(c.scores_snapshot),
         "ai_root_cause": "" if ai_is_unanalyzed else c.ai_root_cause,
+        "ai_root_causes": (
+            []
+            if ai_is_unanalyzed
+            else normalize_root_causes(c.ai_root_causes or c.ai_root_cause)
+        ),
+        "ai_category_taxonomy": (
+            {}
+            if ai_is_unanalyzed
+            else normalize_category_taxonomy(
+                getattr(c, "ai_category_taxonomy", None)
+            )
+        ),
         "ai_root_cause_detail": "" if ai_is_unanalyzed else c.ai_root_cause_detail,
         "ai_root_cause_note": "" if ai_is_unanalyzed else c.ai_root_cause_note,
         "ai_confidence": None if ai_is_unanalyzed else c.ai_confidence,
         "ai_solution": "" if ai_is_unanalyzed else c.ai_solution,
         "ai_solution_note": "" if ai_is_unanalyzed else c.ai_solution_note,
         "human_root_cause": c.human_root_cause,
+        "human_root_causes": normalize_root_causes(
+            c.human_root_causes or c.human_root_cause
+        ),
+        "human_category_taxonomy": normalize_category_taxonomy(
+            getattr(c, "human_category_taxonomy", None)
+        ),
         "human_root_cause_detail": c.human_root_cause_detail,
         "human_root_cause_note": c.human_root_cause_note,
         "human_solution": c.human_solution,
@@ -3949,9 +4699,15 @@ def _approve_candidate(
             correction.human_solution,
             correction.human_solution_note,
         )
-    )
+    ) or bool(correction.human_root_causes)
     if not has_human_label and str(correction.ai_root_cause or "").strip():
         correction.human_root_cause = correction.ai_root_cause or ""
+        correction.human_root_causes = normalize_root_causes(
+            correction.ai_root_causes or correction.ai_root_cause
+        )
+        correction.human_category_taxonomy = normalize_category_taxonomy(
+            getattr(correction, "ai_category_taxonomy", None)
+        )
         correction.human_root_cause_detail = correction.ai_root_cause_detail or ""
         correction.human_root_cause_note = correction.ai_root_cause_note or ""
         correction.human_solution = correction.ai_solution or ""
@@ -4031,7 +4787,7 @@ def _sync_legacy_summary_after_metric_deletion(
         if (
             isinstance(analysis, dict)
             and not analysis.get("error")
-            and str(analysis.get("root_cause") or "").strip()
+            and analysis_root_causes(analysis)
         ):
             replacement = (metric_name, analysis)
             break
@@ -4048,7 +4804,12 @@ def _sync_legacy_summary_after_metric_deletion(
         meta,
         {
             "root_cause": analysis.get("root_cause"),
+            "root_causes": analysis_root_causes(analysis),
+            "category_taxonomy": normalize_category_taxonomy(
+                analysis.get("category_taxonomy")
+            ),
             "root_cause_detail": analysis.get("root_cause_detail"),
+            "root_cause_reason": analysis.get("root_cause_reason"),
             "root_cause_note": analysis.get("root_cause_note"),
             "root_cause_source": source,
             "root_cause_confidence": analysis.get("confidence"),
@@ -4468,6 +5229,10 @@ def update_correction(
     patch: Dict[str, Any] = {}
     for request_key, state_key in [
         ("human_root_cause", "root_cause"),
+        ("human_root_causes", "root_causes"),
+        ("root_causes", "root_causes"),
+        ("human_category_taxonomy", "category_taxonomy"),
+        ("category_taxonomy", "category_taxonomy"),
         ("human_root_cause_detail", "root_cause_detail"),
         ("human_root_cause_note", "root_cause_note"),
         ("human_solution", "solution"),
@@ -4480,14 +5245,35 @@ def update_correction(
         meta = dict(item.item_metadata) if isinstance(item.item_metadata, dict) else {}
         metric_analyses = dict(meta.get("metric_analyses") or {})
         analysis = dict(metric_analyses.get(c.metric_name) or {})
-        if "root_cause" in patch:
+        if "root_causes" in patch:
+            root_causes = normalize_root_causes(
+                patch.get("root_causes"),
+                max_categories=DEFAULT_MAX_ROOT_CAUSE_CATEGORIES,
+            )
+            if root_causes:
+                analysis["root_causes"] = root_causes
+                analysis["root_cause"] = root_causes[0]
+            else:
+                for field in (
+                    "root_causes",
+                    "root_cause",
+                    "root_cause_detail",
+                    "root_cause_reason",
+                    "root_cause_note",
+                    "confidence",
+                ):
+                    analysis.pop(field, None)
+        elif "root_cause" in patch:
             root_cause = str(patch.get("root_cause") or "").strip()
             if root_cause:
                 analysis["root_cause"] = root_cause
+                analysis["root_causes"] = [root_cause]
             else:
                 for field in (
+                    "root_causes",
                     "root_cause",
                     "root_cause_detail",
+                    "root_cause_reason",
                     "root_cause_note",
                     "confidence",
                 ):
@@ -4507,13 +5293,19 @@ def update_correction(
                 analysis.pop(field, None)
                 if field == "solution":
                     analysis.pop("solution_note", None)
+        if "category_taxonomy" in patch:
+            taxonomy = normalize_category_taxonomy(patch.get("category_taxonomy"))
+            if taxonomy:
+                analysis["category_taxonomy"] = taxonomy
+            else:
+                analysis.pop("category_taxonomy", None)
         analysis.pop("error", None)
         analysis.pop("confidence", None)
         analysis["source"] = "human"
         meaningful = {
             key: value
             for key, value in analysis.items()
-            if key != "source" and value not in (None, "")
+            if key != "source" and value not in (None, "", [])
         }
         if meaningful:
             metric_analyses[c.metric_name] = analysis

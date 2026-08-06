@@ -60,6 +60,11 @@ from qym_platform.services.root_cause_changes import (
     apply_root_cause_change,
     replace_metric_review_candidate,
 )
+from qym_platform.services.root_cause_categories import (
+    DEFAULT_MAX_ROOT_CAUSE_CATEGORIES,
+    normalize_category_taxonomy,
+    normalize_root_causes,
+)
 from qym_platform.settings import PlatformSettings
 
 
@@ -2630,6 +2635,8 @@ def update_root_cause(
 
     editable_fields = (
         "root_cause",
+        "root_causes",
+        "category_taxonomy",
         "root_cause_detail",
         "root_cause_note",
         "solution",
@@ -2664,14 +2671,35 @@ def update_root_cause(
         )
         analysis = dict(before_analysis)
 
-        if "root_cause" in patch:
+        if "root_causes" in patch:
+            root_causes = normalize_root_causes(
+                patch.get("root_causes"),
+                max_categories=DEFAULT_MAX_ROOT_CAUSE_CATEGORIES,
+            )
+            if root_causes:
+                analysis["root_causes"] = root_causes
+                analysis["root_cause"] = root_causes[0]
+            else:
+                for field in (
+                    "root_causes",
+                    "root_cause",
+                    "root_cause_detail",
+                    "root_cause_reason",
+                    "root_cause_note",
+                    "confidence",
+                ):
+                    analysis.pop(field, None)
+        elif "root_cause" in patch:
             root_cause = str(patch.get("root_cause") or "").strip()
             if root_cause:
                 analysis["root_cause"] = root_cause
+                analysis["root_causes"] = [root_cause]
             else:
                 for field in (
+                    "root_causes",
                     "root_cause",
                     "root_cause_detail",
+                    "root_cause_reason",
                     "root_cause_note",
                     "confidence",
                 ):
@@ -2688,6 +2716,12 @@ def update_root_cause(
                 analysis["root_cause_note"] = note
             else:
                 analysis.pop("root_cause_note", None)
+        if "category_taxonomy" in patch:
+            taxonomy = normalize_category_taxonomy(patch.get("category_taxonomy"))
+            if taxonomy:
+                analysis["category_taxonomy"] = taxonomy
+            else:
+                analysis.pop("category_taxonomy", None)
         if "solution" in patch:
             solution = str(patch.get("solution") or "").strip()
             if solution:
@@ -2710,7 +2744,7 @@ def update_root_cause(
         meaningful_analysis = {
             key: value
             for key, value in analysis.items()
-            if key != "source" and value not in (None, "")
+            if key != "source" and value not in (None, "", [])
         }
         if meaningful_analysis:
             metric_analyses[metric_name] = analysis

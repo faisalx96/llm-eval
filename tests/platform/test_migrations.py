@@ -29,4 +29,4 @@ def test_alembic_has_one_upgrade_head() -> None:
     config.set_main_option("script_location", str(MIGRATIONS_DIR))
     heads = ScriptDirectory.from_config(config).get_heads()
 
-    assert heads == ["0037_remove_project_desc"]
+    assert heads == ["0039_category_taxonomy"]
