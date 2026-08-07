@@ -2793,6 +2793,19 @@ def test_shell_and_run_detail_normalize_trailing_slashes_before_route_parsing() 
     assert "const path = rawPath.length > 1 ? rawPath.replace(/\\/+$/, '') : rawPath;" in run
 
 
+def test_datasets_routes_honor_the_configured_root_path() -> None:
+    datasets = (DASHBOARD_DIR / "datasets.html").read_text(encoding="utf-8")
+
+    assert "function appRootPath(){" in datasets
+    assert "window.__QYM_ROOT_PATH__.trim().replace(/\\/+$/, '')" in datasets
+    assert "pathname.startsWith(root + '/')" in datasets
+    assert "return pathname.slice(root.length) || '/';" in datasets
+    assert "const rawPath = routePathname();" in datasets
+    assert "let path = appPath('/projects/' + state.slug + '/datasets');" in datasets
+    assert "href: '/projects/' + state.slug + '/datasets'" not in datasets
+    assert "const datasetHref = '/projects/'" not in datasets
+
+
 def test_runs_table_analysis_column_shows_state_or_static_action() -> None:
     """The ANALYSIS column carries state: analyzed runs show a root-cause
     count chip, eligible runs a static Analyze action, live runs a dash."""

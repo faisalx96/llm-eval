@@ -1016,8 +1016,26 @@
     // ============================================================
     // URL ROUTING
     // ============================================================
+    function appRootPath(){
+      if (typeof window.__QYM_ROOT_PATH__ !== 'string') return '';
+      const root = window.__QYM_ROOT_PATH__.trim().replace(/\/+$/, '');
+      if (!root) return '';
+      return root.startsWith('/') ? root : '/' + root;
+    }
+    function appPath(path){
+      return appRootPath() + '/' + String(path || '').replace(/^\/+/, '');
+    }
+    function routePathname(){
+      const root = appRootPath();
+      const pathname = window.location.pathname;
+      if (root && (pathname === root || pathname.startsWith(root + '/'))) {
+        return pathname.slice(root.length) || '/';
+      }
+      return pathname;
+    }
     function parsePath(){
-      const path = window.location.pathname;
+      const rawPath = routePathname();
+      const path = rawPath.length > 1 ? rawPath.replace(/\/+$/, '') : rawPath;
       const params = new URLSearchParams(window.location.search);
       const m = path.match(/^\/projects\/([^\/]+)\/datasets(?:\/([^\/]+)(?:\/(compare))?)?$/);
       if (!m) return { mode: 'unknown' };
@@ -1045,7 +1063,7 @@
 
     function buildUrl(overrides){
       overrides = overrides || {};
-      let path = '/projects/' + state.slug + '/datasets';
+      let path = appPath('/projects/' + state.slug + '/datasets');
       const mode = overrides.mode || state.mode;
       const ref = overrides.ref !== undefined ? overrides.ref : state.datasetRef;
       if (ref) {
@@ -1274,7 +1292,7 @@
       }
       normalizeActiveVersionUrl();
       setDatasetBreadcrumbs([
-        { label: 'Datasets', href: '/projects/' + state.slug + '/datasets' },
+        { label: 'Datasets', href: appPath('/projects/' + state.slug + '/datasets') },
         { label: state.dataset.name },
       ]);
       if (window.QymTraceViewer) window.QymTraceViewer.init({ exportMode: false });
@@ -1294,8 +1312,8 @@
         state.versions = vresp.versions || [];
       } catch(e){ Shell.toast(e.message || 'Failed to load dataset', 'error'); return; }
       setDatasetBreadcrumbs([
-        { label: 'Datasets', href: '/projects/' + state.slug + '/datasets' },
-        { label: state.dataset.name, href: '/projects/' + state.slug + '/datasets/' + encodeURIComponent(state.datasetRef) },
+        { label: 'Datasets', href: appPath('/projects/' + state.slug + '/datasets') },
+        { label: state.dataset.name, href: appPath('/projects/' + state.slug + '/datasets/' + encodeURIComponent(state.datasetRef)) },
         { label: 'Compare' },
       ]);
       root.replaceChildren(compareView());
@@ -2696,10 +2714,10 @@
       }
 
       const itemTab = ['details', 'runs', 'history'].includes(state.tab) ? state.tab : 'details';
-      const datasetHref = '/projects/' + encodeURIComponent(state.slug) + '/datasets/' + encodeURIComponent(state.datasetRef) + '?tab=items&v=' + encodeURIComponent(v.version);
+      const datasetHref = appPath('/projects/' + encodeURIComponent(state.slug) + '/datasets/' + encodeURIComponent(state.datasetRef)) + '?tab=items&v=' + encodeURIComponent(v.version);
       const itemTitle = hasUserProvidedItemId(item.item_id) ? item.item_id : ('Item #' + item.index);
       setDatasetBreadcrumbs([
-        { label: 'Datasets', href: '/projects/' + state.slug + '/datasets' },
+        { label: 'Datasets', href: appPath('/projects/' + state.slug + '/datasets') },
         { label: state.dataset.name, href: datasetHref },
         { label: itemTitle },
       ]);
@@ -4229,7 +4247,7 @@
     const openItemDrawer = openItemDrawerImpl;
 
     // Expose for debugging / other scripts
-    window.__dsx = { state, apiFetch, navigate, buildUrl, parsePath, route, switchDetailTabFromRoute, el, escapeHtml, relTime, prettyJSON, parseJSONStrict, tokenize, fullPreview, debounce, copyToClipboard, resolveActiveVersion, openItemPage: (id) => navigate({ item: id, tab: 'details' }), openItemDrawer: (id) => openItemDrawer(id) };
+    window.__dsx = { state, apiFetch, navigate, buildUrl, parsePath, appRootPath, appPath, routePathname, route, switchDetailTabFromRoute, el, escapeHtml, relTime, prettyJSON, parseJSONStrict, tokenize, fullPreview, debounce, copyToClipboard, resolveActiveVersion, openItemPage: (id) => navigate({ item: id, tab: 'details' }), openItemDrawer: (id) => openItemDrawer(id) };
 
     // ============================================================
     // BOOT
