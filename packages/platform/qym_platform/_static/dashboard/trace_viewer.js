@@ -1800,21 +1800,30 @@
   const _cmData = {};
   let _cmModules = null;
   let _cmLoading = null;
+  const _tvScriptSrc = document.currentScript && document.currentScript.src;
 
-  function loadCodeMirror() {
+function loadCodeMirror() {
     if (_cmModules) return Promise.resolve(_cmModules);
     if (_cmLoading) return _cmLoading;
-    _cmLoading = Promise.all([
+    const fromCdn = () => Promise.all([
       import("https://esm.sh/@codemirror/state@6"),
       import("https://esm.sh/@codemirror/view@6"),
       import("https://esm.sh/@codemirror/language@6"),
       import("https://esm.sh/@codemirror/lang-json@6"),
       import("https://esm.sh/@codemirror/commands@6"),
       import("https://esm.sh/@lezer/highlight@1"),
-    ]).then(([state, view, language, langJson, commands, highlight]) => {
-      _cmModules = { state, view, language, langJson, commands, highlight };
-      return _cmModules;
-    });
+    ]).then(([state, view, language, langJson, commands, highlight]) =>
+      ({ state, view, language, langJson, commands, highlight }));
+    // Prefer the vendored bundle, resolved relative to this script so it works
+    // under any mount prefix (e.g. behind a reverse proxy); fall back to CDN.
+    const bundleUrl = _tvScriptSrc
+      ? new URL("codemirror-bundle.js", _tvScriptSrc).href
+      : "/static/codemirror-bundle.js";
+    _cmLoading = import(bundleUrl)
+      .then((m) => ({ state: m.state, view: m.view, language: m.language,
+                      langJson: m.langJson, commands: m.commands, highlight: m.highlight }))
+      .catch(fromCdn)
+      .then((mods) => { _cmModules = mods; return _cmModules; });
     return _cmLoading;
   }
 
@@ -2009,6 +2018,20 @@
           extensions,
         });
         new cm.view.EditorView({ state: edState, parent: el });
+      });
+      bindPreviewScrollDelegation(root);
+    }).catch(() => {
+      // CodeMirror unavailable (bundle missing and CDN unreachable): degrade to plain text.
+      els.forEach(el => {
+        const id = el.getAttribute("data-cm-id");
+        const payload = _cmData[id];
+        if (payload == null) return;
+        delete _cmData[id];
+        const doc = typeof payload === "string" ? payload : payload.doc;
+        const pre = document.createElement("pre");
+        pre.style.cssText = "white-space:pre-wrap;margin:0;font-family:var(--font-mono);font-size:12px";
+        pre.textContent = doc == null ? "" : String(doc);
+        el.appendChild(pre);
       });
       bindPreviewScrollDelegation(root);
     });
