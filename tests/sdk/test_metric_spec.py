@@ -3,8 +3,9 @@
 import pytest
 
 from qym import Metric, MetricSpec
-from qym.core.evaluator import Evaluator
 from qym.core.dataset import InMemoryDataset
+from qym.core.evaluator import Evaluator
+from qym.core.multi_runner import MultiModelRunner
 
 
 def _dataset():
@@ -25,6 +26,27 @@ def test_metric_compact_form_is_resolved_by_evaluator():
     assert evaluator.metrics == {"passed": passed}
     assert evaluator.metric_specs["passed"].score_type == "boolean"
     assert evaluator._metric_specs_payload()["passed"]["schema_version"] == 1
+
+
+def test_metric_compact_form_is_preserved_by_parallel_runner():
+    def passed(output, expected):
+        return output == expected
+
+    metric = Metric(passed, score_type="boolean")
+    runner = MultiModelRunner.from_runs(
+        [
+            {
+                "name": "typed-parallel",
+                "task": lambda value: value,
+                "dataset": _dataset(),
+                "metrics": [metric],
+                "config": {"otel_enabled": False, "live_mode": "local"},
+            }
+        ]
+    )
+
+    assert runner.specs[0].metrics == [metric]
+    assert runner._build_run_matrix()[0]["metrics"] == ["passed"]
 
 
 @pytest.mark.parametrize(

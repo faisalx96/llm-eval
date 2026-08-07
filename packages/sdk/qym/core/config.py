@@ -1,6 +1,10 @@
-from typing import Any, Callable, Dict, List, Optional, Union, Sequence
-from pydantic import BaseModel, Field, field_validator, ConfigDict
 from datetime import datetime
+from typing import Any, Callable, Dict, List, Optional, Sequence, Union
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from ..metrics.spec import Metric
+
 
 class EvaluatorConfig(BaseModel):
     """Configuration for a single evaluation run."""
@@ -84,14 +88,14 @@ class EvaluatorConfig(BaseModel):
         return v
 
 class RunSpec(BaseModel):
-    """Specification for a multi-model run."""
+    """Specification for one entry in a parallel run."""
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     name: str
     display_name: Optional[str] = None
     task: Any
     dataset: Union[str, Any]
-    metrics: List[Union[str, Callable]]
+    metrics: List[Union[str, Callable, Metric]]
     config: EvaluatorConfig = Field(default_factory=EvaluatorConfig)
     metadata: Dict[str, Any] = Field(default_factory=dict)
     input_mapping: Dict[str, str] = Field(default_factory=dict)
@@ -103,7 +107,7 @@ class RunSpec(BaseModel):
 
     @field_validator("metrics", mode="before")
     @classmethod
-    def validate_metrics(cls, v: Any) -> List[Union[str, Callable]]:
+    def validate_metrics(cls, v: Any) -> List[Union[str, Callable, Metric]]:
         if isinstance(v, str):
             return [m.strip() for m in v.split(",") if m.strip()]
         if isinstance(v, (list, tuple)):
