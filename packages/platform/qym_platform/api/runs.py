@@ -118,6 +118,50 @@ def _stringify(val: Any) -> str:
     return str(val)
 
 
+def _repeat_aggregate_metric_meta(
+    pass_values: Dict[int, Optional[float]],
+    stored_meta: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Describe a repeat reduction without presenting one pass as the mean."""
+    meta: Dict[str, Any] = {
+        "sample_reducer": "mean",
+        "samples_observed": sum(value is not None for value in pass_values.values()),
+    }
+    for key, value in (stored_meta or {}).items():
+        if key in {"modified", "original_score"} or key.startswith("pass_"):
+            meta[key] = value
+    return meta
+
+
+def _completed_pass_outputs(
+    db: Session,
+    run_id: str,
+    wanted: set[tuple[str, int]],
+) -> Dict[tuple[str, int], Any]:
+    """Recover outputs for attempts written by pre-fix SDK event ordering."""
+    if not wanted:
+        return {}
+    recovered: Dict[tuple[str, int], Any] = {}
+    rows = (
+        db.query(RunEvent.payload)
+        .filter(RunEvent.run_id == run_id, RunEvent.type == "item_completed")
+        .order_by(RunEvent.sequence.asc())
+        .all()
+    )
+    for (payload,) in rows:
+        if not isinstance(payload, dict):
+            continue
+        item_id = str(payload.get("item_id") or "")
+        try:
+            pass_number = max(1, int(payload.get("pass_number") or 1))
+        except (TypeError, ValueError):
+            pass_number = 1
+        key = (item_id, pass_number)
+        if key in wanted and "output" in payload:
+            recovered[key] = payload.get("output")
+    return recovered
+
+
 def _strip_model_provider(model_name: str) -> str:
     """Normalize 'provider/model' -> 'model' for consistent display."""
     if not model_name:
@@ -1740,21 +1784,37 @@ def _build_run_data(db: Session, run: Run) -> Dict[str, Any]:
 
         # Every pass's final attempt — output, latency, trace — so the UI can
         # show each attempt, not just the item's last one.
-        for att in (
+        final_attempts = (
             db.query(RunItemAttempt)
             .filter(
                 RunItemAttempt.run_id == run.id,
                 RunItemAttempt.is_last_attempt.is_(True),
             )
             .all()
-        ):
+        )
+        missing_output_pairs = {
+            (att.item_id, int(att.pass_number))
+            for att in final_attempts
+            if att.output is None
+        }
+        recovered_outputs = _completed_pass_outputs(
+            db, run.id, missing_output_pairs
+        )
+        for att in final_attempts:
             att_error = att.error or ""
             is_failed = str(att.status or "").lower() == "failed"
+            attempt_output = att.output
+            if attempt_output is None:
+                attempt_output = recovered_outputs.get(
+                    (att.item_id, int(att.pass_number))
+                )
             pass_attempts_by_item.setdefault(att.item_id, {})[int(att.pass_number)] = {
                 "pass_number": int(att.pass_number),
                 "status": "error" if is_failed else "completed",
                 "output": (
-                    f"ERROR: {att_error}" if is_failed and att_error else _stringify(att.output)
+                    f"ERROR: {att_error}"
+                    if is_failed and att_error
+                    else _stringify(attempt_output)
                 ),
                 "error": att_error,
                 "latency_ms": att.latency_ms,
@@ -1803,9 +1863,15 @@ def _build_run_data(db: Session, run: Run) -> Dict[str, Any]:
             if sc.score_numeric is not None:
                 val = sc.score_numeric
             metric_values.append(val)
-            if sc.meta:
+            pass_values = (pass_scores_by_item.get(it.item_id) or {}).get(m)
+            if run_samples > 1 and pass_values:
+                metric_meta[m] = _repeat_aggregate_metric_meta(
+                    pass_values,
+                    dict(sc.meta) if isinstance(sc.meta, dict) else None,
+                )
+            elif sc.meta:
                 metric_meta[m] = dict(sc.meta)
-            if sc.label or sc.explanation:
+            if run_samples <= 1 and (sc.label or sc.explanation):
                 if m not in metric_meta:
                     metric_meta[m] = {}
                 if sc.label:
@@ -2524,6 +2590,10 @@ def update_metric(
             )
             db.add(pass_record)
         meta.setdefault(f"pass_{pass_number}_original", pass_record.score_numeric)
+        pass_meta = dict(pass_record.meta or {})
+        pass_meta.setdefault("original_score", pass_record.score_numeric)
+        pass_meta["modified"] = "true"
+        pass_record.meta = pass_meta
         pass_record.score_numeric = numeric_val
 
         # Re-reduce: run-level score = mean over all stored passes
@@ -2540,6 +2610,9 @@ def update_metric(
         reduced = round(sum(numerics) / len(numerics), 6) if numerics else None
         score_record.score_numeric = reduced
         score_record.score_raw = reduced
+        meta = _repeat_aggregate_metric_meta(
+            {int(p.pass_number): p.score_numeric for p in siblings}, meta
+        )
     else:
         try:
             numeric_val = float(new_score)
@@ -2576,23 +2649,43 @@ def update_metric(
     # Repeat runs: ship pass_scores/pass_attempts so the client row keeps its
     # per-pass detail (and pass-scoped pages can re-apply their lens).
     pass_scores: Optional[Dict[str, list]] = None
+    pass_metric_meta: Optional[Dict[str, list]] = None
     pass_attempts: Optional[list] = None
     if run_samples > 1:
         from qym_platform.db.models import RunItemAttempt, RunItemPassScore
 
         by_metric: Dict[str, Dict[int, Optional[float]]] = {}
-        for ps in (
+        by_metric_meta: Dict[str, Dict[int, Dict[str, Any]]] = {}
+        pass_score_rows = (
             db.query(RunItemPassScore)
             .filter(RunItemPassScore.run_id == run.id, RunItemPassScore.item_id == item.item_id)
             .all()
-        ):
+        )
+        for ps in pass_score_rows:
             by_metric.setdefault(ps.metric_name, {})[int(ps.pass_number)] = ps.score_numeric
+            ps_meta = dict(ps.meta) if ps.meta else {}
+            if ps.label:
+                ps_meta.setdefault("label", ps.label)
+            if ps.explanation:
+                ps_meta.setdefault("explanation", ps.explanation)
+            if ps_meta:
+                by_metric_meta.setdefault(ps.metric_name, {})[
+                    int(ps.pass_number)
+                ] = ps_meta
         pass_scores = {
             m: [by_pass.get(p) for p in range(1, run_samples + 1)]
             for m, by_pass in by_metric.items()
         }
+        pass_metric_meta = (
+            {
+                m: [by_pass.get(p) for p in range(1, run_samples + 1)]
+                for m, by_pass in by_metric_meta.items()
+            }
+            if by_metric_meta
+            else None
+        )
         attempts_by_pass: Dict[int, Dict[str, Any]] = {}
-        for att in (
+        final_attempts = (
             db.query(RunItemAttempt)
             .filter(
                 RunItemAttempt.run_id == run.id,
@@ -2600,14 +2693,30 @@ def update_metric(
                 RunItemAttempt.is_last_attempt.is_(True),
             )
             .all()
-        ):
+        )
+        missing_output_pairs = {
+            (att.item_id, int(att.pass_number))
+            for att in final_attempts
+            if att.output is None
+        }
+        recovered_outputs = _completed_pass_outputs(
+            db, run.id, missing_output_pairs
+        )
+        for att in final_attempts:
             att_error = att.error or ""
             is_failed = str(att.status or "").lower() == "failed"
+            attempt_output = att.output
+            if attempt_output is None:
+                attempt_output = recovered_outputs.get(
+                    (att.item_id, int(att.pass_number))
+                )
             attempts_by_pass[int(att.pass_number)] = {
                 "pass_number": int(att.pass_number),
                 "status": "error" if is_failed else "completed",
                 "output": (
-                    f"ERROR: {att_error}" if is_failed and att_error else _stringify(att.output)
+                    f"ERROR: {att_error}"
+                    if is_failed and att_error
+                    else _stringify(attempt_output)
                 ),
                 "error": att_error,
                 "latency_ms": att.latency_ms,
@@ -2657,6 +2766,7 @@ def update_metric(
         "metric_meta": metric_meta,
         "item_metadata": item.item_metadata if isinstance(item.item_metadata, dict) else {},
         "pass_scores": pass_scores,
+        "pass_metric_meta": pass_metric_meta,
         "pass_attempts": pass_attempts,
     }
 

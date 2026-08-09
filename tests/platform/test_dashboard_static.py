@@ -219,6 +219,9 @@ def test_run_page_supports_single_pass_scope() -> None:
     assert "const VIEW_PASS = (() => {" in source
     assert "new URLSearchParams(window.location.search).get('pass')" in source
     assert "scores[state.viewPass - 1]" in source
+    assert "function scopedPassMetricMeta(row, metricNames, passNumber)" in source
+    assert "metric_meta: scopedPassMetricMeta(row, metricNames, state.viewPass)" in source
+    assert "next.metric_meta = scopedPassMetricMeta(" in source
     # no banner — the headline pill carries the pass label and the way back
     assert "pass-scope-banner" not in source
     assert "Return to all passes." in source

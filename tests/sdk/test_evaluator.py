@@ -236,6 +236,7 @@ class TestEvaluator:
         evaluator.task_adapter = MagicMock()
         evaluator.task_adapter.arun = AsyncMock(return_value="ok")
         evaluator.model_name_full = "test-model"
+        evaluator._current_pass = 3
         evaluator._platform_stream = MagicMock()
         evaluator._create_item_spans = MagicMock(
             return_value=ItemSpans(trace_id="trace-1", trace_url="url-1")
@@ -257,6 +258,7 @@ class TestEvaluator:
         ]
         assert len(started) == 1
         assert started[0]["item_id"] == "item-1"
+        assert started[0]["pass_number"] == 3
         assert started[0]["attempt_number"] == 1
         assert started[0]["trace_id"] == "trace-1"
         assert started[0]["trace_url"] == "url-1"
@@ -356,6 +358,11 @@ class TestEvaluator:
         assert completed[0]["latency_ms"] == pytest.approx(250.0)
         assert attempt_events[0]["attempt_number"] == 2
         assert attempt_events[0]["is_last_attempt"] is True
+        assert attempt_events[0]["output"] == "final-output"
+        event_types = [event_type for event_type, _ in emitted]
+        assert event_types.index("item_attempt_finished") < event_types.index(
+            "item_completed"
+        )
 
     @pytest.mark.asyncio
     async def test_evaluate_item_failure_uses_last_failed_attempt_trace_and_time(

@@ -83,6 +83,9 @@ class ItemAttemptFinishedPayload(BaseModel):
     trace_url: Optional[str] = None
     latency_ms: Optional[float] = Field(default=None, ge=0)
     task_started_at_ms: Optional[int] = None
+    # Successful task output.  New SDKs include it so per-pass output storage
+    # is independent of item_completed / item_attempt_finished event order.
+    output: Any = None
     error: Optional[str] = None
     is_last_attempt: bool = False
 

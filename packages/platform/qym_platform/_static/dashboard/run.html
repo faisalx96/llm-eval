@@ -5788,6 +5788,24 @@
         }
       }
 
+      function scopedPassMetricMeta(row, metricNames, passNumber) {
+        const scoped = {};
+        const passMeta = row.pass_metric_meta || {};
+        const aggregateMeta = row.metric_meta || {};
+        metricNames.forEach(name => {
+          const values = passMeta[name];
+          if (Array.isArray(values)) {
+            const value = values[passNumber - 1];
+            if (value && typeof value === 'object') scoped[name] = value;
+            return;
+          }
+          // Legacy repeat artifacts may have only run-level metadata.
+          const fallback = aggregateMeta[name];
+          if (fallback && typeof fallback === 'object') scoped[name] = fallback;
+        });
+        return scoped;
+      }
+
       function processRun() {
         const run = state.run;
         const snap = state.snapshot;
@@ -5815,6 +5833,7 @@
             return {
               ...row,
               metric_values: passValues,
+              metric_meta: scopedPassMetricMeta(row, metricNames, state.viewPass),
               ...(att ? {
                 status: att.status,
                 error: att.error || '',
@@ -9999,6 +10018,8 @@
                   : null;
               });
             }
+            next.metric_meta = scopedPassMetricMeta(
+              next, state.allMetrics, state.viewPass);
             const att = Array.isArray(next.pass_attempts) ? next.pass_attempts[state.viewPass - 1] : null;
             if (att) {
               next = {

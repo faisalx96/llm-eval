@@ -918,6 +918,10 @@ async def ingest_events(
     attempt_cache: Dict[tuple[str, int, int], Optional[RunItemAttempt]] = {}
     score_cache: Dict[tuple[str, str], Optional[RunItemScore]] = {}
     pass_score_cache: Dict[tuple[str, str, int], Optional[RunItemPassScore]] = {}
+    # Older SDKs emitted item_completed before item_attempt_finished.  Keep
+    # outputs seen in this request so the later attempt row can still receive
+    # its pass output.  New SDKs also carry output on the attempt event itself.
+    completed_output_cache: Dict[tuple[str, int], Any] = {}
     metric_spec_cache = {
         spec.metric_name: spec
         for spec in db.query(RunMetricSpec).filter(RunMetricSpec.run_id == run_id).all()
@@ -947,6 +951,21 @@ async def ingest_events(
         elif spec.score_type == "count":
             if float(numeric) < 0 or not float(numeric).is_integer():
                 raise HTTPException(status_code=422, detail="Count score must be a non-negative integer")
+
+    def _aggregate_score_meta(
+        observations: int, existing: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """Describe a reduced score without borrowing one pass's verdict."""
+        meta: Dict[str, Any] = {
+            "sample_reducer": "mean",
+            "samples_observed": int(observations),
+        }
+        # Preserve human-edit provenance if an event arrives after a score was
+        # reviewed.  Judge metadata belongs on RunItemPassScore, not here.
+        for key, value in (existing or {}).items():
+            if key in {"modified", "original_score"} or key.startswith("pass_"):
+                meta[key] = value
+        return meta
 
     def _get_item(item_id: str) -> Optional[RunItem]:
         if item_id in item_cache:
@@ -1186,6 +1205,11 @@ async def ingest_events(
 
         elif isinstance(payload, ItemAttemptFinishedPayload):
             mark_run_running(run)
+            attempt_output = _sanitize_for_json(payload.output)
+            if attempt_output is None and run.samples > 1:
+                attempt_output = completed_output_cache.get(
+                    (payload.item_id, payload.pass_number)
+                )
             attempt = _get_attempt(
                 payload.item_id, payload.pass_number, payload.attempt_number
             )
@@ -1201,6 +1225,7 @@ async def ingest_events(
                         task_started_at_ms=payload.task_started_at_ms,
                         trace_id=payload.trace_id,
                         trace_url=payload.trace_url,
+                        output=attempt_output,
                         error=payload.error,
                         is_last_attempt=payload.is_last_attempt,
                     )
@@ -1212,6 +1237,8 @@ async def ingest_events(
                 attempt.task_started_at_ms = payload.task_started_at_ms
                 attempt.trace_id = payload.trace_id
                 attempt.trace_url = payload.trace_url
+                if attempt_output is not None:
+                    attempt.output = attempt_output
                 attempt.error = payload.error
                 attempt.is_last_attempt = payload.is_last_attempt
             if payload.is_last_attempt:
@@ -1233,6 +1260,7 @@ async def ingest_events(
             _validate_metric_score(payload)
             mark_run_running(run)
             reduced_numeric = payload.score_numeric
+            reduced_observations = 1 if payload.score_numeric is not None else 0
             if run.samples > 1:
                 # Repeat runs: record the per-pass score, then reduce
                 # run_item_scores to the mean over the passes seen so far —
@@ -1261,20 +1289,39 @@ async def ingest_events(
                     pass_score.meta = _sanitize_for_json(payload.meta)
                     pass_score.explanation = payload.explanation
                 db.flush()
-                reduced_numeric = (
-                    db.query(func.avg(RunItemPassScore.score_numeric))
+                reduced_numeric, reduced_observations = (
+                    db.query(
+                        func.avg(RunItemPassScore.score_numeric),
+                        func.count(RunItemPassScore.score_numeric),
+                    )
                     .filter(
                         RunItemPassScore.run_id == run_id,
                         RunItemPassScore.item_id == payload.item_id,
                         RunItemPassScore.metric_name == payload.metric_name,
                         RunItemPassScore.score_numeric.isnot(None),
                     )
-                    .scalar()
+                    .one()
                 )
                 if reduced_numeric is None:
                     reduced_numeric = payload.score_numeric
 
             score = _get_score(payload.item_id, payload.metric_name)
+            aggregate_meta = _aggregate_score_meta(
+                int(reduced_observations or 0),
+                score.meta if score and isinstance(score.meta, dict) else None,
+            )
+            stored_raw = (
+                reduced_numeric
+                if run.samples > 1
+                else _sanitize_for_json(payload.score_raw)
+            )
+            stored_meta = (
+                aggregate_meta
+                if run.samples > 1
+                else _sanitize_for_json(payload.meta)
+            )
+            stored_label = None if run.samples > 1 else payload.label
+            stored_explanation = None if run.samples > 1 else payload.explanation
             if not score:
                 score = _remember_score(
                     RunItemScore(
@@ -1282,22 +1329,25 @@ async def ingest_events(
                         item_id=payload.item_id,
                         metric_name=payload.metric_name,
                         score_numeric=reduced_numeric,
-                        score_raw=_sanitize_for_json(payload.score_raw),
-                        meta=_sanitize_for_json(payload.meta),
-                        label=payload.label,
-                        explanation=payload.explanation,
+                        score_raw=stored_raw,
+                        meta=stored_meta,
+                        label=stored_label,
+                        explanation=stored_explanation,
                     )
                 )
                 db.add(score)
             else:
                 score.score_numeric = reduced_numeric
-                score.score_raw = _sanitize_for_json(payload.score_raw)
-                score.meta = _sanitize_for_json(payload.meta)
-                score.label = payload.label
-                score.explanation = payload.explanation
+                score.score_raw = stored_raw
+                score.meta = stored_meta
+                score.label = stored_label
+                score.explanation = stored_explanation
 
         elif isinstance(payload, ItemCompletedPayload):
             mark_run_running(run)
+            completed_output_cache[(payload.item_id, payload.pass_number)] = (
+                _sanitize_for_json(payload.output)
+            )
             # Determine task_started_at_ms: prefer explicit value from SDK,
             # fall back to event sent_at minus latency_ms for older SDKs.
             ts_ms = payload.task_started_at_ms
@@ -1449,19 +1499,29 @@ async def ingest_events(
                         pass_score.score_numeric = 0.0
                         pass_score.label = "error"
                     db.flush()
-                    reduced = (
-                        db.query(func.avg(RunItemPassScore.score_numeric))
+                    reduced, reduced_observations = (
+                        db.query(
+                            func.avg(RunItemPassScore.score_numeric),
+                            func.count(RunItemPassScore.score_numeric),
+                        )
                         .filter(
                             RunItemPassScore.run_id == run_id,
                             RunItemPassScore.item_id == payload.item_id,
                             RunItemPassScore.metric_name == metric_name,
                             RunItemPassScore.score_numeric.isnot(None),
                         )
-                        .scalar()
+                        .one()
                     )
                     score = _get_score(payload.item_id, metric_name)
                     if score:
                         score.score_numeric = reduced
+                        score.score_raw = reduced
+                        score.meta = _aggregate_score_meta(
+                            int(reduced_observations or 0),
+                            score.meta if isinstance(score.meta, dict) else None,
+                        )
+                        score.label = None
+                        score.explanation = None
                     elif reduced is not None:
                         db.add(
                             _remember_score(
@@ -1470,9 +1530,11 @@ async def ingest_events(
                                     item_id=payload.item_id,
                                     metric_name=metric_name,
                                     score_numeric=reduced,
-                                    score_raw=None,
-                                    meta={},
-                                    label="error",
+                                    score_raw=reduced,
+                                    meta=_aggregate_score_meta(
+                                        int(reduced_observations or 0)
+                                    ),
+                                    label=None,
                                     explanation=None,
                                 )
                             )

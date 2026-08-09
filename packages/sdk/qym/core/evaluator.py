@@ -2192,6 +2192,7 @@ class Evaluator:
                 {
                     "item_id": str(item_id),
                     "index": int(index),
+                    "pass_number": self._current_pass,
                     "attempt_number": int(attempt_number),
                     "trace_id": spans.trace_id,
                     "trace_url": spans.trace_url,
@@ -2642,6 +2643,11 @@ class Evaluator:
                     "trace_url": attempt.spans.trace_url,
                     "latency_ms": attempt.latency_ms,
                     "task_started_at_ms": attempt.task_started_at_ms,
+                    # Carry the successful task output on the durable attempt
+                    # event itself.  Repeat-run UIs read per-pass outputs from
+                    # RunItemAttempt, so they must not depend on a later
+                    # item_completed event arriving in the same request.
+                    "output": attempt.output if attempt.success else None,
                     "error": attempt.error,
                     "is_last_attempt": is_last_attempt,
                 },
@@ -2826,6 +2832,12 @@ class Evaluator:
             active_spans,
             tracker,
         )
+        # Persist the final attempt before item_completed.  Older platforms
+        # attach a repeat pass's output to the already-existing final-attempt
+        # row when they process item_completed.
+        self._emit_item_attempt_finished(
+            index, item, success_attempt, is_last_attempt=True
+        )
         # Emit item_completed to the platform stream (fire-and-forget queue put)
         self._emit_item_completed(
             index,
@@ -2839,10 +2851,6 @@ class Evaluator:
             retry_count,
             success_attempt.task_started_at_ms,
             item_started_at_ms,
-        )
-        # Per-attempt finished event
-        self._emit_item_attempt_finished(
-            index, item, success_attempt, is_last_attempt=True
         )
 
     async def _evaluate_item(self, index: int, item: Any, tracker: "ProgressObserver"):

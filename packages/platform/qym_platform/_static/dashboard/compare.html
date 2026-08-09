@@ -10407,13 +10407,18 @@
           const meta = {};
           metricNames.forEach(m => {
             const pm = row.pass_metric_meta ? row.pass_metric_meta[m] : null;
-            const v = Array.isArray(pm) ? pm[passNo - 1] : null;
-            if (v && typeof v === 'object') meta[m] = v;
+            if (Array.isArray(pm)) {
+              const v = pm[passNo - 1];
+              if (v && typeof v === 'object') meta[m] = v;
+              return;
+            }
+            const fallback = row.metric_meta?.[m];
+            if (fallback && typeof fallback === 'object') meta[m] = fallback;
           });
           const next = {
             ...row,
             metric_values: mv,
-            metric_meta: Object.keys(meta).length ? meta : row.metric_meta,
+            metric_meta: meta,
             pass_scores: null,
             pass_attempts: null,
             pass_metric_meta: null,
@@ -11481,8 +11486,13 @@
             const passMeta = {};
             metricNames.forEach((name) => {
               const values = updatedRow.pass_metric_meta?.[name];
-              const value = Array.isArray(values) ? values[passIndex] : null;
-              if (value && typeof value === 'object') passMeta[name] = value;
+              if (Array.isArray(values)) {
+                const value = values[passIndex];
+                if (value && typeof value === 'object') passMeta[name] = value;
+                return;
+              }
+              const fallback = updatedRow.metric_meta?.[name];
+              if (fallback && typeof fallback === 'object') passMeta[name] = fallback;
             });
             const attempt = Array.isArray(updatedRow.pass_attempts)
               ? updatedRow.pass_attempts[passIndex]
@@ -11494,7 +11504,7 @@
                 if (Array.isArray(values)) return values[passIndex] == null ? '' : values[passIndex];
                 return updatedRow.metric_values?.[metricIndex] ?? '';
               }),
-              metric_meta: Object.keys(passMeta).length ? passMeta : updatedRow.metric_meta,
+              metric_meta: passMeta,
               pass_scores: null,
               pass_attempts: null,
               pass_metric_meta: null,

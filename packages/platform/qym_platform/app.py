@@ -24,7 +24,7 @@ def create_app(settings: PlatformSettings | None = None) -> FastAPI:
 
     app = FastAPI(
         title="qym-platform",
-        version="0.2.1",
+        version="0.2.2",
         docs_url="/api-docs",
         redoc_url=None,
         openapi_url="/openapi.json",

@@ -133,32 +133,34 @@ def _sampled_run_events() -> str:
         _event(1, "item_started", {
             "item_id": "item-1", "index": 0, "pass_number": 1, "input": {"q": "hi"},
         }),
-        _event(2, "item_attempt_finished", {
-            "item_id": "item-1", "pass_number": 1, "attempt_number": 1,
-            "status": "completed", "latency_ms": 100.0, "is_last_attempt": True,
-        }),
-        _event(3, "metric_scored", {
+        # SDK <=1.5.2 emitted item_completed before item_attempt_finished.
+        # Keep that production order here to verify order-independent ingest.
+        _event(2, "metric_scored", {
             "item_id": "item-1", "pass_number": 1, "metric_name": "accuracy",
-            "score_numeric": 1.0,
+            "score_numeric": 1.0, "meta": {"verdict": "correct"},
         }),
-        _event(4, "item_completed", {
+        _event(3, "item_completed", {
             "item_id": "item-1", "index": 0, "pass_number": 1,
             "is_final_pass": False, "output": "out-pass-1", "latency_ms": 100.0,
+        }),
+        _event(4, "item_attempt_finished", {
+            "item_id": "item-1", "pass_number": 1, "attempt_number": 1,
+            "status": "completed", "latency_ms": 100.0, "is_last_attempt": True,
         }),
         _event(5, "pass_completed", {
             "pass_number": 1, "samples": 3, "metrics": {"accuracy": 1.0},
         }),
-        _event(6, "item_attempt_finished", {
-            "item_id": "item-1", "pass_number": 2, "attempt_number": 1,
-            "status": "completed", "latency_ms": 120.0, "is_last_attempt": True,
-        }),
-        _event(7, "metric_scored", {
+        _event(6, "metric_scored", {
             "item_id": "item-1", "pass_number": 2, "metric_name": "accuracy",
-            "score_numeric": 0.0,
+            "score_numeric": 0.0, "meta": {"verdict": "incorrect"},
         }),
-        _event(8, "item_completed", {
+        _event(7, "item_completed", {
             "item_id": "item-1", "index": 0, "pass_number": 2,
             "is_final_pass": False, "output": "out-pass-2", "latency_ms": 120.0,
+        }),
+        _event(8, "item_attempt_finished", {
+            "item_id": "item-1", "pass_number": 2, "attempt_number": 1,
+            "status": "completed", "latency_ms": 120.0, "is_last_attempt": True,
         }),
         _event(9, "pass_completed", {
             "pass_number": 2, "samples": 3, "metrics": {"accuracy": 0.5},
@@ -226,6 +228,9 @@ def test_sampled_run_ingest_stores_passes_and_reduces_mean():
             .one()
         )
         assert score.score_numeric == pytest.approx(1.0 / 3.0)
+        assert score.score_raw == pytest.approx(1.0 / 3.0)
+        assert score.meta == {"sample_reducer": "mean", "samples_observed": 3}
+        assert score.label is None
         assert (
             session.query(RunItem).filter(RunItem.run_id == RUN_ID).count() == 1
         )
@@ -284,6 +289,17 @@ def test_detail_passes_and_group_metrics_endpoints():
         assert payload["run"]["last_completed_pass"] == 3
         row = payload["snapshot"]["rows"][0]
         assert row["pass_scores"] == {"accuracy": [1.0, 0.0, 0.0]}
+        assert row["pass_metric_meta"] == {
+            "accuracy": [
+                {"verdict": "correct"},
+                {"verdict": "incorrect"},
+                {"label": "error"},
+            ]
+        }
+        assert row["metric_meta"]["accuracy"] == {
+            "sample_reducer": "mean",
+            "samples_observed": 3,
+        }
 
         # every pass's final attempt ships with the row — output, latency,
         # status — so the UI can show each attempt, not just the last one.
@@ -339,6 +355,63 @@ def test_detail_passes_and_group_metrics_endpoints():
         }
 
 
+def test_attempt_finished_stores_output_without_item_completed():
+    """New SDKs make the attempt event self-contained for pass output."""
+    app, SessionLocal = _make_env()
+    with SessionLocal() as session:
+        _seed(session, token="test-token", samples=2)
+
+    body = _event(
+        1,
+        "item_attempt_finished",
+        {
+            "item_id": "item-1",
+            "pass_number": 1,
+            "attempt_number": 1,
+            "status": "completed",
+            "output": "direct-output",
+            "latency_ms": 25.0,
+            "is_last_attempt": True,
+        },
+    ) + "\n"
+    with TestClient(app) as client:
+        _ingest(client, body, "test-token")
+
+    with SessionLocal() as session:
+        attempt = session.query(RunItemAttempt).filter(
+            RunItemAttempt.run_id == RUN_ID
+        ).one()
+        assert attempt.output == "direct-output"
+
+
+def test_detail_recovers_outputs_from_stored_completion_events():
+    """Already-affected runs render outputs without requiring a migration."""
+    app, SessionLocal = _make_env()
+    with SessionLocal() as session:
+        _seed(session, token="test-token", samples=3)
+
+    with TestClient(app) as client:
+        _ingest(client, _sampled_run_events(), "test-token")
+
+    with SessionLocal() as session:
+        attempts = (
+            session.query(RunItemAttempt)
+            .filter(RunItemAttempt.run_id == RUN_ID)
+            .all()
+        )
+        for attempt in attempts:
+            attempt.output = None
+        session.commit()
+
+        run = session.query(Run).filter(Run.id == RUN_ID).one()
+        row = _build_run_data(session, run)["snapshot"]["rows"][0]
+        assert [attempt and attempt["output"] for attempt in row["pass_attempts"]] == [
+            "out-pass-1",
+            "out-pass-2",
+            None,
+        ]
+
+
 def test_update_metric_with_pass_number_edits_pass_and_rereduces_mean():
     """Editing from a ?pass=N page targets that pass's score; the run-level
     score becomes the mean over passes again. The response row carries
@@ -389,6 +462,8 @@ def test_update_metric_with_pass_number_edits_pass_and_rereduces_mean():
 
         row = result["row"]
         assert row["pass_scores"]["accuracy"] == [1.0, 1.0, 0.0]
+        assert row["pass_metric_meta"]["accuracy"][1]["modified"] == "true"
+        assert row["pass_metric_meta"]["accuracy"][1]["original_score"] == pytest.approx(0.0)
         assert [a and a["status"] for a in row["pass_attempts"]] == [
             "completed",
             "completed",
