@@ -1001,6 +1001,9 @@ def test_auto_analysis_is_a_first_class_project_page() -> None:
     assert 'Add documents' in playground
     assert 'Add examples' in playground
     assert 'data-example-prompt-field' in playground
+    assert 'data-example-fields-toggle' in playground
+    assert 'filtersOpen: false' in playground
+    assert 'Choose prompt fields' in playground
     assert 'function _fieldToggleMarkup' in playground
     assert 'include_fields: _approvedExampleFieldMap()' in playground
     assert "include_project_description" not in playground
@@ -1195,7 +1198,11 @@ def test_auto_analysis_is_a_first_class_project_page() -> None:
     assert "saveMetricAnalysisPatch" in run
     assert "metric_name: metricName" in run
     assert "if (!hasStoredAnalysis && !metricFailed) return '';" in run
-    assert "(analysis.root_cause || '+ Category')" in run
+    assert "const hasCategories = analysisCategories.length > 0;" in run
+    assert "const categoryValues = hasCategories ? analysisCategories : ['+ Category'];" in run
+    assert "const categoryBadges = categoryValues.map(category =>" in run
+    assert 'class="metric-analysis-category-list"' in run
+    assert "--metric-analysis-category-color:" in run
     assert "'>Edit</button>'" not in run
     assert 'id="analysis-metric-list"' in analyzer
     assert "getMetrics: projectScoped ? () => [] : () => state.selectedMetrics.slice()" in analyzer
@@ -1232,6 +1239,9 @@ def test_auto_analysis_is_a_first_class_project_page() -> None:
     assert "const categoryLabel = categoryCount === 1 ? 'category' : 'categories';" in analyzer
     assert "getRunUrl" in analyzer
     assert "pg-runall-open-run" in playground
+    assert 'class="qym-inline-action qym-inline-action--neutral pg-runall-open-run"' in playground
+    assert ">View run</a>" in playground
+    assert 'class="qym-icon-action analysis-context-link pg-runall-open-run"' not in playground
     assert "labels consolidated" not in playground
     assert "if (_opts.onAnalysisComplete) _opts.onAnalysisComplete(data);" in playground
     assert "_onFilterChange();" in playground
@@ -1253,6 +1263,8 @@ def test_auto_analysis_is_a_first_class_project_page() -> None:
     assert 'id="pg-connection-trigger"' in playground
     assert 'id="pg-connection-menu"' in playground
     assert "body.limit = requestedLimit" in playground
+    assert "var requestedLimit = _getTargetLimit();" in playground
+    assert "analysisItemCount = requestedLimit == null ? itemCount : Math.min(requestedLimit, itemCount)" in playground
     assert "'pg-use-project-description'" not in analyzer
     assert "'pg-use-project-rules'" in analyzer
     assert "'pg-use-project-documents'" in analyzer
@@ -1415,8 +1427,15 @@ def test_auto_analysis_page_uses_first_class_run_rules_and_document_tabs() -> No
     assert "pg-target-limit-row" in playground
     assert "data-qym-page" in playground
     assert "analysis-rule-toolbar-actions" in analyzer
-    assert "toolbarActions.append(rulePagination)" in analyzer
+    assert "toolbarActions.append(ruleVersionActions)" in analyzer
+    assert "rulePaginationFooter.append(rulePagination)" in analyzer
     assert "ruleColumn.append(rulePagination)" not in analyzer
+    assert "analysis-rule-pagination-footer" in analyzer
+    assert "id=\"pg-rule-version-actions\"" in playground
+    assert "function _renderRuleVersionActions()" in playground
+    assert "id=\"pg-publish-rule-version\"" in playground
+    assert "id=\"pg-promote-rule-version\"" in playground
+    assert "pg-example-source-control" in playground
     assert "grid-template-columns: minmax(0, 1fr) auto;" in analyzer
     assert "analysis-diagnosis-action-row" in analyzer
     assert 'id="analysis-category-search"' in analyzer
@@ -1434,16 +1453,24 @@ def test_auto_analysis_page_uses_first_class_run_rules_and_document_tabs() -> No
     assert 'pg-category-settings-popover' not in playground
     assert 'id="pg-max-root-cause-categories"' in playground
     assert 'data-category-limit-field' in playground
+    assert 'class="qym-help-marker"' in playground
+    assert 'class="qym-help-tooltip" role="tooltip"' in playground
+    assert "Limits how many diagnosis categories the analyzer can return" in playground
     assert 'min="1"' in playground
     assert 'inputmode="numeric"' in playground
     assert "function _normalizeCategoryLimitInput" in playground
     assert "cfg.max_root_cause_categories = _normalizeCategoryLimitInput(maxCategoriesEl);" in playground
     assert "MAXIMUM ROOT-CAUSE CATEGORIES" in playground
     assert 'pg-hl-category">$1$2</span>' in playground
-    assert "diagnosisPanel.querySelector('#pg-max-root-cause-categories')" in analyzer
+    assert "diagnosisPanel.querySelector('#pg-max-root-cause-categories')" not in analyzer
     assert "diagnosisBody.querySelector('[data-category-limit-field]')" in analyzer
-    assert "placeCategoryLimitField" in analyzer
-    assert "analysis-diagnosis-category-limit" in analyzer
+    assert "categoryLimitField?.querySelector('#pg-max-root-cause-categories')" in analyzer
+    assert "placeCategoryLimitField" not in analyzer
+    assert "analysis-diagnosis-category-limit" not in analyzer
+    assert "targetLimitRow.append(categoryLimitField)" in analyzer
+    assert "analysis-run-category-limit" in analyzer
+    assert "analysis-target-pagination" in analyzer
+    assert "targetPaginationFooter.append(targetPagination)" in analyzer
     assert "categorySettings.classList.add('analysis-diagnosis-toolbar-settings')" not in analyzer
     assert "color: var(--accent-primary);" in analyzer
     assert "height: calc(100vh - (var(--space-xl) * 5));" in analyzer
@@ -1497,7 +1524,7 @@ def test_auto_analysis_page_uses_first_class_run_rules_and_document_tabs() -> No
     assert "newRuleTitle.scrollIntoView" in playground
     assert 'class="pg-hl-category" style="color:' not in playground
     assert "pg-hl-rule-title" in playground
-    assert "EVALUATION ITEM DATA:|BUSINESS CONTEXT:" in playground
+    assert "EVALUATION ITEM DATA:|SUPPLIED ANALYSIS DATA" in playground
     assert ".pg-hl-rule-title { color: var(--accent-secondary);" in styles
     assert ".pg-hl-json-key { color: var(--accent-secondary);" in styles
 

@@ -320,7 +320,7 @@ Configure at least one provider under **Project Settings → LLM Connections**. 
 
 1. Open **Auto-analysis** and choose a run.
 2. Select one or more metrics. Each item/metric pair is analyzed independently, so a single item can have different diagnoses for different metrics.
-3. Configure filters — all/failed/passed/errors, score threshold, complexity/domain/root-cause filters, explicit item IDs, and skip already-analyzed metric targets.
+3. Configure filters — all/failed/passed/errors, score threshold, complexity/domain/root-cause filters, explicit item IDs, skip already-analyzed metric targets, and an optional item limit. When multiple metrics are selected, the limit keeps all matching selected metrics for each chosen item.
 4. Use **Preview prompt** or test up to three items before starting the full run. The test does not save results.
 5. Start the analysis and follow the streamed progress. The LLM assigns:
    - **Root cause category** (for example, Hallucination, Reasoning Error, Context Missing, Knowledge Gap, or Dataset Issue)
@@ -340,7 +340,7 @@ The project context panel and run analysis panel are available together on the A
 - **Choose which fields appear in the prompt** and maintain the root-cause category/detail catalog.
 - **Preview prompts** and inspect generated test context/results before launching the full analysis.
 
-The default prompt sends the selected metric result, the same native trace span payload shown by the trace viewer, project context, active rules, and selected documents as evidence. It redacts credential-like fields and does not add approved correction snapshots as per-item few-shot examples. The default response contains diagnosis fields only; remediation fields from older saved analyses remain visible for compatibility.
+The default prompt sends the selected metric result, an organized view of the same native trace spans shown by the trace viewer, project context, active rules, and selected documents as evidence. Trace context is grouped into Agent trace and Evaluation trace sections; repeated chat messages are included only when new content appears. It redacts credential-like fields and does not add approved correction snapshots as per-item few-shot examples. The default response contains diagnosis fields only; remediation fields from older saved analyses remain visible for compatibility.
 
 ### Correction Bank
 

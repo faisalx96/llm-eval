@@ -5,14 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>قيِّم • Auto-analysis</title>
   <link rel="icon" type="image/png" href="/static/qym_icon.png">
-  <link rel="stylesheet" href="/static/dashboard.css?v=diagnosis-catalog-inline-limit-rules-20260810">
+  <link rel="stylesheet" href="/static/dashboard.css?v=analysis-rules-actions-20260810">
   <link rel="stylesheet" href="/static/shell.css">
   <script src="/static/auth.js"></script>
   <script src="/static/shell.js?v=accessibility-responsive-20260806"></script>
   <script src="/static/metrics.js"></script>
   <script src="/static/qym_table.js"></script>
   <script src="/static/ui_components.js?v=diagnosis-catalog-layout-20260810" defer></script>
-  <script src="/static/playground.js?v=diagnosis-catalog-inline-limit-rules-20260810"></script>
+  <script src="/static/playground.js?v=analysis-rules-actions-20260810"></script>
   <style>
     /* Typography and color roles follow docs/DESIGN_LANGUAGE.md. */
     .analysis-page {
@@ -988,6 +988,11 @@
       color: var(--text-muted);
       font-size: var(--font-sm);
     }
+    .analysis-target-pagination {
+      display: flex;
+      justify-content: flex-end;
+      margin-top: var(--space-md);
+    }
     .analysis-project-panel {
       display: flex;
       flex-direction: column;
@@ -1250,6 +1255,32 @@
     .analysis-rule-toolbar-actions .qym-pagination--run {
       margin-left: 0;
     }
+    .analysis-rule-version-actions {
+      display: flex;
+      min-width: 0;
+      align-items: center;
+      gap: var(--space-sm);
+    }
+    .analysis-rule-version-actions[hidden] {
+      display: none;
+    }
+    .analysis-rule-version-actions .qym-inline-action {
+      height: var(--control-height);
+      min-height: var(--control-height);
+    }
+    .analysis-rule-pagination-footer {
+      display: flex;
+      min-height: calc(var(--space-xl) * 2 + var(--control-height));
+      align-items: flex-end;
+      justify-content: flex-end;
+      margin-top: var(--space-md);
+      padding: var(--space-lg) var(--space-lg) var(--space-xl);
+      border-top: 1px solid var(--border-subtle);
+      box-sizing: border-box;
+    }
+    .analysis-rule-pagination-footer .qym-pagination--run {
+      margin: 0;
+    }
     .analysis-rule-toolbar #pg-add-rule {
       display: inline-flex;
       width: auto;
@@ -1383,6 +1414,16 @@
       align-items: center;
       justify-content: center;
       padding: 0 var(--space-md);
+    }
+    .analysis-project-footer .pg-context-actions .pg-example-source-control {
+      width: auto;
+      min-width: calc(var(--space-xl) * 6);
+      height: auto;
+      min-height: calc(var(--space-lg) * 2);
+      flex: 1 1 calc(var(--space-xl) * 6);
+      justify-content: flex-start;
+      padding: var(--space-sm) var(--space-md);
+      text-align: left;
     }
     .analysis-project-footer #pg-create-rule-version {
       border-color: var(--accent-tertiary);
@@ -3099,7 +3140,7 @@
         justify-content: flex-start;
         flex-wrap: wrap;
       }
-      .analysis-rule-toolbar-actions .qym-pagination--run {
+      .analysis-rule-toolbar-actions .analysis-rule-version-actions {
         flex: 1 1 auto;
       }
       .analysis-rule-toolbar #pg-add-rule {
@@ -3120,12 +3161,19 @@
       .analysis-project-footer .pg-context-actions button {
         width: 100%;
       }
+      .analysis-project-footer .pg-context-actions .pg-example-source-control {
+        width: 100%;
+        flex-basis: auto;
+      }
       .analysis-project-footer .pg-context-action-divider {
         width: 100%;
         height: 1px;
       }
       .analysis-project-shell .pg-rule-version-list {
         padding-left: calc(var(--space-xl) * 2 + var(--space-md));
+      }
+      .analysis-rule-pagination-footer {
+        justify-content: flex-start;
       }
       .analysis-subheading .analysis-run-label {
         white-space: normal;
@@ -4980,6 +5028,7 @@
         const rulesHint = inferencePrevious && inferencePrevious.classList.contains('pg-instructions-hint') ? inferencePrevious : null;
         const ruleList = document.getElementById('pg-rule-list');
         const rulePagination = document.getElementById('pg-rule-pagination');
+        const ruleVersionActions = document.getElementById('pg-rule-version-actions');
         const ruleFilters = document.getElementById('pg-rule-filters');
         const ruleCount = document.getElementById('pg-rule-count');
         const addRule = document.getElementById('pg-add-rule');
@@ -5068,7 +5117,7 @@
         toolbar.append(toolbarTitle);
         const toolbarActions = document.createElement('div');
         toolbarActions.className = 'analysis-rule-toolbar-actions';
-        if (rulePagination) toolbarActions.append(rulePagination);
+        if (ruleVersionActions) toolbarActions.append(ruleVersionActions);
         if (addRule) {
           addRule.className = 'qym-inline-action qym-inline-action--neutral';
           addRule.innerHTML = iconMarkup('plus') + '<span>Add rule</span>';
@@ -5080,6 +5129,10 @@
         ruleColumn.append(toolbar);
         if (ruleFilters) ruleColumn.append(ruleFilters);
         if (ruleList) ruleColumn.append(ruleList);
+        const rulePaginationFooter = document.createElement('div');
+        rulePaginationFooter.className = 'analysis-rule-pagination-footer';
+        if (rulePagination) rulePaginationFooter.append(rulePagination);
+        ruleColumn.append(rulePaginationFooter);
         rulesLayout.append(ruleColumn);
         const rulesWorkspaceBody = document.createElement('div');
         rulesWorkspaceBody.className = 'analysis-target-body';
@@ -5206,23 +5259,10 @@
           categoryAddForm.classList.add('analysis-diagnosis-add-form');
           diagnosisActionRow.insertBefore(categoryAddForm, categorySaveAction);
         }
-        if (categoryLimitField) categoryLimitField.classList.add('analysis-diagnosis-category-limit');
         if (categoryEditorToolbar) categoryEditorToolbar.remove();
         diagnosisPanel.append(diagnosisBody);
         projectPanel.after(diagnosisPanel);
-        const placeCategoryLimitField = () => {
-          if (!categoryLimitField) return;
-          const activeGroup = diagnosisBody.querySelector('#pg-categories-list .pg-category-group:not([hidden])');
-          const categoryHeading = activeGroup && activeGroup.querySelector('.pg-category-panel-heading');
-          const categoryCopy = categoryHeading && categoryHeading.querySelector('.pg-category-panel-copy');
-          const categoryEditor = diagnosisBody.querySelector('.pg-category-editor');
-          const target = categoryCopy || categoryEditor;
-          if (!target || categoryLimitField.parentElement === target) return;
-          if (categoryCopy || categoryHeading) target.append(categoryLimitField);
-          else target.insertBefore(categoryLimitField, target.firstChild);
-        };
         const syncDiagnosisSummary = () => {
-          placeCategoryLimitField();
           const groups = Array.from(diagnosisBody.querySelectorAll('.pg-category-group'));
           const exampleCount = groups.reduce(
             (total, group) => total + Number(group.dataset.exampleCount || 0),
@@ -5290,7 +5330,7 @@
             });
             if (Object.keys(taxonomy).length) categoryTaxonomy[category] = taxonomy;
           });
-          const maxCategories = Number(diagnosisPanel.querySelector('#pg-max-root-cause-categories')?.value || 3);
+          const maxCategories = Number(categoryLimitField?.querySelector('#pg-max-root-cause-categories')?.value || 3);
           return {
             categories,
             category_details_map: categoryDetails,
@@ -5391,8 +5431,20 @@
         tools.className = 'analysis-target-tools';
         tools.innerHTML = '<p>Set the score, re-analysis options, and an optional target limit here.</p>' +
           '<button class="analysis-mapping-open" id="analysis-mapping-open" type="button">Input mapping</button>';
+        const targetLimitRow = filter && filter.querySelector('.pg-target-limit-row');
+        const targetPagination = filter && filter.querySelector('#pg-target-pagination');
+        if (categoryLimitField && targetLimitRow) {
+          categoryLimitField.classList.add('analysis-run-category-limit');
+          targetLimitRow.append(categoryLimitField);
+        }
         targetBody.append(tools);
         if (filter) targetBody.append(filter);
+        if (targetPagination) {
+          const targetPaginationFooter = document.createElement('div');
+          targetPaginationFooter.className = 'analysis-target-pagination';
+          targetPaginationFooter.append(targetPagination);
+          targetBody.append(targetPaginationFooter);
+        }
         targetCard.append(targetBody);
         runPanel.append(targetCard);
 

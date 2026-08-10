@@ -1118,12 +1118,11 @@ def test_build_analysis_prompt_resolves_custom_variable_from_selected_metric_met
     assert any('"judge": "llm"' in message["content"] for message in messages)
 
 
-def test_build_analysis_prompt_reuses_native_trace_payload(
+def test_build_analysis_prompt_organizes_native_trace_payload(
     db_session: Session,
 ) -> None:
     _, _, _, item = _seed_run(db_session)
     item.trace_id = "trace-1"
-    item.trace_url = "https://qym.example/runs/run-1?trace_id=trace-1"
     db_session.add_all(
         [
             Span(
@@ -1174,7 +1173,7 @@ def test_build_analysis_prompt_reuses_native_trace_payload(
                 attributes={
                     "openinference.span.kind": "TOOL",
                     "tool.name": "query_sql",
-                    "input.value": '{"sql":"select * from archived_orders"}',
+                    "input.value": '{"sql":"select * from archived_orders","authorization":"trace-secret"}',
                     "output.value": '{"error":"table unavailable"}',
                     "qym.tool.error_source": "json",
                 },
@@ -1200,19 +1199,24 @@ def test_build_analysis_prompt_reuses_native_trace_payload(
     )
 
     assert "TRACE EVIDENCE:\n" in system_content
-    # Prompt context reuses the native span payload consumed by the trace viewer;
-    # it does not maintain a second Python projection of the trace tree.
-    assert '"span_id": "span-1"' in system_content
-    assert '"parent_span_id": "span-1"' in system_content
-    assert '"input.value"' in system_content
-    assert '"output.value"' in system_content
+    assert "Agent trace:" in system_content
+    assert "Evaluation trace:\n(none)" in system_content
+    assert "Step 1 — ChatCompletion:" in system_content
+    assert "Step 2 — tool:query_sql:" in system_content
+    assert "CALL:" in system_content
+    assert "THINKING:" in system_content
+    assert "OUTPUT:" in system_content
     assert '"authorization": "[REDACTED]"' in system_content
     assert "trace-secret" not in system_content
     assert "ChatCompletion" in system_content
     assert "You are a SQL agent." in system_content
     assert "Use the archived orders table." in system_content
     assert "The join returned no rows." in system_content
-    assert "linked-trace" in system_content
+    assert "table unavailable" in system_content
+    assert "span_id" not in system_content
+    assert "parent_span_id" not in system_content
+    assert "input.value" not in system_content
+    assert "linked-trace" not in system_content
 
     without_trace_messages = build_analysis_prompt(
         item,
@@ -1226,8 +1230,141 @@ def test_build_analysis_prompt_reuses_native_trace_payload(
         if message["role"] == "system"
     )
     assert "TRACE EVIDENCE:" not in without_trace
+    assert "Agent trace:" not in without_trace
     assert "You are a SQL agent." not in without_trace
-    assert system_content.count("The customer key may be stale.") == 2
+    assert system_content.count("The customer key may be stale.") == 1
+
+
+def test_organize_trace_content_drops_chains_and_emits_deltas_by_section() -> None:
+    def llm_span(
+        span_id: str,
+        parent_span_id: str,
+        start_time_ns: int,
+        input_messages: list[tuple[str, str]],
+        output: str,
+        thinking: str,
+    ) -> dict[str, Any]:
+        attributes: dict[str, Any] = {"openinference.span.kind": "LLM"}
+        for index, (role, content) in enumerate(input_messages):
+            attributes[f"llm.input_messages.{index}.message.role"] = role
+            attributes[f"llm.input_messages.{index}.message.content"] = content
+        attributes["llm.output_messages.0.message.role"] = "assistant"
+        attributes["llm.output_messages.0.message.content"] = output
+        attributes["llm.output_messages.0.message.reasoning"] = thinking
+        return {
+            "span_id": span_id,
+            "parent_span_id": parent_span_id,
+            "name": "ChatCompletion",
+            "kind": "CLIENT",
+            "start_time_ns": start_time_ns,
+            "attributes": attributes,
+            "events": [],
+            "links": [],
+        }
+
+    organized = llm_analyzer_service._organize_trace_content(
+        [
+            {
+                "span_id": "root-chain",
+                "name": "item-chain",
+                "kind": "INTERNAL",
+                "start_time_ns": 1,
+                "attributes": {"openinference.span.kind": "CHAIN"},
+            },
+            {
+                "span_id": "agent-wrapper",
+                "parent_span_id": "root-chain",
+                "name": "agent-task",
+                "kind": "INTERNAL",
+                "start_time_ns": 2,
+                "attributes": {"openinference.span.kind": "AGENT"},
+            },
+            llm_span(
+                "agent-call-1",
+                "agent-wrapper",
+                3,
+                [("system", "system once"), ("user", "question once")],
+                "first answer",
+                "think once",
+            ),
+            {
+                "span_id": "empty-agent-call",
+                "parent_span_id": "agent-wrapper",
+                "name": "ChatCompletion",
+                "kind": "CLIENT",
+                "start_time_ns": 4,
+                "attributes": {"openinference.span.kind": "LLM"},
+            },
+            llm_span(
+                "agent-call-2",
+                "agent-wrapper",
+                5,
+                [
+                    ("system", "system once"),
+                    ("user", "question once"),
+                    ("assistant", "first answer"),
+                    ("user", "new follow-up"),
+                ],
+                "second answer",
+                "think twice",
+            ),
+            {
+                "span_id": "evaluation-wrapper",
+                "parent_span_id": "root-chain",
+                "name": "eval_metrics",
+                "kind": "INTERNAL",
+                "start_time_ns": 5,
+                "attributes": {"openinference.span.kind": "EVALUATOR"},
+            },
+            {
+                "span_id": "evaluation-chain",
+                "parent_span_id": "evaluation-wrapper",
+                "name": "judge-chain",
+                "kind": "INTERNAL",
+                "start_time_ns": 6,
+                "attributes": {"openinference.span.kind": "CHAIN"},
+            },
+            llm_span(
+                "evaluation-call-1",
+                "evaluation-chain",
+                7,
+                [("system", "judge instructions"), ("user", "first answer")],
+                "score one",
+                "judge thinking one",
+            ),
+            llm_span(
+                "evaluation-call-2",
+                "evaluation-chain",
+                8,
+                [
+                    ("system", "judge instructions"),
+                    ("user", "first answer"),
+                    ("assistant", "score one"),
+                    ("user", "next metric"),
+                ],
+                "final score",
+                "judge thinking two",
+            ),
+        ]
+    )
+
+    assert organized.index("Agent trace:") < organized.index("Evaluation trace:")
+    assert "item-chain" not in organized
+    assert "agent-task" not in organized
+    assert "judge-chain" not in organized
+    assert organized.count("system once") == 1
+    assert organized.count("question once") == 1
+    assert organized.count("new follow-up") == 1
+    assert organized.count("think once") == 1
+    assert organized.count("think twice") == 1
+    assert "(no new content)" not in organized
+    assert "Agent trace:\nStep 1 — ChatCompletion:" in organized
+    assert "Agent trace:\nStep 1 — ChatCompletion:\nCALL:" in organized
+    agent_trace = organized.split("Evaluation trace:", 1)[0]
+    assert "Step 2 — ChatCompletion:" in agent_trace
+    assert "Step 3 — ChatCompletion:" not in agent_trace
+    assert "Evaluation trace:\nStep 1 — ChatCompletion:" in organized
+    assert organized.count("Step 2 — ChatCompletion:") == 2
 
 
 def test_build_analysis_prompt_ignores_legacy_project_description(
@@ -1358,7 +1495,7 @@ def test_build_analysis_prompt_omits_redundant_system_contexts(
     assert "Always cite the account policy." in user_content
 
 
-def test_build_analysis_prompt_renders_custom_context_fields_and_literal_json() -> None:
+def test_build_analysis_prompt_removes_legacy_context_fields_and_preserves_literal_json() -> None:
     item = RunItem(
         run_id="detached-run",
         item_id="item-1",
@@ -1373,9 +1510,9 @@ def test_build_analysis_prompt_renders_custom_context_fields_and_literal_json() 
         config={
             "system_prompt": (
                 "Categories:\n{categories}\n\n"
-                "Business:\n{business_context}\n\n"
-                "Metric:\n{metric_context}\n\n"
-                "Model:\n{model_context}\n\n"
+                "**BUSINESS CONTEXT**\n{business_context}\n\n"
+                "**METRIC CONTEXT**\n{metric_context}\n\n"
+                "**MODEL CONTEXT**\n{model_context}\n\n"
                 "Item:\n{item_context}\n\n"
                 'Return {{"root_cause": "value"}}.'
             ),
@@ -1391,9 +1528,15 @@ def test_build_analysis_prompt_renders_custom_context_fields_and_literal_json() 
         message["content"] for message in messages if message["role"] == "user"
     )
 
-    assert '"domain": "support"' in system_content
-    assert "Prefer the human rubric." in system_content
-    assert '"family": "small-model"' in system_content
+    assert '"domain": "support"' not in system_content
+    assert "Prefer the human rubric." not in system_content
+    assert '"family": "small-model"' not in system_content
+    assert "{business_context}" not in system_content
+    assert "{metric_context}" not in system_content
+    assert "{model_context}" not in system_content
+    assert "BUSINESS CONTEXT" not in system_content
+    assert "METRIC CONTEXT" not in system_content
+    assert "MODEL CONTEXT" not in system_content
     assert '"question": "Why?"' in system_content
     assert 'Return {"root_cause": "value"}.' in system_content
     assert "INPUT:" not in user_content
@@ -2068,6 +2211,69 @@ def test_analysis_target_limit_uses_deterministic_severity_order(
     assert [(item.item_id, metric) for item, metric in targets] == [
         ("item-3", "accuracy"),
         ("item-1", "accuracy"),
+    ]
+
+
+def test_analysis_target_limit_counts_items_and_keeps_selected_metrics(
+    db_session: Session,
+) -> None:
+    _, _, run, first_item = _seed_run(db_session)
+    run.metrics = ["accuracy", "format"]
+    second_item = RunItem(
+        run_id=run.id,
+        item_id="item-2",
+        index=1,
+        input={"question": "second"},
+        item_metadata={},
+    )
+    first_scores = {
+        "accuracy": db_session.query(RunItemScore)
+        .filter(
+            RunItemScore.run_id == run.id,
+            RunItemScore.item_id == first_item.item_id,
+            RunItemScore.metric_name == "accuracy",
+        )
+        .one(),
+        "format": RunItemScore(
+            run_id=run.id,
+            item_id=first_item.item_id,
+            metric_name="format",
+            score_numeric=0.2,
+        ),
+    }
+    second_scores = {
+        "accuracy": RunItemScore(
+            run_id=run.id,
+            item_id=second_item.item_id,
+            metric_name="accuracy",
+            score_numeric=0.4,
+        ),
+        "format": RunItemScore(
+            run_id=run.id,
+            item_id=second_item.item_id,
+            metric_name="format",
+            score_numeric=0.5,
+        ),
+    }
+    db_session.add_all([second_item, first_scores["format"], *second_scores.values()])
+    db_session.commit()
+
+    targets = _filter_analysis_targets(
+        run,
+        AnalyzeRequest(
+            metrics=["accuracy", "format"],
+            item_filter="failed",
+            only_unanalyzed=False,
+            limit=1,
+        ),
+        [first_item, second_item],
+        {first_item.item_id: first_scores, second_item.item_id: second_scores},
+        {},
+    )
+
+    assert [(item.item_id, metric) for item, metric in targets] == [
+        ("item-1", "accuracy"),
+        ("item-1", "format"),
     ]
 
 

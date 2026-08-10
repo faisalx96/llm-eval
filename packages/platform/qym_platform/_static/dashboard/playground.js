@@ -98,8 +98,8 @@ window.QymPlayground = (function () {
   function _runLinkMarkup() {
     var href = _opts.getRunUrl ? _opts.getRunUrl() : '';
     if (!href) return '';
-    return '<a class="qym-icon-action analysis-context-link pg-runall-open-run" href="' + _escAttr(href) +
-      '" aria-label="Open run" title="Open run">' + _icon('arrow') + '</a>';
+    return '<a class="qym-inline-action qym-inline-action--neutral pg-runall-open-run" href="' + _escAttr(href) +
+      '">View run</a>';
   }
 
   function _updateAnalysisProgress(progressState) {
@@ -346,8 +346,8 @@ window.QymPlayground = (function () {
       config: cfg,
       connection_id: _connectionId,
     };
-    var requestedLimit = _getTargetLimit(_getMatchedTargetCount(_getMatchedItems()));
-    body.limit = requestedLimit || undefined;
+    var requestedLimit = _getTargetLimit();
+    if (requestedLimit != null && requestedLimit > 0) body.limit = requestedLimit;
     if (_opts.getMetrics) {
       body.metric = null;
       body.metrics = _getSelectedMetrics();
@@ -1078,9 +1078,9 @@ window.QymPlayground = (function () {
   function _highlightPreview(escaped) {
     // Keep project rules readable without changing the copied prompt text.
     escaped = escaped.replace(
-      /(ANALYSIS RULES(?:\s*\([^\)\n]*\))?:\n)([\s\S]*?)(\n\n(?:EVALUATION ITEM DATA:|BUSINESS CONTEXT:|SUPPLIED ANALYSIS DATA|Respond ONLY))/m,
+      /(ANALYSIS RULES(?:\s*\([^\)\n]*\))?:\n)([\s\S]*?)(\n\n(?:EVALUATION ITEM DATA:|SUPPLIED ANALYSIS DATA|Respond ONLY))/m,
       function (section, heading, rules, nextSection) {
-        return heading +
+        return '<span class="pg-hl-label">' + heading.replace(/\n$/, '') + '</span>\n' +
           rules.replace(/^(\d+\. .+)$/gm, '<span class="pg-hl-rule-title">$1</span>') +
           nextSection;
       }
@@ -1563,13 +1563,6 @@ window.QymPlayground = (function () {
     return 'Analyze ' + itemCount + (itemCount === 1 ? ' item' : ' items');
   }
 
-  function _getMatchedTargetCount(matchedItems) {
-    return (matchedItems || []).reduce(function (total, row) {
-      var metrics = Array.isArray(row._matched_metric_names) ? row._matched_metric_names : [];
-      return total + Math.max(metrics.length, 1);
-    }, 0);
-  }
-
   // ── Create modal DOM ──
 
   function _createModal() {
@@ -1833,6 +1826,24 @@ window.QymPlayground = (function () {
     return _selectedApprovedExampleIds ? _selectedApprovedExampleIds.size : 0;
   }
 
+  function _renderApprovedExampleSourceControl() {
+    var button = document.getElementById('pg-add-examples');
+    if (!button) return;
+    var selectedCount = _selectedApprovedExampleCount();
+    var selectedText = selectedCount > 0
+      ? selectedCount + ' selected · Edit selection'
+      : 'Choose approved examples for the rule writer';
+    button.innerHTML = _icon(selectedCount > 0 ? 'check' : 'plus') +
+      '<span class="pg-example-source-control-copy"><span class="pg-example-source-control-title">Add examples</span>' +
+        '<span class="pg-example-source-control-help">' + _esc(selectedText) + '</span></span>' +
+      '<span class="pg-example-source-control-chevron" aria-hidden="true">' + _icon('chevron') + '</span>';
+    button.setAttribute('aria-label', selectedCount > 0
+      ? 'Edit approved examples, ' + selectedCount + ' selected'
+      : 'Add approved examples');
+    button.title = selectedCount > 0 ? 'Edit selected approved examples' : 'Add approved examples';
+    button.classList.toggle('pg-example-source-control--selected', selectedCount > 0);
+  }
+
   function _inferenceSourceState() {
     var documentsInput = document.getElementById('pg-infer-use-documents');
     var documentsAvailable = _enabledReferenceDocumentCount();
@@ -2040,11 +2051,6 @@ window.QymPlayground = (function () {
       var createdFull = version.created_at ? new Date(version.created_at).toLocaleString() : 'Unknown date';
       var stateTone = version.is_active ? 'success' : (version.status === 'draft' ? 'warning' : 'neutral');
       var menuActions = [];
-      if (version.status === 'draft' && _canActivateRuleVersions && !version.is_deleted) {
-        menuActions.push('<button type="button" role="menuitem" data-publish-rule-version="' + _escAttr(version.id) + '">' + _icon('upload') + '<span>Publish</span></button>');
-      } else if (version.status === 'published' && !version.is_active && _canActivateRuleVersions && !version.is_deleted) {
-        menuActions.push('<button type="button" role="menuitem" data-activate-rule-version="' + _escAttr(version.id) + '">' + _icon('rocket') + '<span>Promote</span></button>');
-      }
       if (!version.is_deleted) {
         menuActions.push('<button type="button" role="menuitem" data-download-rule-version="' + _escAttr(version.id) + '">' + _icon('download') + '<span>Download</span></button>');
       }
@@ -2217,14 +2223,21 @@ window.QymPlayground = (function () {
   function _examplePickerFieldSelector(state) {
     var selected = state.exampleFields || new Set(_approvedExampleFieldKeys());
     var selectedCount = selected.size;
-    return '<div class="pg-mapping-additional pg-example-picker-fields" role="group" aria-labelledby="pg-example-picker-fields-title">' +
-      '<div class="pg-example-picker-fields-head"><div><span class="pg-mapping-additional-label" id="pg-example-picker-fields-title">Fields in the prompt</span><span class="pg-example-picker-fields-help">Reuse the available example fields and choose what the rule writer sees.</span></div>' +
-        '<div class="pg-example-picker-fields-actions"><span class="pg-example-picker-fields-count">' + selectedCount + ' selected</span><button class="qym-inline-action qym-inline-action--neutral" type="button" data-example-fields-action="all">Select all</button><button class="qym-inline-action qym-inline-action--neutral" type="button" data-example-fields-action="none">Clear</button></div></div>' +
-      '<div class="pg-example-picker-fields-options">' +
-        _APPROVED_EXAMPLE_FIELD_DEFINITIONS.map(function (field) {
-          return _fieldToggleMarkup(field, selected.has(field.key), 'data-example-prompt-field');
-        }).join('') +
-      '</div>' +
+    var isOpen = Boolean(state.exampleFieldsOpen);
+    return '<div class="pg-example-picker-fields" role="group" aria-labelledby="pg-example-picker-fields-title">' +
+      '<button class="qym-inline-action qym-inline-action--accent pg-example-picker-fields-trigger" type="button" data-example-fields-toggle aria-expanded="' + (isOpen ? 'true' : 'false') + '" aria-controls="pg-example-picker-fields-panel">' +
+        '<span class="pg-example-picker-fields-trigger-copy">' + _icon('edit') + '<span class="pg-example-picker-fields-trigger-label" id="pg-example-picker-fields-title">Choose prompt fields</span><span class="pg-example-picker-fields-count">' + selectedCount + ' selected</span></span>' +
+        '<span class="pg-example-picker-fields-chevron" aria-hidden="true">' + (isOpen ? '▴' : '▾') + '</span>' +
+      '</button>' +
+      (isOpen ? '<div class="pg-mapping-additional pg-example-picker-fields-panel" id="pg-example-picker-fields-panel">' +
+        '<div class="pg-example-picker-fields-head"><div><span class="pg-example-picker-fields-help">Choose what the rule writer sees from each approved example.</span></div>' +
+          '<div class="pg-example-picker-fields-actions"><button class="qym-inline-action qym-inline-action--neutral" type="button" data-example-fields-action="all">Select all</button><button class="qym-inline-action qym-inline-action--neutral" type="button" data-example-fields-action="none">Clear</button></div></div>' +
+        '<div class="pg-example-picker-fields-options">' +
+          _APPROVED_EXAMPLE_FIELD_DEFINITIONS.map(function (field) {
+            return _fieldToggleMarkup(field, selected.has(field.key), 'data-example-prompt-field');
+          }).join('') +
+        '</div>' +
+      '</div>' : '') +
     '</div>';
   }
 
@@ -2410,6 +2423,7 @@ window.QymPlayground = (function () {
     _examplePickerState = null;
     _examplePickerOpener = null;
     _syncInferenceSourceSummary();
+    if (opener) opener.setAttribute('aria-expanded', 'false');
     if (opener && typeof opener.focus === 'function') opener.focus();
   }
 
@@ -2444,6 +2458,7 @@ window.QymPlayground = (function () {
   function _openApprovedExamplePicker() {
     if (_examplePickerOverlay) return;
     _examplePickerOpener = document.getElementById('pg-add-examples');
+    if (_examplePickerOpener) _examplePickerOpener.setAttribute('aria-expanded', 'true');
     _examplePickerState = {
       page: 1,
       pageSize: 20,
@@ -2462,7 +2477,8 @@ window.QymPlayground = (function () {
       },
       viewSelected: false,
       exampleFields: new Set(_selectedApprovedExampleFields),
-      filtersOpen: true,
+      exampleFieldsOpen: false,
+      filtersOpen: false,
       openFilterKey: '',
     };
     var overlay = document.createElement('div');
@@ -2582,6 +2598,12 @@ window.QymPlayground = (function () {
         _loadApprovedExamplePicker();
         return;
       }
+      var fieldsToggle = event.target.closest('[data-example-fields-toggle]');
+      if (fieldsToggle) {
+        _examplePickerState.exampleFieldsOpen = !_examplePickerState.exampleFieldsOpen;
+        _renderApprovedExamplePicker();
+        return;
+      }
       var fieldAction = event.target.closest('[data-example-fields-action]');
       if (fieldAction) {
         _examplePickerState.exampleFields = fieldAction.dataset.exampleFieldsAction === 'all'
@@ -2689,6 +2711,13 @@ window.QymPlayground = (function () {
           if (filterPanelTrigger) filterPanelTrigger.focus();
           return;
         }
+        if (_examplePickerState && _examplePickerState.exampleFieldsOpen) {
+          event.preventDefault();
+          event.stopPropagation();
+          _examplePickerState.exampleFieldsOpen = false;
+          _renderApprovedExamplePicker();
+          return;
+        }
         event.preventDefault();
         event.stopPropagation();
         _closeApprovedExamplePicker();
@@ -2718,7 +2747,7 @@ window.QymPlayground = (function () {
           '<span class="pg-document-check" aria-hidden="true"></span>' +
           '<span>Add documents</span>' +
         '</label>' +
-        '<button class="qym-inline-action qym-inline-action--neutral" id="pg-add-examples" type="button">Add examples</button>' +
+        '<button class="qym-inline-action qym-inline-action--neutral pg-example-source-control" id="pg-add-examples" type="button" aria-haspopup="dialog" aria-expanded="false" aria-label="Add approved examples"></button>' +
       '</div>' +
       '<div class="pg-rule-empty pg-rule-inference-empty" id="pg-infer-source-empty" role="alert" hidden></div>' +
       '<div class="pg-rule-filters" id="pg-rule-filters" role="search" aria-label="Filter rules">' +
@@ -2726,6 +2755,7 @@ window.QymPlayground = (function () {
       '</div>' +
       '<div class="pg-rule-list" id="pg-rule-list">' + _buildAnalysisRulesEditor() + '</div>' +
       '<div class="qym-pagination" id="pg-rule-pagination" role="navigation" aria-label="Rule list pagination"></div>' +
+      '<div class="pg-rule-version-actions" id="pg-rule-version-actions" role="group" aria-label="Selected version actions" hidden></div>' +
       '<div class="pg-rule-editor-actions">' +
         '<span class="pg-rule-count" id="pg-rule-count" aria-live="polite">' + _formatRuleCount() + '</span>' +
         '<button class="pg-context-secondary pg-icon-button" id="pg-add-rule" type="button" title="Add rule" aria-label="Add rule">' + _icon('plus') + '</button>' +
@@ -2783,7 +2813,7 @@ window.QymPlayground = (function () {
     if (!Number.isFinite(maxCategories) || maxCategories < 1) maxCategories = 3;
     catDetBody += '<div class="pg-category-editor"><div class="pg-category-editor-toolbar"><div class="pg-category-editor-heading"><span class="pg-category-panel-kicker">Category catalog</span><strong id="pg-category-active-name">Select a category</strong><span>Changes apply to future analyses after you save the catalog.</span></div>' +
       '<div class="pg-add-category-form"><label class="pg-visually-hidden" for="pg-new-category">New category</label><input type="text" id="pg-new-category" placeholder="New category..." class="pg-add-input qym-control qym-input" hidden /><button id="pg-add-category-btn" class="pg-add-btn qym-inline-action qym-inline-action--neutral" type="button">' + _icon('plus') + '<span>Add category</span></button></div>' +
-      '<label class="pg-category-limit-field" data-category-limit-field for="pg-max-root-cause-categories"><span>Max categories per item</span><input class="qym-control qym-input" id="pg-max-root-cause-categories" type="number" min="1" max="10" step="1" inputmode="numeric" value="' + Math.min(10, Math.max(1, Math.trunc(maxCategories))) + '" /></label></div>' +
+      '<div class="pg-category-limit-field" data-category-limit-field role="group" aria-labelledby="pg-max-root-cause-categories-label"><label class="pg-category-limit-label" id="pg-max-root-cause-categories-label" for="pg-max-root-cause-categories">Max categories per item</label><button class="qym-help-marker" type="button" aria-label="How the category limit works">i<span class="qym-help-tooltip" role="tooltip">Limits how many diagnosis categories the analyzer can return for each item. Higher values allow multiple independent causes.</span></button><input class="qym-control qym-input" id="pg-max-root-cause-categories" type="number" min="1" max="10" step="1" inputmode="numeric" value="' + Math.min(10, Math.max(1, Math.trunc(maxCategories))) + '" /></div></div>' +
       '<div id="pg-categories-list">';
     for (var i = 0; i < cats.length; i++) {
       var cat = cats[i];
@@ -3533,8 +3563,26 @@ window.QymPlayground = (function () {
       viewState.title = editable ? 'Rules in this draft can be edited.' : 'Create a draft before editing these rules.';
     }
     _renderRuleVersionMeta(selected);
+    _renderRuleVersionActions();
     _renderRuleViewStatus();
     if (scrollToTop && list) list.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  function _renderRuleVersionActions() {
+    var actions = document.getElementById('pg-rule-version-actions');
+    if (!actions) return;
+    var selected = _ruleVersions.find(function (version) { return version.id === _selectedRuleVersionId; });
+    actions.innerHTML = '';
+    actions.hidden = true;
+    if (!selected || selected.is_deleted || !_canActivateRuleVersions) return;
+    if (selected.status === 'draft') {
+      actions.innerHTML = '<button class="qym-inline-action qym-inline-action--accent" id="pg-publish-rule-version" type="button" data-publish-rule-version="' + _escAttr(selected.id) + '">' + _icon('upload') + '<span>Publish</span></button>';
+    } else if (selected.status === 'published' && !selected.is_active) {
+      actions.innerHTML = '<button class="qym-inline-action qym-inline-action--accent" id="pg-promote-rule-version" type="button" data-activate-rule-version="' + _escAttr(selected.id) + '">' + _icon('rocket') + '<span>Promote</span></button>';
+    } else {
+      return;
+    }
+    actions.hidden = false;
   }
 
   function _syncInferenceSourceSummary() {
@@ -3543,6 +3591,7 @@ window.QymPlayground = (function () {
 
   function _syncInferenceSourceAvailability() {
     var state = _inferenceSourceState();
+    _renderApprovedExampleSourceControl();
     var empty = document.getElementById('pg-infer-source-empty');
     if (empty) {
       empty.textContent = state.message;
@@ -3619,6 +3668,7 @@ window.QymPlayground = (function () {
           _renderAnalysisRulesEditor();
         }
         _renderRuleVersionHistory();
+        _renderRuleVersionActions();
         _renderRuleViewStatus();
       });
   }
@@ -4331,6 +4381,20 @@ window.QymPlayground = (function () {
     });
     var addExamples = document.getElementById('pg-add-examples');
     if (addExamples) addExamples.addEventListener('click', _openApprovedExamplePicker);
+    var ruleVersionActions = document.getElementById('pg-rule-version-actions');
+    if (ruleVersionActions) ruleVersionActions.addEventListener('click', function (event) {
+      var publish = event.target.closest('[data-publish-rule-version]');
+      var promote = event.target.closest('[data-activate-rule-version]');
+      if (publish) {
+        _publishRuleVersion(publish.dataset.publishRuleVersion).catch(function (error) {
+          _setContextStatus(error.message || 'Could not publish rule version.', true);
+        });
+        return;
+      }
+      if (promote) {
+        _changeRuleVersion(promote.dataset.activateRuleVersion, 'activate');
+      }
+    });
     _syncInferenceSourceSummary();
     var ruleList = document.getElementById('pg-rule-list');
     if (ruleList) {
@@ -4991,12 +5055,12 @@ window.QymPlayground = (function () {
     _syncActionAvailability();
   }
 
-  function _getTargetLimit(matchedCount) {
+  function _getTargetLimit() {
     var limitEl = document.getElementById('pg-target-limit');
-    if (!limitEl || !String(limitEl.value || '').trim()) return matchedCount;
+    if (!limitEl || !String(limitEl.value || '').trim()) return null;
     var requested = parseInt(limitEl.value, 10);
     if (!Number.isFinite(requested) || requested < 1) return 0;
-    return Math.min(requested, matchedCount);
+    return requested;
   }
 
   function _syncActionAvailability() {
@@ -5004,8 +5068,9 @@ window.QymPlayground = (function () {
     var runAllBtn = document.getElementById('pg-runall-btn');
     var testBtn = document.getElementById('pg-test-btn');
     var cancelBtn = document.getElementById('pg-cancel-btn');
-    var targetCount = _getTargetLimit(_getMatchedTargetCount(matched));
     var itemCount = _getMatchedItemCount(matched);
+    var requestedLimit = _getTargetLimit();
+    var analysisItemCount = requestedLimit == null ? itemCount : Math.min(requestedLimit, itemCount);
     var selectedTarget = _resolveSelectedTarget(matched);
     var selectedMetrics = _getSelectedMetrics();
     var metricsReady = selectedMetrics === null || selectedMetrics.length > 0;
@@ -5016,15 +5081,15 @@ window.QymPlayground = (function () {
       metricsReady
     );
     if (runAllBtn) {
-      runAllBtn.textContent = _formatAnalyzeItemCount(itemCount);
-      runAllBtn.disabled = !ready || targetCount === 0 || _running;
+      runAllBtn.textContent = _formatAnalyzeItemCount(analysisItemCount);
+      runAllBtn.disabled = !ready || analysisItemCount === 0 || _running;
       var footer = runAllBtn.closest('.playground-footer');
       if (footer) {
-        footer.dataset.noTargets = targetCount === 0 ? 'true' : 'false';
-        footer.hidden = targetCount === 0;
+        footer.dataset.noTargets = analysisItemCount === 0 ? 'true' : 'false';
+        footer.hidden = analysisItemCount === 0;
       }
     }
-    if (testBtn) testBtn.disabled = !ready || !selectedTarget || targetCount === 0 || _running;
+    if (testBtn) testBtn.disabled = !ready || !selectedTarget || analysisItemCount === 0 || _running;
     if (cancelBtn) {
       cancelBtn.hidden = !_analysisJobId;
       cancelBtn.disabled = !_analysisJobId || _analysisCancelRequested;

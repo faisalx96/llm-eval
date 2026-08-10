@@ -15,12 +15,10 @@ from openai import AsyncOpenAI
 from pydantic import BaseModel, Field, ValidationError
 from qym_platform.db.models import (
     CorrectionStatus,
-    Project,
     ReviewCorrection,
     Run,
     RunItem,
     RunItemScore,
-    RunMetricSpec,
 )
 from qym_platform.openai_compat import create_chat_completion_compat
 from qym_platform.llm_endpoint_security import (
@@ -40,7 +38,7 @@ from qym_platform.services.root_cause_categories import (
     resolve_max_root_cause_categories,
     taxonomy_is_complete,
 )
-from sqlalchemy.orm import Session, object_session
+from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 MAX_FEW_SHOT_EXAMPLES = 20
@@ -174,8 +172,6 @@ DEFAULT_INCLUDE_FIELDS = {
     "error": True,
     "scores": True,
     "trace": True,
-    "trace_id": False,
-    "trace_url": False,
     "metadata": True,
 }
 
@@ -1168,6 +1164,326 @@ def _prompt_dump(value: Any, *, max_chars: int | None = None) -> str:
     return rendered
 
 
+def _trace_semantic_kind(span: dict[str, Any]) -> str:
+    """Return the OpenInference kind used by the trace viewer."""
+    attrs = span.get("attributes") if isinstance(span, dict) else {}
+    attrs = attrs if isinstance(attrs, dict) else {}
+    raw = (
+        attrs.get("openinference.span.kind")
+        or attrs.get("ai.openinference.span.kind")
+        or attrs.get("span.kind")
+        or span.get("kind")
+        or ""
+    )
+    return str(raw).upper().replace("-", "_").replace(" ", "_")
+
+
+def _trace_messages_from_attrs(
+    attrs: dict[str, Any], prefix: str
+) -> list[dict[str, Any]]:
+    """Read the structured messages already exposed by the trace viewer."""
+    grouped: dict[int, dict[str, Any]] = {}
+    for raw_key, value in attrs.items():
+        match = re.match(
+            rf"^{re.escape(prefix)}\.(\d+)\.message\.(.+)$", str(raw_key)
+        )
+        if not match:
+            continue
+        index = int(match.group(1))
+        suffix = match.group(2)
+        message = grouped.setdefault(index, {"tool_calls": []})
+        if suffix in {"role", "content", "reasoning", "reasoning_content", "thinking", "thinking_content"}:
+            message[suffix] = value
+            continue
+        call_match = re.match(r"^tool_calls\.(\d+)\.tool_call\.(.+)$", suffix)
+        if not call_match:
+            continue
+        call_index = int(call_match.group(1))
+        while len(message["tool_calls"]) <= call_index:
+            message["tool_calls"].append({})
+        call = message["tool_calls"][call_index]
+        call_suffix = call_match.group(2)
+        if call_suffix == "id":
+            call["id"] = value
+        elif call_suffix == "function.name":
+            call["name"] = value
+        elif call_suffix == "function.arguments":
+            call["arguments"] = value
+    return [
+        grouped[index]
+        for index in sorted(grouped)
+        if grouped[index].get("role") is not None
+    ]
+
+
+def _trace_messages_from_value(value: Any, direction: str) -> list[dict[str, Any]]:
+    """Use raw request/response messages only when structured attributes are absent."""
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except json.JSONDecodeError:
+            return []
+    if isinstance(value, dict):
+        if direction == "input":
+            value = value.get("messages") or []
+        else:
+            choices = value.get("choices") or []
+            value = [
+                choice.get("message")
+                for choice in choices
+                if isinstance(choice, dict) and isinstance(choice.get("message"), dict)
+            ] or value.get("messages") or value.get("message") or []
+    if isinstance(value, dict):
+        value = [value]
+    if not isinstance(value, list):
+        return []
+    messages: list[dict[str, Any]] = []
+    for candidate in value:
+        if not isinstance(candidate, dict) or candidate.get("role") is None:
+            continue
+        messages.append(
+            {
+                "role": candidate.get("role"),
+                "content": candidate.get("content", ""),
+                "reasoning": candidate.get("reasoning")
+                or candidate.get("reasoning_content")
+                or candidate.get("thinking")
+                or "",
+                "tool_calls": candidate.get("tool_calls") or [],
+            }
+        )
+    return messages
+
+
+def _trace_span_parts(span: dict[str, Any]) -> dict[str, Any]:
+    attrs = span.get("attributes") if isinstance(span, dict) else {}
+    attrs = attrs if isinstance(attrs, dict) else {}
+    input_value = attrs.get("input.value")
+    output_value = attrs.get("output.value")
+    input_messages = _trace_messages_from_attrs(attrs, "llm.input_messages")
+    output_messages = _trace_messages_from_attrs(attrs, "llm.output_messages")
+    if not input_messages:
+        input_messages = _trace_messages_from_value(input_value, "input")
+    if not output_messages:
+        output_messages = _trace_messages_from_value(output_value, "output")
+
+    thinking = [
+        message.get(key)
+        for message in output_messages
+        for key in ("reasoning", "reasoning_content", "thinking", "thinking_content")
+        if message.get(key)
+    ]
+    thinking.extend(
+        value
+        for key, value in attrs.items()
+        if ("reasoning" in str(key).lower() or "thinking" in str(key).lower())
+        and "token" not in str(key).lower()
+        and value not in (None, "", [])
+    )
+    return {
+        "input_messages": input_messages,
+        "output_messages": output_messages,
+        "input_value": None if input_messages else input_value,
+        "output_value": None if output_messages else output_value,
+        "thinking": thinking,
+    }
+
+
+def _trace_message_key(message: dict[str, Any]) -> str:
+    return json.dumps(
+        {
+            "role": message.get("role") or "",
+            "content": _prompt_dump(message.get("content")),
+            "tool_calls": message.get("tool_calls") or [],
+        },
+        sort_keys=True,
+        ensure_ascii=False,
+        default=str,
+    )
+
+
+def _trace_message_has_content(message: dict[str, Any]) -> bool:
+    content = message.get("content")
+    if isinstance(content, str):
+        if content.strip():
+            return True
+    elif content not in (None, "", []):
+        return True
+    return any(
+        isinstance(tool_call, dict)
+        for tool_call in message.get("tool_calls") or []
+    )
+
+
+def _trace_new_messages(
+    messages: list[dict[str, Any]], seen: set[str]
+) -> list[dict[str, Any]]:
+    new_messages: list[dict[str, Any]] = []
+    for message in messages:
+        if not _trace_message_has_content(message):
+            continue
+        key = _trace_message_key(message)
+        if key in seen:
+            continue
+        seen.add(key)
+        new_messages.append(message)
+    return new_messages
+
+
+def _trace_new_values(values: list[Any], seen: set[str]) -> list[str]:
+    new_values: list[str] = []
+    for value in values:
+        rendered = _prompt_dump(value).strip()
+        if not rendered or rendered in seen:
+            continue
+        seen.add(rendered)
+        new_values.append(rendered)
+    return new_values
+
+
+def _trace_add_value(lines: list[str], value: Any, prefix: str = "  ") -> None:
+    rendered = _prompt_dump(value).strip()
+    if rendered:
+        lines.extend(prefix + line for line in rendered.splitlines())
+
+
+def _trace_add_messages(
+    lines: list[str], heading: str, messages: list[dict[str, Any]]
+) -> None:
+    if not messages:
+        return
+    lines.append(f"{heading}:")
+    for message in messages:
+        role = str(message.get("role") or "message").lower()
+        if message.get("content") not in (None, "", []):
+            lines.append(f"  {role}:")
+            _trace_add_value(lines, message["content"], "    ")
+        for tool_call in message.get("tool_calls") or []:
+            if not isinstance(tool_call, dict):
+                continue
+            lines.append(f"  tool call: {tool_call.get('name') or 'tool'}")
+            if tool_call.get("arguments") not in (None, "", {}):
+                _trace_add_value(lines, tool_call["arguments"], "    ")
+
+
+def _trace_is_evaluation(
+    span: dict[str, Any], spans_by_id: dict[str, dict[str, Any]]
+) -> bool:
+    current: dict[str, Any] | None = span
+    visited: set[str] = set()
+    while current is not None:
+        span_id = str(current.get("span_id") or "")
+        if span_id and span_id in visited:
+            break
+        if span_id:
+            visited.add(span_id)
+        kind = _trace_semantic_kind(current)
+        if kind == "EVALUATOR":
+            return True
+        if kind != "CHAIN" and str(current.get("name") or "").lower().startswith(
+            ("eval", "evaluator", "judge", "metric")
+        ):
+            return True
+        parent_id = current.get("parent_span_id")
+        current = spans_by_id.get(str(parent_id)) if parent_id else None
+    return False
+
+
+def _trace_render_section(
+    title: str,
+    entries: list[tuple[dict[str, Any], dict[str, Any]]],
+) -> list[str]:
+    lines = [f"{title}:"]
+    if not entries:
+        lines.append("(none)")
+        return lines
+
+    seen_messages: set[str] = set()
+    seen_values: set[str] = set()
+    seen_thinking: set[str] = set()
+    rendered_step_number = 0
+    for span, parts in entries:
+        new_input = _trace_new_messages(parts["input_messages"], seen_messages)
+        new_output = _trace_new_messages(parts["output_messages"], seen_messages)
+        new_thinking = _trace_new_values(parts["thinking"], seen_thinking)
+        new_input_value = _trace_new_values(
+            [parts["input_value"]] if parts["input_value"] is not None else [],
+            seen_values,
+        )
+        new_output_value = _trace_new_values(
+            [parts["output_value"]] if parts["output_value"] is not None else [],
+            seen_values,
+        )
+        if not (
+            new_input
+            or new_input_value
+            or new_thinking
+            or new_output
+            or new_output_value
+        ):
+            continue
+        rendered_step_number += 1
+        name = str(span.get("name") or _trace_semantic_kind(span) or "step")
+        lines.append(f"Step {rendered_step_number} — {name}:")
+        _trace_add_messages(lines, "CALL", new_input)
+        for value in new_input_value:
+            lines.append("CALL:")
+            _trace_add_value(lines, value)
+        if new_thinking:
+            lines.append("THINKING:")
+            for value in new_thinking:
+                _trace_add_value(lines, value)
+        _trace_add_messages(lines, "OUTPUT", new_output)
+        for value in new_output_value:
+            lines.append("OUTPUT:")
+            _trace_add_value(lines, value)
+    return lines
+
+
+def _organize_trace_content(trace_content: Any) -> str:
+    """Skip chain wrappers and render new agent/evaluation content by step."""
+    if not isinstance(trace_content, list):
+        return ""
+    spans = [span for span in trace_content if isinstance(span, dict)]
+    if not spans:
+        return ""
+    ordered = sorted(
+        enumerate(spans),
+        key=lambda pair: (
+            pair[1].get("start_time_ns") is None,
+            pair[1].get("start_time_ns") or 0,
+            pair[0],
+        ),
+    )
+    ordered_spans = [span for _, span in ordered]
+    spans_by_id = {
+        str(span["span_id"]): span
+        for span in ordered_spans
+        if span.get("span_id")
+    }
+    sections: dict[str, list[tuple[dict[str, Any], dict[str, Any]]]] = {
+        "agent": [],
+        "evaluation": [],
+    }
+    for span in ordered_spans:
+        if _trace_semantic_kind(span) == "CHAIN":
+            continue
+        parts = _trace_span_parts(span)
+        kind = _trace_semantic_kind(span)
+        if kind not in {"LLM", "TOOL", "RETRIEVER", "GUARDRAIL"} and not any(
+            parts.values()
+        ):
+            continue
+        section = "evaluation" if _trace_is_evaluation(span, spans_by_id) else "agent"
+        sections[section].append((span, parts))
+
+    if not sections["agent"] and not sections["evaluation"]:
+        return ""
+    lines = _trace_render_section("Agent trace", sections["agent"])
+    lines.extend(["", *_trace_render_section("Evaluation trace", sections["evaluation"])])
+    return "\n".join(lines)
+
+
 def prompt_character_count(messages: list[dict[str, str]]) -> int:
     """Count prompt characters before a provider request is made."""
     return sum(len(str(message.get("content") or "")) for message in messages)
@@ -1254,32 +1570,6 @@ def _is_prompt_size_error(exc: Exception) -> bool:
             "request too large",
         )
     )
-def _load_persisted_prompt_context(
-    item: RunItem,
-) -> tuple[Run | None, Project | None, dict[str, RunMetricSpec]]:
-    """Load the run, project, and metric semantics attached to an item."""
-    session = object_session(item)
-    if session is None:
-        return None, None, {}
-
-    cache = session.info.setdefault("qym_analyzer_prompt_context", {})
-    cached = cache.get(item.run_id)
-    if cached is not None:
-        return cached
-
-    run = session.get(Run, item.run_id)
-    if run is None:
-        return None, None, {}
-    project = session.get(Project, run.project_id)
-    specs = (
-        session.query(RunMetricSpec)
-        .filter(RunMetricSpec.run_id == run.id)
-        .order_by(RunMetricSpec.position.asc(), RunMetricSpec.id.asc())
-        .all()
-    )
-    context = (run, project, {spec.metric_name: spec for spec in specs})
-    cache[item.run_id] = context
-    return context
 
 
 def _format_analysis_rules(value: Any) -> str:
@@ -1298,98 +1588,33 @@ def _format_analysis_rules(value: Any) -> str:
     )
 
 
-def _format_business_context(
-    config: dict[str, Any],
-    run: Run | None,
-    project: Project | None,
-) -> str:
-    """Build project, task, dataset, and uploaded-reference context."""
-    lines: list[str] = []
-    explicit_context = config.get("business_context")
-    if explicit_context:
-        lines.append(_prompt_dump(explicit_context))
-
-    if project is not None:
-        lines.append(f"Project: {project.name}")
-
-    if run is not None:
-        lines.append(f"Evaluation task: {run.task}")
-        lines.append(f"Dataset: {run.dataset}")
-
-    return "\n".join(lines) or "No business-domain context was provided."
-
-
-def _serialize_metric_spec(spec: RunMetricSpec) -> dict[str, Any]:
-    return {
-        "score_type": spec.score_type,
-        "direction": spec.direction,
-        "pass_threshold": spec.pass_threshold,
-        "sample_reducer": spec.sample_reducer,
-        "run_reducer": spec.run_reducer,
-        "unit": spec.unit,
-        "precision": spec.precision,
-    }
-
-
-def _format_metric_context(
-    config: dict[str, Any],
-    item: RunItem,
-    scores: dict[str, RunItemScore],
-    metric_specs: dict[str, RunMetricSpec],
-    metric_name: str | None,
-) -> str:
-    """Build only non-redundant context describing the selected metric."""
-    explicit_context = config.get("metric_context")
-    selected_metric = metric_name or (next(iter(scores)) if len(scores) == 1 else None)
-
-    payload: dict[str, Any] = {
-        "selected_metric": selected_metric or "(not specified)",
-    }
-    selected_spec = metric_specs.get(selected_metric) if selected_metric else None
-    if selected_spec is not None:
-        payload["semantics"] = _serialize_metric_spec(selected_spec)
-    if explicit_context:
-        payload["additional_context"] = explicit_context
-    return _prompt_dump(payload, max_chars=30_000)
-
-
-def _format_model_context(
-    config: dict[str, Any],
-    run: Run | None,
-    item: RunItem,
-) -> str:
-    """Build compact model context without run identity or telemetry."""
-    explicit_context = config.get("model_context")
-    run_config = (
-        run.run_config if run is not None and isinstance(run.run_config, dict) else {}
-    )
-    run_metadata = (
-        run.run_metadata
-        if run is not None and isinstance(run.run_metadata, dict)
-        else {}
-    )
-    item_metadata = item.item_metadata if isinstance(item.item_metadata, dict) else {}
-    evaluated_model = (
-        (run.model if run is not None else None)
-        or run_metadata.get("model")
-        or run_config.get("model")
-        or item_metadata.get("model")
-        or "(not recorded)"
-    )
-
-    payload: dict[str, Any] = {"evaluated_model": evaluated_model}
-    if explicit_context:
-        payload["additional_context"] = explicit_context
-    return _prompt_dump(payload, max_chars=30_000)
-
-
 def _render_system_prompt(template: str, values: dict[str, str]) -> str:
-    """Render known prompt fields without treating context JSON as a template."""
+    """Render current prompt fields without treating context JSON as a template."""
     open_brace = "\x00QYM_OPEN_BRACE\x00"
     close_brace = "\x00QYM_CLOSE_BRACE\x00"
     rendered = template.replace("{{", open_brace).replace("}}", close_brace)
     for key, value in values.items():
         rendered = rendered.replace("{" + key + "}", value)
+    # Older saved prompt templates can still contain the removed context
+    # headings and placeholders. Consume them so those legacy blocks cannot
+    # leak into the analyzer prompt after their data providers are deleted.
+    for removed_key, removed_heading in (
+        ("business_context", "BUSINESS CONTEXT"),
+        ("metric_context", "METRIC CONTEXT"),
+        ("model_context", "MODEL CONTEXT"),
+    ):
+        rendered = re.sub(
+            rf"(?im)^[ \t]*(?:\*\*)?{removed_heading}(?:\*\*)?:?[ \t]*\n"
+            rf"[ \t]*\{{{removed_key}\}}[ \t]*(?:\n|$)",
+            "",
+            rendered,
+        )
+        rendered = re.sub(
+            rf"(?im)^[ \t]*(?:\*\*)?{removed_heading}(?:\*\*)?:?[ \t]*\n?",
+            "",
+            rendered,
+        )
+        rendered = rendered.replace("{" + removed_key + "}", "")
     return rendered.replace(open_brace, "{").replace(close_brace, "}")
 
 
@@ -1714,14 +1939,14 @@ def _format_item_context(
         parts.append(f"ERROR:\n{_prompt_dump(item.error)}")
 
     # The trace viewer and analyzer now consume the same native span payload.
-    # Keep this path deliberately simple: serialize the payload once and let
-    # the shared prompt serializer enforce redaction and the trace budget.
+    # Organize that payload only at the final prompt boundary: chain wrappers
+    # are omitted, and repeated chat history is emitted once per section.
     if fields.get("trace", True):
-        trace_content = item.trace_content
-        if trace_content:
+        organized_trace = _organize_trace_content(item.trace_content)
+        if organized_trace:
             parts.append(
                 "TRACE EVIDENCE:\n"
-                + _prompt_dump(trace_content, max_chars=MAX_TRACE_CHARS)
+                + _prompt_dump(organized_trace, max_chars=MAX_TRACE_CHARS)
             )
 
     # Include only the selected metric result. Other metrics are separate
@@ -1810,8 +2035,6 @@ def build_analysis_prompt(
       - system_prompt: overrides DEFAULT_SYSTEM_PROMPT
       - analysis_rules: versioned project rules inferred from references
       - reference_documents: uploaded document names and extracted text
-      - business_context, metric_context, model_context: legacy context values used only
-        when an explicitly customized system prompt references their placeholders
       - root_cause_categories: overrides ROOT_CAUSE_CATEGORIES
       - max_root_cause_categories: maximum categories returned for one item/metric
       - category_taxonomy: category → description/when_to_use definitions
@@ -2014,7 +2237,6 @@ def build_analysis_prompt(
             + "\n\n---\n\n".join(reference_parts)
         )
 
-    run, project, metric_specs = _load_persisted_prompt_context(item)
     rendered_categories = categories_text
     if "{details_section}" not in raw_prompt:
         rendered_categories += (
@@ -2026,15 +2248,6 @@ def build_analysis_prompt(
         "category_taxonomy": category_taxonomy_text,
         "details_section": details_section,
         "analysis_rules": _format_analysis_rules(cfg.get("analysis_rules")),
-        "business_context": _format_business_context(cfg, run, project),
-        "metric_context": _format_metric_context(
-            cfg,
-            item,
-            scores,
-            metric_specs,
-            metric_name,
-        ),
-        "model_context": _format_model_context(cfg, run, item),
         "item_context": item_context,
     }
     system_prompt = _render_system_prompt(raw_prompt, prompt_values)

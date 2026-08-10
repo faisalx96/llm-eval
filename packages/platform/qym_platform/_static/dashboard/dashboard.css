@@ -5343,6 +5343,58 @@ body.chart-col-resize-active {
   margin-bottom: var(--space-lg);
 }
 
+.pg-example-source-control {
+  display: inline-flex;
+  min-width: calc(var(--space-xl) * 6);
+  align-items: center;
+  justify-content: flex-start;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  text-align: left;
+  line-height: normal;
+}
+
+.pg-example-source-control > .pg-action-icon {
+  flex: 0 0 auto;
+  color: var(--accent-primary);
+}
+
+.pg-example-source-control-copy {
+  display: grid;
+  min-width: 0;
+  flex: 1 1 auto;
+  gap: var(--space-xs);
+}
+
+.pg-example-source-control-title {
+  color: var(--text-primary);
+  font-size: var(--font-sm);
+  font-weight: 650;
+}
+
+.pg-example-source-control-help {
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: var(--font-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pg-example-source-control-chevron {
+  display: inline-flex;
+  flex: 0 0 auto;
+  color: var(--text-muted);
+}
+
+.pg-example-source-control-chevron .pg-action-icon {
+  width: var(--space-md);
+  height: var(--space-md);
+}
+
+.pg-example-source-control--selected {
+  background: color-mix(in srgb, var(--accent-primary) 12%, var(--bg-elevated));
+}
+
 .pg-rule-source-checkbox {
   position: relative;
   display: inline-flex;
@@ -7051,7 +7103,7 @@ body.chart-col-resize-active {
   color: var(--text-muted);
   font-size: var(--font-sm);
 }
-.pg-category-limit-field span {
+.pg-category-limit-field > label {
   white-space: nowrap;
 }
 .pg-category-limit-field .qym-input {
@@ -7063,9 +7115,6 @@ body.chart-col-resize-active {
   align-items: center;
   flex-wrap: wrap;
   gap: var(--space-md);
-}
-#analysis-diagnosis-view .analysis-diagnosis-category-limit {
-  margin-left: var(--space-sm);
 }
 .pg-category-panel-actions {
   display: flex;
@@ -7679,8 +7728,38 @@ body.chart-col-resize-active {
 }
 .pg-example-picker-fields {
   display: grid;
+  gap: var(--space-sm);
+}
+.pg-example-picker-fields-trigger {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+  text-align: left;
+}
+.pg-example-picker-fields-trigger-copy {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  min-width: 0;
+}
+.pg-example-picker-fields-trigger-label {
+  color: var(--bg-void);
+  font-size: var(--font-sm);
+  font-weight: 650;
+}
+.pg-example-picker-fields-trigger .pg-action-icon {
+  flex: 0 0 auto;
+}
+.pg-example-picker-fields-chevron {
+  color: var(--bg-void);
+}
+.pg-example-picker-fields-panel {
+  display: grid;
   align-items: stretch;
   gap: var(--space-sm);
+  padding: var(--space-md);
 }
 .pg-example-picker-fields-head,
 .pg-example-picker-fields-actions {
@@ -7700,6 +7779,13 @@ body.chart-col-resize-active {
 .pg-example-picker-fields-count {
   color: var(--text-muted);
   font-size: var(--font-sm);
+}
+.pg-example-picker-fields-count {
+  white-space: nowrap;
+}
+.pg-example-picker-fields-trigger .pg-example-picker-fields-count {
+  color: var(--bg-void);
+  opacity: 0.78;
 }
 .pg-example-picker-fields-options {
   display: flex;
@@ -7905,29 +7991,6 @@ body.chart-col-resize-active {
   width: 96px;
   min-width: 96px;
   flex: 0 0 96px;
-}
-.pg-target-limit-row .qym-pagination--run {
-  width: max-content;
-  height: var(--control-height);
-  min-width: max-content;
-  min-height: var(--control-height);
-  flex: 0 1 auto;
-  margin: 0;
-  box-sizing: border-box;
-}
-.pg-target-limit-row .qym-pagination--run .qym-pagination__button,
-.pg-target-limit-row .qym-pagination--run .qym-pagination__page-info {
-  height: 100%;
-}
-.pg-target-limit-row .qym-pagination--run .qym-pagination__button {
-  padding-right: var(--space-sm);
-  padding-left: var(--space-sm);
-  white-space: nowrap;
-}
-.pg-target-limit-row .qym-pagination--run .qym-pagination__page-info {
-  min-width: calc(var(--space-xl) * 2 + var(--space-md));
-  padding-right: var(--space-sm);
-  padding-left: var(--space-sm);
 }
 .pg-target-limit-control input {
   padding-right: calc(var(--space-lg) + var(--space-sm));
@@ -8450,6 +8513,9 @@ body.chart-col-resize-active {
   display: flex;
   justify-content: center;
   margin-top: var(--space-sm);
+}
+.pg-runall-open-run {
+  text-decoration: none;
 }
 .pg-runall-done-error {
   margin-top: 12px;

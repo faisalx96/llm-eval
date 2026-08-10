@@ -42,15 +42,17 @@ The analyzer builds a bounded, metric-specific prompt from:
 - the project name, task, dataset, evaluated model, and active analysis rules;
 - the selected metric's score, label, explanation, metadata, direction, and pass threshold;
 - the input, expected output, actual output, error, and selected item metadata;
-- the native trace span payload already used by the trace viewer; and
+- an organized view of the native trace span payload already used by the trace
+  viewer, with agent and evaluation sections; and
 - selected reference documents, treated as evidence rather than instructions.
 
 The playground supports nested field mapping, selected paths, metadata fields, and
 custom variables in additional instructions. Secret-like keys such as API keys,
 tokens, credentials, passwords, and authorization values are redacted before any
-item or metric context is sent to the analyzer. The analyzer and trace viewer
-consume the same serialized span payload, subject to the analyzer's context
-limit.
+item or metric context is sent to the analyzer. The analyzer organizes the same
+serialized span payload as the trace viewer into agent and evaluation sections,
+emitting only new message/thinking content at each step, subject to the
+analyzer's context limit.
 
 The default system prompt asks only for a diagnosis JSON object containing
 `root_cause`, `root_cause_detail`, `confidence`, and `root_cause_note`. It does not
@@ -71,7 +73,8 @@ is an item/metric pair, so one item can have different diagnoses for `accuracy`,
 `format`, or any other run metric. `only_unanalyzed` is applied independently per
 metric. Failed, passed, error, explicit item, complexity, domain, root-cause, and
 threshold filters are applied before analysis; metric direction is respected for
-minimize metrics.
+minimize metrics. The optional `limit` selects the most severe matching items;
+all selected metric targets for each selected item are retained.
 
 Results are stored in `item_metadata.metric_analyses[metric_name]`. A compatible
 item-level summary is retained for older dashboard consumers and identifies the
@@ -201,7 +204,7 @@ analysis endpoints are:
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| `POST` | `/api/runs/{run_id}/analyze` | Run analysis and persist results. Supports filters, metric selection, concurrency `1..20`, and `connection_id`. |
+| `POST` | `/api/runs/{run_id}/analyze` | Run analysis and persist results. Supports filters, metric selection, an item `limit`, concurrency `1..20`, and `connection_id`. |
 | `POST` | `/api/runs/{run_id}/analyze-stream` | Same operation with newline-delimited progress events. |
 | `POST` | `/api/runs/{run_id}/analyze-preview` | Render the exact messages for one item without an LLM call. |
 | `POST` | `/api/runs/{run_id}/analyze-test` | Analyze one to three items without saving; returns results and messages. |

@@ -868,7 +868,11 @@ class PlaygroundConfig(BaseModel):
 
 
 class AnalyzeRequest(BaseModel):
-    """Filter criteria for which items to analyze."""
+    """Filter criteria for which items to analyze.
+
+    ``limit`` is an item limit. When several metrics are selected, every
+    matching metric target for each selected item is retained.
+    """
 
     metric: Optional[str] = None
     metrics: Optional[List[str]] = Field(default=None, max_length=100)
@@ -2654,7 +2658,21 @@ def _filter_analysis_targets(
 
     targets.sort(key=severity_key)
     if request.limit is not None:
-        targets = targets[: request.limit]
+        # The UI presents one row per item, while the analyzer executes one
+        # request per item/metric pair. Select the most severe items first,
+        # then keep every selected metric for those items. Slicing the target
+        # list directly makes a limit of one silently drop all but one metric
+        # from an item, which makes the visible item limit appear unreliable.
+        selected_item_ids: set[str] = set()
+        for item, _ in targets:
+            if item.item_id in selected_item_ids:
+                continue
+            if len(selected_item_ids) >= request.limit:
+                break
+            selected_item_ids.add(item.item_id)
+        targets = [
+            target for target in targets if target[0].item_id in selected_item_ids
+        ]
     return targets
 
 

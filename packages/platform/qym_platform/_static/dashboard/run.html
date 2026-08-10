@@ -2838,7 +2838,45 @@
       font-size: var(--font-md);
       font-weight: 650;
     }
-    .metric-analysis-category,
+    .metric-analysis-category-list {
+      display: inline-flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: var(--space-xs);
+      min-width: 0;
+      max-width: 100%;
+    }
+    .metric-analysis-category {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-xs);
+      min-height: var(--badge-height);
+      padding: calc(var(--space-xs) / 2) var(--space-sm);
+      border: 1px solid color-mix(in srgb, var(--metric-analysis-category-color, var(--text-muted)) 55%, transparent);
+      border-radius: var(--radius-pill);
+      background: color-mix(in srgb, var(--metric-analysis-category-color, var(--text-muted)) 14%, var(--bg-surface));
+      color: var(--metric-analysis-category-color, var(--text-muted));
+      font-family: var(--font-sans);
+      font-size: var(--font-xs);
+      font-weight: 650;
+      line-height: 1.2;
+      white-space: nowrap;
+    }
+    .metric-analysis-category::before {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: currentColor;
+      content: '';
+      flex: 0 0 auto;
+    }
+    .metric-analysis-category--empty {
+      border-style: dashed;
+      background: transparent;
+    }
+    .metric-analysis-category--empty::before {
+      display: none;
+    }
     .metric-analysis-confidence {
       padding: 2px 8px;
       border: 1px solid var(--border-default);
@@ -2849,14 +2887,15 @@
     }
     button.metric-analysis-category {
       appearance: none;
-      background: transparent;
-      font-family: var(--font-sans);
       cursor: pointer;
     }
     button.metric-analysis-category:hover {
-      color: var(--text-primary);
-      border-color: var(--border-strong);
-      background: var(--bg-hover);
+      border-color: var(--metric-analysis-category-color, var(--border-strong));
+      background: color-mix(in srgb, var(--metric-analysis-category-color, var(--text-muted)) 24%, var(--bg-surface));
+    }
+    button.metric-analysis-category:focus-visible {
+      outline: 1px solid var(--accent-primary);
+      outline-offset: 2px;
     }
     .metric-analysis-confidence {
       font-family: var(--font-mono);
@@ -9388,7 +9427,13 @@
                 '</div>';
               }
               const analysisCategories = rootCauseCategories(analysis);
-              const categoryLabel = analysisCategories.length ? analysisCategories.join(' · ') : (analysis.root_cause || '+ Category');
+              const hasCategories = analysisCategories.length > 0;
+              const categoryValues = hasCategories ? analysisCategories : ['+ Category'];
+              const categoryBadges = categoryValues.map(category => {
+                const isEmpty = !hasCategories;
+                const categoryColor = isEmpty ? 'var(--text-muted)' : rootCauseColor(category);
+                return '<button type="button" class="metric-analysis-category' + (isEmpty ? ' metric-analysis-category--empty' : '') + '"' + metricEditData + ' style="--metric-analysis-category-color:' + categoryColor + ';" title="Change categories" aria-label="Change category: ' + escapeAttr(category) + '">' + escapeHtml(category) + '</button>';
+              }).join('');
               const analysisColor = rootCauseColor(analysisCategories[0]);
               const confidence = analysis.source === 'human'
                 ? 'Human edited'
@@ -9413,7 +9458,7 @@
               return '<div class="metric-analysis-card" style="--metric-analysis-color:' + analysisColor + ';">' +
                 '<div class="metric-analysis-head">' +
                   '<span class="metric-analysis-name">' + escapeHtml(metricName) + '</span>' +
-                '<button type="button" class="metric-analysis-category"' + metricEditData + ' title="Change categories">' + escapeHtml(categoryLabel) + '</button>' +
+                '<div class="metric-analysis-category-list" role="group" aria-label="Root-cause categories">' + categoryBadges + '</div>' +
                   (confidence ? '<span class="metric-analysis-confidence">' + escapeHtml(confidence) + '</span>' : '') +
                   reviewActionsHtml +
                 '</div>' +
