@@ -163,6 +163,7 @@ async def test_aggregation_uses_one_joint_label_only_pass() -> None:
         known_category_details={
             "Dataset Issue": ["Expected SQL is not SQLite-compatible"]
         },
+        system_prompt="Custom aggregator system prompt",
     )
 
     assert categories == {"Dataset Issue": 3}
@@ -192,6 +193,7 @@ async def test_aggregation_uses_one_joint_label_only_pass() -> None:
     assert set(payload) == {"categories", "details"}
     assert call.kwargs["max_tokens"] == 4096
     assert call.kwargs["response_format"] is AggregationResponse
+    assert call.kwargs["messages"][0]["content"] == "Custom aggregator system prompt"
     assert [entry["label"] for entry in payload["categories"]] == [
         "dataset",
         "other data",

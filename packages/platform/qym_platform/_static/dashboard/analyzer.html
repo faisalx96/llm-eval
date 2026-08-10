@@ -5,14 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>قيِّم • Auto-analysis</title>
   <link rel="icon" type="image/png" href="/static/qym_icon.png">
-  <link rel="stylesheet" href="/static/dashboard.css?v=accessibility-responsive-20260806">
+  <link rel="stylesheet" href="/static/dashboard.css?v=diagnosis-catalog-inline-limit-rules-20260810">
   <link rel="stylesheet" href="/static/shell.css">
   <script src="/static/auth.js"></script>
   <script src="/static/shell.js?v=accessibility-responsive-20260806"></script>
   <script src="/static/metrics.js"></script>
   <script src="/static/qym_table.js"></script>
-  <script src="/static/ui_components.js?v=design-language-20260802" defer></script>
-  <script src="/static/playground.js?v=accessibility-responsive-20260806"></script>
+  <script src="/static/ui_components.js?v=diagnosis-catalog-layout-20260810" defer></script>
+  <script src="/static/playground.js?v=diagnosis-catalog-inline-limit-rules-20260810"></script>
   <style>
     /* Typography and color roles follow docs/DESIGN_LANGUAGE.md. */
     .analysis-page {
@@ -402,45 +402,53 @@
     .analysis-inline-section .pg-section-body {
       padding: 0;
     }
-    .analysis-diagnosis-summary {
+    .analysis-diagnosis-main-toolbar {
+      display: flex;
+      min-width: 0;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-lg);
+      padding: var(--space-lg);
+      background: var(--bg-surface);
+    }
+    .analysis-diagnosis-summary-line {
+      min-width: 0;
+      margin: 0;
+      color: var(--text-muted);
+      font-size: var(--font-base);
+      font-family: var(--font-sans);
+      font-variant-numeric: tabular-nums;
+    }
+    .analysis-diagnosis-action-row {
+      display: flex;
+      min-width: 0;
+      align-items: center;
+      justify-content: flex-end;
+      flex-wrap: wrap;
+      gap: var(--space-sm);
+    }
+    .analysis-diagnosis-search {
+      display: block;
+      flex: 0 1 calc(var(--space-xl) * 10);
+      min-width: calc(var(--space-xl) * 6);
+    }
+    .analysis-diagnosis-search .qym-control {
+      width: 100%;
+      box-sizing: border-box;
+    }
+    .analysis-diagnosis-add-form {
       display: flex;
       align-items: center;
       gap: var(--space-sm);
+      min-width: 0;
     }
-    .analysis-diagnosis-header {
-      display: flex;
-      align-items: flex-start;
-      justify-content: space-between;
-      gap: var(--space-lg);
+    .analysis-diagnosis-add-form .pg-add-input:not([hidden]) {
+      width: calc(var(--space-xl) * 6);
     }
-    .analysis-diagnosis-header p {
-      max-width: 720px;
-      margin: var(--space-xs) 0 0;
+    .analysis-diagnosis-save-status {
       color: var(--text-muted);
       font-size: var(--font-sm);
-      line-height: 1.5;
-    }
-    .analysis-diagnosis-header h2 {
-      margin: 0;
-      color: var(--text-primary);
-      font-size: var(--font-lg);
-      font-weight: 600;
-    }
-    .analysis-diagnosis-stat {
-      display: inline-flex;
-      align-items: baseline;
-      gap: var(--space-xs);
-      padding: var(--space-xs) var(--space-sm);
-      border: 1px solid var(--border-subtle);
-      border-radius: 999px;
-      background: var(--bg-elevated);
-      color: var(--text-muted);
-      font-size: var(--font-sm);
-    }
-    .analysis-diagnosis-stat strong {
-      color: var(--text-primary);
-      font-family: var(--font-mono);
-      font-weight: 650;
+      text-align: right;
     }
     #analysis-diagnosis-view .analysis-inline-section {
       margin-bottom: 0;
@@ -448,118 +456,443 @@
     #analysis-diagnosis-view .pg-section-body {
       padding: 0;
     }
-    #analysis-diagnosis-view .pg-category-group {
-      margin: 0 0 var(--space-md);
-      overflow: hidden;
-      border: 1px solid var(--border-subtle);
-      border-left: 1px solid var(--border-subtle);
-      border-radius: 8px;
-      background: var(--bg-elevated);
+    #analysis-diagnosis-view .analysis-diagnosis-workspace {
+      overflow: visible;
+      border: 1px solid var(--border-default);
+      border-radius: var(--control-radius);
+      background: var(--bg-surface);
     }
-    #analysis-diagnosis-view .pg-category-group:hover {
-      border-color: var(--border-default);
-    }
-    #analysis-diagnosis-view .pg-category-item {
-      min-height: 48px;
-      padding: var(--space-sm) var(--space-md);
-      border-bottom: 1px solid var(--border-subtle);
+    #analysis-diagnosis-view .pg-category-workspace {
+      display: grid;
+      grid-template-columns: minmax(200px, 28%) minmax(0, 1fr);
+      align-items: stretch;
+      gap: 0;
+      border: 0;
       border-radius: 0;
-      background: var(--bg-surface);
+      background: transparent;
     }
-    #analysis-diagnosis-view .pg-category-item:hover {
-      background: var(--bg-surface);
+    #analysis-diagnosis-view .pg-category-sidebar,
+    #analysis-diagnosis-view .pg-category-editor-toolbar,
+    #analysis-diagnosis-view .pg-category-group {
+      min-width: 0;
     }
-    #analysis-diagnosis-view .pg-category-heading {
+    #analysis-diagnosis-view .pg-category-sidebar {
+      position: sticky;
+      top: calc(var(--space-xl) * 4);
       display: flex;
       min-width: 0;
-      align-items: center;
-      gap: var(--space-sm);
+      height: calc(100vh - (var(--space-xl) * 5));
+      min-height: calc(100vh - (var(--space-xl) * 5));
+      max-height: calc(100vh - (var(--space-xl) * 5));
+      flex-direction: column;
+      overflow: hidden;
+      border: 0;
+      border-radius: 0;
+      background: transparent;
     }
-    #analysis-diagnosis-view .pg-category-name {
+    #analysis-diagnosis-view .pg-category-sidebar-heading {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: var(--space-sm);
+      padding: var(--space-md);
+      border-bottom: 1px solid var(--border-subtle);
+      background: var(--bg-elevated);
+    }
+    #analysis-diagnosis-view .pg-category-sidebar-heading h3 {
       margin: 0;
       color: var(--text-primary);
       font-size: var(--font-md);
       font-weight: 600;
     }
-    #analysis-diagnosis-view .pg-category-example-count {
-      padding: var(--space-xs) var(--space-sm);
-      border-radius: 999px;
-      background: var(--bg-active);
+    #analysis-diagnosis-view .pg-category-sidebar-heading p {
+      margin: var(--space-xs) 0 0;
       color: var(--text-muted);
-      font-size: var(--font-xs);
+      font-size: var(--font-sm);
+      line-height: 1.45;
+    }
+    #analysis-diagnosis-view .pg-category-nav {
+      display: flex;
+      min-width: 0;
+      min-height: 0;
+      flex: 1 1 auto;
+      height: auto;
+      max-height: none;
+      flex-direction: column;
+      gap: var(--space-xs);
+      padding: var(--space-md);
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      scrollbar-gutter: stable;
+    }
+    #analysis-diagnosis-view .pg-category-nav-item {
+      display: grid;
+      width: 100%;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: var(--space-sm);
+      padding: var(--space-sm) var(--space-md);
+      border: 0;
+      border-radius: var(--control-radius);
+      background: transparent;
+      color: var(--text-secondary);
+      font-family: var(--font-sans);
+      text-align: left;
+      cursor: pointer;
+    }
+    #analysis-diagnosis-view .pg-category-nav-item:hover {
+      background: var(--bg-hover);
+      color: var(--text-primary);
+    }
+    #analysis-diagnosis-view .pg-category-nav-item[aria-current="true"] {
+      background: var(--bg-active);
+      color: var(--accent-primary);
+      box-shadow: inset var(--space-xs) 0 0 var(--accent-primary);
+    }
+    #analysis-diagnosis-view .pg-category-nav-item:focus-visible {
+      outline: 2px solid var(--accent-secondary);
+      outline-offset: 1px;
+    }
+    #analysis-diagnosis-view .pg-category-nav-copy {
+      display: block;
+      min-width: 0;
+    }
+    #analysis-diagnosis-view .pg-category-nav-name {
+      overflow: hidden;
+      font-size: var(--font-base);
+      font-weight: 600;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    #analysis-diagnosis-view .pg-category-nav-meta {
+      display: flex;
+      align-items: center;
+      gap: var(--space-xs);
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+    }
+    #analysis-diagnosis-view .pg-category-nav-count {
+      font-family: var(--font-mono);
+      font-variant-numeric: tabular-nums;
+    }
+    #analysis-diagnosis-view .pg-category-status-dot {
+      width: var(--space-sm);
+      height: var(--space-sm);
+      flex: 0 0 var(--space-sm);
+      border-radius: 999px;
+      background: var(--warning);
+    }
+    #analysis-diagnosis-view .pg-category-status-dot--validated {
+      background: var(--success);
+    }
+    #analysis-diagnosis-view .pg-category-nav-chevron {
+      display: none;
+    }
+    #analysis-diagnosis-view .pg-category-nav-chevron .pg-action-icon {
+      width: var(--space-md);
+      height: var(--space-md);
+    }
+    #analysis-diagnosis-view .pg-category-nav-empty {
+      margin: 0;
+      padding: var(--space-sm) 0;
+      color: var(--text-muted);
+      font-size: var(--font-base);
+      line-height: 1.5;
+    }
+    #analysis-diagnosis-view .pg-category-editor {
+      min-width: 0;
+      padding-left: var(--space-xl);
+      border-left: 1px solid var(--border-subtle);
+    }
+    #analysis-diagnosis-view .pg-category-editor-toolbar {
+      display: none;
+    }
+    #analysis-diagnosis-view .pg-category-editor-heading {
+      display: flex;
+      min-width: 0;
+      flex-direction: column;
+      gap: var(--space-xs);
+    }
+    #analysis-diagnosis-view .pg-category-editor-heading strong {
+      overflow: hidden;
+      color: var(--text-primary);
+      font-size: var(--font-md);
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    #analysis-diagnosis-view .pg-category-editor-heading > span:last-child {
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+    }
+    #analysis-diagnosis-view .pg-category-panel-kicker {
+      color: var(--text-muted);
+      font-size: var(--font-sm);
       font-weight: 650;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+    #analysis-diagnosis-view .pg-add-category-form {
+      display: grid;
+      grid-template-columns: minmax(140px, 220px) max-content;
+      align-items: center;
+      gap: var(--space-sm);
+      min-width: 0;
+    }
+    #analysis-diagnosis-view .pg-add-category-form .pg-add-input {
+      min-width: 0;
+    }
+    #analysis-diagnosis-view .analysis-diagnosis-add-form {
+      display: flex;
+      grid-template-columns: none;
+    }
+    #analysis-diagnosis-view .pg-category-group {
+      margin: 0;
+      overflow: hidden;
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+    }
+    #analysis-diagnosis-view .pg-category-group[hidden] {
+      display: none;
+    }
+    #analysis-diagnosis-view .pg-category-panel-heading {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-md);
+      padding: var(--space-lg) 0 var(--space-sm);
+      background: transparent;
+    }
+    #analysis-diagnosis-view .pg-category-panel-copy {
+      display: flex;
+      min-width: 0;
+    }
+    #analysis-diagnosis-view .pg-category-panel-name {
+      margin: 0;
+      overflow: hidden;
+      color: var(--text-primary);
+      font-size: var(--font-xl);
+      font-weight: 600;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    #analysis-diagnosis-view .pg-category-panel-actions {
+      display: flex;
+      align-items: center;
+      flex: 0 0 auto;
+      gap: var(--space-sm);
+    }
+    #analysis-diagnosis-view .pg-category-tabs-row {
+      display: flex;
+      align-items: stretch;
+      gap: var(--space-md);
+      padding: 0;
+      background: transparent;
+    }
+    #analysis-diagnosis-view .pg-category-tabs-row .pg-category-tabs {
+      flex: 1 1 auto;
+      min-width: 0;
+    }
+    #analysis-diagnosis-view .pg-category-panel-example-count {
+      white-space: nowrap;
     }
     #analysis-diagnosis-view .pg-category-remove {
-      padding: var(--space-xs) var(--space-sm);
+      display: inline-grid;
+      width: var(--control-height);
+      height: var(--control-height);
+      min-height: var(--control-height);
+      padding: 0;
+      place-items: center;
       border: 1px solid transparent;
-      border-radius: 6px;
-      color: var(--text-muted);
-      font-family: var(--font-sans);
-      font-size: var(--font-sm);
-      font-weight: 600;
+      border-radius: var(--control-radius);
+      background: transparent;
+      color: var(--error);
+      cursor: pointer;
     }
     #analysis-diagnosis-view .pg-category-remove:hover {
       border-color: var(--error-dim);
       background: var(--error-dim);
       color: var(--error);
     }
+    #analysis-diagnosis-view .pg-category-remove .pg-action-icon {
+      width: var(--space-md);
+      height: var(--space-md);
+    }
+    #analysis-diagnosis-view .pg-category-tabs {
+      padding: 0;
+      background: transparent;
+    }
+    #analysis-diagnosis-view .pg-category-tab {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-xs);
+      white-space: nowrap;
+    }
+    #analysis-diagnosis-view .pg-category-tab-count {
+      color: var(--text-muted);
+    }
     #analysis-diagnosis-view .pg-category-content {
-      display: grid;
-      grid-template-columns: minmax(220px, 0.46fr) minmax(0, 1.54fr);
-      min-height: 120px;
+      display: block;
+      min-width: 0;
+    }
+    #analysis-diagnosis-view .pg-category-tab-panel {
+      grid-column: 1 / -1;
+      min-width: 0;
+      padding: var(--space-lg);
+    }
+    #analysis-diagnosis-view .pg-category-tab-panel[hidden] {
+      display: none;
+    }
+    #analysis-diagnosis-view .pg-category-pagination[hidden],
+    #analysis-diagnosis-view .pg-category-example[hidden] {
+      display: none;
+    }
+    #analysis-diagnosis-view .pg-category-taxonomy {
+      padding: var(--space-md) 0 0;
+      background: transparent;
     }
     #analysis-diagnosis-view .pg-category-details,
     #analysis-diagnosis-view .pg-category-examples {
-      min-width: 0;
-      padding: var(--space-md);
+      padding: var(--space-lg);
+      background: var(--bg-elevated);
     }
-    #analysis-diagnosis-view .pg-category-details {
-      border-right: 1px solid var(--border-subtle);
+    #analysis-diagnosis-view .pg-category-taxonomy > h4,
+    #analysis-diagnosis-view .pg-category-taxonomy-hint {
+      display: none;
     }
-    #analysis-diagnosis-view .pg-category-details h4,
-    #analysis-diagnosis-view .pg-category-examples h4 {
+    #analysis-diagnosis-view .pg-category-tab-heading {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: var(--space-md);
+    }
+    #analysis-diagnosis-view .pg-category-tab-heading h4 {
       margin: 0;
       color: var(--text-primary);
-      font-size: var(--font-sm);
-      font-weight: 650;
-      letter-spacing: 0.05em;
-      text-transform: uppercase;
+      font-size: var(--font-lg);
+      font-weight: 600;
     }
-    #analysis-diagnosis-view .pg-details-sublist {
-      margin-top: var(--space-sm);
-      padding: 0;
-    }
-    #analysis-diagnosis-view .pg-detail-item {
-      min-height: 30px;
-      padding: var(--space-xs) var(--space-sm);
-      font-size: var(--font-sm);
-    }
-    #analysis-diagnosis-view .pg-category-details-empty,
-    #analysis-diagnosis-view .pg-category-examples-empty {
-      margin: var(--space-sm) 0 0;
+    #analysis-diagnosis-view .pg-category-tab-heading p {
+      margin: var(--space-xs) 0 0;
       color: var(--text-muted);
       font-size: var(--font-sm);
       line-height: 1.5;
     }
+    #analysis-diagnosis-view .pg-category-taxonomy-hint {
+      max-width: 620px;
+      margin: var(--space-xs) 0 0;
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+      line-height: 1.5;
+    }
+    #analysis-diagnosis-view .pg-category-taxonomy-field {
+      display: block;
+      max-width: none;
+      margin-top: var(--space-md);
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+    }
+    #analysis-diagnosis-view .pg-category-taxonomy-field:first-of-type {
+      margin-top: 0;
+    }
+    #analysis-diagnosis-view .pg-category-taxonomy-field span {
+      display: block;
+      margin-bottom: var(--space-xs);
+      font-weight: 650;
+    }
+    #analysis-diagnosis-view .pg-category-taxonomy-field textarea {
+      min-height: calc(var(--space-xl) * 4);
+    }
+    #analysis-diagnosis-view .pg-category-details-tools {
+      display: grid;
+      grid-template-columns: minmax(180px, 1fr) max-content max-content;
+      align-items: end;
+      gap: var(--space-md);
+      margin-top: var(--space-lg);
+      padding: var(--space-md);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--control-radius);
+      background: var(--bg-surface);
+    }
+    #analysis-diagnosis-view .pg-detail-search-field,
+    #analysis-diagnosis-view .pg-detail-filter-field {
+      display: grid;
+      gap: var(--space-xs);
+    }
+    #analysis-diagnosis-view .pg-detail-search,
+    #analysis-diagnosis-view .pg-detail-filter {
+      min-width: 0;
+    }
+    #analysis-diagnosis-view .pg-detail-result-count {
+      padding-bottom: calc((var(--control-height) - var(--font-sm)) / 2);
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+      white-space: nowrap;
+    }
+    #analysis-diagnosis-view .pg-details-sublist {
+      display: grid;
+      gap: var(--space-xs);
+      margin-top: var(--space-sm);
+    }
+    #analysis-diagnosis-view .pg-category-pagination {
+      margin-top: var(--space-md);
+    }
+    #analysis-diagnosis-view .pg-detail-item {
+      display: flex;
+      min-height: var(--badge-height);
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-md);
+      padding: var(--space-sm) var(--space-md);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--control-radius);
+      background: var(--bg-surface);
+      color: var(--text-secondary);
+      font-size: var(--font-base);
+    }
+    #analysis-diagnosis-view .pg-detail-item:hover {
+      border-color: var(--border-default);
+      background: var(--bg-hover);
+    }
+    #analysis-diagnosis-view .pg-detail-item[hidden] {
+      display: none;
+    }
+    #analysis-diagnosis-view .pg-detail-copy {
+      display: flex;
+      min-width: 0;
+      align-items: center;
+      gap: var(--space-sm);
+    }
+    #analysis-diagnosis-view .pg-detail-name {
+      min-width: 0;
+      overflow-wrap: anywhere;
+    }
+    #analysis-diagnosis-view .pg-detail-example-count {
+      flex: 0 0 auto;
+      white-space: nowrap;
+    }
+    #analysis-diagnosis-view .pg-category-details-empty,
+    #analysis-diagnosis-view .pg-category-examples-empty {
+      margin: var(--space-md) 0 0;
+      color: var(--text-muted);
+      font-size: var(--font-base);
+      line-height: 1.5;
+    }
     #analysis-diagnosis-view .pg-add-detail-row {
-      margin: var(--space-sm) 0 0;
-      padding: 0;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) max-content;
+      align-items: center;
+      gap: var(--space-sm);
+      margin: var(--space-lg) 0 0;
+      padding-top: var(--space-md);
+      border-top: 1px solid var(--border-subtle);
     }
     #analysis-diagnosis-view .pg-add-detail-row .pg-add-input,
     #analysis-diagnosis-view .pg-add-detail-row .pg-add-btn {
-      min-height: 32px;
+      min-width: 0;
+      height: var(--control-height);
+      min-height: var(--control-height);
       padding: 0 var(--space-sm);
-      font-size: var(--font-sm);
-    }
-    #analysis-diagnosis-view .pg-category-examples-heading {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: var(--space-sm);
-    }
-    #analysis-diagnosis-view .pg-category-examples-heading > span {
-      color: var(--text-muted);
-      font-family: var(--font-mono);
       font-size: var(--font-sm);
     }
     #analysis-diagnosis-view .pg-category-example-list {
@@ -570,7 +903,7 @@
     }
     #analysis-diagnosis-view .pg-category-example {
       border: 1px solid var(--border-subtle);
-      border-radius: 6px;
+      border-radius: var(--control-radius);
       background: var(--bg-surface);
     }
     #analysis-diagnosis-view .pg-category-example-summary {
@@ -640,13 +973,6 @@
       white-space: pre-wrap;
       overflow-wrap: anywhere;
     }
-    #analysis-diagnosis-view .pg-add-category {
-      margin-top: var(--space-lg);
-      padding: var(--space-lg);
-      border: 1px solid var(--border-default);
-      border-radius: 8px;
-      background: var(--bg-surface);
-    }
     .analysis-target-body {
       padding: var(--space-lg);
     }
@@ -712,63 +1038,48 @@
     }
     .analysis-rules-layout {
       display: grid;
-      grid-template-columns: minmax(220px, 0.46fr) minmax(0, 1.54fr);
-      gap: var(--space-lg);
+      grid-template-columns: minmax(0, 1fr);
+      gap: var(--space-xl);
       align-items: start;
     }
     .analysis-version-column,
     .analysis-rule-column {
       min-width: 0;
+      overflow: hidden;
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--control-radius);
+      background: var(--bg-surface);
     }
     .analysis-subheading {
       display: flex;
       align-items: center;
       justify-content: space-between;
       gap: var(--space-md);
-      min-height: calc(var(--space-lg) + var(--space-md));
-      margin-bottom: var(--space-sm);
+      min-height: calc(var(--space-xl) + var(--space-md));
+      margin: 0;
+      padding: var(--space-md) var(--space-lg);
+      border-bottom: 1px solid var(--border-subtle);
+      background: var(--bg-elevated);
     }
     .analysis-subheading .analysis-run-label {
       white-space: nowrap;
     }
     .analysis-subheading h3 {
       margin: 0;
-      color: var(--text-secondary);
-      font-size: var(--font-sm);
+      color: var(--text-primary);
+      font-size: var(--font-lg);
       font-weight: 600;
     }
     .analysis-version-heading-copy {
       min-width: 0;
     }
-    .analysis-version-legend {
-      display: flex;
-      align-items: center;
-      flex-wrap: wrap;
-      gap: var(--space-sm);
-      margin-top: var(--space-xs);
+    .analysis-version-heading-description {
+      margin: var(--space-xs) 0 0;
       color: var(--text-muted);
       font-size: var(--font-sm);
+      line-height: 1.45;
     }
-    .analysis-version-node-key {
-      display: inline-flex;
-      align-items: center;
-      gap: var(--space-xs);
-    }
-    .analysis-version-node {
-      display: inline-block;
-      width: 8px;
-      height: 8px;
-      border: 1px solid var(--border-strong);
-      border-radius: 50%;
-      background: var(--bg-surface);
-    }
-    .analysis-version-node-live {
-      border-color: var(--success);
-      background: var(--success);
-    }
-    .analysis-project-shell .pg-rule-version-list,
-    .analysis-project-shell .pg-rule-list {
-      padding-right: var(--space-sm);
+    .analysis-project-shell .pg-rule-version-list {
       overflow-y: auto;
       overscroll-behavior: contain;
       scrollbar-color: var(--border-default) transparent;
@@ -776,28 +1087,17 @@
     }
     .analysis-project-shell .pg-rule-version-list {
       position: relative;
-      max-height: 420px;
-      padding-left: 48px;
+      max-height: 520px;
+      padding: var(--space-md) var(--space-lg) var(--space-lg) calc(var(--space-xl) * 4 + var(--space-md));
     }
     .analysis-project-shell .pg-rule-list {
-      max-height: 640px;
-    }
-    .analysis-rule-graph {
-      position: absolute;
-      inset: 0 auto 0 0;
-      width: 40px;
-      height: 100%;
-      pointer-events: auto;
-    }
-    .analysis-rule-graph circle {
-      cursor: help;
-      pointer-events: all;
+      padding: var(--space-md) var(--space-lg) 0;
     }
     .analysis-project-shell .pg-rule-version {
       position: relative;
-      min-height: 36px;
-      margin-bottom: var(--space-xs);
-      padding: var(--space-xs) var(--space-sm);
+      min-height: calc(var(--space-xl) + var(--space-md));
+      margin: 0;
+      padding: var(--space-sm) var(--space-md);
       border-color: var(--border-subtle);
       background: var(--bg-elevated);
     }
@@ -807,8 +1107,40 @@
     .analysis-project-shell .pg-rule-version-production {
       color: var(--success);
     }
-    .analysis-project-shell .pg-rule-version-lineage {
-      position: absolute;
+    .analysis-project-shell .pg-rule-version-open {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      align-items: start;
+      gap: var(--space-xs);
+    }
+    .analysis-project-shell .pg-rule-version-copy {
+      display: grid;
+      min-width: 0;
+      gap: var(--space-xs);
+    }
+    .analysis-project-shell .pg-rule-version-heading {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: var(--space-sm);
+    }
+    .analysis-project-shell .pg-rule-version-summary {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: var(--space-sm);
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+    }
+    .analysis-project-shell .pg-rule-version-rule-count,
+    .analysis-project-shell .pg-rule-version-created {
+      font-family: var(--font-mono);
+      font-variant-numeric: tabular-nums;
+    }
+    .analysis-project-shell .pg-rule-version-created::before {
+      margin-right: var(--space-sm);
+      color: var(--text-dim);
+      content: "·";
     }
     .analysis-project-shell .pg-rule-list {
       display: flex;
@@ -822,12 +1154,9 @@
       border-color: var(--border-subtle);
       background: var(--bg-elevated);
     }
-    .analysis-project-shell .pg-rule-remove:disabled {
-      display: none;
-    }
     .analysis-project-shell .pg-rule-item-head {
       display: grid;
-      grid-template-columns: minmax(0, 1fr) auto;
+      grid-template-columns: auto minmax(0, 1fr) auto;
       align-items: center;
       gap: var(--space-sm);
       padding: var(--space-sm);
@@ -837,7 +1166,7 @@
     }
     .analysis-project-shell .pg-rule-toggle {
       display: grid;
-      grid-template-columns: 28px minmax(0, 1fr) auto;
+      grid-template-columns: minmax(0, 1fr) auto;
       min-width: 0;
       align-items: center;
       gap: var(--space-sm);
@@ -891,10 +1220,11 @@
       align-items: center;
       justify-content: space-between;
       gap: var(--space-md);
-      min-height: calc(var(--space-lg) + var(--space-md));
-      margin-bottom: var(--space-sm);
-      padding-bottom: var(--space-sm);
+      min-height: calc(var(--space-xl) + var(--space-md));
+      margin: 0;
+      padding: var(--space-md) var(--space-lg);
       border-bottom: 1px solid var(--border-subtle);
+      background: var(--bg-elevated);
     }
     .analysis-rule-toolbar-title {
       display: flex;
@@ -906,28 +1236,36 @@
     .analysis-rule-toolbar-title h3 {
       margin: 0;
       color: var(--text-primary);
-      font-size: var(--font-md);
+      font-size: var(--font-lg);
       font-weight: 600;
     }
+    .analysis-rule-toolbar-actions {
+      display: flex;
+      min-width: 0;
+      align-items: center;
+      justify-content: flex-end;
+      gap: var(--space-md);
+      flex: 0 0 auto;
+    }
+    .analysis-rule-toolbar-actions .qym-pagination--run {
+      margin-left: 0;
+    }
     .analysis-rule-toolbar #pg-add-rule {
-      display: grid;
-      width: 32px;
-      min-width: 32px;
-      height: 32px;
-      min-height: 32px;
-      flex: 0 0 32px;
+      display: inline-flex;
+      width: auto;
+      min-width: 0;
+      height: var(--control-height);
+      min-height: var(--control-height);
+      flex: 0 0 auto;
       align-self: center;
       box-sizing: border-box;
       align-items: center;
-      justify-items: center;
-      padding: 0;
-      line-height: 0;
-      text-align: center;
+      gap: var(--space-xs);
     }
     .analysis-rule-toolbar #pg-add-rule .pg-action-icon {
       display: block;
-      width: 15px;
-      height: 15px;
+      width: var(--space-md);
+      height: var(--space-md);
       margin: 0;
     }
     .analysis-rule-toolbar #pg-add-rule:disabled {
@@ -978,57 +1316,11 @@
       background: color-mix(in srgb, var(--success) 12%, var(--bg-elevated));
       color: var(--success);
     }
-    .analysis-project-shell .pg-rule-inference-options {
-      display: block;
-      margin-bottom: var(--space-lg);
-      padding: 0;
-      border-color: var(--border-subtle);
-      background: var(--bg-elevated);
+    .analysis-project-shell .pg-rule-source-actions {
+      flex-wrap: wrap;
     }
-    .analysis-project-shell .pg-rule-inference-heading {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: var(--space-md);
-      padding: var(--space-sm) var(--space-md);
-      cursor: pointer;
-      list-style: none;
-    }
-    .analysis-project-shell .pg-rule-inference-heading::-webkit-details-marker {
-      display: none;
-    }
-    .analysis-project-shell .pg-rule-inference-summary {
-      display: inline-flex;
-      align-items: center;
-      gap: var(--space-sm);
-      color: var(--text-muted);
-      font-size: var(--font-sm);
-      font-weight: 400;
-      letter-spacing: normal;
-      text-transform: none;
-    }
-    .analysis-project-shell .pg-rule-inference-chevron {
-      display: inline-grid;
-      color: var(--text-muted);
-      place-items: center;
-    }
-    .analysis-project-shell .pg-rule-inference-chevron .pg-action-icon {
-      width: 14px;
-      height: 14px;
-      transition: transform 0.15s ease;
-    }
-    .analysis-project-shell .pg-rule-inference-options[open] .pg-rule-inference-chevron .pg-action-icon {
-      transform: rotate(90deg);
-    }
-    .analysis-project-shell .pg-rule-inference-content {
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: var(--space-sm);
-      padding: 0 var(--space-sm) var(--space-sm);
-    }
-    .analysis-project-shell .pg-inference-toggle {
-      align-items: start;
-      padding: var(--space-sm);
+    .analysis-project-footer .pg-rule-source-actions {
+      margin-bottom: 0;
     }
     .analysis-project-shell .pg-document-list {
       display: grid;
@@ -1092,24 +1384,7 @@
       justify-content: center;
       padding: 0 var(--space-md);
     }
-    .analysis-project-footer #pg-save-context {
-      border-color: var(--border-default);
-      background: var(--bg-elevated);
-      color: var(--text-secondary);
-    }
-    .analysis-project-footer #pg-save-context:not(:disabled):hover {
-      border-color: var(--accent-primary);
-      color: var(--accent-primary);
-    }
-    .analysis-project-footer #pg-save-context:disabled {
-      border-color: var(--border-subtle);
-      background: var(--bg-elevated);
-      color: var(--text-dim);
-      cursor: not-allowed;
-      opacity: 1;
-    }
-    .analysis-project-footer #pg-create-rule-version,
-    .analysis-project-footer #pg-update-rules {
+    .analysis-project-footer #pg-create-rule-version {
       border-color: var(--accent-tertiary);
       background: var(--bg-elevated);
       color: var(--accent-tertiary-soft);
@@ -1126,7 +1401,7 @@
       opacity: 1;
     }
     .analysis-project-shell .pg-rule-compare {
-      margin: 0 var(--space-lg) var(--space-lg);
+      margin: var(--space-lg);
     }
     .analysis-project-shell .pg-rule-compare-picker {
       position: fixed;
@@ -1449,7 +1724,18 @@
     }
     .analysis-page .pg-filter-limit input {
       width: 96px;
-      min-height: 24px;
+      min-height: var(--control-height);
+    }
+    .analysis-page .pg-target-limit-group {
+      width: 100%;
+      min-height: 0;
+      align-self: start;
+      flex-direction: column;
+      align-items: stretch;
+      gap: var(--space-xs);
+    }
+    .analysis-page .pg-target-limit-group .pg-target-limit-row {
+      width: 100%;
     }
     .analysis-page .pg-slider-control {
       min-height: 34px;
@@ -1476,10 +1762,9 @@
       gap: var(--space-md);
     }
     .analysis-page .pg-items-list {
-      max-height: 420px;
-      overflow-y: auto;
-      scrollbar-color: var(--border-default) transparent;
-      scrollbar-width: thin;
+      max-height: none;
+      overflow: visible;
+      padding-right: 0;
     }
     .analysis-page .pg-item-metric,
     .analysis-page .pg-item-target-count {
@@ -2004,391 +2289,6 @@
     .insights-error {
       color: var(--error);
     }
-    .candidate-relationships-card {
-      position: relative;
-      overflow: visible;
-      background: linear-gradient(180deg, color-mix(in srgb, var(--accent-primary) 3%, var(--bg-surface)), var(--bg-surface) 28%);
-    }
-    .candidate-toolbar {
-      display: flex;
-      flex-wrap: wrap;
-      align-items: end;
-      gap: var(--space-md);
-      padding: var(--space-md) var(--space-lg);
-      border-bottom: 1px solid var(--border-subtle);
-      background: var(--bg-elevated);
-    }
-    .candidate-toolbar-group {
-      display: grid;
-      gap: var(--space-xs);
-    }
-    .candidate-toolbar-label {
-      color: var(--text-muted);
-      font-size: var(--font-sm);
-      font-weight: 600;
-    }
-    .candidate-category-search {
-      min-width: calc(var(--space-xl) * 8);
-    }
-    .candidate-scope-note {
-      margin-left: auto;
-      color: var(--text-muted);
-      font-size: var(--font-sm);
-    }
-    .candidate-summary {
-      grid-template-columns: repeat(4, minmax(0, 1fr));
-      margin: var(--space-lg);
-      overflow: hidden;
-      background: linear-gradient(135deg, color-mix(in srgb, var(--bg-elevated) 82%, var(--accent-primary)), var(--bg-surface));
-    }
-    .candidate-summary .qym-stat-strip__item {
-      min-width: 0;
-    }
-    .candidate-summary .qym-stat-strip__label,
-    .candidate-summary .qym-stat-strip__meta {
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-    .candidate-groups {
-      display: grid;
-      gap: var(--space-md);
-      padding: 0 var(--space-lg) var(--space-lg);
-    }
-    .candidate-empty {
-      display: grid;
-      gap: var(--space-sm);
-      padding: var(--space-xl);
-      border: 1px dashed var(--border-default);
-      border-radius: var(--control-radius);
-      background: var(--bg-elevated);
-      color: var(--text-muted);
-      font-size: var(--font-md);
-      line-height: 1.5;
-      text-align: center;
-    }
-    .candidate-empty-title {
-      color: var(--text-primary);
-      font-size: var(--font-xl);
-      font-weight: 650;
-    }
-    .candidate-category {
-      overflow: hidden;
-      border: 1px solid var(--border-subtle);
-      border-radius: var(--control-radius);
-      background: var(--bg-base);
-    }
-    .candidate-category-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: var(--space-md);
-      padding: var(--space-md);
-      border-bottom: 1px solid var(--border-subtle);
-      background: var(--bg-elevated);
-    }
-    .candidate-category-heading {
-      min-width: 0;
-    }
-    .candidate-category-title {
-      margin: 0;
-      overflow: hidden;
-      color: var(--text-primary);
-      font-size: var(--font-lg);
-      font-weight: 600;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-    .candidate-category-meta {
-      margin: var(--space-xs) 0 0;
-      color: var(--text-muted);
-      font-size: var(--font-sm);
-    }
-    .candidate-category-body {
-      display: grid;
-      gap: var(--space-md);
-      padding: var(--space-md);
-    }
-    .candidate-relationship {
-      display: grid;
-      gap: var(--space-md);
-      padding: var(--space-md);
-      border: 1px solid var(--border-subtle);
-      border-radius: var(--control-radius);
-      background: var(--bg-surface);
-    }
-    .candidate-relationship-header {
-      display: flex;
-      align-items: flex-start;
-      justify-content: space-between;
-      gap: var(--space-md);
-    }
-    .candidate-relationship-title {
-      min-width: 0;
-    }
-    .candidate-relationship-target {
-      margin: 0;
-      color: var(--text-primary);
-      font-size: var(--font-lg);
-      font-weight: 650;
-      line-height: 1.3;
-    }
-    .candidate-relationship-statement {
-      margin: var(--space-xs) 0 0;
-      color: var(--text-secondary);
-      font-size: var(--font-md);
-      line-height: 1.5;
-    }
-    .candidate-relationship-statement strong {
-      color: var(--text-primary);
-      font-weight: 700;
-    }
-    .candidate-condition {
-      display: grid;
-      gap: var(--space-xs);
-      padding: var(--space-sm) var(--space-md);
-      border-left: 3px solid var(--accent-primary);
-      background: var(--bg-elevated);
-    }
-    .candidate-section-label {
-      color: var(--text-muted);
-      font-size: var(--font-xs);
-      font-weight: 650;
-      letter-spacing: 0.05em;
-      text-transform: uppercase;
-    }
-    .candidate-factor-row {
-      display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      gap: var(--space-xs);
-    }
-    .candidate-factor-chip {
-      max-width: 100%;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-    .candidate-factor-and {
-      color: var(--text-muted);
-      font-family: var(--font-mono);
-      font-size: var(--font-sm);
-      font-weight: 650;
-    }
-    .candidate-bars {
-      display: grid;
-      gap: var(--space-sm);
-    }
-    .candidate-comparison-heading {
-      display: flex;
-      align-items: baseline;
-      justify-content: space-between;
-      gap: var(--space-md);
-    }
-    .candidate-comparison-title {
-      color: var(--text-primary);
-      font-size: var(--font-sm);
-      font-weight: 650;
-    }
-    .candidate-comparison-note {
-      color: var(--text-muted);
-      font-size: var(--font-xs);
-    }
-    .candidate-bar-row {
-      display: grid;
-      grid-template-columns: minmax(130px, 0.35fr) minmax(0, 1fr) auto;
-      align-items: center;
-      gap: var(--space-sm);
-    }
-    .candidate-bar-label,
-    .candidate-bar-value,
-    .candidate-evidence {
-      color: var(--text-secondary);
-      font-size: var(--font-sm);
-    }
-    .candidate-bar-value {
-      color: var(--text-primary);
-      font-family: var(--font-mono);
-      font-variant-numeric: tabular-nums;
-      text-align: right;
-    }
-    .candidate-bar-track {
-      height: var(--space-sm);
-      overflow: hidden;
-      border-radius: var(--radius-pill);
-      background: var(--bg-elevated);
-    }
-    .candidate-bar-fill {
-      width: var(--candidate-bar-width, 0%);
-      height: 100%;
-      border-radius: inherit;
-      background: var(--accent-primary);
-    }
-    .candidate-bar-fill.is-comparison {
-      background: var(--chart-2);
-    }
-    .candidate-impact {
-      display: flex;
-      align-items: center;
-      gap: var(--space-sm);
-      padding: var(--space-sm) var(--space-md);
-      border: 1px solid var(--border-subtle);
-      border-radius: var(--control-radius);
-      background: var(--bg-elevated);
-    }
-    .candidate-impact-arrow {
-      display: grid;
-      width: calc(var(--space-lg) + var(--space-xs));
-      height: calc(var(--space-lg) + var(--space-xs));
-      flex: 0 0 auto;
-      place-items: center;
-      border-radius: var(--radius-pill);
-      background: color-mix(in srgb, var(--accent-primary) 15%, var(--bg-surface));
-      color: var(--accent-primary);
-      font-family: var(--font-mono);
-      font-size: var(--font-lg);
-      font-weight: 700;
-    }
-    .candidate-impact-copy {
-      display: grid;
-      gap: 2px;
-      min-width: 0;
-    }
-    .candidate-impact-value {
-      color: var(--text-primary);
-      font-size: var(--font-md);
-      font-weight: 700;
-    }
-    .candidate-impact-note {
-      color: var(--text-muted);
-      font-size: var(--font-sm);
-    }
-    .candidate-relationship-footer {
-      display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      gap: var(--space-md);
-    }
-    .candidate-evidence {
-      flex: 1 1 auto;
-    }
-    .candidate-detail-group {
-      display: grid;
-      gap: var(--space-sm);
-      padding: var(--space-md);
-      border-top: 1px solid var(--border-subtle);
-      background: color-mix(in srgb, var(--bg-elevated) 46%, var(--bg-base));
-    }
-    .candidate-detail-heading {
-      color: var(--text-primary);
-      font-size: var(--font-md);
-      font-weight: 600;
-    }
-    .candidate-detail-meta,
-    .candidate-below-threshold {
-      color: var(--text-muted);
-      font-size: var(--font-sm);
-    }
-    .candidate-drawer[hidden] {
-      display: none;
-    }
-    .candidate-drawer {
-      position: fixed;
-      z-index: 30;
-      inset: 0;
-      display: flex;
-      justify-content: flex-end;
-      background: color-mix(in srgb, var(--bg-void) 68%, transparent);
-    }
-    .candidate-drawer-panel {
-      display: flex;
-      width: min(680px, 100%);
-      height: 100%;
-      flex-direction: column;
-      border-left: 1px solid var(--border-strong);
-      background: var(--bg-surface);
-      box-shadow: calc(var(--space-sm) * -1) 0 var(--space-xl) color-mix(in srgb, var(--bg-void) 42%, transparent);
-    }
-    .candidate-drawer-header {
-      display: flex;
-      align-items: flex-start;
-      justify-content: space-between;
-      gap: var(--space-md);
-      padding: var(--space-lg);
-      border-bottom: 1px solid var(--border-subtle);
-    }
-    .candidate-drawer-title {
-      margin: 0;
-      color: var(--text-primary);
-      font-size: var(--font-xl);
-      font-weight: 650;
-    }
-    .candidate-drawer-copy {
-      margin: var(--space-xs) 0 0;
-      color: var(--text-muted);
-      font-size: var(--font-sm);
-    }
-    .candidate-evidence-list {
-      display: grid;
-      flex: 1 1 auto;
-      gap: var(--space-sm);
-      min-height: 0;
-      overflow-y: auto;
-      padding: var(--space-lg);
-      scrollbar-gutter: stable;
-    }
-    .candidate-evidence-row {
-      display: grid;
-      gap: var(--space-xs);
-      padding: var(--space-md);
-      border: 1px solid var(--border-subtle);
-      border-radius: var(--control-radius);
-      background: var(--bg-elevated);
-    }
-    .candidate-evidence-primary {
-      display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      gap: var(--space-sm);
-    }
-    .candidate-evidence-primary a {
-      color: var(--text-primary);
-      font-size: var(--font-md);
-      font-weight: 600;
-    }
-    .candidate-evidence-meta {
-      color: var(--text-muted);
-      font-size: var(--font-sm);
-    }
-    .candidate-evidence-footer {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: var(--space-md);
-      padding: var(--space-md) var(--space-lg);
-      border-top: 1px solid var(--border-subtle);
-    }
-    .candidate-pagination {
-      display: flex;
-      align-items: center;
-      gap: var(--space-xs);
-    }
-    @media (max-width: 760px) {
-      .candidate-summary {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-      }
-      .candidate-scope-note {
-        width: 100%;
-        margin-left: 0;
-      }
-      .candidate-bar-row {
-        grid-template-columns: 1fr auto;
-      }
-      .candidate-bar-track {
-        grid-column: 1 / -1;
-        grid-row: 2;
-      }
-    }
     .analysis-dashboard-bars {
       display: grid;
       gap: var(--space-sm);
@@ -2586,9 +2486,46 @@
       height: 100%;
       transition: opacity 0.15s;
     }
+    .analysis-dashboard-stacked-segment {
+      cursor: help;
+      outline: 0;
+    }
     .analysis-dashboard-stacked-segment:hover,
     .analysis-dashboard-compare-segment:hover {
       opacity: 0.78;
+    }
+    .analysis-dashboard-stacked-segment:focus-visible {
+      outline: 2px solid var(--text-primary);
+      outline-offset: 1px;
+    }
+    .analysis-dashboard-stacked-tooltip {
+      position: fixed;
+      z-index: 20;
+      display: none;
+      max-width: calc(100vw - (2 * var(--space-md)));
+      padding: var(--space-sm) var(--space-md);
+      border: 1px solid var(--border-default);
+      border-radius: var(--control-radius);
+      background: var(--bg-elevated);
+      color: var(--text-primary);
+      font-family: var(--font-sans);
+      font-size: var(--font-sm);
+      line-height: 1.4;
+      pointer-events: none;
+      white-space: nowrap;
+    }
+    .analysis-dashboard-stacked-tooltip.is-visible {
+      display: grid;
+      gap: var(--space-xs);
+    }
+    .analysis-dashboard-stacked-tooltip-category {
+      color: var(--text-secondary);
+    }
+    .analysis-dashboard-stacked-tooltip-count {
+      color: var(--text-primary);
+      font-family: var(--font-mono);
+      font-variant-numeric: tabular-nums;
+      font-weight: 650;
     }
     .analysis-dashboard-stacked-total {
       color: var(--text-primary);
@@ -2948,12 +2885,63 @@
     @media (max-width: 900px) {
       .analysis-context-toggles,
       .analysis-rules-layout,
-      #analysis-diagnosis-view .pg-category-content {
+      #analysis-diagnosis-view .pg-category-workspace {
         grid-template-columns: minmax(0, 1fr);
       }
-      #analysis-diagnosis-view .pg-category-details {
-        border-right: 0;
-        border-bottom: 1px solid var(--border-subtle);
+      .analysis-diagnosis-main-toolbar {
+        align-items: stretch;
+        flex-direction: column;
+      }
+      .analysis-diagnosis-action-row {
+        justify-content: flex-start;
+      }
+      .analysis-diagnosis-save-status {
+        text-align: left;
+      }
+      #analysis-diagnosis-view .pg-category-sidebar {
+        position: static;
+        display: block;
+        min-height: 0;
+        max-height: none;
+        height: auto;
+        overflow: visible;
+      }
+      #analysis-diagnosis-view .pg-category-nav {
+        display: grid;
+        min-height: 0;
+        flex: none;
+        height: auto;
+        max-height: none;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        padding: var(--space-md);
+        overflow: visible;
+      }
+      #analysis-diagnosis-view .pg-category-editor {
+        padding-left: 0;
+        border-left: 0;
+      }
+      #analysis-diagnosis-view .pg-category-editor-toolbar {
+        position: static;
+        align-items: stretch;
+        flex-direction: column;
+      }
+      #analysis-diagnosis-view .pg-add-category-form,
+      #analysis-diagnosis-view .pg-category-details-tools {
+        grid-template-columns: minmax(0, 1fr) max-content;
+        width: 100%;
+      }
+      #analysis-diagnosis-view .pg-category-details-tools .pg-detail-result-count {
+        grid-column: 1 / -1;
+      }
+      #analysis-diagnosis-view .pg-category-panel-heading {
+        align-items: flex-start;
+      }
+      #analysis-diagnosis-view .pg-category-tabs-row {
+        gap: var(--space-sm);
+      }
+      #analysis-diagnosis-view .pg-category-panel-actions {
+        align-items: center;
+        flex-direction: row;
       }
       #analysis-diagnosis-view .pg-category-example-data {
         grid-template-columns: minmax(0, 1fr);
@@ -3074,7 +3062,7 @@
         min-width: 0;
       }
       .analysis-target-tools,
-      .analysis-diagnosis-header,
+      .analysis-diagnosis-main-toolbar,
       .analysis-project-footer,
       .analysis-run-footer {
         align-items: stretch;
@@ -3099,11 +3087,24 @@
       .analysis-project-footer .pg-context-status {
         min-width: 0;
       }
-      .analysis-project-shell .pg-rule-inference-content {
-        grid-template-columns: minmax(0, 1fr);
+      .analysis-rule-toolbar {
+        align-items: stretch;
+        flex-direction: column;
       }
-      .analysis-project-shell .pg-rule-inference-heading {
-        grid-column: auto;
+      .analysis-rule-toolbar-title {
+        width: 100%;
+      }
+      .analysis-rule-toolbar-actions {
+        width: 100%;
+        justify-content: flex-start;
+        flex-wrap: wrap;
+      }
+      .analysis-rule-toolbar-actions .qym-pagination--run {
+        flex: 1 1 auto;
+      }
+      .analysis-rule-toolbar #pg-add-rule {
+        align-self: center;
+        margin-left: auto;
       }
       .analysis-project-footer .pg-context-actions,
       .analysis-project-footer .pg-context-action-group {
@@ -3124,20 +3125,17 @@
         height: 1px;
       }
       .analysis-project-shell .pg-rule-version-list {
-        padding-left: 40px;
+        padding-left: calc(var(--space-xl) * 2 + var(--space-md));
       }
       .analysis-subheading .analysis-run-label {
         white-space: normal;
         text-align: right;
       }
       .analysis-project-shell .pg-rule-item-head {
-        grid-template-columns: minmax(0, 1fr) auto;
+        grid-template-columns: auto minmax(0, 1fr) auto;
       }
       .analysis-project-shell .pg-rule-toggle {
-        grid-template-columns: 24px minmax(0, 1fr) auto;
-      }
-      .analysis-project-shell .pg-rule-remove {
-        grid-column: auto;
+        grid-template-columns: minmax(0, 1fr) auto;
       }
       .analysis-project-shell .pg-rule-compare-picker {
         width: auto;
@@ -3151,8 +3149,430 @@
         gap: var(--space-xs);
       }
     }
+    .analysis-rules-layout {
+      display: block;
+    }
+
+    .analysis-project-shell .analysis-rule-column,
+    .analysis-project-shell .analysis-version-column {
+      overflow: visible;
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+    }
+
+    .analysis-project-shell .analysis-rule-column > .analysis-rule-toolbar {
+      border-top: 1px solid var(--border-subtle);
+    }
+
+    .analysis-project-shell .pg-rule-filters {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      gap: var(--space-sm);
+      padding: var(--space-md) var(--space-lg) 0;
+    }
+
+    .analysis-project-shell .pg-rule-filter-field {
+      display: block;
+      min-width: 0;
+    }
+
+    .analysis-project-shell .pg-rule-filter-field .qym-control {
+      width: 100%;
+      box-sizing: border-box;
+    }
+
+    .analysis-project-shell .pg-rule-list {
+      padding: var(--space-md) var(--space-lg) 0;
+      gap: 0;
+    }
+
+    .analysis-project-shell .pg-rule-item {
+      border-width: 0 0 1px;
+      border-radius: 0;
+      background: transparent;
+      overflow: visible;
+    }
+
+    .analysis-project-shell .pg-rule-item-head {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      gap: var(--space-sm);
+      padding: var(--space-md) 0;
+    }
+
+    .analysis-project-shell .pg-rule-item-head:hover {
+      background: var(--bg-hover);
+    }
+
+    .analysis-project-shell .pg-rule-item-number {
+      align-self: center;
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+      font-size: var(--font-sm);
+      font-variant-numeric: tabular-nums;
+      text-align: center;
+    }
+
+    .analysis-project-shell .pg-rule-toggle {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      min-width: 0;
+      align-items: center;
+      gap: var(--space-sm);
+    }
+
+    .analysis-project-shell .pg-rule-item-summary {
+      display: grid;
+      grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+      min-width: 0;
+      align-items: baseline;
+      gap: var(--space-lg);
+    }
+
+    .analysis-project-shell .pg-rule-item-summary strong,
+    .analysis-project-shell .pg-rule-item-summary span {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .analysis-project-shell .pg-rule-item-summary strong {
+      color: var(--text-primary);
+      font-size: var(--font-base);
+      font-weight: 600;
+    }
+
+    .analysis-project-shell .pg-rule-item-summary span {
+      color: var(--text-secondary);
+      font-size: var(--font-base);
+    }
+
+    .analysis-project-shell .pg-rule-disclosure {
+      color: var(--text-muted);
+    }
+
+    .analysis-project-shell .pg-rule-version-overflow {
+      position: relative;
+      align-self: center;
+    }
+
+    .analysis-project-shell .pg-rule-version-menu-toggle {
+      color: var(--text-muted);
+    }
+
+    .analysis-project-shell .pg-rule-version-menu-toggle:hover,
+    .analysis-project-shell .pg-rule-version-menu-toggle[aria-expanded="true"] {
+      color: var(--accent-primary);
+    }
+
+    .analysis-project-shell .pg-rule-version-menu {
+      z-index: 30;
+    }
+
+    .analysis-project-shell .pg-rule-version-menu[hidden] {
+      display: none;
+    }
+
+    .analysis-project-shell .pg-rule-remove {
+      align-self: center;
+    }
+
+    .analysis-project-shell .pg-rule-fields {
+      padding: var(--space-md) 0 var(--space-lg) calc(var(--space-xl) + var(--space-lg));
+    }
+
+    .analysis-project-shell .pg-rule-field {
+      display: grid;
+      gap: var(--space-xs);
+    }
+
+    .analysis-project-shell .pg-rule-field-label {
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+      font-weight: 600;
+    }
+
+    .analysis-project-shell .pg-rule-version-list {
+      max-height: none;
+      padding: 0 var(--space-lg);
+      overflow: visible;
+    }
+
+    .analysis-project-shell .pg-rule-version {
+      min-height: calc(var(--space-xl) + var(--space-md));
+      padding: var(--space-md) 0;
+      border-width: 0 0 1px;
+      border-radius: 0;
+      background: transparent;
+    }
+
+    .analysis-project-shell .pg-rule-version:hover {
+      border-color: var(--border-subtle);
+      background: var(--bg-hover);
+    }
+
+    .analysis-project-shell .pg-rule-version-selected {
+      border-color: var(--accent-primary);
+      background: var(--bg-active);
+    }
+
+    .analysis-project-shell .pg-rule-version-open {
+      width: 100%;
+    }
+
+    .analysis-project-shell .pg-rule-version-heading {
+      gap: var(--space-sm);
+    }
+
+    .analysis-project-shell .pg-rule-version-summary {
+      gap: var(--space-sm);
+    }
+
+    .analysis-project-shell .pg-rule-version-created {
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+      font-size: var(--font-sm);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .analysis-project-shell .analysis-version-heading {
+      min-height: 0;
+      padding: var(--space-md) 0;
+      border-bottom: 1px solid var(--border-subtle);
+      background: transparent;
+    }
+
+    .analysis-project-shell .analysis-project-footer #pg-create-rule-version.pg-context-primary,
+    .analysis-project-shell .analysis-project-footer #pg-infer-rules.pg-context-primary {
+      border-color: var(--accent-tertiary);
+      background: var(--accent-tertiary);
+      color: var(--bg-void);
+    }
+
+    .analysis-project-shell .analysis-project-footer #pg-create-rule-version:not(.pg-context-primary),
+    .analysis-project-shell .analysis-project-footer #pg-infer-rules:not(.pg-context-primary) {
+      border-color: var(--border-default);
+      background: var(--bg-elevated);
+      color: var(--text-secondary);
+    }
+
+    .analysis-project-shell .analysis-project-footer #pg-create-rule-version.pg-context-primary:hover:not(:disabled),
+    .analysis-project-shell .analysis-project-footer #pg-infer-rules.pg-context-primary:hover:not(:disabled) {
+      background: var(--accent-tertiary-soft);
+      color: var(--bg-void);
+    }
+
+    .analysis-project-shell .analysis-project-footer #pg-infer-rules.pg-context-primary:disabled {
+      border-color: var(--border-default);
+      background: var(--bg-elevated);
+      color: var(--text-muted);
+      cursor: not-allowed;
+      opacity: 1;
+    }
+
+    .analysis-version-history-host[hidden] {
+      display: none;
+    }
+
+    .analysis-version-history-popup-content {
+      min-width: 0;
+    }
+
+    .analysis-version-history-popup-content .analysis-version-column {
+      min-width: 0;
+      overflow: hidden;
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--control-radius);
+      background: var(--bg-surface);
+    }
+
+    .analysis-version-history-popup-content .analysis-version-heading {
+      min-height: 0;
+      padding: var(--space-md) var(--space-lg);
+    }
+
+    .analysis-version-history-popup-content .analysis-version-legend {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: var(--space-md);
+      margin-top: var(--space-xs);
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+      line-height: 1.4;
+    }
+
+    .analysis-version-history-popup-content .analysis-version-node-key {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-xs);
+      white-space: nowrap;
+    }
+
+    .analysis-version-history-popup-content .analysis-version-node {
+      display: inline-block;
+      width: var(--space-sm);
+      height: var(--space-sm);
+      flex: 0 0 var(--space-sm);
+      border: 1px solid var(--border-strong);
+      border-radius: 50%;
+      background: var(--bg-surface);
+    }
+
+    .analysis-version-history-popup-content .analysis-version-node-live {
+      border-color: var(--success);
+      background: var(--success);
+    }
+
+    .analysis-version-history-popup-content .pg-rule-version-list {
+      --analysis-history-graph-rail: clamp(calc(var(--space-xl) * 4), 30%, calc(var(--space-xl) * 8));
+      position: relative;
+      max-height: calc(100vh - (var(--space-xl) * 5));
+      padding: var(--space-md) var(--space-md) var(--space-lg) var(--analysis-history-graph-rail);
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      scrollbar-color: var(--border-default) transparent;
+      scrollbar-width: thin;
+    }
+
+    .analysis-version-history-popup-content .pg-rule-version-list::before {
+      position: absolute;
+      inset: 0 auto 0 var(--analysis-history-graph-rail);
+      z-index: 0;
+      width: 1px;
+      background: var(--border-subtle);
+      content: "";
+      pointer-events: none;
+    }
+
+    .analysis-version-history-popup-content .analysis-rule-graph {
+      position: absolute;
+      inset: 0 auto 0 0;
+      z-index: 1;
+      width: var(--analysis-history-graph-rail);
+      height: 100%;
+      pointer-events: none;
+    }
+
+    .analysis-version-history-popup-content .analysis-rule-graph circle {
+      pointer-events: all;
+    }
+
+    .analysis-version-history-popup-content .pg-rule-version {
+      position: relative;
+      z-index: 0;
+      min-height: calc(var(--space-xl) + var(--space-md));
+      margin: 0;
+      padding: var(--space-sm) var(--space-md);
+      border-color: var(--border-subtle);
+      background: var(--bg-elevated);
+    }
+
+    .analysis-version-history-popup-content .pg-rule-version-menu-open {
+      z-index: 20;
+    }
+
+    .analysis-version-history-popup-content .pg-rule-version-selected {
+      border-color: var(--accent-primary);
+      background: var(--bg-active);
+    }
+
+    .analysis-version-history-popup-content .pg-rule-version-open {
+      display: grid;
+      width: 100%;
+      grid-template-columns: minmax(0, 1fr);
+      align-items: center;
+      gap: var(--space-xs);
+    }
+
+    .analysis-version-history-popup-content .pg-rule-version-copy {
+      display: grid;
+      min-width: 0;
+      grid-template-columns: calc(var(--space-xl) * 4 + var(--space-lg)) minmax(0, 1fr);
+      align-items: center;
+      gap: var(--space-lg);
+    }
+
+    .analysis-version-history-popup-content .pg-rule-version-heading,
+    .analysis-version-history-popup-content .pg-rule-version-summary {
+      display: flex;
+      align-items: center;
+      min-width: 0;
+      flex-wrap: nowrap;
+      gap: var(--space-sm);
+      white-space: nowrap;
+    }
+
+    .analysis-version-history-popup-content .pg-rule-version-summary {
+      flex: 0 1 auto;
+      overflow: hidden;
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+    }
+
+    .analysis-version-history-popup-content .pg-rule-version-rule-count {
+      flex: 0 0 auto;
+    }
+
+    .analysis-version-history-popup-content .pg-rule-version-rule-count,
+    .analysis-version-history-popup-content .pg-rule-version-created {
+      font-family: var(--font-mono);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .analysis-version-history-popup-content .pg-rule-version-created {
+      min-width: 0;
+      overflow: hidden;
+      color: var(--text-muted);
+      text-overflow: ellipsis;
+    }
+
+    .analysis-version-history-popup-content .pg-rule-version-created::before {
+      margin-right: var(--space-sm);
+      color: var(--text-dim);
+      content: "·";
+    }
+
+    @media (max-width: 720px) {
+      .analysis-version-history-popup-content .pg-rule-version-copy {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--space-sm);
+      }
+
+      .analysis-version-history-popup-content .pg-rule-version-heading,
+      .analysis-version-history-popup-content .pg-rule-version-summary {
+        flex-wrap: wrap;
+        white-space: normal;
+      }
+
+      .analysis-version-history-popup-content .pg-rule-version-summary {
+        overflow: visible;
+      }
+
+      .analysis-project-shell .pg-rule-filters {
+        grid-template-columns: minmax(0, 1fr);
+      }
+
+      .analysis-project-shell .pg-rule-item-summary {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        gap: var(--space-xs);
+      }
+
+      .analysis-project-shell .pg-rule-item-summary strong,
+      .analysis-project-shell .pg-rule-item-summary span {
+        max-width: none;
+      }
+
+      .analysis-project-shell .pg-rule-fields {
+        padding-left: 0;
+      }
+    }
   </style>
-  <link rel="stylesheet" href="/static/ui_components.css?v=design-language-20260802">
+  <link rel="stylesheet" href="/static/ui_components.css?v=production-target-limit-fit-20260809">
 </head>
 <body>
   <div class="analysis-page" role="region" aria-labelledby="analysis-title">
@@ -3170,8 +3590,8 @@
         <button class="analysis-tab qym-tabs__tab" id="analysis-run-tab" type="button" role="tab"
           aria-selected="true" aria-controls="analysis-run-view" data-analysis-view="run">Analyze run</button>
         <button class="analysis-tab qym-tabs__tab" id="analysis-diagnosis-tab" type="button" role="tab"
-          aria-selected="false" aria-controls="analysis-diagnosis-view" data-analysis-view="diagnosis"
-          aria-disabled="true" disabled tabindex="-1" title="Select a run to configure diagnosis categories">Diagnosis categories</button>
+          aria-selected="false" aria-controls="analysis-diagnosis-view" data-analysis-view="categories"
+          tabindex="-1">Diagnosis categories</button>
         <button class="analysis-tab qym-tabs__tab" id="analysis-rules-tab" type="button" role="tab"
           aria-selected="false" aria-controls="analysis-rules-view" data-analysis-view="rules" tabindex="-1">Production rules</button>
         <button class="analysis-tab qym-tabs__tab" id="analysis-documents-tab" type="button" role="tab"
@@ -3191,12 +3611,12 @@
     </div>
     <section class="analysis-landing" id="analysis-landing" hidden>
       <h2>Select a run to start analysis</h2>
-      <p>The Analyze run workspace requires an explicit run. Go to the Runs page and choose Auto-analysis for the run you want to diagnose. Production rules and Documents remain available in the project tabs above.</p>
+      <p>The Analyze run workspace requires an explicit run. Go to the Runs page and choose Auto-analysis for the run you want to diagnose. Diagnosis categories are available at project level; Production rules and Documents remain available in the project tabs above.</p>
       <a class="analysis-primary-link" id="analysis-go-runs" href="#">Select a run from Runs</a>
     </section>
     <section class="analysis-dashboard analysis-view-panel" id="analysis-dashboard-view" role="tabpanel"
       aria-labelledby="analysis-dashboard-tab" hidden>
-      <div class="analysis-dashboard-commandbar">
+      <div class="analysis-dashboard-commandbar" id="analysis-dashboard">
         <div class="analysis-dashboard-quick-filters" role="group" aria-label="Dashboard date range">
           <span class="analysis-dashboard-filter-label">Runs</span>
           <div class="qym-segmented" data-qym-segmented-key="dashboard-range">
@@ -3231,58 +3651,6 @@
           <header class="analysis-dashboard-card-header"><div><h2>Run × category</h2><p>Stacked category bars make repeated and changing root causes easy to spot.</p></div></header>
           <div class="analysis-dashboard-card-body" id="analysis-dashboard-heatmap"></div>
         </section>
-        <section class="analysis-dashboard-card analysis-dashboard-card-wide candidate-relationships-card" id="candidate-relationships-card" aria-labelledby="candidate-relationships-title">
-          <header class="analysis-dashboard-card-header">
-            <div>
-              <h2 id="candidate-relationships-title">Candidate relationships</h2>
-              <p>Project-wide statistical associations between safe execution fields and diagnosed root-cause categories.</p>
-            </div>
-            <span class="qym-tag qym-tag--count" id="candidate-relationship-count">— candidates</span>
-          </header>
-
-          <div class="candidate-toolbar" aria-label="Candidate relationship controls">
-            <div class="candidate-toolbar-group">
-              <span class="candidate-toolbar-label">Direction</span>
-              <div class="qym-segmented" data-qym-segmented-key="candidate-direction" role="group" aria-label="Relationship direction">
-                <button class="qym-segmented__option" type="button" data-candidate-direction="all" aria-pressed="true">All</button>
-                <button class="qym-segmented__option" type="button" data-candidate-direction="more_common" aria-pressed="false">More common</button>
-                <button class="qym-segmented__option" type="button" data-candidate-direction="less_common" aria-pressed="false">Less common</button>
-              </div>
-            </div>
-            <label class="candidate-toolbar-group" for="candidate-category-search">
-              <span class="candidate-toolbar-label">Category search</span>
-              <input class="qym-control qym-search candidate-category-search" id="candidate-category-search" type="search" placeholder="Find a category" autocomplete="off">
-            </label>
-            <span class="candidate-scope-note" id="candidate-scope-note">Loading project analysis…</span>
-          </div>
-
-          <div class="qym-stat-strip candidate-summary" id="candidate-summary" aria-label="Candidate relationship summary">
-            <div class="qym-stat-strip__item"><div class="qym-stat-strip__label">Surviving candidates</div><div class="qym-stat-strip__value" id="candidate-surviving-count">—</div><div class="qym-stat-strip__meta">Passed all policy gates</div></div>
-            <div class="qym-stat-strip__item"><div class="qym-stat-strip__label">Represented categories</div><div class="qym-stat-strip__value" id="candidate-category-count">—</div><div class="qym-stat-strip__meta">With at least one association</div></div>
-            <div class="qym-stat-strip__item"><div class="qym-stat-strip__label">Analyzed executions</div><div class="qym-stat-strip__value" id="candidate-analyzed-count">—</div><div class="qym-stat-strip__meta">Complete project scope</div></div>
-            <div class="qym-stat-strip__item"><div class="qym-stat-strip__label">Diagnosis coverage</div><div class="qym-stat-strip__value" id="candidate-coverage-value">—</div><div class="qym-stat-strip__meta">Metric-scoped diagnoses</div></div>
-          </div>
-
-          <div class="candidate-groups" id="candidate-groups" aria-live="polite">
-            <div class="candidate-empty"><span class="candidate-empty-title">Loading candidate relationships</span><span>Analyzing stable run-item-metric executions across the project.</span></div>
-          </div>
-        </section>
-        <div class="candidate-drawer" id="candidate-evidence-drawer" hidden>
-          <section class="candidate-drawer-panel" role="dialog" aria-modal="true" aria-labelledby="candidate-evidence-title">
-            <header class="candidate-drawer-header">
-              <div>
-                <h2 class="candidate-drawer-title" id="candidate-evidence-title">Matching executions</h2>
-                <p class="candidate-drawer-copy" id="candidate-evidence-copy">Loading executions that match this condition…</p>
-              </div>
-              <button class="qym-icon-action" id="candidate-evidence-close" type="button" aria-label="Close matching executions">×</button>
-            </header>
-            <div class="candidate-evidence-list" id="candidate-evidence-list" aria-live="polite"></div>
-            <footer class="candidate-evidence-footer">
-              <span class="candidate-evidence-meta" id="candidate-evidence-range">—</span>
-              <div class="qym-pagination candidate-pagination" id="candidate-evidence-pagination" aria-label="Relationship occurrence pages"></div>
-            </footer>
-          </section>
-        </div>
         <section class="analysis-dashboard-card analysis-dashboard-card-wide analysis-dashboard-occurrences-card">
           <header class="analysis-dashboard-card-header"><div><h2>Diagnosis occurrence map</h2><p>Every dot is one saved diagnosis, grouped by root-cause category.</p></div><span class="analysis-dashboard-occurrence-count qym-tag qym-tag--count qym-tag--accent" id="analysis-dashboard-occurrence-count">0 occurrences</span></header>
           <div class="analysis-dashboard-card-body analysis-dashboard-occurrences-body" id="analysis-dashboard-occurrences"></div>
@@ -3309,9 +3677,10 @@
       const DASHBOARD_COMPARE_ALL_METRICS = '__all__';
       let inputMappingOpener = null;
       let inputMappingEscapeHandler = null;
+      const canonicalRequestedView = requestedView === 'diagnosis' ? 'categories' : requestedView;
       const state = {
-        currentView: ['dashboard', 'diagnosis', 'rules', 'documents'].includes(requestedView)
-          ? requestedView
+        currentView: ['dashboard', 'categories', 'rules', 'documents'].includes(canonicalRequestedView)
+          ? canonicalRequestedView
           : (requestedView === 'project' ? 'rules' : (runId ? 'run' : 'dashboard')),
         contextRunId: '',
         data: null,
@@ -3331,7 +3700,10 @@
           baselineRunId: '',
           categoryDistributionExpanded: false,
           compareOpen: false,
+          compareRequested: false,
+          compareRefreshPending: false,
           comparePayload: null,
+          compareSelectionKey: '',
           requestSequence: 0,
           occurrencesSequence: 0,
           compareSequence: 0,
@@ -3377,6 +3749,7 @@
           check: '<path d="m5 12 4 4L19 6"></path>',
           close: '<path d="M18 6 6 18M6 6l12 12"></path>',
           info: '<circle cx="12" cy="12" r="9"></circle><path d="M12 11v5"></path><path d="M12 8h.01"></path>',
+          history: '<path d="M3 12a9 9 0 1 0 3-6.7"></path><path d="M3 4v5h5"></path><path d="M12 7v5l3 2"></path>',
           plus: '<path d="M12 5v14M5 12h14"></path>',
           arrow: '<path d="M5 12h14"></path><path d="m13 6 6 6-6 6"></path>',
         };
@@ -3392,10 +3765,10 @@
 
       function setAnalyzerView(view, options = {}) {
         const diagnosisTab = document.getElementById('analysis-diagnosis-tab');
-        const requestedNextView = ['dashboard', 'diagnosis', 'rules', 'documents'].includes(view) ? view : 'run';
-        const nextView = requestedNextView === 'diagnosis' && diagnosisTab && diagnosisTab.disabled
-          ? 'run'
-          : requestedNextView;
+        const requestedNextView = view === 'diagnosis' ? 'categories' : view;
+        const nextView = ['dashboard', 'categories', 'rules', 'documents'].includes(requestedNextView)
+          ? requestedNextView
+          : 'run';
         state.currentView = nextView;
         document.querySelectorAll('[data-analysis-view]').forEach(tab => {
           const active = tab.dataset.analysisView === nextView;
@@ -3409,16 +3782,16 @@
         const dashboardView = document.getElementById('analysis-dashboard-view');
         const landing = document.getElementById('analysis-landing');
         const runFooter = document.querySelector('#analyzer-host .playground-footer');
-        if (projectView) projectView.hidden = !['rules', 'documents'].includes(nextView);
+        if (projectView) projectView.hidden = !['categories', 'rules', 'documents'].includes(nextView);
         if (runView) runView.hidden = nextView !== 'run';
-        if (diagnosisView) diagnosisView.hidden = nextView !== 'diagnosis';
+        if (diagnosisView) diagnosisView.hidden = nextView !== 'categories';
         if (dashboardView) dashboardView.hidden = nextView !== 'dashboard';
         if (landing) landing.hidden = nextView !== 'run' || Boolean(runId);
         if (runFooter) {
           const noTargets = runFooter.dataset.noTargets === 'true';
           runFooter.hidden = nextView !== 'run' || !runId || noTargets;
         }
-        if (['rules', 'documents'].includes(nextView)) setProjectView(nextView);
+        if (['categories', 'rules', 'documents'].includes(nextView)) setProjectView(nextView);
         if (nextView !== 'run') closeInputMapping();
         if (nextView === 'dashboard') loadDashboard().catch(error => showDashboardError(error));
         if (options.updateUrl !== false) {
@@ -3554,8 +3927,22 @@
 
       function dashboardFilterCount() {
         const filterValues = Object.values(state.dashboard.filters || {});
-        return filterValues.reduce((count, values) => count + (Array.isArray(values) ? values.length : 0), 0) +
+        return filterValues.reduce((count, values) => count + (Array.isArray(values) ? (values.length || 1) : 0), 0) +
           (state.dashboard.range !== 'all' ? 1 : 0);
+      }
+
+      function dashboardHasExplicitlyEmptyFilter() {
+        return Object.values(state.dashboard.filters || {}).some(values => Array.isArray(values) && values.length === 0);
+      }
+
+      function dashboardFilterHasSelection(key) {
+        return Object.prototype.hasOwnProperty.call(state.dashboard.filters || {}, key);
+      }
+
+      function dashboardFilterButtonLabel(key, label) {
+        if (!dashboardFilterHasSelection(key)) return 'All ' + label;
+        const count = (state.dashboard.filters[key] || []).length;
+        return count ? (count + ' selected') : ('No ' + label);
       }
 
       function dashboardFacetValue(key, item) {
@@ -3613,9 +4000,10 @@
           ['category', 'Categories'], ['detail', 'Details'], ['source', 'Source'], ['review_status', 'Review'],
         ];
         host.innerHTML = definitions.map(([key, label]) => [key, label, dashboardFilterOptions(payload, key)]).map(([key, label, options]) => {
+          const hasSelection = dashboardFilterHasSelection(key);
           const activeSelection = new Set(state.dashboard.filters[key] || []);
-          const selected = activeSelection.size ? activeSelection : new Set(options.map(option => option.value));
-          const buttonLabel = activeSelection.size ? (activeSelection.size + ' selected') : ('All ' + label);
+          const selected = hasSelection ? activeSelection : new Set(options.map(option => option.value));
+          const buttonLabel = dashboardFilterButtonLabel(key, label);
           const optionsHtml = options.map(option =>
             '<div class="qym-dropdown__option" data-qym-dropdown-search-text="' + escapeAttr(option.label) + '">' +
               '<label class="qym-dropdown__option-label"><input type="checkbox" value="' + escapeAttr(option.value) + '"' +
@@ -3630,10 +4018,9 @@
               (optionsHtml || '<div class="analysis-dashboard-filter-empty">No options match the current scope.</div>') + '</div></div>';
         }).join('');
         function updateFilterTrigger(wrapper, key, label) {
-          const selected = new Set(state.dashboard.filters[key] || []);
           const trigger = wrapper.querySelector('.qym-dropdown__trigger');
           if (!trigger) return;
-          trigger.textContent = selected.size ? (selected.size + ' selected') : ('All ' + label);
+          trigger.textContent = dashboardFilterButtonLabel(key, label);
         }
         host.querySelectorAll('.qym-dropdown').forEach(wrapper => {
           const key = wrapper.dataset.dashboardFilter;
@@ -3641,7 +4028,6 @@
           wrapper.querySelectorAll('input[type="checkbox"]').forEach(input => {
             input.addEventListener('change', () => {
               state.dashboard.filters[key] = Array.from(wrapper.querySelectorAll('input:checked')).map(node => node.value);
-              if (!state.dashboard.filters[key].length) delete state.dashboard.filters[key];
               state.dashboard.openFilterKey = key;
               updateFilterTrigger(wrapper, key, label);
               const count = document.getElementById('analysis-dashboard-filter-count');
@@ -3658,7 +4044,7 @@
                 delete state.dashboard.filters[key];
                 wrapper.querySelectorAll('input[type="checkbox"]').forEach(input => { input.checked = true; });
               } else if (actionName === 'none') {
-                delete state.dashboard.filters[key];
+                state.dashboard.filters[key] = [];
                 wrapper.querySelectorAll('input[type="checkbox"]').forEach(input => { input.checked = false; });
               }
               state.dashboard.openFilterKey = key;
@@ -3762,20 +4148,38 @@
         });
       }
 
-      function closeDashboardCompare() {
+      function dashboardRunSelectionKey(runIds) {
+        return (Array.isArray(runIds) ? runIds : [])
+          .map(runId => String(runId || ''))
+          .filter(Boolean)
+          .join('\u001f');
+      }
+
+      function dashboardCompareRunIds(payload) {
+        const ids = Array.isArray(payload?.run_ids)
+          ? payload.run_ids
+          : (payload?.runs || []).map(run => run?.run_id);
+        return Array.from(new Set(ids.map(runId => String(runId || '')).filter(Boolean)));
+      }
+
+      function closeDashboardCompare(preserveRequest = false) {
+        if (!preserveRequest) state.dashboard.compareRequested = false;
         state.dashboard.compareOpen = false;
         state.dashboard.comparePayload = null;
+        state.dashboard.compareSelectionKey = '';
         state.dashboard.compareSequence += 1;
         const compareView = document.getElementById('analysis-dashboard-compare-view');
         if (compareView) {
           compareView.hidden = true;
           compareView.removeAttribute('aria-busy');
+          compareView.replaceChildren();
         }
       }
 
       function updateDashboardRunSelection(input) {
         const runIdValue = input.dataset.runId;
         if (!runIdValue) return;
+        const shouldRefreshCompare = state.dashboard.compareRequested;
         if (input.checked) {
           if (!state.dashboard.selectedRuns.includes(runIdValue)) {
             if (state.dashboard.selectedRuns.length >= 8) {
@@ -3788,8 +4192,11 @@
         } else {
           state.dashboard.selectedRuns = state.dashboard.selectedRuns.filter(value => value !== runIdValue);
         }
-        closeDashboardCompare();
+        closeDashboardCompare(shouldRefreshCompare);
         renderDashboardSelection();
+        if (shouldRefreshCompare && state.dashboard.selectedRuns.length >= 2) {
+          loadDashboardCompare().catch(error => showDashboardError(error));
+        }
       }
 
       function bindDashboardRunSelection(host) {
@@ -3804,7 +4211,7 @@
         const host = document.getElementById('analysis-dashboard-score-chart');
         if (!host) return;
         if (!rows.length) {
-          host.innerHTML = '<div class="analysis-dashboard-empty">Select a metric with numeric scores to compare runs.</div>';
+          host.innerHTML = '<div class="analysis-dashboard-empty">' + (dashboardHasExplicitlyEmptyFilter() ? 'No runs match the current controls.' : 'Select a metric with numeric scores to compare runs.') + '</div>';
           return;
         }
         const values = rows.map(row => row.average).filter(value => value != null);
@@ -3847,16 +4254,69 @@
             const count = counts[dashboardValueKey(category.category)] || 0;
             if (!count || !total) return '';
             const share = count / total * 100;
-            return '<span class="analysis-dashboard-stacked-segment" style="width:' + share.toFixed(2) + '%;background:' + dashboardChartColor(index) + '" title="' + escapeAttr(dashboardLabel(category.category) + ': ' + formatDashboardNumber(count)) + '" aria-label="' + escapeAttr(dashboardLabel(category.category) + ': ' + formatDashboardNumber(count)) + '"></span>';
+            const categoryLabel = dashboardLabel(category.category);
+            const occurrenceLabel = formatDashboardNumber(count) + ' occurrence' + (count === 1 ? '' : 's');
+            const tooltipLabel = categoryLabel + ': ' + occurrenceLabel;
+            return '<span class="analysis-dashboard-stacked-segment" style="width:' + share.toFixed(2) + '%;background:' + dashboardChartColor(index) + '" data-dashboard-tooltip-category="' + escapeAttr(categoryLabel) + '" data-dashboard-tooltip-count="' + escapeAttr(occurrenceLabel) + '" aria-label="' + escapeAttr(tooltipLabel) + '" tabindex="0"></span>';
           }).join('');
           const other = Math.max(total - visibleTotal, 0);
-          const otherSegment = other ? '<span class="analysis-dashboard-stacked-segment" style="width:' + (other / total * 100).toFixed(2) + '%;background:var(--border-strong)" title="' + escapeAttr('Other categories: ' + formatDashboardNumber(other)) + '" aria-label="' + escapeAttr('Other categories: ' + formatDashboardNumber(other)) + '"></span>' : '';
+          const otherCountLabel = formatDashboardNumber(other) + ' occurrence' + (other === 1 ? '' : 's');
+          const otherSegment = other ? '<span class="analysis-dashboard-stacked-segment" style="width:' + (other / total * 100).toFixed(2) + '%;background:var(--border-strong)" data-dashboard-tooltip-category="Other categories" data-dashboard-tooltip-count="' + escapeAttr(otherCountLabel) + '" aria-label="' + escapeAttr('Other categories: ' + otherCountLabel) + '" tabindex="0"></span>' : '';
           return '<div class="analysis-dashboard-stacked-row"><span class="analysis-dashboard-stacked-label" title="' + escapeAttr(run.run_name || run.run_id) + '">' + escapeHtml(run.run_name || run.run_id) + '</span><div class="analysis-dashboard-stacked-track" role="img" aria-label="' + escapeAttr((run.run_name || run.run_id) + ': ' + formatDashboardNumber(total) + ' root-cause occurrences') + '">' + segments + otherSegment + '</div><span class="analysis-dashboard-stacked-total">' + formatDashboardNumber(total) + '</span></div>';
         }).join('');
         const note = (payload.groups?.by_category || []).length > categories.length
           ? '<p class="analysis-dashboard-chart-note">Showing the ' + formatDashboardNumber(categories.length) + ' most repeated categories. Filter categories to focus the view.</p>'
           : '';
-        host.innerHTML = '<div class="analysis-dashboard-stacked-chart">' + rows + '</div><div class="analysis-dashboard-legend" aria-label="Category legend">' + legend + '</div>' + note;
+        host.innerHTML = '<div class="analysis-dashboard-stacked-chart">' + rows + '</div><div class="analysis-dashboard-legend" aria-label="Category legend">' + legend + '</div>' + note + '<div class="analysis-dashboard-stacked-tooltip" id="analysis-dashboard-stacked-tooltip" role="tooltip" aria-hidden="true"></div>';
+        bindDashboardHeatmapTooltips(host);
+      }
+
+      function bindDashboardHeatmapTooltips(host) {
+        const tooltip = host.querySelector('#analysis-dashboard-stacked-tooltip');
+        if (!tooltip) return;
+        let activeSegment = null;
+
+        function positionTooltip(segment, clientX) {
+          const segmentRect = segment.getBoundingClientRect();
+          const tooltipWidth = tooltip.offsetWidth;
+          const tooltipGutter = Number.parseFloat(getComputedStyle(tooltip).getPropertyValue('--space-sm')) || 0;
+          const anchorX = Number.isFinite(clientX) ? clientX : segmentRect.left + segmentRect.width / 2;
+          const left = Math.max(tooltipGutter, Math.min(anchorX - tooltipWidth / 2, window.innerWidth - tooltipWidth - tooltipGutter));
+          const above = segmentRect.top - tooltip.offsetHeight - tooltipGutter;
+          const below = segmentRect.bottom + tooltipGutter;
+          const top = above >= tooltipGutter ? above : Math.min(below, window.innerHeight - tooltip.offsetHeight - tooltipGutter);
+          tooltip.style.left = left + 'px';
+          tooltip.style.top = Math.max(tooltipGutter, top) + 'px';
+        }
+
+        function showTooltip(segment, event) {
+          activeSegment = segment;
+          const category = segment.dataset.dashboardTooltipCategory || 'Category';
+          const count = segment.dataset.dashboardTooltipCount || '0 occurrences';
+          tooltip.innerHTML = '<span class="analysis-dashboard-stacked-tooltip-category">' + escapeHtml(category) + '</span><strong class="analysis-dashboard-stacked-tooltip-count">' + escapeHtml(count) + '</strong>';
+          tooltip.classList.add('is-visible');
+          tooltip.setAttribute('aria-hidden', 'false');
+          segment.setAttribute('aria-describedby', tooltip.id);
+          positionTooltip(segment, event && Number.isFinite(event.clientX) ? event.clientX : undefined);
+        }
+
+        function hideTooltip(segment) {
+          if (activeSegment !== segment || document.activeElement === segment) return;
+          activeSegment = null;
+          tooltip.classList.remove('is-visible');
+          tooltip.setAttribute('aria-hidden', 'true');
+          segment.removeAttribute('aria-describedby');
+        }
+
+        host.querySelectorAll('.analysis-dashboard-stacked-segment').forEach(segment => {
+          segment.addEventListener('pointerenter', event => showTooltip(segment, event));
+          segment.addEventListener('pointermove', event => {
+            if (activeSegment === segment) positionTooltip(segment, event.clientX);
+          });
+          segment.addEventListener('pointerleave', () => hideTooltip(segment));
+          segment.addEventListener('focus', () => showTooltip(segment));
+          segment.addEventListener('blur', () => hideTooltip(segment));
+        });
       }
 
       function renderDashboardSelection() {
@@ -3876,17 +4336,47 @@
           compare.textContent = ready ? 'Compare selected' : 'Select 2+ runs';
         }
         host.querySelectorAll('[data-dashboard-remove-run]').forEach(button => button.addEventListener('click', () => {
+          const shouldRefreshCompare = state.dashboard.compareRequested;
           state.dashboard.selectedRuns = state.dashboard.selectedRuns.filter(value => value !== button.dataset.dashboardRemoveRun);
-          closeDashboardCompare();
+          closeDashboardCompare(shouldRefreshCompare);
           renderDashboardSelection();
+          if (shouldRefreshCompare && state.dashboard.selectedRuns.length >= 2) {
+            loadDashboardCompare().catch(error => showDashboardError(error));
+          }
         }));
         syncDashboardRunChecks();
+      }
+
+      function emptyDashboardPayload() {
+        const previous = state.dashboard.payload || {};
+        return {
+          ...previous,
+          filters: { ...(previous.filters || {}), ...(state.dashboard.filters || {}) },
+          facets: previous.facets || state.dashboard.filterFacets || {},
+          summary: {
+            diagnosis_occurrences: 0,
+            affected_run_item_pairs: 0,
+            runs_with_diagnoses: 0,
+            categories: 0,
+            most_repeated_category: null,
+            failure_coverage: { diagnosed_failed_pairs: 0, failed_pairs: 0, rate: 0 },
+            selected_score_metric: previous.summary?.selected_score_metric || null,
+          },
+          scores: { metric_name: previous.scores?.metric_name || '', runs: [] },
+          groups: { by_category: [], by_run: [], by_metric: [] },
+          trends: { runs: [], changes: [] },
+        };
       }
 
       async function loadDashboardOccurrences() {
         const host = document.getElementById('analysis-dashboard-occurrences');
         if (!host || !projectSlug) return;
         const countNode = document.getElementById('analysis-dashboard-occurrence-count');
+        if (dashboardHasExplicitlyEmptyFilter()) {
+          if (countNode) countNode.textContent = '0 occurrences';
+          host.innerHTML = '<div class="analysis-dashboard-empty">No diagnosis occurrences match the current controls.</div>';
+          return;
+        }
         const requestSequence = ++state.dashboard.occurrencesSequence;
         const pageLimit = 500;
         const query = dashboardQuery({ limit: pageLimit, offset: 0 });
@@ -4011,8 +4501,13 @@
       function renderDashboardCompare(payload, { preserveControls = false } = {}) {
         const host = document.getElementById('analysis-dashboard-compare-view');
         if (!host) return;
+        const payloadRunIds = dashboardCompareRunIds(payload);
+        const selectedRunIds = payloadRunIds.length ? payloadRunIds : state.dashboard.selectedRuns.slice();
+        const selectionKey = dashboardRunSelectionKey(selectedRunIds);
+        if (selectionKey !== dashboardRunSelectionKey(state.dashboard.selectedRuns)) return;
         state.dashboard.compareOpen = true;
         state.dashboard.comparePayload = payload;
+        state.dashboard.compareSelectionKey = selectionKey;
         const rows = payload.score_comparison || [];
         const compareMetricNames = Array.from(new Set([
           ...(payload.runs || []).flatMap(run => run.metrics || []),
@@ -4024,13 +4519,13 @@
           ? 'All metrics'
           : (state.dashboard.compareScoreMetric || 'selected metric');
         const best = payload.summary?.best_run_id;
-        state.dashboard.baselineRunId = payload.baseline_run_id || state.dashboard.selectedRuns[0] || '';
+        state.dashboard.baselineRunId = payload.baseline_run_id || selectedRunIds[0] || '';
         const runName = runId => (payload.runs || []).find(run => run.run_id === runId)?.run_name || runId;
         const compatibility = payload.score_compatibility || {};
         const group = state.dashboard.compareGroup;
         const measureLabel = dashboardCompareMeasureLabel();
         const groupLabel = group === 'run' ? 'Run' : (group === 'metric' ? 'Metric' : 'Category');
-        const compareLegend = state.dashboard.selectedRuns.map((runId, index) => '<div class="analysis-dashboard-legend-item"><span class="analysis-dashboard-legend-swatch" style="background:' + dashboardChartColor(index) + '"></span><span>' + escapeHtml(runName(runId)) + '</span></div>').join('');
+        const compareLegend = selectedRunIds.map((runId, index) => '<div class="analysis-dashboard-legend-item"><span class="analysis-dashboard-legend-swatch" style="background:' + dashboardChartColor(index) + '"></span><span>' + escapeHtml(runName(runId)) + '</span></div>').join('');
         let visualRows = '';
         let visualRowCount = 0;
         if (group === 'run') {
@@ -4041,7 +4536,7 @@
           visualRows = runRows.slice(0, 12).map(row => {
             const value = dashboardCompareMeasureValue(row);
             const formatted = formatDashboardCompareValue(value);
-            const index = Math.max(state.dashboard.selectedRuns.indexOf(row.run_id), 0);
+            const index = Math.max(selectedRunIds.indexOf(row.run_id), 0);
             const width = value == null ? 0 : (maxMagnitude ? Math.max(3, Math.abs(value) / maxMagnitude * 100) : 3);
             const label = row.run_name || runName(row.run_id);
             const segment = value == null ? '' : '<span class="analysis-dashboard-compare-segment" style="width:' + width.toFixed(2) + '%;background:' + dashboardChartColor(index) + '" title="' + escapeAttr(label + ': ' + formatted) + '" aria-label="' + escapeAttr(label + ': ' + formatted) + '">' + escapeHtml(formatted) + '</span>';
@@ -4053,7 +4548,7 @@
           visualRowCount = matrix.length;
           visualRows = matrix.slice(0, 12).map(entry => {
             const label = dashboardLabel(entry[labelKey]);
-            const cells = state.dashboard.selectedRuns.map(runId => entry.runs?.[runId] || {});
+            const cells = selectedRunIds.map(runId => entry.runs?.[runId] || {});
             const values = cells.map(cell => dashboardCompareMeasureValue(cell));
             const weights = values.map(value => value == null ? 0 : Math.max(Math.abs(value), 1e-9));
             const totalWeight = weights.reduce((sum, value) => sum + value, 0);
@@ -4062,7 +4557,7 @@
               if (value == null || !totalWeight) return '';
               const formatted = formatDashboardCompareValue(value);
               const width = weights[index] / totalWeight * 100;
-              return '<span class="analysis-dashboard-compare-segment" style="width:' + width.toFixed(2) + '%;background:' + dashboardChartColor(index) + '" title="' + escapeAttr(runName(state.dashboard.selectedRuns[index]) + ': ' + formatted) + '" aria-label="' + escapeAttr(runName(state.dashboard.selectedRuns[index]) + ': ' + formatted) + '">' + (width >= 12 ? escapeHtml(formatted) : '') + '</span>';
+              return '<span class="analysis-dashboard-compare-segment" style="width:' + width.toFixed(2) + '%;background:' + dashboardChartColor(index) + '" title="' + escapeAttr(runName(selectedRunIds[index]) + ': ' + formatted) + '" aria-label="' + escapeAttr(runName(selectedRunIds[index]) + ': ' + formatted) + '">' + (width >= 12 ? escapeHtml(formatted) : '') + '</span>';
             }).join('');
             const formattedValues = values.map(formatDashboardCompareValue);
             return '<div class="analysis-dashboard-compare-category"><span class="analysis-dashboard-compare-category-name" title="' + escapeAttr(label) + '">' + escapeHtml(label) + '</span><div class="analysis-dashboard-compare-track" role="img" aria-label="' + escapeAttr(label + ': ' + formattedValues.join(' · ')) + '">' + segments + '</div><span class="analysis-dashboard-compare-category-values">' + escapeHtml(formattedValues.join(' · ')) + '</span></div>';
@@ -4084,7 +4579,7 @@
         host.removeAttribute('aria-busy');
         const compatibilityNote = compatibility.comparable ? 'Higher/lower is interpreted using the metric direction.' : ('Comparison unavailable: ' + (compatibility.reason || 'metric semantics differ.'));
         const comparisonCopyHtml = '<h2>Run comparison · ' + escapeHtml(metric) + '</h2><span>' + escapeHtml(compatibilityNote) + '</span>';
-        const comparisonActionsHtml = '<label class="analysis-dashboard-control-group"><span class="analysis-dashboard-control-label" for="analysis-dashboard-baseline">Baseline</span><select id="analysis-dashboard-baseline" class="qym-control qym-select">' + state.dashboard.selectedRuns.map(runId => '<option value="' + escapeAttr(runId) + '"' + (runId === state.dashboard.baselineRunId ? ' selected' : '') + '>' + escapeHtml(runName(runId)) + '</option>').join('') + '</select></label>' + rows.map(row => {
+        const comparisonActionsHtml = '<label class="analysis-dashboard-control-group"><span class="analysis-dashboard-control-label" for="analysis-dashboard-baseline">Baseline</span><select id="analysis-dashboard-baseline" class="qym-control qym-select">' + selectedRunIds.map(runId => '<option value="' + escapeAttr(runId) + '"' + (runId === state.dashboard.baselineRunId ? ' selected' : '') + '>' + escapeHtml(runName(runId)) + '</option>').join('') + '</select></label>' + rows.map(row => {
           const status = row.comparison_status || 'tied';
           const deltaValue = row.improvement_delta;
           const delta = deltaValue == null ? '—' : ((deltaValue > 0 ? '+' : '') + formatDashboardNumber(deltaValue, 3));
@@ -4159,9 +4654,17 @@
 
       async function loadDashboard() {
         if (!projectSlug) return;
-        const refreshCompare = state.dashboard.compareOpen && state.dashboard.selectedRuns.length >= 2;
+        const refreshCompare = state.dashboard.compareRefreshPending ||
+          (state.dashboard.compareRequested && state.dashboard.selectedRuns.length >= 2);
+        state.dashboard.compareRefreshPending = false;
         const requestSequence = ++state.dashboard.requestSequence;
         state.dashboard.compareSequence += 1;
+        if (dashboardHasExplicitlyEmptyFilter()) {
+          state.dashboard.compareRefreshPending = false;
+          closeDashboardCompare();
+          renderDashboard(emptyDashboardPayload());
+          return;
+        }
         const compareView = document.getElementById('analysis-dashboard-compare-view');
         if (compareView) {
           compareView.hidden = !refreshCompare;
@@ -4187,22 +4690,29 @@
       }
 
       async function loadDashboardCompare() {
-        if (state.dashboard.selectedRuns.length < 2) {
+        const selectedRunIds = state.dashboard.selectedRuns.slice();
+        if (selectedRunIds.length < 2) {
           closeDashboardCompare();
           showStatus('warning', 'Select more runs', 'Choose at least two runs from the score cards before comparing.');
           return;
         }
         state.dashboard.compareOpen = true;
         const compareView = document.getElementById('analysis-dashboard-compare-view');
-        const preserveControls = Boolean(compareView?.querySelector('.analysis-dashboard-compare-toolbar'));
+        const selectionKey = dashboardRunSelectionKey(selectedRunIds);
+        const previousPayloadMatches = state.dashboard.comparePayload &&
+          state.dashboard.compareSelectionKey === selectionKey;
+        const preserveControls = Boolean(previousPayloadMatches && compareView?.querySelector('.analysis-dashboard-compare-toolbar'));
         if (compareView) {
           compareView.hidden = false;
           compareView.setAttribute('aria-busy', 'true');
+          if (!preserveControls) {
+            compareView.innerHTML = '<div class="analysis-dashboard-empty">Loading comparison…</div>';
+          }
         }
         const requestSequence = ++state.dashboard.compareSequence;
-        const query = dashboardQuery({ run_id: state.dashboard.selectedRuns });
+        const query = dashboardQuery({ run_id: selectedRunIds });
         query.delete('run_id');
-        state.dashboard.selectedRuns.forEach(runId => query.append('run_id', runId));
+        selectedRunIds.forEach(runId => query.append('run_id', runId));
         if (state.dashboard.compareScoreMetric) query.set('score_metric', state.dashboard.compareScoreMetric);
         if (state.dashboard.baselineRunId) query.set('baseline_run_id', state.dashboard.baselineRunId);
         const response = await fetch(apiUrl('api/projects/' + encodeURIComponent(projectSlug) + '/root-cause-dashboard/compare?' + query.toString()));
@@ -4212,7 +4722,9 @@
           throw new Error('Could not compare the selected runs (HTTP ' + response.status + ').');
         }
         const payload = await response.json();
-        if (requestSequence !== state.dashboard.compareSequence) return;
+        if (requestSequence !== state.dashboard.compareSequence ||
+            selectionKey !== dashboardRunSelectionKey(state.dashboard.selectedRuns) ||
+            selectionKey !== dashboardRunSelectionKey(dashboardCompareRunIds(payload))) return;
         renderDashboardCompare(payload, { preserveControls });
       }
 
@@ -4228,7 +4740,10 @@
         syncDashboardToggle('[data-dashboard-range]', 'dashboardRange', 'all');
         loadDashboard().catch(error => showDashboardError(error));
       });
-      document.getElementById('analysis-dashboard-compare')?.addEventListener('click', () => loadDashboardCompare().catch(error => showDashboardError(error)));
+      document.getElementById('analysis-dashboard-compare')?.addEventListener('click', () => {
+        state.dashboard.compareRequested = true;
+        loadDashboardCompare().catch(error => showDashboardError(error));
+      });
       document.getElementById('analysis-dashboard-clear-selected')?.addEventListener('click', () => {
         state.dashboard.selectedRuns = [];
         closeDashboardCompare();
@@ -4266,62 +4781,67 @@
         wrapper.innerHTML = [
           ['pg-use-project-rules', 'Production rules', 'The current production rule version', 'rules'],
           ['pg-use-project-documents', 'Project documents', 'Documents enabled in the Documents tab', 'documents'],
-        ].map(item =>
-          '<div class="analysis-context-toggle"><label class="analysis-context-toggle-control">' +
+          ['pg-use-trace', 'Trace evidence', 'Execution evidence from model and tool calls', ''],
+        ].map(item => {
+          const link = item[3]
+            ? '<a class="analysis-context-link" href="' + escapeAttr(analysisViewUrl(item[3])) + '" data-context-view="' + item[3] + '"' +
+              ' aria-label="Open ' + item[1] + ' tab" title="Open ' + item[1] + ' tab">' + iconMarkup('arrow') + '</a>'
+            : '';
+          return '<div class="analysis-context-toggle"><label class="analysis-context-toggle-control">' +
             '<input id="' + item[0] + '" type="checkbox" checked />' +
             '<span class="analysis-context-toggle-copy"><strong>' + item[1] + '</strong><span>' + item[2] + '</span></span></label>' +
-            '<a class="analysis-context-link" href="' + escapeAttr(analysisViewUrl(item[3])) + '" data-context-view="' + item[3] + '"' +
-              ' aria-label="Open ' + item[1] + ' tab" title="Open ' + item[1] + ' tab">' + iconMarkup('arrow') + '</a></div>'
-        ).join('');
+            link + '</div>';
+        }).join('');
         return wrapper;
       }
 
       function setProjectView(view) {
-        const projectView = ['rules', 'documents'].includes(view) ? view : 'rules';
+        const projectView = ['categories', 'rules', 'documents'].includes(view) ? view : 'rules';
         document.querySelectorAll('.analysis-project-panel').forEach(panel => {
           panel.hidden = panel.dataset.projectPanel !== projectView;
         });
         const projectFooter = document.querySelector('.analysis-project-footer');
-        const saveContext = document.getElementById('pg-save-context');
         const createDraft = document.getElementById('pg-create-rule-version');
-        const updateRules = document.getElementById('pg-update-rules');
         const generateRules = document.getElementById('pg-infer-rules');
         const manualActions = document.querySelector('.pg-context-action-group-manual');
         const generationActions = document.querySelector('.pg-context-action-group-generation');
         const actionDivider = document.querySelector('.pg-context-action-divider');
         const rulesView = projectView === 'rules';
-        if (saveContext) saveContext.hidden = projectView === 'documents';
-        [createDraft, updateRules, generateRules].forEach(action => {
+        [createDraft, generateRules].forEach(action => {
           if (action) action.hidden = !rulesView;
         });
-        if (manualActions) manualActions.hidden = projectView === 'documents';
+        if (manualActions) manualActions.hidden = projectView !== 'rules';
         if (generationActions) generationActions.hidden = !rulesView;
         if (actionDivider) actionDivider.hidden = !rulesView;
         if (projectFooter) projectFooter.hidden = projectView === 'documents';
-        if (rulesView) requestAnimationFrame(renderRuleGraph);
       }
 
       function renderRuleGraph() {
         const list = document.getElementById('pg-rule-version-list');
-        if (!list || list.offsetParent === null) return;
+        if (!list || list.hidden || !list.isConnected) return;
         const previous = list.querySelector('.analysis-rule-graph');
         if (previous) previous.remove();
         const rows = Array.from(list.querySelectorAll('[data-rule-version-id]'));
         if (!rows.length) return;
+        const height = Math.max(list.scrollHeight, list.clientHeight);
         const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
         svg.classList.add('analysis-rule-graph');
         svg.setAttribute('role', 'img');
         svg.setAttribute('aria-label', 'Rule version lineage graph');
-        svg.setAttribute('viewBox', '0 0 40 ' + Math.max(list.scrollHeight, list.clientHeight));
-        svg.setAttribute('preserveAspectRatio', 'none');
-        svg.style.height = Math.max(list.scrollHeight, list.clientHeight) + 'px';
+        svg.style.height = height + 'px';
+        list.prepend(svg);
+        const graphWidth = Math.max(40, Math.round(svg.getBoundingClientRect().width || list.clientWidth * 0.42));
+        svg.setAttribute('viewBox', '0 0 ' + graphWidth + ' ' + height);
+        svg.setAttribute('preserveAspectRatio', 'xMidYMin meet');
+        const lanePositions = [graphWidth * 0.2, graphWidth * 0.5, graphWidth * 0.8];
         const byId = {};
         rows.forEach((row, index) => {
           const status = row.dataset.ruleVersionStatus || '';
-          const lane = row.querySelector('.pg-rule-version-production') ? 0 : (status === 'Draft' ? 1 + (index % 2) : index % 2);
+          const lane = row.dataset.ruleVersionLive === 'true' ? 0 : (status === 'Draft' ? 1 + (index % 2) : index % 2);
           byId[row.dataset.ruleVersionId] = {
             row,
-            x: 10 + lane * 10,
+            selected: row.classList.contains('pg-rule-version-selected'),
+            x: lanePositions[Math.min(lane, lanePositions.length - 1)],
             y: row.offsetTop + row.offsetHeight / 2,
           };
         });
@@ -4333,6 +4853,7 @@
           pathNode.setAttribute('fill', 'none');
           pathNode.setAttribute('stroke', dashed ? 'var(--accent-tertiary-soft)' : 'var(--border-strong)');
           pathNode.setAttribute('stroke-width', '2');
+          pathNode.setAttribute('vector-effect', 'non-scaling-stroke');
           if (dashed) pathNode.setAttribute('stroke-dasharray', '4 3');
           svg.append(pathNode);
         }
@@ -4343,21 +4864,36 @@
         });
         rows.forEach(row => {
           const point = byId[row.dataset.ruleVersionId];
-          const isLive = !!row.querySelector('.pg-rule-version-production');
+          const isLive = row.dataset.ruleVersionLive === 'true';
+          const isSelected = point.selected;
+          if (isSelected) {
+            const halo = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            halo.setAttribute('cx', point.x);
+            halo.setAttribute('cy', point.y);
+            halo.setAttribute('r', '9');
+            halo.setAttribute('fill', 'none');
+            halo.setAttribute('stroke', 'var(--accent-primary)');
+            halo.setAttribute('stroke-width', '2');
+            halo.setAttribute('vector-effect', 'non-scaling-stroke');
+            halo.setAttribute('aria-hidden', 'true');
+            svg.append(halo);
+          }
           const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
           circle.setAttribute('cx', point.x);
           circle.setAttribute('cy', point.y);
-          circle.setAttribute('r', isLive ? '5' : '4');
-          circle.setAttribute('fill', isLive ? 'var(--success)' : 'var(--bg-surface)');
-          circle.setAttribute('stroke', isLive ? 'var(--success)' : 'var(--border-strong)');
-          circle.setAttribute('stroke-width', '2');
-          circle.setAttribute('aria-label', row.querySelector('.pg-rule-version-name').textContent.trim() + ' · ' + (isLive ? 'Live' : (row.dataset.ruleVersionStatus || 'Not live')));
+          circle.setAttribute('r', isSelected ? '6' : (isLive ? '5' : '4'));
+          circle.setAttribute('fill', isSelected ? 'var(--accent-primary)' : (isLive ? 'var(--success)' : 'var(--bg-surface)'));
+          circle.setAttribute('stroke', isSelected ? 'var(--text-primary)' : (isLive ? 'var(--success)' : 'var(--border-strong)'));
+          circle.setAttribute('stroke-width', isSelected ? '2.5' : '2');
+          circle.setAttribute('vector-effect', 'non-scaling-stroke');
+          const name = row.querySelector('.pg-rule-version-name');
+          const label = (name ? name.textContent.trim() : 'Version') + ' · ' + (isLive ? 'Live' : (row.dataset.ruleVersionStatus || 'Not live')) + (isSelected ? ' · Selected' : '');
+          circle.setAttribute('aria-label', label);
           const title = document.createElementNS('http://www.w3.org/2000/svg', 'title');
-          title.textContent = circle.getAttribute('aria-label');
+          title.textContent = label;
           circle.append(title);
           svg.append(circle);
         });
-        list.prepend(svg);
       }
 
       function closeInputMapping() {
@@ -4431,7 +4967,6 @@
         const footer = overlay.querySelector('.playground-footer');
         if (!projectPanel || !runPanel || !footer) return false;
         overlay.dataset.analysisOrganized = 'true';
-
         projectPanel.id = 'analysis-project-view';
         projectPanel.className = 'analysis-project-shell analysis-view-panel';
         runPanel.id = 'analysis-run-view';
@@ -4439,11 +4974,13 @@
         runPanel.setAttribute('role', 'tabpanel');
         runPanel.setAttribute('aria-labelledby', 'analysis-run-tab');
 
-        const inference = document.querySelector('#analyzer-host .pg-rule-inference-options');
+        const inference = document.querySelector('#analyzer-host .pg-rule-source-actions');
         const inferenceEmpty = document.querySelector('#analyzer-host #pg-infer-source-empty');
         const inferencePrevious = inference && inference.previousElementSibling;
         const rulesHint = inferencePrevious && inferencePrevious.classList.contains('pg-instructions-hint') ? inferencePrevious : null;
         const ruleList = document.getElementById('pg-rule-list');
+        const rulePagination = document.getElementById('pg-rule-pagination');
+        const ruleFilters = document.getElementById('pg-rule-filters');
         const ruleCount = document.getElementById('pg-rule-count');
         const addRule = document.getElementById('pg-add-rule');
         const versionList = document.getElementById('pg-rule-version-list');
@@ -4462,24 +4999,21 @@
         rulesPanel.id = 'analysis-rules-view';
         rulesPanel.setAttribute('role', 'tabpanel');
         rulesPanel.setAttribute('aria-labelledby', 'analysis-rules-tab');
-        const rulesSourceCard = document.createElement('section');
-        rulesSourceCard.className = 'analysis-target-card';
-        const rulesSourceHeader = document.createElement('div');
-        rulesSourceHeader.className = 'analysis-section-header';
-        rulesSourceHeader.innerHTML = '<div><h2>Generate diagnostic rules</h2>' +
-          '<p>Create rules from the project’s enabled documents and approved examples.</p></div>';
-        const rulesSourceBody = document.createElement('div');
-        rulesSourceBody.className = 'analysis-target-body';
-        [rulesHint, inference, inferenceEmpty].forEach(node => { if (node) rulesSourceBody.append(node); });
-        rulesSourceCard.append(rulesSourceHeader, rulesSourceBody);
-        rulesPanel.append(rulesSourceCard);
-
         const rulesWorkspaceCard = document.createElement('section');
         rulesWorkspaceCard.className = 'analysis-target-card';
+        rulesWorkspaceCard.id = 'analysis-rules-workspace-card';
         const rulesWorkspaceHeader = document.createElement('div');
         rulesWorkspaceHeader.className = 'analysis-section-header analysis-project-heading';
         rulesWorkspaceHeader.innerHTML = '<div><h2>Production rules</h2>' +
-          '<p>Inspect version history and maintain the rules applied during diagnosis.</p></div>';
+          '<p>Review or edit the selected version’s rules. Changes are saved automatically to the open draft.</p></div>';
+        const historyButton = document.createElement('button');
+        historyButton.className = 'qym-inline-action qym-inline-action--neutral analysis-version-history-button';
+        historyButton.id = 'analysis-version-history-button';
+        historyButton.type = 'button';
+        historyButton.innerHTML = iconMarkup('history') + '<span>Version history</span>';
+        historyButton.setAttribute('aria-expanded', 'false');
+        historyButton.setAttribute('aria-controls', 'analysis-rules-workspace-history');
+        rulesWorkspaceHeader.append(historyButton);
         const rulesHeadingTitle = rulesWorkspaceHeader.querySelector('h2');
         const rulesHelp = document.createElement('button');
         rulesHelp.className = 'analysis-info-button';
@@ -4492,7 +5026,7 @@
         rulesHelpCopy.className = 'analysis-info-popover';
         rulesHelpCopy.id = 'analysis-rules-help';
         rulesHelpCopy.hidden = true;
-        rulesHelpCopy.textContent = 'Select a version to inspect it. Use Publish or Promote for lifecycle changes, and the menu for compare, merge, or delete.';
+        rulesHelpCopy.textContent = 'Click a version to view its rules. Drafts are editable; published versions are read-only. Version history includes lineage and lifecycle actions.';
         if (rulesHeadingTitle) rulesHeadingTitle.append(' ', rulesHelp);
         rulesWorkspaceHeader.append(rulesHelpCopy);
         rulesHelp.addEventListener('click', () => {
@@ -4503,14 +5037,21 @@
         rulesLayout.className = 'analysis-rules-layout';
         const versionColumn = document.createElement('section');
         versionColumn.className = 'analysis-version-column';
+        versionColumn.id = 'analysis-rules-workspace-history';
         versionColumn.innerHTML = '<div class="analysis-subheading analysis-version-heading"><div class="analysis-version-heading-copy"><h3>Version graph</h3><div class="analysis-version-legend"><span>Solid fork · dashed merge</span><span class="analysis-version-node-key"><i class="analysis-version-node analysis-version-node-live" aria-hidden="true"></i>Live</span><span class="analysis-version-node-key"><i class="analysis-version-node" aria-hidden="true"></i>Not live</span></div></div></div>';
         if (versionList) versionColumn.append(versionList);
+        const versionHistoryHost = document.createElement('div');
+        versionHistoryHost.className = 'analysis-version-history-host';
+        versionHistoryHost.hidden = true;
+        versionHistoryHost.append(versionColumn);
         const ruleColumn = document.createElement('section');
         ruleColumn.className = 'analysis-rule-column';
+        ruleColumn.id = 'analysis-rules-workspace-rules';
         const toolbar = document.createElement('div');
         toolbar.className = 'analysis-rule-toolbar';
         const toolbarHeading = document.createElement('h3');
-        toolbarHeading.textContent = 'Rules in viewed version';
+        toolbarHeading.id = 'pg-rule-editor-title';
+        toolbarHeading.textContent = 'Rules';
         const toolbarTitle = document.createElement('div');
         toolbarTitle.className = 'analysis-rule-toolbar-title';
         toolbarTitle.append(toolbarHeading);
@@ -4525,22 +5066,61 @@
         viewState.setAttribute('role', 'status');
         toolbarTitle.append(viewState);
         toolbar.append(toolbarTitle);
+        const toolbarActions = document.createElement('div');
+        toolbarActions.className = 'analysis-rule-toolbar-actions';
+        if (rulePagination) toolbarActions.append(rulePagination);
         if (addRule) {
-          addRule.innerHTML = iconMarkup('plus');
+          addRule.className = 'qym-inline-action qym-inline-action--neutral';
+          addRule.innerHTML = iconMarkup('plus') + '<span>Add rule</span>';
           addRule.title = 'Add rule';
           addRule.setAttribute('aria-label', 'Add rule');
-          toolbar.append(addRule);
+          toolbarActions.append(addRule);
         }
+        toolbar.append(toolbarActions);
         ruleColumn.append(toolbar);
+        if (ruleFilters) ruleColumn.append(ruleFilters);
         if (ruleList) ruleColumn.append(ruleList);
-        rulesLayout.append(versionColumn, ruleColumn);
+        rulesLayout.append(ruleColumn);
         const rulesWorkspaceBody = document.createElement('div');
         rulesWorkspaceBody.className = 'analysis-target-body';
+        if (rulesHint) rulesWorkspaceBody.append(rulesHint);
+        if (inferenceEmpty) rulesWorkspaceBody.append(inferenceEmpty);
         rulesWorkspaceBody.append(rulesLayout);
+        rulesWorkspaceBody.append(versionHistoryHost);
         if (versionCompare) rulesWorkspaceBody.append(versionCompare);
         rulesWorkspaceCard.append(rulesWorkspaceHeader, rulesWorkspaceBody);
         rulesPanel.append(rulesWorkspaceCard);
 
+        let versionHistoryDrawer = null;
+        const openVersionHistory = () => {
+          if (versionHistoryDrawer) return;
+          if (!window.QymShell || typeof window.QymShell.openDrawer !== 'function') {
+            showStatus('error', 'History unavailable', 'Version history could not be opened.');
+            return;
+          }
+          versionHistoryDrawer = window.QymShell.openDrawer({
+            title: 'Version history',
+            subtitle: 'Browse saved versions and their lineage.',
+            width: Math.min(960, Math.max(320, window.innerWidth - 32)),
+            onClose: () => {
+              versionHistoryHost.append(versionColumn);
+              versionHistoryDrawer = null;
+              historyButton.setAttribute('aria-expanded', 'false');
+              if (document.contains(historyButton)) historyButton.focus();
+            },
+          });
+          versionHistoryDrawer.setBody(versionColumn);
+          if (versionHistoryDrawer.body) versionHistoryDrawer.body.classList.add('analysis-version-history-popup-content');
+          historyButton.setAttribute('aria-expanded', 'true');
+          requestAnimationFrame(renderRuleGraph);
+        };
+        historyButton.addEventListener('click', openVersionHistory);
+        document.addEventListener('qym:rule-version-history-rendered', () => {
+          if (versionHistoryDrawer) requestAnimationFrame(renderRuleGraph);
+        });
+        window.addEventListener('resize', () => {
+          if (versionHistoryDrawer) requestAnimationFrame(renderRuleGraph);
+        });
         const documentsPanel = document.createElement('section');
         documentsPanel.className = 'analysis-project-panel';
         documentsPanel.dataset.projectPanel = 'documents';
@@ -4571,36 +5151,13 @@
 
         const projectFooter = document.createElement('footer');
         projectFooter.className = 'analysis-project-footer';
+        const manualActionGroup = contextActions && contextActions.querySelector('.pg-context-action-group-manual');
+        if (manualActionGroup && inference) manualActionGroup.insertBefore(inference, manualActionGroup.firstChild);
         if (contextStatus) projectFooter.append(contextStatus);
         if (contextActions) projectFooter.append(contextActions);
         if (contextFeedback) projectFooter.append(contextFeedback);
         rulesWorkspaceCard.append(projectFooter);
         projectPanel.append(rulesPanel, documentsPanel);
-        if (versionList) {
-          const versionObserver = new MutationObserver(mutations => {
-            const changedRows = mutations.some(mutation =>
-              Array.from(mutation.addedNodes).concat(Array.from(mutation.removedNodes)).some(node =>
-                node.nodeType === 1 && (node.matches?.('.pg-rule-version') || node.querySelector?.('.pg-rule-version'))
-              )
-            );
-            if (changedRows) requestAnimationFrame(renderRuleGraph);
-          });
-          versionObserver.observe(versionList, { childList: true, subtree: true });
-        }
-        window.addEventListener('resize', () => requestAnimationFrame(renderRuleGraph));
-
-        if (!runId) {
-          runPanel.innerHTML = '';
-          const landing = document.getElementById('analysis-landing');
-          if (landing) {
-            landing.hidden = false;
-            runPanel.append(landing);
-          }
-          footer.hidden = true;
-          document.getElementById('analysis-tabs').hidden = false;
-          setAnalyzerView(state.currentView, { updateUrl: false });
-          return true;
-        }
 
         const sectionFor = id => {
           const anchor = document.getElementById(id);
@@ -4620,26 +5177,52 @@
 
         const diagnosisPanel = document.createElement('section');
         diagnosisPanel.className = 'analysis-project-panel analysis-view-panel';
+        diagnosisPanel.dataset.projectPanel = 'categories';
         diagnosisPanel.id = 'analysis-diagnosis-view';
         diagnosisPanel.setAttribute('role', 'tabpanel');
         diagnosisPanel.setAttribute('aria-labelledby', 'analysis-diagnosis-tab');
         diagnosisPanel.hidden = true;
-        const diagnosisHeader = document.createElement('header');
-        diagnosisHeader.className = 'analysis-diagnosis-header';
-        diagnosisHeader.innerHTML = '<div><h2>Diagnosis categories</h2><p>Manage the labels available to the analyzer and inspect the approved examples behind each category.</p></div>' +
-          '<div class="analysis-diagnosis-summary" aria-label="Diagnosis category summary">' +
-            '<span class="analysis-diagnosis-stat"><strong id="analysis-category-count">0</strong> categories</span>' +
-            '<span class="analysis-diagnosis-stat"><strong id="analysis-example-count">0</strong> examples</span>' +
-          '</div>';
         const diagnosisBody = document.createElement('div');
         diagnosisBody.className = 'analysis-diagnosis-workspace analysis-inline-section';
+        const diagnosisToolbar = document.createElement('div');
+        diagnosisToolbar.className = 'analysis-diagnosis-main-toolbar';
+        diagnosisToolbar.innerHTML = '<p class="analysis-diagnosis-summary-line" aria-live="polite"><span id="analysis-category-count">0</span> <span id="analysis-category-label">categories</span> · <span id="analysis-example-count">0</span> <span id="analysis-example-label">approved examples</span></p>' +
+          '<div class="analysis-diagnosis-action-row">' +
+            '<label class="analysis-diagnosis-search"><span class="pg-visually-hidden">Search categories</span><input class="qym-control qym-input qym-search" id="analysis-category-search" type="search" placeholder="Search categories" aria-label="Search diagnosis categories" autocomplete="off" /></label>' +
+            '<button class="qym-inline-action qym-inline-action--accent" id="analysis-save-category-catalog" type="button">Save changes</button>' +
+            '<span class="analysis-diagnosis-save-status" id="analysis-category-save-status" role="status" aria-live="polite"></span>' +
+          '</div>';
+        diagnosisBody.append(diagnosisToolbar);
         if (catalog) {
           catalog.open = true;
           diagnosisBody.append(catalog);
         }
-        diagnosisPanel.append(diagnosisHeader, diagnosisBody);
+        const diagnosisActionRow = diagnosisToolbar.querySelector('.analysis-diagnosis-action-row');
+        const categoryEditorToolbar = diagnosisBody.querySelector('.pg-category-editor-toolbar');
+        const categoryAddForm = categoryEditorToolbar && categoryEditorToolbar.querySelector('.pg-add-category-form');
+        const categoryLimitField = diagnosisBody.querySelector('[data-category-limit-field]');
+        const categorySaveAction = diagnosisActionRow && diagnosisActionRow.querySelector('#analysis-save-category-catalog');
+        if (categoryAddForm && diagnosisActionRow) {
+          categoryAddForm.classList.add('analysis-diagnosis-add-form');
+          diagnosisActionRow.insertBefore(categoryAddForm, categorySaveAction);
+        }
+        if (categoryLimitField) categoryLimitField.classList.add('analysis-diagnosis-category-limit');
+        if (categoryEditorToolbar) categoryEditorToolbar.remove();
+        diagnosisPanel.append(diagnosisBody);
         projectPanel.after(diagnosisPanel);
+        const placeCategoryLimitField = () => {
+          if (!categoryLimitField) return;
+          const activeGroup = diagnosisBody.querySelector('#pg-categories-list .pg-category-group:not([hidden])');
+          const categoryHeading = activeGroup && activeGroup.querySelector('.pg-category-panel-heading');
+          const categoryCopy = categoryHeading && categoryHeading.querySelector('.pg-category-panel-copy');
+          const categoryEditor = diagnosisBody.querySelector('.pg-category-editor');
+          const target = categoryCopy || categoryEditor;
+          if (!target || categoryLimitField.parentElement === target) return;
+          if (categoryCopy || categoryHeading) target.append(categoryLimitField);
+          else target.insertBefore(categoryLimitField, target.firstChild);
+        };
         const syncDiagnosisSummary = () => {
+          placeCategoryLimitField();
           const groups = Array.from(diagnosisBody.querySelectorAll('.pg-category-group'));
           const exampleCount = groups.reduce(
             (total, group) => total + Number(group.dataset.exampleCount || 0),
@@ -4647,16 +5230,116 @@
           );
           const categoryCountNode = document.getElementById('analysis-category-count');
           const exampleCountNode = document.getElementById('analysis-example-count');
-          if (categoryCountNode) categoryCountNode.textContent = String(groups.length);
-          if (exampleCountNode) exampleCountNode.textContent = String(exampleCount);
+          const categoryLabelNode = document.getElementById('analysis-category-label');
+          const exampleLabelNode = document.getElementById('analysis-example-label');
+          const updateSummaryNode = (node, value) => {
+            if (node && node.textContent !== value) node.textContent = value;
+          };
+          updateSummaryNode(categoryCountNode, String(groups.length));
+          updateSummaryNode(exampleCountNode, String(exampleCount));
+          updateSummaryNode(categoryLabelNode, groups.length === 1 ? 'category' : 'categories');
+          updateSummaryNode(exampleLabelNode, exampleCount === 1 ? 'approved example' : 'approved examples');
         };
         const diagnosisObserver = new MutationObserver(syncDiagnosisSummary);
-        diagnosisObserver.observe(diagnosisBody, { childList: true, subtree: true });
+        diagnosisObserver.observe(diagnosisBody, {
+          attributes: true,
+          attributeFilter: ['hidden'],
+          childList: true,
+          subtree: true,
+        });
         syncDiagnosisSummary();
+        const categorySearch = document.getElementById('analysis-category-search');
+        if (categorySearch) categorySearch.addEventListener('input', () => {
+          if (window.QymPlayground && typeof window.QymPlayground.filterCategories === 'function') {
+            window.QymPlayground.filterCategories(categorySearch.value);
+          }
+        });
         const diagnosisTab = document.getElementById('analysis-diagnosis-tab');
         diagnosisTab.disabled = false;
         diagnosisTab.removeAttribute('aria-disabled');
         diagnosisTab.removeAttribute('title');
+
+        const categorySaveButton = document.getElementById('analysis-save-category-catalog');
+        const categorySaveStatus = document.getElementById('analysis-category-save-status');
+        const playgroundConfig = window.QymPlayground && window.QymPlayground.getConfig
+          ? (window.QymPlayground.getConfig() || {})
+          : {};
+        if (categorySaveButton && playgroundConfig.can_manage_category_catalog === false) {
+          categorySaveButton.disabled = true;
+          categorySaveButton.title = 'Project manager access is required to edit categories';
+        }
+        let categoryCatalogRevision = Number(
+          (playgroundConfig.category_catalog_version ||
+            ((playgroundConfig.category_catalog || {}).version)) || 0
+        );
+        const readCategoryCatalog = () => {
+          const categories = [];
+          const categoryDetails = {};
+          const categoryTaxonomy = {};
+          diagnosisBody.querySelectorAll('#pg-categories-list .pg-category-group').forEach(group => {
+            const category = String(group.dataset.cat || '').trim();
+            if (!category) return;
+            categories.push(category);
+            const details = Array.from(group.querySelectorAll('.pg-detail-item'))
+              .map(item => String(item.dataset.detail || '').trim()).filter(Boolean);
+            if (details.length) categoryDetails[category] = details;
+            const taxonomy = {};
+            group.querySelectorAll('[data-taxonomy-field]').forEach(field => {
+              const value = String(field.value || '').trim();
+              if (value) taxonomy[field.dataset.taxonomyField] = value;
+            });
+            if (Object.keys(taxonomy).length) categoryTaxonomy[category] = taxonomy;
+          });
+          const maxCategories = Number(diagnosisPanel.querySelector('#pg-max-root-cause-categories')?.value || 3);
+          return {
+            categories,
+            category_details_map: categoryDetails,
+            category_taxonomy: categoryTaxonomy,
+            max_root_cause_categories: Number.isFinite(maxCategories)
+              ? Math.min(10, Math.max(1, Math.trunc(maxCategories)))
+              : 3,
+            base_revision: categoryCatalogRevision,
+          };
+        };
+        if (categorySaveButton) categorySaveButton.addEventListener('click', async () => {
+          if (!projectSlug || categorySaveButton.disabled) return;
+          categorySaveButton.disabled = true;
+          if (categorySaveStatus) categorySaveStatus.textContent = 'Saving…';
+          try {
+            const response = await fetch(apiUrl('api/projects/' + encodeURIComponent(projectSlug) + '/analysis-category-catalog'), {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(readCategoryCatalog()),
+            });
+            const body = await response.json().catch(() => ({}));
+            if (!response.ok) {
+              const detail = body && body.detail;
+              throw new Error(typeof detail === 'string' ? detail : (detail && detail.message) || 'Could not save diagnosis categories.');
+            }
+            const catalog = body.catalog || body;
+            categoryCatalogRevision = Number(catalog.version || categoryCatalogRevision);
+            if (categorySaveStatus) categorySaveStatus.textContent = body.created === false ? 'No changes' : 'Saved';
+            showStatus('success', 'Categories saved', 'The project catalog is now available to future run analyses.');
+          } catch (error) {
+            if (categorySaveStatus) categorySaveStatus.textContent = 'Save failed';
+            showStatus('error', 'Category save failed', error.message || 'Could not save diagnosis categories.');
+          } finally {
+            categorySaveButton.disabled = false;
+          }
+        });
+
+        if (!runId) {
+          runPanel.innerHTML = '';
+          const landing = document.getElementById('analysis-landing');
+          if (landing) {
+            landing.hidden = false;
+            runPanel.append(landing);
+          }
+          footer.hidden = true;
+          document.getElementById('analysis-tabs').hidden = false;
+          setAnalyzerView(state.currentView, { updateUrl: false });
+          return true;
+        }
 
         runPanel.innerHTML = '';
         runPanel.append(createRunCard());
@@ -4667,7 +5350,7 @@
         const contextCard = document.createElement('section');
         contextCard.className = 'analysis-target-card';
         contextCard.innerHTML = '<div class="analysis-section-header"><div><h2>Use project context</h2>' +
-          '<p>Production rules and enabled documents can be included or removed for this run.</p></div></div>';
+          '<p>Production rules, enabled documents, and execution trace can be included or removed for this run.</p></div></div>';
         contextCard.append(createContextToggles());
         contextCard.querySelectorAll('input[type="checkbox"]').forEach(toggle => {
           toggle.addEventListener('change', () => {
@@ -4697,8 +5380,11 @@
 
         const targetCard = document.createElement('section');
         targetCard.className = 'analysis-target-card';
-        targetCard.innerHTML = '<div class="analysis-section-header"><div><h2>Targets</h2>' +
-          '<p>The limit is applied deterministically to the most severe matching item–metric targets.</p></div></div>';
+        const targetHeader = document.createElement('div');
+        targetHeader.className = 'analysis-section-header';
+        targetHeader.innerHTML = '<div><h2>Targets</h2>' +
+          '<p>The limit is applied deterministically to the most severe matching item–metric targets.</p></div>';
+        targetCard.append(targetHeader);
         const targetBody = document.createElement('div');
         targetBody.className = 'analysis-target-body';
         const tools = document.createElement('div');
@@ -4752,7 +5438,7 @@
         footer.classList.add('analysis-run-footer');
         const actionCopy = document.createElement('div');
         actionCopy.className = 'analysis-action-copy';
-        actionCopy.innerHTML = '<strong>Ready when the target count looks right</strong><span>Test one target or analyze the selected scope.</span>';
+        actionCopy.innerHTML = '<strong>Ready when the item count looks right</strong><span>Test one item or analyze the selected scope.</span>';
         footer.prepend(actionCopy);
         runPanel.append(footer);
         document.getElementById('analysis-tabs').hidden = false;
@@ -4771,6 +5457,10 @@
 
       function applyAnalysisResults(data) {
         const rows = state.data && state.data.snapshot ? state.data.snapshot.rows || [] : [];
+        const categoryCount = data && data.categories && typeof data.categories === 'object'
+          ? (Array.isArray(data.categories) ? data.categories.length : Object.keys(data.categories).length)
+          : 0;
+        const categoryLabel = categoryCount === 1 ? 'category' : 'categories';
         (data.results || []).forEach(result => {
           const row = rows.find(candidate => candidate.item_id === result.item_id);
           if (!row) return;
@@ -4798,7 +5488,7 @@
             'Raw diagnoses were preserved. Open the run and use Aggregate results to retry.'
           );
         } else {
-          showStatus('success', 'Analysis complete', String(data.total_analyzed || 0) + ' metric targets analyzed. Open the run to review the results.');
+          showStatus('success', 'Analysis complete', 'Created ' + categoryCount + ' ' + categoryLabel + '. Open the run to review the results.');
         }
       }
 
@@ -4832,6 +5522,12 @@
           projectSlug: projectScoped ? projectSlug : '',
           dedicatedPage: true,
           getRunId: () => state.contextRunId,
+          getRunUrl: () => {
+            const runLink = document.querySelector('.analysis-run-header > .analysis-secondary-link');
+            return runLink
+              ? (runLink.getAttribute('href') || runLink.href)
+              : (state.contextRunId ? runUrl(state.contextRunId) : '');
+          },
           getRows: projectScoped ? () => [] : analyzerRows,
           getMetric: projectScoped ? () => null : () => state.metric || null,
           getMetrics: projectScoped ? () => [] : () => state.selectedMetrics.slice(),
@@ -4895,6 +5591,5 @@
       loadRun().catch(showAnalyzerLoadError);
     })();
   </script>
-  <script src="/static/candidate_relationships.js?v=candidate-relationships-20260805-2"></script>
 </body>
 </html>

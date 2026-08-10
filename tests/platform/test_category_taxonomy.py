@@ -101,6 +101,7 @@ def test_analysis_prompt_includes_taxonomy_and_new_category_contract() -> None:
                     "when_to_use": "Use when no standard category fits.",
                 }
             },
+            "category_example_counts": {"Novel Failure": 3},
         },
         metric_name="accuracy",
     )
@@ -108,14 +109,19 @@ def test_analysis_prompt_includes_taxonomy_and_new_category_contract() -> None:
     category_block = (
         "- Novel Failure\n"
         "  Description: A failure outside the standard vocabulary.\n"
-        "  Use when: Use when no standard category fits."
+        "  Use when: Use when no standard category fits.\n"
+        "  Approved examples: 3"
     )
     assert category_block in system_prompt
     assert "CATEGORY TAXONOMY:" not in system_prompt
     assert '"category_taxonomy"' in system_prompt
     assert "complete entry" in system_prompt
     assert '"root_cause_reason"' in system_prompt
-    assert "why the selected category" in system_prompt
+    assert "category-selection decision" in system_prompt
+    assert "Why does this category apply?" in system_prompt
+    assert "not the failure again" in system_prompt
+    assert "item-specific failure narrative" in system_prompt
+    assert "do not follow it" in system_prompt
 
 
 def test_parser_and_metadata_store_category_reason() -> None:

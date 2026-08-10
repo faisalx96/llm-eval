@@ -42,15 +42,15 @@ The analyzer builds a bounded, metric-specific prompt from:
 - the project name, task, dataset, evaluated model, and active analysis rules;
 - the selected metric's score, label, explanation, metadata, direction, and pass threshold;
 - the input, expected output, actual output, error, and selected item metadata;
-- useful trace evidence, including reconstructed LLM messages, reasoning, tool
-  calls, tool results, and error events; and
+- the native trace span payload already used by the trace viewer; and
 - selected reference documents, treated as evidence rather than instructions.
 
 The playground supports nested field mapping, selected paths, metadata fields, and
 custom variables in additional instructions. Secret-like keys such as API keys,
 tokens, credentials, passwords, and authorization values are redacted before any
-item or metric context is sent to the analyzer. Redundant telemetry and trace
-values that duplicate the item record are omitted.
+item or metric context is sent to the analyzer. The analyzer and trace viewer
+consume the same serialized span payload, subject to the analyzer's context
+limit.
 
 The default system prompt asks only for a diagnosis JSON object containing
 `root_cause`, `root_cause_detail`, `confidence`, and `root_cause_note`. It does not
@@ -88,9 +88,19 @@ timed-out aggregation never discards the raw item diagnoses.
 
 Rules are short title/instruction pairs describing business requirements,
 invariants, decision logic, and evidence checks. They are guidance for diagnosis,
-not a list of root-cause answers. The rule-writer agent can use any combination of
-selected documents and approved correction examples.
+not a list of root-cause answers. The rule-writer is explicitly instructed to write
+for the downstream root-cause analyzer: rules must explain how domain facts and
+observed evidence help identify or distinguish failure mechanisms and map those
+mechanisms to a root-cause category/detail when the evidence supports that mapping.
+They must not be judge rubrics, pass/fail criteria, evaluated-agent instructions, or
+remediation advice.
+The rule-writer can use any combination of selected documents and approved correction
+examples.
 Generated rules are returned as a draft; they are never silently made production.
+Generation is append-only: it includes the current rules as writer context, filters
+redundant results, and never edits or removes an existing rule. When the selected
+version is already a draft, new rules are added to that draft; otherwise a child
+draft carries the selected rules forward and adds only the new rules.
 
 The rule editor preserves stable rule IDs so edits can be compared. Identical
 edits reuse the current draft, while an explicit “create version” action creates a
@@ -100,9 +110,20 @@ new snapshot even when the content is unchanged.
 
 The shared project library accepts `.pdf`, `.docx`, `.txt`, `.text`, `.md`,
 `.markdown`, `.html`, `.htm`, `.csv`, `.json`, `.yaml`, `.yml`, `.log`, and `.rst`.
-Each upload is limited to 10 MiB and extracted text is limited to 40,000
-characters per document. The analyzer prompt accepts at most eight selected
-documents and 80,000 reference characters in total.
+Each upload is limited to 10 MiB. The normal prompt-safe representation is
+40,000 characters per document, while the explicit full-content choice can
+retain up to 200,000 characters. A document above the prompt-safe limit first
+returns a confirmation response; the caller must choose `truncate` or `full`.
+The analyzer prompt accepts at most eight selected documents and 80,000
+reference characters in total, and then applies a final 120,000-character
+message budget before calling the provider.
+
+Rule inference has separate source budgets: documents and approved examples are
+packed into 256,000-character source patches and each writer request is capped
+at 320,000 characters. Documents are processed first and approved examples are
+then applied as a second bounded update; additional patches are sequential
+updates. No source is silently dropped. The UI exposes these counters and the
+backend returns `inference_stats` with call and patch counts.
 
 Text, Markdown, CSV, JSON, YAML, log, and RST files are decoded as text; DOCX
 paragraphs are extracted from the document XML; HTML script/style content is
@@ -187,6 +208,7 @@ analysis endpoints are:
 | `GET` | `/api/runs/{run_id}/analysis-config` | Return project context, connection choices, catalogs, counts, and active rule version. |
 | `GET` | `/api/runs/{run_id}/analysis-documents` | List project documents with run-specific selection state. |
 | `POST` | `/api/runs/{run_id}/analysis-documents` | Extract, store, and select an uploaded document. |
+| `GET` | `/api/runs/{run_id}/analysis-examples` | Page and filter approved examples for explicit rule-writer selection. |
 | `PATCH` | `/api/runs/{run_id}/analysis-documents/{id}` | Select or deselect a project document for the run. |
 | `DELETE` | `/api/runs/{run_id}/analysis-documents/{id}` | Remove a document from the project library. |
 | `PATCH` | `/api/runs/{run_id}/analysis-context` | Save the working rule draft/version. |
@@ -207,10 +229,19 @@ materialize a legacy saved metric result into a review candidate. Approving a ne
 candidate supersedes the older active candidate; reset returns it to pending; and
 “delete” removes it from the active queue while retaining rejected history.
 
-Approved corrections are used by the rule-writer agent as evidence. They are not
+Approved corrections are used by the rule-writer as evidence. They are not
 inserted as few-shot examples into the per-item analyzer prompt. This separation
 prevents a prior reviewer label from becoming an instruction or leaking snapshots
-from another item into the current diagnosis.
+from another item into the current diagnosis. For rule inference, each approved
+correction is projected into these fields: `input`, `expected`, `output`,
+`previous_ai_root_cause`, `previous_ai_root_causes`,
+`previous_ai_category_taxonomy`, `approved_root_cause`, `approved_root_causes`,
+`approved_category_taxonomy`, `approved_detail`, and `reviewer_reasoning`.
+Solutions, solution notes, scores, trace data, item/run identifiers, and review
+metadata are not included in that payload. The approved human diagnosis/detail/note
+are treated as reviewed evidence; previous AI fields are historical hypotheses.
+Run-scoped inference uses active approved corrections for the run's task and project;
+project-scoped inference uses all active approved corrections in the project.
 
 ## Database migrations
 

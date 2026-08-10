@@ -2952,6 +2952,16 @@
     .metric-analysis-error {
       color: var(--error);
     }
+    .metric-analysis-recovery {
+      margin-top: var(--space-md);
+      padding-top: var(--space-md);
+      border-top: 1px solid var(--border-subtle);
+    }
+    .metric-analysis-recovery-copy {
+      color: var(--text-secondary);
+      font-size: var(--font-sm);
+      line-height: 1.5;
+    }
     .rc-sol-label {
       display: block;
       font-size: var(--font-xs);
@@ -9365,7 +9375,16 @@
                 return '<div class="metric-analysis-card" style="--metric-analysis-color:var(--error);">' +
                   '<div class="metric-analysis-head"><span class="metric-analysis-name">' + escapeHtml(metricName) + '</span>' +
                     '<button type="button" class="metric-analysis-edit"' + metricEditData + '>Assign root cause</button></div>' +
-                  '<div class="metric-analysis-error">Analysis failed: ' + escapeHtml(String(analysis.error)) + '</div>' +
+                  '<div class="metric-analysis-error" role="alert">Analysis failed: ' + escapeHtml(String(analysis.error)) + '</div>' +
+                  '<div class="metric-analysis-recovery">' +
+                    '<div class="metric-analysis-recovery-copy">AI analysis did not produce a usable diagnosis. You can still add a manual category, specific issue, feedback, or recommended solution.</div>' +
+                    '<button type="button" class="metric-analysis-detail" data-metric-rcdetail-item="' + escapeAttr(itemId) + '" data-metric-name="' + escapeAttr(metricName) + '" title="Add specific issue">' +
+                      (analysis.root_cause_detail ? escapeHtml(analysis.root_cause_detail) : '<span class="metric-analysis-empty">+ Add specific issue</span>') + '</button>' +
+                    '<button type="button" class="metric-analysis-note" data-metric-feedback-item="' + escapeAttr(itemId) + '" data-metric-name="' + escapeAttr(metricName) + '" title="Add feedback">' +
+                      (analysis.root_cause_note ? escapeHtml(analysis.root_cause_note) : '<span class="metric-analysis-empty">+ Add feedback</span>') + '</button>' +
+                    '<button type="button" class="metric-analysis-solution" data-metric-sol-item="' + escapeAttr(itemId) + '" data-metric-name="' + escapeAttr(metricName) + '" title="Add recommended solution">' +
+                      ([analysis.solution, analysis.solution_note].filter(Boolean).join(' — ') ? '<strong>Recommended solution:</strong> ' + escapeHtml([analysis.solution, analysis.solution_note].filter(Boolean).join(' — ')) : '<span class="metric-analysis-empty">+ Add recommended solution</span>') + '</button>' +
+                  '</div>' +
                 '</div>';
               }
               const analysisCategories = rootCauseCategories(analysis);
@@ -9923,7 +9942,10 @@
           if (value) analysis.solution_note = value;
           else delete analysis.solution_note;
         }
-        delete analysis.error;
+        // Keep an AI failure visible until a human category is supplied. This
+        // lets reviewers add context first without falsely presenting an
+        // incomplete manual note as a resolved diagnosis.
+        if (rootCauseCategories(analysis).length) delete analysis.error;
         delete analysis.confidence;
         analysis.source = 'human';
 
@@ -9951,11 +9973,14 @@
         if (IS_EXPORT) {
           applyLocally();
           autoSaveExport();
-          return;
+          return true;
         }
 
         const runId = state.run?.file_path;
-        if (!runId) return;
+        if (!runId) {
+          showToast('error', 'Could not save diagnosis', 'This run is not available for editing.');
+          return false;
+        }
         try {
           const res = await fetch(apiUrl('api/runs/update_root_cause'), {
             method: 'POST',
@@ -9968,8 +9993,10 @@
           });
           const data = await res.json().catch(() => ({}));
           if (!res.ok || data.detail || data.error) {
-            console.error('Failed to save metric root cause:', data.detail || data.error);
-            return;
+            const message = data.detail || data.error || 'The server rejected the manual diagnosis.';
+            console.error('Failed to save metric root cause:', message);
+            showToast('error', 'Could not save diagnosis', message);
+            return false;
           }
           if (data.row) {
             applyUpdatedRow(data.row);
@@ -9982,8 +10009,11 @@
           } else {
             applyLocally();
           }
+          return true;
         } catch (err) {
           console.error('Error saving metric root cause:', err);
+          showToast('error', 'Could not save diagnosis', 'Check your connection and try again.');
+          return false;
         }
       }
 
@@ -10131,8 +10161,8 @@
           }
         });
         dropdown.querySelector('[data-rc-save]').addEventListener('click', async () => {
-          await saveRootCause(itemId, selectedCategories, metricName);
-          dropdown.remove();
+          const saved = await saveRootCause(itemId, selectedCategories, metricName);
+          if (saved !== false) dropdown.remove();
         });
         refreshSelection();
 
@@ -10230,8 +10260,8 @@
 
         dropdown.querySelectorAll('.rc-option').forEach(opt => {
           opt.addEventListener('click', async () => {
-            await saveRootCauseDetail(itemId, opt.dataset.rcdetailValue, metricName);
-            dropdown.remove();
+            const saved = await saveRootCauseDetail(itemId, opt.dataset.rcdetailValue, metricName);
+            if (saved !== false) dropdown.remove();
           });
         });
 
@@ -10239,8 +10269,8 @@
         const customBtn = dropdown.querySelector('.rc-custom-input button');
         const doSave = async () => {
           const val = customInput.value.trim();
-          await saveRootCauseDetail(itemId, val, metricName);
-          dropdown.remove();
+          const saved = await saveRootCauseDetail(itemId, val, metricName);
+          if (saved !== false) dropdown.remove();
         };
         customBtn.addEventListener('click', doSave);
         customInput.addEventListener('keydown', async (e) => { if (e.key === 'Enter') doSave(); });
@@ -10266,8 +10296,7 @@
       async function saveRootCause(itemId, rootCauses, metricName) {
         const categories = rootCauseCategories({ root_causes: rootCauses });
         if (metricName) {
-          await saveMetricAnalysisPatch(itemId, metricName, { root_causes: categories });
-          return;
+          return saveMetricAnalysisPatch(itemId, metricName, { root_causes: categories });
         }
         const rows = state.snapshot.rows || [];
         const row = rows.find(r => (r.item_id || String(r.index)) === itemId);
@@ -10298,11 +10327,11 @@
         if (IS_EXPORT) {
           applyLocally();
           autoSaveExport();
-          return;
+          return true;
         }
 
         const runId = state.run?.file_path;
-        if (!runId) return;
+        if (!runId) return false;
         try {
           const res = await fetch(apiUrl('api/runs/update_root_cause'), {
             method: 'POST',
@@ -10310,7 +10339,12 @@
             body: JSON.stringify({ item_id: itemId, root_causes: categories, root_cause_detail: existingDetail, run_id: runId }),
           });
           const data = await res.json().catch(() => ({}));
-          if (!res.ok || data.error) { console.error('Failed to save root cause:', data.error); return; }
+          if (!res.ok || data.error) {
+            const message = data.detail || data.error || 'The server rejected the manual diagnosis.';
+            console.error('Failed to save root cause:', message);
+            showToast('error', 'Could not save diagnosis', message);
+            return false;
+          }
           if (data && data.row) {
             applyUpdatedRow(data.row);
             categories.forEach(category => { if (!state.rootCauseValues.includes(category)) state.rootCauseValues.push(category); });
@@ -10321,13 +10355,17 @@
           } else {
             applyLocally();
           }
-        } catch (err) { console.error('Error saving root cause:', err); }
+          return true;
+        } catch (err) {
+          console.error('Error saving root cause:', err);
+          showToast('error', 'Could not save diagnosis', 'Check your connection and try again.');
+          return false;
+        }
       }
 
       async function saveRootCauseDetail(itemId, detail, metricName) {
         if (metricName) {
-          await saveMetricAnalysisPatch(itemId, metricName, { root_cause_detail: detail });
-          return;
+          return saveMetricAnalysisPatch(itemId, metricName, { root_cause_detail: detail });
         }
         const rows = state.snapshot.rows || [];
         const row = rows.find(r => (r.item_id || String(r.index)) === itemId);
@@ -10344,11 +10382,11 @@
         if (IS_EXPORT) {
           applyLocally();
           autoSaveExport();
-          return;
+          return true;
         }
 
         const runId = state.run?.file_path;
-        if (!runId) return;
+        if (!runId) return false;
         try {
           const res = await fetch(apiUrl('api/runs/update_root_cause'), {
             method: 'POST',
@@ -10356,14 +10394,24 @@
             body: JSON.stringify({ item_id: itemId, root_causes: existingCategories, root_cause_detail: detail, run_id: runId }),
           });
           const data = await res.json().catch(() => ({}));
-          if (!res.ok || data.error) { console.error('Failed to save root cause detail:', data.error); return; }
+          if (!res.ok || data.error) {
+            const message = data.detail || data.error || 'The server rejected the manual diagnosis.';
+            console.error('Failed to save root cause detail:', message);
+            showToast('error', 'Could not save diagnosis', message);
+            return false;
+          }
           if (data && data.row) {
             applyUpdatedRow(data.row);
             renderItems();
           } else {
             applyLocally();
           }
-        } catch (err) { console.error('Error saving root cause detail:', err); }
+          return true;
+        } catch (err) {
+          console.error('Error saving root cause detail:', err);
+          showToast('error', 'Could not save diagnosis', 'Check your connection and try again.');
+          return false;
+        }
       }
 
       function showSolutionDropdown(itemId, anchorEl, metricName) {
@@ -10413,8 +10461,8 @@
 
         dropdown.querySelectorAll('.rc-option').forEach(opt => {
           opt.addEventListener('click', async () => {
-            await saveSolution(itemId, opt.dataset.solValue, metricName);
-            dropdown.remove();
+            const saved = await saveSolution(itemId, opt.dataset.solValue, metricName);
+            if (saved !== false) dropdown.remove();
           });
         });
 
@@ -10422,12 +10470,18 @@
         const customBtn = dropdown.querySelector('.rc-custom-input button');
         customBtn.addEventListener('click', async () => {
           const val = customInput.value.trim();
-          if (val) { await saveSolution(itemId, val, metricName); dropdown.remove(); }
+          if (val) {
+            const saved = await saveSolution(itemId, val, metricName);
+            if (saved !== false) dropdown.remove();
+          }
         });
         customInput.addEventListener('keydown', async (e) => {
           if (e.key === 'Enter') {
             const val = customInput.value.trim();
-            if (val) { await saveSolution(itemId, val, metricName); dropdown.remove(); }
+            if (val) {
+              const saved = await saveSolution(itemId, val, metricName);
+              if (saved !== false) dropdown.remove();
+            }
           }
         });
 
@@ -10450,8 +10504,7 @@
 
       async function saveSolution(itemId, solution, metricName) {
         if (metricName) {
-          await saveMetricAnalysisPatch(itemId, metricName, { solution: solution });
-          return;
+          return saveMetricAnalysisPatch(itemId, metricName, { solution: solution });
         }
         const rows = state.snapshot.rows || [];
         const row = rows.find(r => (r.item_id || String(r.index)) === itemId);
@@ -10467,11 +10520,11 @@
         if (IS_EXPORT) {
           applyLocally();
           autoSaveExport();
-          return;
+          return true;
         }
 
         const runId = state.run?.file_path;
-        if (!runId) return;
+        if (!runId) return false;
         try {
           const res = await fetch(apiUrl('api/runs/update_root_cause'), {
             method: 'POST',
@@ -10479,14 +10532,24 @@
             body: JSON.stringify({ item_id: itemId, root_causes: rootCauseCategories(row?.item_metadata), root_cause_detail: row?.item_metadata?.root_cause_detail || '', solution: solution, run_id: runId }),
           });
           const data = await res.json().catch(() => ({}));
-          if (!res.ok || data.error) { console.error('Failed to save solution:', data.error); return; }
+          if (!res.ok || data.error) {
+            const message = data.detail || data.error || 'The server rejected the manual diagnosis.';
+            console.error('Failed to save solution:', message);
+            showToast('error', 'Could not save diagnosis', message);
+            return false;
+          }
           if (data && data.row) {
             applyUpdatedRow(data.row);
             renderItems();
           } else {
             applyLocally();
           }
-        } catch (err) { console.error('Error saving solution:', err); }
+          return true;
+        } catch (err) {
+          console.error('Error saving solution:', err);
+          showToast('error', 'Could not save diagnosis', 'Check your connection and try again.');
+          return false;
+        }
       }
 
       function initExpectedToggles() {

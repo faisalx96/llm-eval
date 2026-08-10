@@ -7,22 +7,17 @@
   <link rel="icon" type="image/png" href="/static/qym_icon.png">
   <link rel="stylesheet" href="/static/dashboard.css">
   <link rel="stylesheet" href="/static/shell.css">
+  <link rel="stylesheet" href="/static/ui_components.css">
   <script src="/static/auth.js"></script>
   <script src="/static/shell.js"></script>
+  <script src="/static/ui_components.js" defer></script>
   <style>
     .settings-page { }
     .settings-header { margin-bottom: var(--space-xl); }
     .settings-header h1 { font-size: var(--font-title); font-weight: 600; margin: 0; letter-spacing: -0.3px; }
     .settings-header p { font-size: var(--font-sm); color: var(--text-muted); margin-top: 6px; }
 
-    .settings-tabs { display: flex; gap: 0; border-bottom: 1px solid var(--border-subtle); margin-bottom: var(--space-lg); }
-    .settings-tab {
-      padding: var(--space-sm) var(--space-md); font-size: var(--font-sm); color: var(--text-muted);
-      cursor: pointer; border: none; border-bottom: 2px solid transparent;
-      transition: all 0.12s ease; font-family: var(--font-sans); background: none; margin-bottom: -1px;
-    }
-    .settings-tab:hover { color: var(--text-secondary); }
-    .settings-tab.active { color: var(--accent-primary); border-bottom-color: var(--accent-primary); font-weight: 500; }
+    .settings-tabs { margin-bottom: var(--space-lg); overflow-x: auto; }
 
     .settings-panel { display: none; }
     .settings-panel.active { display: block; }
@@ -90,6 +85,30 @@
 
     .note { color: var(--text-muted); font-size: var(--font-sm); margin-top: var(--space-sm); }
     .llm-message { margin-top: var(--space-sm); color: var(--accent-primary); font-size: var(--font-sm); min-height: 16px; }
+    .prompt-intro { margin: 0 0 var(--space-lg); color: var(--text-muted); font-size: var(--font-base); line-height: 1.5; }
+    .prompt-editors { display: grid; grid-template-columns: 1fr; gap: var(--space-lg); }
+    .prompt-editor { display: flex; flex-direction: column; gap: var(--space-sm); }
+    .prompt-editor-header { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-md); }
+    .prompt-editor-actions { display: flex; align-items: center; justify-content: flex-end; gap: var(--space-sm); flex-wrap: wrap; }
+    .prompt-restore-btn { white-space: nowrap; }
+    .prompt-editor-title { color: var(--text-primary); font-size: var(--font-md); font-weight: 600; }
+    .prompt-editor-description { color: var(--text-muted); font-size: var(--font-sm); line-height: 1.5; }
+    .prompt-textarea {
+      width: 100%; min-height: 220px; box-sizing: border-box; resize: vertical;
+      padding: var(--space-md); border: 1px solid var(--border-default); border-radius: var(--control-radius);
+      background: var(--bg-elevated); color: var(--text-primary); font-family: var(--font-sans);
+      font-size: var(--font-base); line-height: 1.5;
+    }
+    .prompt-textarea:focus { border-color: var(--accent-primary); outline: 2px solid color-mix(in srgb, var(--accent-primary) 28%, transparent); outline-offset: 1px; }
+    .prompt-textarea::placeholder { color: var(--text-dim); }
+    .prompt-editor-meta { color: var(--text-muted); font-family: var(--font-mono); font-size: var(--font-sm); }
+    .prompt-footer { align-items: center; justify-content: space-between; }
+    .prompt-message { min-height: 16px; color: var(--text-muted); font-size: var(--font-sm); }
+    .prompt-message.success { color: var(--success); }
+    .prompt-message.error { color: var(--error); }
+    @media (min-width: 900px) {
+      .prompt-editors { grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: start; }
+    }
     .mini-spinner {
       display: inline-block; width: 11px; height: 11px; vertical-align: -1px; margin-right: 5px;
       border: 2px solid currentColor; border-top-color: transparent; border-radius: 50%;
@@ -104,16 +123,17 @@
       <p id="project-subtitle">Manage members, API keys, and integrations for this project.</p>
     </div>
 
-    <div class="settings-tabs">
-      <button class="settings-tab active" data-tab="general">General</button>
-      <button class="settings-tab" data-tab="members">Members</button>
-      <button class="settings-tab" data-tab="apikeys">API Keys</button>
-      <button class="settings-tab" data-tab="llm">LLM Connections</button>
-      <button class="settings-tab" data-tab="danger">Danger Zone</button>
+    <div class="settings-tabs qym-tabs" role="tablist" aria-label="Project settings">
+      <button class="settings-tab qym-tabs__tab" id="tab-general" role="tab" aria-selected="true" aria-controls="panel-general" data-tab="general">General</button>
+      <button class="settings-tab qym-tabs__tab" id="tab-members" role="tab" aria-selected="false" aria-controls="panel-members" data-tab="members">Members</button>
+      <button class="settings-tab qym-tabs__tab" id="tab-apikeys" role="tab" aria-selected="false" aria-controls="panel-apikeys" data-tab="apikeys">API Keys</button>
+      <button class="settings-tab qym-tabs__tab" id="tab-llm" role="tab" aria-selected="false" aria-controls="panel-llm" data-tab="llm">LLM Connections</button>
+      <button class="settings-tab qym-tabs__tab" id="tab-prompts" role="tab" aria-selected="false" aria-controls="panel-prompts" data-tab="prompts" hidden disabled>AI Prompts</button>
+      <button class="settings-tab qym-tabs__tab" id="tab-danger" role="tab" aria-selected="false" aria-controls="panel-danger" data-tab="danger">Danger Zone</button>
     </div>
 
     <!-- General -->
-    <div class="settings-panel active" id="panel-general">
+    <div class="settings-panel active" id="panel-general" role="tabpanel" aria-labelledby="tab-general" aria-hidden="false">
       <div class="card">
         <div class="card-header"><div><div class="card-title">Project Details</div><div class="card-subtitle">Name and slug</div></div></div>
         <div class="card-body">
@@ -133,7 +153,7 @@
     </div>
 
     <!-- Members -->
-    <div class="settings-panel" id="panel-members">
+    <div class="settings-panel" id="panel-members" role="tabpanel" aria-labelledby="tab-members" aria-hidden="true">
       <div class="card">
         <div class="card-header"><div><div class="card-title">Members</div><div class="card-subtitle" id="member-count-label"></div></div></div>
         <div class="add-bar" id="member-form">
@@ -155,7 +175,7 @@
     </div>
 
     <!-- API Keys -->
-    <div class="settings-panel" id="panel-apikeys">
+    <div class="settings-panel" id="panel-apikeys" role="tabpanel" aria-labelledby="tab-apikeys" aria-hidden="true">
       <div class="card">
         <div class="card-header">
           <div><div class="card-title">API Keys</div><div class="card-subtitle">Project-scoped keys for programmatic access</div></div>
@@ -174,7 +194,7 @@
     </div>
 
     <!-- LLM Connections -->
-    <div class="settings-panel" id="panel-llm">
+    <div class="settings-panel" id="panel-llm" role="tabpanel" aria-labelledby="tab-llm" aria-hidden="true">
       <div class="card">
         <div class="card-header"><div><div class="card-title">LLM Connections</div><div class="card-subtitle">Providers for AI-assisted root cause analysis</div></div></div>
         <div class="card-body flush">
@@ -203,8 +223,67 @@
       </div>
     </div>
 
+    <!-- AI Prompts (admins and project managers only) -->
+    <div class="settings-panel" id="panel-prompts" role="tabpanel" aria-labelledby="tab-prompts" aria-hidden="true">
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">AI system prompts</div>
+            <div class="card-subtitle">Customize the instructions used by the analysis pipeline.</div>
+          </div>
+        </div>
+        <div class="card-body">
+          <p class="prompt-intro">Changes are stored with this project and apply to new analysis, aggregation, and rules-writer requests immediately. Existing saved results are not rerun automatically.</p>
+          <div class="prompt-editors">
+            <div class="prompt-editor">
+              <div class="prompt-editor-header">
+                <div class="prompt-editor-title">LLM analyzer</div>
+                <div class="prompt-editor-actions">
+                  <span class="qym-tag qym-tag--role">Analyzer</span>
+                  <button class="btn btn-secondary prompt-restore-btn" type="button" data-prompt-restore="llm_analyzer" data-prompt-label="LLM analyzer">Restore default</button>
+                </div>
+              </div>
+              <div class="prompt-editor-description">Diagnoses the root cause for an individual evaluation item and metric.</div>
+              <textarea class="prompt-textarea" id="prompt-llm-analyzer" aria-label="LLM analyzer system prompt" spellcheck="false"></textarea>
+              <div class="prompt-editor-meta" id="prompt-llm-analyzer-meta"></div>
+            </div>
+            <div class="prompt-editor">
+              <div class="prompt-editor-header">
+                <div class="prompt-editor-title">Aggregator</div>
+                <div class="prompt-editor-actions">
+                  <span class="qym-tag qym-tag--role">Aggregator</span>
+                  <button class="btn btn-secondary prompt-restore-btn" type="button" data-prompt-restore="aggregator" data-prompt-label="Aggregator">Restore default</button>
+                </div>
+              </div>
+              <div class="prompt-editor-description">Consolidates recurring root-cause categories and details across analyzed results.</div>
+              <textarea class="prompt-textarea" id="prompt-aggregator" aria-label="Aggregator system prompt" spellcheck="false"></textarea>
+              <div class="prompt-editor-meta" id="prompt-aggregator-meta"></div>
+            </div>
+            <div class="prompt-editor">
+              <div class="prompt-editor-header">
+                <div class="prompt-editor-title">Rules writer</div>
+                <div class="prompt-editor-actions">
+                  <span class="qym-tag qym-tag--role">Rules writer</span>
+                  <button class="btn btn-secondary prompt-restore-btn" type="button" data-prompt-restore="rules_writer" data-prompt-label="Rules writer">Restore default</button>
+                </div>
+              </div>
+              <div class="prompt-editor-description">Generates durable project-specific diagnostic rules from documents and approved examples.</div>
+              <textarea class="prompt-textarea" id="prompt-rules-writer" aria-label="Rules writer system prompt" spellcheck="false"></textarea>
+              <div class="prompt-editor-meta" id="prompt-rules-writer-meta"></div>
+            </div>
+          </div>
+        </div>
+        <div class="card-footer prompt-footer">
+          <div class="prompt-message" id="prompt-message" role="status" aria-live="polite"></div>
+          <div class="row-actions">
+            <button class="btn btn-primary" id="save-prompts-btn" type="button">Save prompts</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Danger Zone -->
-    <div class="settings-panel" id="panel-danger">
+    <div class="settings-panel" id="panel-danger" role="tabpanel" aria-labelledby="tab-danger" aria-hidden="true">
       <div class="card danger-card">
         <div class="card-header"><div><div class="card-title" style="color:var(--error);">Danger Zone</div><div class="card-subtitle">Irreversible actions — proceed with caution</div></div></div>
         <div class="card-body">
@@ -228,11 +307,16 @@
       // ── Tab switching ──
       document.querySelectorAll('.settings-tab').forEach(tab => {
         tab.addEventListener('click', () => {
-          document.querySelectorAll('.settings-tab').forEach(t => t.classList.remove('active'));
-          document.querySelectorAll('.settings-panel').forEach(p => p.classList.remove('active'));
-          tab.classList.add('active');
-          const panel = document.getElementById('panel-' + tab.dataset.tab);
-          if (panel) panel.classList.add('active');
+          if (tab.disabled || tab.hidden) return;
+          document.querySelectorAll('.settings-tab').forEach(t => {
+            t.classList.toggle('active', t === tab);
+            t.setAttribute('aria-selected', t === tab ? 'true' : 'false');
+          });
+          document.querySelectorAll('.settings-panel').forEach(p => {
+            const active = p.id === 'panel-' + tab.dataset.tab;
+            p.classList.toggle('active', active);
+            p.setAttribute('aria-hidden', active ? 'false' : 'true');
+          });
         });
       });
 
@@ -258,7 +342,7 @@
         return new Date(value).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
       }
 
-      let state = { me: null, project: null, members: [], users: [], apiKeys: [] };
+      let state = { me: null, project: null, members: [], users: [], apiKeys: [], analysisPrompts: null };
 
       async function fetchJson(path, options) {
         const res = await fetch(apiUrl(path), options);
@@ -289,6 +373,9 @@
         state.users = users || [];
         state.members = ((await fetchJson(`v1/projects/${project.id}/members`)) || {}).members || [];
         state.apiKeys = ((await fetchJson(`v1/projects/${project.id}/api-keys`)) || {}).api_keys || [];
+        state.analysisPrompts = canManageMembers()
+          ? await fetchJson(`v1/projects/${project.id}/analysis-prompts`)
+          : null;
 
         await loadConnections();
         render();
@@ -336,6 +423,33 @@
         }).join('');
       }
 
+      const promptFields = {
+        llm_analyzer: ['prompt-llm-analyzer', 'prompt-llm-analyzer-meta'],
+        aggregator: ['prompt-aggregator', 'prompt-aggregator-meta'],
+        rules_writer: ['prompt-rules-writer', 'prompt-rules-writer-meta'],
+      };
+
+      function renderPrompts() {
+        const tab = document.getElementById('tab-prompts');
+        const canManage = canManageMembers();
+        tab.hidden = !canManage;
+        tab.disabled = !canManage;
+        if (!canManage || !state.analysisPrompts) return;
+
+        const prompts = state.analysisPrompts.prompts || {};
+        const defaults = state.analysisPrompts.defaults || {};
+        Object.entries(promptFields).forEach(([key, [fieldId, metaId]]) => {
+          const field = document.getElementById(fieldId);
+          if (!field) return;
+          field.value = prompts[key] || '';
+          const meta = document.getElementById(metaId);
+          if (meta) {
+            const customized = prompts[key] && prompts[key] !== defaults[key];
+            meta.textContent = `${(prompts[key] || '').length.toLocaleString()} characters · ${customized ? 'Custom' : 'Default'}`;
+          }
+        });
+      }
+
       // ── Render ──
       function render() {
         const p = state.project;
@@ -348,6 +462,8 @@
         document.getElementById('project-summary').innerHTML = [
           ['Slug', p.slug], ['Role', p.role || 'MEMBER'], ['Members', String(state.members.length)], ['Status', p.is_active ? 'ACTIVE' : 'ARCHIVED'],
         ].map(([label, value]) => `<div class="form-group"><div class="form-label">${escapeHtml(label)}</div><div style="font-size:var(--font-sm);color:var(--text-primary);font-family:var(--font-mono)">${escapeHtml(value)}</div></div>`).join('');
+
+        renderPrompts();
 
         // Members tab
         document.getElementById('member-count-label').textContent = `${state.members.length} members in this project`;
@@ -443,6 +559,83 @@
         document.getElementById('key-name').value = '';
         await load();
         showKeyModal(data.token);
+      });
+
+      // ── Analysis system prompts (admins and project managers) ──
+      function setPromptMessage(message, type) {
+        const el = document.getElementById('prompt-message');
+        el.textContent = message || '';
+        el.className = `prompt-message${type ? ' ' + type : ''}`;
+      }
+
+      function currentPromptPayload() {
+        return Object.fromEntries(Object.entries(promptFields).map(([key, [fieldId]]) => [
+          key,
+          document.getElementById(fieldId).value,
+        ]));
+      }
+
+      async function confirmPromptRestore(label) {
+        const title = `Restore ${label} default?`;
+        const description = `This will replace only the “${label}” system prompt in the editor with its built-in default. Other prompt fields will not change.`;
+        if (window.QymShell && window.QymShell.openConfirmDialog) {
+          const confirmation = await window.QymShell.openConfirmDialog({
+            title,
+            description,
+            confirmLabel: `Restore ${label}`,
+          });
+          return !!(confirmation && confirmation.confirmed);
+        }
+        return window.confirm(`${title}\n\n${description}`);
+      }
+
+      document.querySelectorAll('[data-prompt-restore]').forEach((button) => {
+        button.addEventListener('click', async () => {
+          const key = button.dataset.promptRestore;
+          const label = button.dataset.promptLabel || key;
+          const value = state.analysisPrompts?.defaults?.[key] || '';
+          const [fieldId, metaId] = promptFields[key] || [];
+          const field = fieldId ? document.getElementById(fieldId) : null;
+          if (!field || !value) return;
+
+          button.disabled = true;
+          try {
+            if (!await confirmPromptRestore(label)) return;
+            field.value = value;
+            const meta = metaId ? document.getElementById(metaId) : null;
+            if (meta) meta.textContent = `${value.length.toLocaleString()} characters · Default`;
+            setPromptMessage(`${label} default loaded. Save prompts to apply it.`, '');
+          } catch (err) {
+            setPromptMessage(err.message || `Failed to restore the ${label} default.`, 'error');
+          } finally {
+            button.disabled = false;
+          }
+        });
+      });
+
+      document.getElementById('save-prompts-btn').addEventListener('click', async (event) => {
+        const payload = currentPromptPayload();
+        const empty = Object.entries(payload).find(([, value]) => !String(value || '').trim());
+        if (empty) {
+          setPromptMessage('Each system prompt must contain text.', 'error');
+          return;
+        }
+        const button = event.currentTarget;
+        button.disabled = true;
+        setPromptMessage('Saving…', '');
+        try {
+          state.analysisPrompts = await fetchJson(`v1/projects/${state.project.id}/analysis-prompts`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          });
+          renderPrompts();
+          setPromptMessage('Prompts saved. New requests will use them immediately.', 'success');
+        } catch (err) {
+          setPromptMessage(err.message || 'Failed to save prompts.', 'error');
+        } finally {
+          button.disabled = false;
+        }
       });
 
       // ── LLM connections (project-scoped) ──

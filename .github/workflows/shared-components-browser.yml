@@ -1,0 +1,23 @@
+name: Shared component browser contracts
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  playwright-contracts:
+    name: Chromium component contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install test dependencies
+        run: pip install -e packages/sdk -e "packages/platform[test]"
+      - name: Install Chromium
+        run: python -m playwright install --with-deps chromium
+      - name: Run shared component browser contracts
+        run: pytest -q tests/platform/test_shared_components_browser.py

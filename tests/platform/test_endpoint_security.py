@@ -682,6 +682,71 @@ def test_metric_root_cause_edits_are_scoped_and_audited(
         assert audits[0].after["root_cause"] == "Reasoning Error"
 
 
+def test_failed_metric_analysis_keeps_manual_recovery_available(
+    client, session_factory
+) -> None:
+    with session_factory() as session:
+        _seed_platform_data(session)
+        item = (
+            session.query(RunItem)
+            .filter(RunItem.run_id == "run-1", RunItem.item_id == "item-1")
+            .one()
+        )
+        item.item_metadata = {
+            "analysis_error": "judge: missing_category_taxonomy",
+            "metric_analyses": {
+                "judge": {
+                    "source": "ai",
+                    "error": "missing_category_taxonomy",
+                }
+            },
+        }
+        session.commit()
+
+    context = client.post(
+        "/api/runs/update_root_cause",
+        headers=_headers("owner@example.com"),
+        json={
+            "run_id": "run-1",
+            "item_id": "item-1",
+            "metric_name": "judge",
+            "root_cause_note": "The reviewer can still capture context before choosing a category.",
+        },
+    )
+    assert context.status_code == 200
+    context_analysis = context.json()["row"]["item_metadata"]["metric_analyses"]["judge"]
+    assert context_analysis["error"] == "missing_category_taxonomy"
+    assert context_analysis["root_cause_note"].startswith("The reviewer")
+    assert context.json()["row"]["item_metadata"]["analysis_error"] == (
+        "judge: missing_category_taxonomy"
+    )
+
+    recovered = client.post(
+        "/api/runs/update_root_cause",
+        headers=_headers("owner@example.com"),
+        json={
+            "run_id": "run-1",
+            "item_id": "item-1",
+            "metric_name": "judge",
+            "root_causes": ["Manual taxonomy fallback"],
+            "root_cause_detail": "Incorrect answer",
+            "root_cause_note": "Reviewed manually after the AI taxonomy validation failed.",
+            "solution": "Add a targeted check",
+        },
+    )
+    assert recovered.status_code == 200
+    recovered_meta = recovered.json()["row"]["item_metadata"]
+    recovered_analysis = recovered_meta["metric_analyses"]["judge"]
+    assert recovered_analysis["root_causes"] == ["Manual taxonomy fallback"]
+    assert recovered_analysis["root_cause"] == "Manual taxonomy fallback"
+    assert recovered_analysis["root_cause_detail"] == "Incorrect answer"
+    assert recovered_analysis["root_cause_note"].startswith("Reviewed manually")
+    assert recovered_analysis["solution"] == "Add a targeted check"
+    assert recovered_analysis["source"] == "human"
+    assert "error" not in recovered_analysis
+    assert "analysis_error" not in recovered_meta
+
+
 def test_correction_review_permissions_and_filtering(client, session_factory) -> None:
     with session_factory() as session:
         _seed_platform_data(session)

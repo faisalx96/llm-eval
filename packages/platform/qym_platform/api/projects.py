@@ -11,6 +11,7 @@ from qym_platform.datetime_utils import to_api_timestamp, utc_now_naive
 from qym_platform.db.models import (
     ApiKey,
     Project,
+    ProjectAnalysisPromptSettings,
     ProjectAnalysisRuleAlias,
     ProjectAnalysisRuleVersion,
     ProjectLlmConnection,
@@ -40,6 +41,10 @@ from qym_platform.secrets import (
 )
 from qym_platform.security import api_key_prefix, hash_api_key
 from qym_platform.settings import PlatformSettings
+from qym_platform.services.analysis_prompts import (
+    PROMPT_MAX_CHARS,
+    serialize_analysis_prompt_settings,
+)
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -329,6 +334,26 @@ class LlmConnectionRequest(BaseModel):
     llm_api_key: str = Field(default="")
 
 
+class AnalysisPromptSettingsRequest(BaseModel):
+    """Editable system prompts for the three analysis agents."""
+
+    llm_analyzer: str = Field(..., min_length=1, max_length=PROMPT_MAX_CHARS)
+    aggregator: str = Field(..., min_length=1, max_length=PROMPT_MAX_CHARS)
+    rules_writer: str = Field(..., min_length=1, max_length=PROMPT_MAX_CHARS)
+
+
+def _normalise_analysis_prompt(value: str, label: str) -> str:
+    prompt = str(value or "").strip()
+    if not prompt:
+        raise HTTPException(status_code=422, detail=f"{label} prompt cannot be empty")
+    if len(prompt) > PROMPT_MAX_CHARS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"{label} prompt must be {PROMPT_MAX_CHARS} characters or fewer",
+        )
+    return prompt
+
+
 def _serialize_connection(conn: ProjectLlmConnection) -> Dict[str, Any]:
     return {
         "id": conn.id,
@@ -558,6 +583,54 @@ async def test_llm_connection(
         return {"ok": True, "model": model, "response": resp.choices[0].message.content}
     except Exception as e:  # noqa: BLE001 - surface provider error to the user
         raise HTTPException(status_code=400, detail=f"LLM connection failed: {e}")
+
+
+@router.get("/v1/projects/{project_id}/analysis-prompts")
+def get_analysis_prompts(
+    project_id: str,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_ui_principal),
+) -> Dict[str, Any]:
+    """Return project analysis prompts to admins and project managers only."""
+    _require_project_manager(db, principal, project_id)
+    return serialize_analysis_prompt_settings(db, project_id)
+
+
+@router.put("/v1/projects/{project_id}/analysis-prompts")
+def update_analysis_prompts(
+    project_id: str,
+    req: AnalysisPromptSettingsRequest,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_ui_principal),
+) -> Dict[str, Any]:
+    """Persist project analysis prompts for use by subsequent LLM requests."""
+    _require_project_manager(db, principal, project_id)
+    values = {
+        "llm_analyzer_system_prompt": _normalise_analysis_prompt(
+            req.llm_analyzer, "LLM analyzer"
+        ),
+        "aggregator_system_prompt": _normalise_analysis_prompt(
+            req.aggregator, "Aggregator"
+        ),
+        "rules_writer_system_prompt": _normalise_analysis_prompt(
+            req.rules_writer, "Rules writer"
+        ),
+    }
+    row = db.get(ProjectAnalysisPromptSettings, project_id)
+    if row is None:
+        row = ProjectAnalysisPromptSettings(
+            project_id=project_id,
+            updated_by_user_id=principal.user.id,
+            **values,
+        )
+        db.add(row)
+    else:
+        for field, value in values.items():
+            setattr(row, field, value)
+        row.updated_by_user_id = principal.user.id
+    db.commit()
+    db.refresh(row)
+    return serialize_analysis_prompt_settings(db, project_id)
 
 
 @router.get("/v1/projects")
@@ -918,6 +991,9 @@ def archive_project(
     ).delete()
     db.query(ProjectAnalysisRuleVersion).filter(
         ProjectAnalysisRuleVersion.project_id == project.id
+    ).delete()
+    db.query(ProjectAnalysisPromptSettings).filter(
+        ProjectAnalysisPromptSettings.project_id == project.id
     ).delete()
     db.query(ProjectMembership).filter(
         ProjectMembership.project_id == project.id

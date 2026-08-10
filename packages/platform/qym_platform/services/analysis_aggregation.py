@@ -382,6 +382,7 @@ async def _aggregate_catalogs(
     detail_catalog: _LabelCatalog,
     active_fields: list[str],
     timeout_seconds: float,
+    system_prompt: str | None,
 ) -> dict[str, dict[str, str]]:
     if not active_fields:
         return {
@@ -410,7 +411,10 @@ async def _aggregate_catalogs(
             )
 
         messages = [
-            {"role": "system", "content": AGGREGATION_SYSTEM_PROMPT},
+            {
+                "role": "system",
+                "content": system_prompt or AGGREGATION_SYSTEM_PROMPT,
+            },
             {
                 "role": "user",
                 "content": json.dumps(
@@ -564,6 +568,7 @@ async def aggregate_analysis_categories(
     # longer part of aggregation and this argument is intentionally ignored.
     known_solutions: Iterable[str] = (),
     timeout_seconds: float = AGGREGATION_TIMEOUT_SECONDS,
+    system_prompt: str | None = None,
 ) -> dict[str, int]:
     """Canonicalize categories/details with one semantic LLM pass.
 
@@ -615,6 +620,7 @@ async def aggregate_analysis_categories(
         detail_catalog=detail_catalog,
         active_fields=active_fields,
         timeout_seconds=timeout_seconds,
+        system_prompt=system_prompt,
     )
 
     # Apply details first, then categories. The final relocation is deliberately

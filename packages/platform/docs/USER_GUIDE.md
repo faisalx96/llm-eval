@@ -334,23 +334,23 @@ AI-suggested values show a robot icon with confidence indicator. Human-confirmed
 The project context panel and run analysis panel are available together on the Auto-analysis page. You can:
 
 - **Describe the project** — explain the business domain and correctness expectations.
-- **Manage analysis rules** — edit title/instruction pairs, create drafts, generate rules from selected sources, compare versions, publish, and promote a published version to `production`.
-- **Upload reference documents** — PDF, DOCX, text, Markdown, HTML, CSV, JSON, and YAML files are converted to bounded text and stored in a shared project library. Select which documents the current run uses.
+- **Manage analysis rules** — edit title/instruction pairs, create drafts, generate additional non-redundant rules from selected sources, compare versions, publish, and promote a published version to `production`. Generation is append-only and never edits existing rules; when the selected version is a draft, it adds to that draft.
+- **Upload reference documents** — PDF, DOCX, text, Markdown, HTML, CSV, JSON, and YAML files are converted to bounded text and stored in a shared project library. Select which documents the current run uses. Files above the 40,000-character prompt-safe limit ask whether to save a shortened copy or explicitly retain the larger content; the larger choice is capped at 200,000 characters and is clearly marked.
 - **Edit the system prompt**, map nested input/output/metric fields, add additional instructions, and interpolate custom variables.
 - **Choose which fields appear in the prompt** and maintain the root-cause category/detail catalog.
 - **Preview prompts** and inspect generated test context/results before launching the full analysis.
 
-The default prompt sends the selected metric result, useful trace evidence, project context, active rules, and selected documents as evidence. It redacts credential-like fields and does not add approved correction snapshots as per-item few-shot examples. The default response contains diagnosis fields only; remediation fields from older saved analyses remain visible for compatibility.
+The default prompt sends the selected metric result, the same native trace span payload shown by the trace viewer, project context, active rules, and selected documents as evidence. It redacts credential-like fields and does not add approved correction snapshots as per-item few-shot examples. The default response contains diagnosis fields only; remediation fields from older saved analyses remain visible for compatibility.
 
 ### Correction Bank
 
-Every human correction (with feedback notes) is stored for review and audit history. Approved corrections can also provide evidence when generating versioned project analysis rules, but correction examples are not included in per-item analyzer prompts.
+Every human correction (with feedback notes) is stored for review and audit history. Approved corrections can also provide evidence when generating versioned project analysis rules, but correction examples are not included in per-item analyzer prompts. The rule-writing picker is paged and filterable, including a user filter; **Select all** and **Clear** apply only to the current filter. The picker shows the selected character budget, and large selections are processed in bounded patches rather than silently dropped.
 
 Project analysis rules use the same release lifecycle as platform datasets. Edit rules in a mutable draft, publish the reviewed draft as an immutable `vN` snapshot, and move the `production` alias when that version should become the analyzer default. New drafts can be cloned from any prior version, and the analyzer page shows lineage and rule-level comparisons. Saved AI analysis metadata records the resolved production rule-version ID for reproducibility.
 
 ### Reference document limits
 
-Each upload is limited to 10 MB and extracted text to 40,000 characters per document. A prompt can include up to eight selected documents and 80,000 reference characters in total. HTML scripts/styles are ignored, scanned PDFs need OCR, and PDF/DOCX extraction rejects unsafe expansion. PDF parsing also runs in a bounded worker and fails closed when the host cannot apply the required resource limits.
+Each upload is limited to 10 MB. The normal prompt-safe representation is 40,000 characters per document; an explicit full-content choice can retain up to 200,000 characters, and any hard-cap truncation is reported to the user. A prompt can include up to eight selected documents and 80,000 reference characters in total, with a final 120,000-character safety budget. Rule writing uses separate 256,000-character document/example source patches and a 320,000-character request budget, processing documents first and approved examples second. HTML scripts/styles are ignored, scanned PDFs need OCR, and PDF/DOCX extraction rejects unsafe expansion. PDF parsing also runs in a bounded worker and fails closed when the host cannot apply the required resource limits.
 
 ---
 

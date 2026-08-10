@@ -31,6 +31,7 @@ from qym_platform.db.models import (
     Approval,
     ApprovalDecision,
     Project,
+    ProjectAnalysisPromptSettings,
     ProjectAnalysisRuleVersion,
     ProjectMembership,
     ProjectRole,
@@ -497,3 +498,59 @@ def test_new_project_starts_with_one_live_rule_version(client, session_factory):
         assert len(versions) == 1
         assert versions[0].version == 1
         assert versions[0].name == "v1"
+
+
+def test_analysis_prompts_are_restricted_and_persisted(client, session_factory):
+    with session_factory() as session:
+        seed = _seed_project_world(session)
+
+    project_id = seed["project_one_id"]
+    manager_headers = _headers("manager@example.com")
+    member_headers = _headers("member@example.com")
+    admin_headers = _headers("admin@example.com")
+
+    defaults = client.get(
+        f"/v1/projects/{project_id}/analysis-prompts", headers=manager_headers
+    )
+    assert defaults.status_code == 200
+    assert defaults.json()["customized"] == {
+        "llm_analyzer": False,
+        "aggregator": False,
+        "rules_writer": False,
+    }
+
+    denied_read = client.get(
+        f"/v1/projects/{project_id}/analysis-prompts", headers=member_headers
+    )
+    assert denied_read.status_code == 403
+
+    payload = {
+        "llm_analyzer": "Custom analyzer prompt",
+        "aggregator": "Custom aggregator prompt",
+        "rules_writer": "Custom rules writer prompt",
+    }
+    updated = client.put(
+        f"/v1/projects/{project_id}/analysis-prompts",
+        headers=manager_headers,
+        json=payload,
+    )
+    assert updated.status_code == 200
+    assert updated.json()["prompts"] == payload
+
+    denied_write = client.put(
+        f"/v1/projects/{project_id}/analysis-prompts",
+        headers=member_headers,
+        json=payload,
+    )
+    assert denied_write.status_code == 403
+
+    admin_read = client.get(
+        f"/v1/projects/{project_id}/analysis-prompts", headers=admin_headers
+    )
+    assert admin_read.status_code == 200
+    assert admin_read.json()["prompts"] == payload
+
+    with session_factory() as session:
+        row = session.get(ProjectAnalysisPromptSettings, project_id)
+        assert row is not None
+        assert row.updated_by_user_id == "manager-1"
