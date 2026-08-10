@@ -78,10 +78,17 @@ def client(session_factory):
 
 
 def _seed_trace_data(session: Session) -> None:
-    project = Project(id="project-1", name="Project 1", slug="project-1", created_by_user_id="user-owner")
+    project = Project(
+        id="project-1",
+        name="Project 1",
+        slug="project-1",
+        created_by_user_id="user-owner",
+    )
     owner = User(id="user-owner", email="owner@example.com", role=UserRole.MEMBER)
     other = User(id="user-other", email="other@example.com", role=UserRole.MEMBER)
-    membership = ProjectMembership(project_id=project.id, user_id=owner.id, role=ProjectRole.MEMBER)
+    membership = ProjectMembership(
+        project_id=project.id, user_id=owner.id, role=ProjectRole.MEMBER
+    )
     run = Run(
         id="run-1",
         project_id=project.id,
@@ -170,7 +177,13 @@ def _seed_trace_data(session: Session) -> None:
             duration_ms=1000.0,
             status="OK",
             attributes={"openinference.span.kind": "LLM"},
-            events=[{"name": "llm.start", "time_unix_nano": 1_250_000_000, "attributes": {"model": "gpt"}}],
+            events=[
+                {
+                    "name": "llm.start",
+                    "time_unix_nano": 1_250_000_000,
+                    "attributes": {"model": "gpt"},
+                }
+            ],
         ),
         Span(
             run_id=run.id,
@@ -187,7 +200,19 @@ def _seed_trace_data(session: Session) -> None:
             events=[],
         ),
     ]
-    session.add_all([owner, other, project, membership, run, traced_item, plain_item, *attempts, *spans])
+    session.add_all(
+        [
+            owner,
+            other,
+            project,
+            membership,
+            run,
+            traced_item,
+            plain_item,
+            *attempts,
+            *spans,
+        ]
+    )
     session.commit()
 
 
@@ -199,7 +224,9 @@ def test_item_trace_endpoint_returns_summary_and_spans(client, session_factory) 
     with session_factory() as session:
         _seed_trace_data(session)
 
-    response = client.get("/api/runs/run-1/items/item-1/trace", headers=_headers("owner@example.com"))
+    response = client.get(
+        "/api/runs/run-1/items/item-1/trace", headers=_headers("owner@example.com")
+    )
 
     assert response.status_code == 200
     body = response.json()
@@ -226,11 +253,79 @@ def test_item_trace_endpoint_returns_summary_and_spans(client, session_factory) 
     assert body["attempts"][1]["summary"]["span_count"] == 1
 
 
-def test_item_trace_endpoint_returns_empty_payload_when_item_has_no_trace(client, session_factory) -> None:
+def test_item_trace_endpoint_scopes_attempts_to_requested_pass(
+    client, session_factory
+) -> None:
+    with session_factory() as session:
+        _seed_trace_data(session)
+        session.add_all(
+            [
+                RunItemAttempt(
+                    run_id="run-1",
+                    item_id="item-1",
+                    pass_number=2,
+                    attempt_number=1,
+                    status="completed",
+                    latency_ms=500.0,
+                    task_started_at_ms=5_000,
+                    trace_id="trace-pass-2",
+                    trace_url="https://langfuse.example/trace-pass-2",
+                    is_last_attempt=True,
+                ),
+                Span(
+                    run_id="run-1",
+                    trace_id="trace-pass-2",
+                    span_id="span-pass-2",
+                    parent_span_id=None,
+                    name="pass-2-root",
+                    kind="INTERNAL",
+                    start_time_ns=8_000_000_000,
+                    end_time_ns=8_500_000_000,
+                    duration_ms=500.0,
+                    status="OK",
+                    attributes={"openinference.span.kind": "CHAIN"},
+                    events=[],
+                ),
+            ]
+        )
+        session.commit()
+
+    pass_one = client.get(
+        "/api/runs/run-1/items/item-1/trace?pass_number=1",
+        headers=_headers("owner@example.com"),
+    ).json()
+    assert [attempt["trace_id"] for attempt in pass_one["attempts"]] == [
+        "trace-1",
+        "trace-2",
+    ]
+    assert pass_one["item"]["retry_count"] == 1
+
+    pass_two = client.get(
+        "/api/runs/run-1/items/item-1/trace?pass_number=2",
+        headers=_headers("owner@example.com"),
+    ).json()
+    assert [attempt["trace_id"] for attempt in pass_two["attempts"]] == ["trace-pass-2"]
+    assert pass_two["item"]["trace_id"] == "trace-pass-2"
+    assert pass_two["item"]["retry_count"] == 0
+    assert pass_two["summary"]["duration_ms"] == pytest.approx(500.0)
+
+    pending = client.get(
+        "/api/runs/run-1/items/item-1/trace?pass_number=3",
+        headers=_headers("owner@example.com"),
+    ).json()
+    assert pending["item"]["trace_id"] == ""
+    assert pending["attempts"] == []
+
+
+def test_item_trace_endpoint_returns_empty_payload_when_item_has_no_trace(
+    client, session_factory
+) -> None:
     with session_factory() as session:
         _seed_trace_data(session)
 
-    response = client.get("/api/runs/run-1/items/item-2/trace", headers=_headers("owner@example.com"))
+    response = client.get(
+        "/api/runs/run-1/items/item-2/trace", headers=_headers("owner@example.com")
+    )
 
     assert response.status_code == 200
     body = response.json()
@@ -256,7 +351,9 @@ def test_item_trace_endpoint_rejects_other_user(client, session_factory) -> None
     with session_factory() as session:
         _seed_trace_data(session)
 
-    response = client.get("/api/runs/run-1/items/item-1/trace", headers=_headers("other@example.com"))
+    response = client.get(
+        "/api/runs/run-1/items/item-1/trace", headers=_headers("other@example.com")
+    )
 
     assert response.status_code == 403
     assert response.json()["detail"] == "Access denied"
@@ -266,8 +363,12 @@ def test_legacy_span_endpoints_enforce_run_visibility(client, session_factory) -
     with session_factory() as session:
         _seed_trace_data(session)
 
-    run_response = client.get("/api/runs/run-1/spans", headers=_headers("other@example.com"))
-    item_response = client.get("/api/runs/run-1/items/item-1/spans", headers=_headers("other@example.com"))
+    run_response = client.get(
+        "/api/runs/run-1/spans", headers=_headers("other@example.com")
+    )
+    item_response = client.get(
+        "/api/runs/run-1/items/item-1/spans", headers=_headers("other@example.com")
+    )
 
     assert run_response.status_code == 403
     assert item_response.status_code == 403

@@ -12,6 +12,14 @@ DOCS_JS = DASHBOARD_DIR / "docs.js"
 DOCS_CSS = DASHBOARD_DIR / "docs.css"
 RUNS_API = ROOT / "packages" / "platform" / "qym_platform" / "api" / "runs.py"
 ANALYSIS_API = ROOT / "packages" / "platform" / "qym_platform" / "api" / "analysis.py"
+REPEAT_PASSES_SERVICE = (
+    ROOT
+    / "packages"
+    / "platform"
+    / "qym_platform"
+    / "services"
+    / "repeat_passes.py"
+)
 
 
 def test_docs_page_switch_is_atomic_and_layout_stable() -> None:
@@ -71,6 +79,27 @@ def test_repeat_run_rows_are_ordinary_rows_with_pass_count_chip() -> None:
     assert ".run-pass-count" in styles
 
 
+def test_repeat_passes_use_runs_view_bulk_delete_action() -> None:
+    source = (DASHBOARD_DIR / "run.html").read_text(encoding="utf-8")
+    dashboard = DASHBOARD_JS.read_text(encoding="utf-8")
+    index = (DASHBOARD_DIR / "index.html").read_text(encoding="utf-8")
+    api = RUNS_API.read_text(encoding="utf-8")
+    service = REPEAT_PASSES_SERVICE.read_text(encoding="utf-8")
+
+    assert 'data-delete-pass="' not in source
+    assert 'class="pass-checkbox"' in dashboard
+    assert "const passGroups = new Map();" in dashboard
+    assert "body: JSON.stringify({ pass_numbers: group.passNumbers })" in dashboard
+    assert 'class="pass-delete-action qym-icon-action action-icon delete-run"' in dashboard
+    assert "data-can-delete-pass=" in dashboard
+    assert "await fetchRuns({ refreshAllPages: true });" in dashboard
+    assert "delete state._samplesData[runId];" in dashboard
+    assert "dashboard.js?v=run-nav-state-" in index
+    assert '@router.delete("/api/runs/{run_id}/passes/{pass_number}")' in api
+    assert '@router.delete("/api/runs/{run_id}/passes")' in api
+    assert 'action="run.pass_deleted"' in service
+
+
 def test_repeat_run_expander_uses_accessible_attached_inspector() -> None:
     source = DASHBOARD_JS.read_text(encoding="utf-8")
     styles = (DASHBOARD_DIR / "dashboard.css").read_text(encoding="utf-8")
@@ -86,6 +115,19 @@ def test_repeat_run_expander_uses_accessible_attached_inspector() -> None:
     assert ".samples-detail-panel" in styles
     assert ".samples-summary-grid" in styles
     assert ".samples-toggle:focus-visible" in styles
+
+
+def test_individual_run_navigation_clears_comparison_state() -> None:
+    dashboard = DASHBOARD_JS.read_text(encoding="utf-8")
+    run = (DASHBOARD_DIR / "run.html").read_text(encoding="utf-8")
+
+    open_run = dashboard.split("function openRun(filePath, e)", 1)[1].split(
+        "function openComparison", 1
+    )[0]
+    assert "sessionStorage.removeItem('compareRuns');" in open_run
+    assert "sessionStorage.removeItem('compareCohorts');" in open_run
+    assert "const COMPARE_PASSES =" in run
+    assert "const isRepeatItem = COMPARE_PASSES && !state.viewPass" in run
 
 
 def test_repeat_drawer_follows_mock_option_c() -> None:
@@ -218,10 +260,11 @@ def test_run_page_supports_single_pass_scope() -> None:
 
     assert "const VIEW_PASS = (() => {" in source
     assert "new URLSearchParams(window.location.search).get('pass')" in source
-    assert "scores[state.viewPass - 1]" in source
+    assert "scores[passNumber - 1]" in source
     assert "function scopedPassMetricMeta(row, metricNames, passNumber)" in source
-    assert "metric_meta: scopedPassMetricMeta(row, metricNames, state.viewPass)" in source
-    assert "next.metric_meta = scopedPassMetricMeta(" in source
+    assert "function scopeRowToPass(row, metricNames, passNumber)" in source
+    assert "metric_meta: passMetricMeta" in source
+    assert "next = scopeRowToPass(next, state.allMetrics, state.viewPass);" in source
     # no banner — the headline pill carries the pass label and the way back
     assert "pass-scope-banner" not in source
     assert "Return to all passes." in source
@@ -229,14 +272,14 @@ def test_run_page_supports_single_pass_scope() -> None:
     # Repeat Stability chart panels, no per-pass dot strips on item cards
     assert "if (samplesCount <= 1 || IS_EXPORT || state.viewPass)" in source
     assert source.count("const repeatSeries = state.viewPass ? [] :") == 1
-    assert "!state.viewPass && passAttempts" in source
+    assert "COMPARE_PASSES && !state.viewPass" in source
     # edits are allowed and routed to the viewed pass
     assert "const passNumber = Number(btn.dataset.passNumber) || state.viewPass || null;" in source
     assert "updateMetricScore(filePath, rowIndex, metricName, input.value, passNumber)" in source
     assert "...(passNumber ? { pass_number: passNumber } : {})," in source
     # applying the server row keeps per-pass fields and re-applies the lens
     assert "let next = { ...rows[pos], ...updatedRow };" in source
-    assert "next.pass_attempts[state.viewPass - 1]" in source
+    assert "row.pass_attempts[passNumber - 1]" in source
     assert 'class="hero-samples-pill"' in source
     assert "samplesCount > 1 && !state.viewPass" in source
     assert 'class="hero-pass-pill"' in source
@@ -249,7 +292,20 @@ def test_run_page_supports_single_pass_scope() -> None:
     assert "'samples',\n          'max_metric_concurrency'" in source
 
     # pass scope swaps outputs/latency/traces too, from per-pass attempts
-    assert "row.pass_attempts[state.viewPass - 1]" in source
+    assert "row.pass_attempts[passNumber - 1]" in source
+    assert "task_started_at_ms: att?.task_started_at_ms ?? null" in source
+    assert "retry_count: Number(att?.retry_count || 0)" in source
+    assert "trace_stats: att?.trace_stats || null" in source
+    assert "'?pass_number=' + encodeURIComponent(att.pass_number)" in source
+    assert "state.viewPass ? '?pass_number=' + encodeURIComponent(state.viewPass)" in source
+    # Missing attempts become pending instead of inheriting the latest
+    # run-level output/status. Header and trace summary use the pass endpoint.
+    assert "output: att ? (att.output ?? null) : null" in source
+    assert "fetch(apiUrl('api/runs/' + RUN_ID + '/passes'))" in source
+    assert "const pass = state.viewPass ? state.passSummary : null;" in source
+    assert "let runtimeMs = pass ? pass.duration_ms : run.duration_ms;" in source
+    assert "? state.passSummary?.trace_stats" in source
+    assert "if (state.viewPass) { section.innerHTML = ''; return; }" in source
 
     # the lens and its All/pass dot switcher are gone: expanded repeat items
     # use independently visible output cards and one synchronized detail band
@@ -271,6 +327,8 @@ def test_run_page_supports_single_pass_scope() -> None:
     api = RUNS_API.read_text(encoding="utf-8")
     assert '"pass_attempts": (' in api
     assert "RunItemAttempt.is_last_attempt.is_(True)" in api
+    assert '"completed_count": completed_by_pass.get(p, 0)' in api
+    assert '"running_count": running_by_pass.get(p, 0)' in api
     assert 'pass_number = request.get("pass_number")' in api
     assert "Re-reduce: run-level score = mean over all stored passes" in api
 

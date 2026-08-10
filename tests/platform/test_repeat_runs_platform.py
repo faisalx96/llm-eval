@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -37,6 +38,7 @@ from qym_platform.db.models import (
     Project,
     ProjectMembership,
     Run,
+    RunEvent,
     RunItem,
     RunItemAttempt,
     RunItemPassScore,
@@ -130,47 +132,125 @@ def _event(seq: int, type_: str, payload: dict) -> str:
 def _sampled_run_events() -> str:
     """item-1: pass 1 scores 1.0, pass 2 scores 0.0, pass 3 FAILS entirely."""
     lines = [
-        _event(1, "item_started", {
-            "item_id": "item-1", "index": 0, "pass_number": 1, "input": {"q": "hi"},
-        }),
+        _event(
+            1,
+            "item_started",
+            {
+                "item_id": "item-1",
+                "index": 0,
+                "pass_number": 1,
+                "input": {"q": "hi"},
+            },
+        ),
         # SDK <=1.5.2 emitted item_completed before item_attempt_finished.
         # Keep that production order here to verify order-independent ingest.
-        _event(2, "metric_scored", {
-            "item_id": "item-1", "pass_number": 1, "metric_name": "accuracy",
-            "score_numeric": 1.0, "meta": {"verdict": "correct"},
-        }),
-        _event(3, "item_completed", {
-            "item_id": "item-1", "index": 0, "pass_number": 1,
-            "is_final_pass": False, "output": "out-pass-1", "latency_ms": 100.0,
-        }),
-        _event(4, "item_attempt_finished", {
-            "item_id": "item-1", "pass_number": 1, "attempt_number": 1,
-            "status": "completed", "latency_ms": 100.0, "is_last_attempt": True,
-        }),
-        _event(5, "pass_completed", {
-            "pass_number": 1, "samples": 3, "metrics": {"accuracy": 1.0},
-        }),
-        _event(6, "metric_scored", {
-            "item_id": "item-1", "pass_number": 2, "metric_name": "accuracy",
-            "score_numeric": 0.0, "meta": {"verdict": "incorrect"},
-        }),
-        _event(7, "item_completed", {
-            "item_id": "item-1", "index": 0, "pass_number": 2,
-            "is_final_pass": False, "output": "out-pass-2", "latency_ms": 120.0,
-        }),
-        _event(8, "item_attempt_finished", {
-            "item_id": "item-1", "pass_number": 2, "attempt_number": 1,
-            "status": "completed", "latency_ms": 120.0, "is_last_attempt": True,
-        }),
-        _event(9, "pass_completed", {
-            "pass_number": 2, "samples": 3, "metrics": {"accuracy": 0.5},
-        }),
-        _event(10, "item_failed", {
-            "item_id": "item-1", "index": 0, "pass_number": 3, "error": "boom",
-        }),
-        _event(11, "pass_completed", {
-            "pass_number": 3, "samples": 3, "metrics": {"accuracy": 1.0 / 3.0},
-        }),
+        _event(
+            2,
+            "metric_scored",
+            {
+                "item_id": "item-1",
+                "pass_number": 1,
+                "metric_name": "accuracy",
+                "score_numeric": 1.0,
+                "meta": {"verdict": "correct"},
+            },
+        ),
+        _event(
+            3,
+            "item_completed",
+            {
+                "item_id": "item-1",
+                "index": 0,
+                "pass_number": 1,
+                "is_final_pass": False,
+                "output": "out-pass-1",
+                "latency_ms": 100.0,
+            },
+        ),
+        _event(
+            4,
+            "item_attempt_finished",
+            {
+                "item_id": "item-1",
+                "pass_number": 1,
+                "attempt_number": 1,
+                "status": "completed",
+                "latency_ms": 100.0,
+                "is_last_attempt": True,
+            },
+        ),
+        _event(
+            5,
+            "pass_completed",
+            {
+                "pass_number": 1,
+                "samples": 3,
+                "metrics": {"accuracy": 1.0},
+            },
+        ),
+        _event(
+            6,
+            "metric_scored",
+            {
+                "item_id": "item-1",
+                "pass_number": 2,
+                "metric_name": "accuracy",
+                "score_numeric": 0.0,
+                "meta": {"verdict": "incorrect"},
+            },
+        ),
+        _event(
+            7,
+            "item_completed",
+            {
+                "item_id": "item-1",
+                "index": 0,
+                "pass_number": 2,
+                "is_final_pass": False,
+                "output": "out-pass-2",
+                "latency_ms": 120.0,
+            },
+        ),
+        _event(
+            8,
+            "item_attempt_finished",
+            {
+                "item_id": "item-1",
+                "pass_number": 2,
+                "attempt_number": 1,
+                "status": "completed",
+                "latency_ms": 120.0,
+                "is_last_attempt": True,
+            },
+        ),
+        _event(
+            9,
+            "pass_completed",
+            {
+                "pass_number": 2,
+                "samples": 3,
+                "metrics": {"accuracy": 0.5},
+            },
+        ),
+        _event(
+            10,
+            "item_failed",
+            {
+                "item_id": "item-1",
+                "index": 0,
+                "pass_number": 3,
+                "error": "boom",
+            },
+        ),
+        _event(
+            11,
+            "pass_completed",
+            {
+                "pass_number": 3,
+                "samples": 3,
+                "metrics": {"accuracy": 1.0 / 3.0},
+            },
+        ),
     ]
     return "\n".join(lines) + "\n"
 
@@ -222,18 +302,12 @@ def test_sampled_run_ingest_stores_passes_and_reduces_mean():
         assert pass_scores[2].label == "error"
 
         # reduced score = mean over passes; RunItem stays ONE row
-        score = (
-            session.query(RunItemScore)
-            .filter(RunItemScore.run_id == RUN_ID)
-            .one()
-        )
+        score = session.query(RunItemScore).filter(RunItemScore.run_id == RUN_ID).one()
         assert score.score_numeric == pytest.approx(1.0 / 3.0)
         assert score.score_raw == pytest.approx(1.0 / 3.0)
         assert score.meta == {"sample_reducer": "mean", "samples_observed": 3}
         assert score.label is None
-        assert (
-            session.query(RunItem).filter(RunItem.run_id == RUN_ID).count() == 1
-        )
+        assert session.query(RunItem).filter(RunItem.run_id == RUN_ID).count() == 1
 
         run = session.query(Run).filter(Run.id == RUN_ID).one()
         assert run.samples == 3
@@ -301,19 +375,22 @@ def test_detail_passes_and_group_metrics_endpoints():
             "samples_observed": 3,
         }
 
-        # every pass's final attempt ships with the row — output, latency,
-        # status — so the UI can show each attempt, not just the last one.
-        # Pass 3 failed without an attempt event, so its slot is null and the
-        # item-level error remains the source of truth for it.
+        # Every pass's outcome ships with the row — output, latency, status,
+        # retry/start/trace state — so the UI never falls back to the latest
+        # run-level item. Pass 3 is recovered from its legacy item_failed event.
         attempts_payload = row["pass_attempts"]
         assert [a and a["status"] for a in attempts_payload] == [
             "completed",
             "completed",
-            None,
+            "error",
         ]
         assert attempts_payload[0]["output"] == "out-pass-1"
         assert attempts_payload[1]["output"] == "out-pass-2"
+        assert attempts_payload[2]["output"] == "ERROR: boom"
         assert attempts_payload[0]["latency_ms"] == pytest.approx(100.0)
+        assert attempts_payload[0]["task_started_at_ms"] == 1_700_000_001_000
+        assert attempts_payload[0]["retry_count"] == 0
+        assert attempts_payload[0]["trace_stats"]["tokens"] == 1000
 
         # lazy per-pass endpoint (runs-list expansion)
         passes = run_passes(RUN_ID, db=session, principal=principal)
@@ -323,13 +400,15 @@ def test_detail_passes_and_group_metrics_endpoints():
         assert passes["passes"][2]["metric_means"]["accuracy"] == pytest.approx(0.0)
         assert passes["passes"][0]["started_at"] == "2023-11-14T22:13:21Z"
         assert passes["passes"][0]["duration_ms"] == pytest.approx(100.0)
-        assert passes["passes"][0]["trace_stats"]["avg_tokens"] == pytest.approx(
-            1000.0
-        )
-        assert passes["passes"][1]["trace_stats"]["avg_llm_calls"] == pytest.approx(
-            2.0
-        )
-        assert passes["passes"][2]["started_at"] is None
+        assert [p["items_total"] for p in passes["passes"]] == [1, 1, 1]
+        assert [p["items_started"] for p in passes["passes"]] == [1, 1, 1]
+        assert [p["completed_count"] for p in passes["passes"]] == [1, 1, 1]
+        assert [p["error_count"] for p in passes["passes"]] == [0, 0, 1]
+        assert [p["running_count"] for p in passes["passes"]] == [0, 0, 0]
+        assert [p["retry_count"] for p in passes["passes"]] == [0, 0, 0]
+        assert passes["passes"][0]["trace_stats"]["avg_tokens"] == pytest.approx(1000.0)
+        assert passes["passes"][1]["trace_stats"]["avg_llm_calls"] == pytest.approx(2.0)
+        assert passes["passes"][2]["started_at"] == "2026-07-04T00:00:00Z"
         assert passes["passes"][2]["trace_stats"] is None
 
         # on-demand group metrics + full k-band (no reducer lock-in)
@@ -355,32 +434,138 @@ def test_detail_passes_and_group_metrics_endpoints():
         }
 
 
+def test_running_pass_reports_only_its_own_progress_and_item_state():
+    app, SessionLocal = _make_env()
+    del app
+    with SessionLocal() as session:
+        user, _, run = _seed(session, token="test-token", samples=3)
+        run.run_metadata = {"last_completed_pass": 1, "total_items": 2}
+        session.add_all(
+            [
+                RunItem(
+                    run_id=RUN_ID,
+                    item_id="item-1",
+                    index=0,
+                    input={"q": 1},
+                    output="latest-run-output-1",
+                ),
+                RunItem(
+                    run_id=RUN_ID,
+                    item_id="item-2",
+                    index=1,
+                    input={"q": 2},
+                    output="latest-run-output-2",
+                ),
+                RunItemAttempt(
+                    run_id=RUN_ID,
+                    item_id="item-1",
+                    pass_number=1,
+                    attempt_number=1,
+                    status="completed",
+                    output="pass-1-one",
+                    latency_ms=100,
+                    task_started_at_ms=1_000,
+                    is_last_attempt=True,
+                ),
+                RunItemAttempt(
+                    run_id=RUN_ID,
+                    item_id="item-2",
+                    pass_number=1,
+                    attempt_number=1,
+                    status="completed",
+                    output="pass-1-two",
+                    latency_ms=100,
+                    task_started_at_ms=1_000,
+                    is_last_attempt=True,
+                ),
+                RunItemAttempt(
+                    run_id=RUN_ID,
+                    item_id="item-1",
+                    pass_number=2,
+                    attempt_number=1,
+                    status="completed",
+                    output="pass-2-one",
+                    latency_ms=50,
+                    task_started_at_ms=2_000,
+                    is_last_attempt=True,
+                ),
+                RunEvent(
+                    run_id=RUN_ID,
+                    event_id="00000000-0000-0000-0000-000000009999",
+                    sequence=1,
+                    type="item_attempt_started",
+                    sent_at=datetime(2026, 7, 4, tzinfo=timezone.utc),
+                    payload={
+                        "item_id": "item-2",
+                        "index": 1,
+                        "pass_number": 2,
+                        "attempt_number": 1,
+                        "task_started_at_ms": 3_000,
+                    },
+                ),
+            ]
+        )
+        session.commit()
+
+        principal = Principal(
+            user=user, auth_type="api_key", scopes=(), project_id="project-1"
+        )
+        pass_payload = run_passes(RUN_ID, db=session, principal=principal)
+        assert [p["status"] for p in pass_payload["passes"]] == [
+            "completed",
+            "running",
+            "pending",
+        ]
+        active = pass_payload["passes"][1]
+        assert active["items_total"] == 2
+        assert active["items_started"] == 2
+        assert active["completed_count"] == 1
+        assert active["running_count"] == 1
+        assert active["error_count"] == 0
+        assert active["started_at"] == "1970-01-01T00:00:02Z"
+        assert active["ended_at"] is None
+
+        detail = _build_run_data(session, run)
+        rows = detail["snapshot"]["rows"]
+        pass_two = [row["pass_attempts"][1] for row in rows]
+        assert [attempt["status"] for attempt in pass_two] == [
+            "completed",
+            "running",
+        ]
+        assert pass_two[0]["output"] == "pass-2-one"
+        assert pass_two[1]["output"] is None
+        assert pass_two[1]["task_started_at_ms"] == 3_000
+
+
 def test_attempt_finished_stores_output_without_item_completed():
     """New SDKs make the attempt event self-contained for pass output."""
     app, SessionLocal = _make_env()
     with SessionLocal() as session:
         _seed(session, token="test-token", samples=2)
 
-    body = _event(
-        1,
-        "item_attempt_finished",
-        {
-            "item_id": "item-1",
-            "pass_number": 1,
-            "attempt_number": 1,
-            "status": "completed",
-            "output": "direct-output",
-            "latency_ms": 25.0,
-            "is_last_attempt": True,
-        },
-    ) + "\n"
+    body = (
+        _event(
+            1,
+            "item_attempt_finished",
+            {
+                "item_id": "item-1",
+                "pass_number": 1,
+                "attempt_number": 1,
+                "status": "completed",
+                "output": "direct-output",
+                "latency_ms": 25.0,
+                "is_last_attempt": True,
+            },
+        )
+        + "\n"
+    )
     with TestClient(app) as client:
         _ingest(client, body, "test-token")
 
     with SessionLocal() as session:
-        attempt = session.query(RunItemAttempt).filter(
-            RunItemAttempt.run_id == RUN_ID
-        ).one()
+        attempt = (
+            session.query(RunItemAttempt).filter(RunItemAttempt.run_id == RUN_ID).one()
+        )
         assert attempt.output == "direct-output"
 
 
@@ -395,9 +580,7 @@ def test_detail_recovers_outputs_from_stored_completion_events():
 
     with SessionLocal() as session:
         attempts = (
-            session.query(RunItemAttempt)
-            .filter(RunItemAttempt.run_id == RUN_ID)
-            .all()
+            session.query(RunItemAttempt).filter(RunItemAttempt.run_id == RUN_ID).all()
         )
         for attempt in attempts:
             attempt.output = None
@@ -408,7 +591,7 @@ def test_detail_recovers_outputs_from_stored_completion_events():
         assert [attempt and attempt["output"] for attempt in row["pass_attempts"]] == [
             "out-pass-1",
             "out-pass-2",
-            None,
+            "ERROR: boom",
         ]
 
 
@@ -463,7 +646,9 @@ def test_update_metric_with_pass_number_edits_pass_and_rereduces_mean():
         row = result["row"]
         assert row["pass_scores"]["accuracy"] == [1.0, 1.0, 0.0]
         assert row["pass_metric_meta"]["accuracy"][1]["modified"] == "true"
-        assert row["pass_metric_meta"]["accuracy"][1]["original_score"] == pytest.approx(0.0)
+        assert row["pass_metric_meta"]["accuracy"][1][
+            "original_score"
+        ] == pytest.approx(0.0)
         assert [a and a["status"] for a in row["pass_attempts"]] == [
             "completed",
             "completed",
@@ -543,32 +728,58 @@ def test_old_sdk_events_without_pass_number_still_ingest():
     with SessionLocal() as session:
         _seed(session, token="test-token", samples=1)
 
-    legacy = "\n".join(
-        [
-            _event(1, "item_started", {
-                "item_id": "item-1", "index": 0, "input": {"q": "hi"},
-            }),
-            _event(2, "item_attempt_finished", {
-                "item_id": "item-1", "attempt_number": 1,
-                "status": "completed", "latency_ms": 90.0, "is_last_attempt": True,
-            }),
-            _event(3, "metric_scored", {
-                "item_id": "item-1", "metric_name": "accuracy", "score_numeric": 0.75,
-            }),
-            _event(4, "item_completed", {
-                "item_id": "item-1", "index": 0, "output": "legacy-out",
-                "latency_ms": 90.0,
-            }),
-        ]
-    ) + "\n"
+    legacy = (
+        "\n".join(
+            [
+                _event(
+                    1,
+                    "item_started",
+                    {
+                        "item_id": "item-1",
+                        "index": 0,
+                        "input": {"q": "hi"},
+                    },
+                ),
+                _event(
+                    2,
+                    "item_attempt_finished",
+                    {
+                        "item_id": "item-1",
+                        "attempt_number": 1,
+                        "status": "completed",
+                        "latency_ms": 90.0,
+                        "is_last_attempt": True,
+                    },
+                ),
+                _event(
+                    3,
+                    "metric_scored",
+                    {
+                        "item_id": "item-1",
+                        "metric_name": "accuracy",
+                        "score_numeric": 0.75,
+                    },
+                ),
+                _event(
+                    4,
+                    "item_completed",
+                    {
+                        "item_id": "item-1",
+                        "index": 0,
+                        "output": "legacy-out",
+                        "latency_ms": 90.0,
+                    },
+                ),
+            ]
+        )
+        + "\n"
+    )
 
     with TestClient(app) as client:
         _ingest(client, legacy, "test-token")
 
     with SessionLocal() as session:
-        score = (
-            session.query(RunItemScore).filter(RunItemScore.run_id == RUN_ID).one()
-        )
+        score = session.query(RunItemScore).filter(RunItemScore.run_id == RUN_ID).one()
         assert score.score_numeric == pytest.approx(0.75)  # raw, no reduction
         # classic runs never touch the pass-score table
         assert (
@@ -578,9 +789,7 @@ def test_old_sdk_events_without_pass_number_still_ingest():
             == 0
         )
         attempt = (
-            session.query(RunItemAttempt)
-            .filter(RunItemAttempt.run_id == RUN_ID)
-            .one()
+            session.query(RunItemAttempt).filter(RunItemAttempt.run_id == RUN_ID).one()
         )
         assert attempt.pass_number == 1
 
@@ -683,7 +892,9 @@ def test_group_metrics_bootstrap_is_cached_and_invalidated_by_score_changes():
         session.commit()
         principal = Principal(
             user=session.query(User).filter(User.id == "user-1").one(),
-            auth_type="api_key", scopes=(), project_id="project-1",
+            auth_type="api_key",
+            scopes=(),
+            project_id="project-1",
         )
 
         first = run_group_metrics(

@@ -5100,6 +5100,7 @@
         const n = parseInt(raw || '', 10);
         return Number.isFinite(n) && n > 0 ? n : null;
       })();
+      const COMPARE_PASSES = new URLSearchParams(window.location.search).get('compare_passes') === '1';
 
       function apiUrl(path) {
         return API_ROOT + path.replace(/^\.?\/?/, '');
@@ -5191,6 +5192,7 @@
       const state = {
         run: null,
         snapshot: null,
+        passSummary: null,
         allMetrics: [],
         selectedMetric: null,
         samplesMetric: null,
@@ -5770,13 +5772,25 @@
         }
         if (!RUN_ID) { showEmpty(); return; }
         try {
-          const res = await fetch(apiUrl('api/runs/' + RUN_ID));
+          const [res, passRes] = await Promise.all([
+            fetch(apiUrl('api/runs/' + RUN_ID)),
+            VIEW_PASS
+              ? fetch(apiUrl('api/runs/' + RUN_ID + '/passes')).catch(() => null)
+              : Promise.resolve(null),
+          ]);
           if (!res.ok) { showError('HTTP ' + res.status, 'Could not load run data.'); return; }
           const data = await res.json();
           if (data.error) { showError('Error', data.error); return; }
           if (!data.run || !data.snapshot) { showEmpty(); return; }
           state.run = data.run;
           state.snapshot = data.snapshot;
+          state.passSummary = null;
+          if (passRes && passRes.ok) {
+            const passData = await passRes.json();
+            if (passData && Array.isArray(passData.passes)) {
+              state.passSummary = passData.passes.find(pass => Number(pass.pass_number) === VIEW_PASS) || null;
+            }
+          }
           state.langfuseHost = data.run.langfuse_host || '';
           state.langfuseProjectId = data.run.langfuse_project_id || '';
           syncProjectLinks(data.run.project);
@@ -5806,6 +5820,58 @@
         return scoped;
       }
 
+      function scopedPassItemMetadata(metadata) {
+        const scoped = { ...((metadata && typeof metadata === 'object') ? metadata : {}) };
+        [
+          'root_cause', 'root_cause_detail', 'root_cause_note',
+          'root_cause_source', 'root_cause_confidence', 'root_cause_metric_name',
+          'solution', 'solution_note', 'solution_source',
+          'metric_analyses', 'analysis_error',
+        ].forEach(key => delete scoped[key]);
+        return scoped;
+      }
+
+      function scopeRowToPass(row, metricNames, passNumber) {
+        const passValues = metricNames.map(name => {
+          const scores = (row.pass_scores || {})[name];
+          return (Array.isArray(scores) && scores.length >= passNumber)
+            ? scores[passNumber - 1]
+            : null;
+        });
+        const att = Array.isArray(row.pass_attempts) ? row.pass_attempts[passNumber - 1] : null;
+        const hasPassScore = passValues.some(value => value !== null && value !== undefined && value !== '');
+        const passMetricMeta = scopedPassMetricMeta(row, metricNames, passNumber);
+        const hasErrorMeta = Object.values(passMetricMeta).some(meta =>
+          String(meta?.label || meta?.status || '').toLowerCase() === 'error'
+        );
+        const rawStatus = String(att?.status || '').toLowerCase();
+        const status = rawStatus === 'failed' || rawStatus === 'error' || hasErrorMeta
+          ? 'error'
+          : (rawStatus || (hasPassScore ? 'completed' : 'pending'));
+        const latencyMs = Number(att?.latency_ms || 0);
+        return {
+          ...row,
+          metric_values: passValues,
+          metric_meta: passMetricMeta,
+          item_metadata: scopedPassItemMetadata(row.item_metadata),
+          review_correction_id: null,
+          review_correction_status: '',
+          review_corrections: {},
+          status: status,
+          error: att?.error || '',
+          output: att ? (att.output ?? null) : null,
+          output_full: att ? (att.output ?? null) : null,
+          time: latencyMs > 0 ? (latencyMs / 1000).toFixed(3) : '',
+          latency_ms: latencyMs,
+          task_started_at_ms: att?.task_started_at_ms ?? null,
+          retry_count: Number(att?.retry_count || 0),
+          trace_id: att?.trace_id || '',
+          trace_url: att?.trace_url || '',
+          trace_stats: att?.trace_stats || null,
+          _pass_has_attempt: !!att,
+        };
+      }
+
       function processRun() {
         const run = state.run;
         const snap = state.snapshot;
@@ -5821,30 +5887,34 @@
         if (samplesTotal <= 1) state.itemDetailView = 'cards';
         if (state.viewPass) {
           const metricNames = state.allMetrics;
-          snap.rows = (snap.rows || []).map(row => {
-            if (!row.pass_scores && !row.pass_attempts) return row;
-            const passValues = metricNames.map(name => {
-              const scores = (row.pass_scores || {})[name];
-              return (Array.isArray(scores) && scores.length >= state.viewPass)
-                ? scores[state.viewPass - 1]
-                : null;
-            });
-            const att = Array.isArray(row.pass_attempts) ? row.pass_attempts[state.viewPass - 1] : null;
-            return {
-              ...row,
-              metric_values: passValues,
-              metric_meta: scopedPassMetricMeta(row, metricNames, state.viewPass),
-              ...(att ? {
-                status: att.status,
-                error: att.error || '',
-                output: att.output,
-                output_full: att.output,
-                latency_ms: att.latency_ms || 0,
-                trace_id: att.trace_id || '',
-                trace_url: att.trace_url || '',
-              } : {}),
-            };
-          });
+          snap.rows = (snap.rows || []).map(row =>
+            scopeRowToPass(row, metricNames, state.viewPass)
+          );
+
+          const scopedRows = snap.rows || [];
+          const scopedStarts = scopedRows
+            .map(row => Number(row.task_started_at_ms))
+            .filter(value => Number.isFinite(value) && value > 0);
+          const lastCompleted = Number(run.last_completed_pass || 0);
+          const inferredStatus = state.viewPass <= lastCompleted
+            ? 'completed'
+            : (String(run.status || '').toUpperCase() === 'RUNNING' && state.viewPass === lastCompleted + 1
+              ? 'running'
+              : 'pending');
+          const inferredSummary = {
+            pass_number: state.viewPass,
+            status: inferredStatus,
+            items_total: scopedRows.length,
+            items_started: scopedRows.filter(row => row.status !== 'pending').length,
+            completed_count: scopedRows.filter(row => row.status === 'completed' || row.status === 'error').length,
+            error_count: scopedRows.filter(row => row.status === 'error').length,
+            running_count: scopedRows.filter(row => row.status === 'running').length,
+            started_at: scopedStarts.length ? new Date(Math.min(...scopedStarts)).toISOString() : null,
+            duration_ms: null,
+            ended_at: null,
+            trace_stats: null,
+          };
+          state.passSummary = { ...inferredSummary, ...(state.passSummary || {}) };
         }
         if (state.allMetrics.length > 0 && !state.selectedMetric) {
           state.selectedMetric = state.allMetrics[0];
@@ -5988,20 +6058,25 @@
 
       function renderSummary() {
         const run = state.run;
+        const pass = state.viewPass ? state.passSummary : null;
         const config = run.config || {};
         const metadata = run.metadata || {};
-        const statusClass = (run.status || '').toLowerCase();
-        const statusText = escapeHtml((run.status || 'unknown').toUpperCase());
+        const scopedStatus = pass?.status || run.status || 'unknown';
+        const statusClass = String(scopedStatus).toLowerCase();
+        const statusText = escapeHtml(String(scopedStatus).toUpperCase());
         const modelName = run.model_name || config.model || config.model_name || '';
         const runId = run.run_id || RUN_ID || '';
         const taskName = run.task_name || metadata.task_name || config.task || '—';
         const owner = run.owner || {};
         const ownerLabel = owner.display_name || owner.email || owner.id || '—';
         const projectName = (run.project && run.project.name) || run.team_name || '—';
-        const startedAt = run.started_at || run.created_at || '';
-        const endedAt = run.ended_at || '';
-        let runtimeMs = run.duration_ms;
-        if ((runtimeMs == null || runtimeMs === '') && startedAt && !endedAt) {
+        const startedAt = pass ? (pass.started_at || '') : (run.started_at || run.created_at || '');
+        const endedAt = pass ? (pass.ended_at || '') : (run.ended_at || '');
+        let runtimeMs = pass ? pass.duration_ms : run.duration_ms;
+        if (pass && statusClass === 'running' && startedAt) {
+          const startedTime = new Date(startedAt).getTime();
+          if (!Number.isNaN(startedTime)) runtimeMs = Date.now() - startedTime;
+        } else if ((runtimeMs == null || runtimeMs === '') && startedAt && !endedAt) {
           const startedTime = new Date(startedAt).getTime();
           if (!Number.isNaN(startedTime)) runtimeMs = Date.now() - startedTime;
         }
@@ -6059,7 +6134,7 @@
         const metaHtml = [
           metaItem('Task', taskName),
           metaItem('Dataset', run.dataset_name || '—', { html: (window.QymShell && run.dataset_name ? QymShell.identiconHTML(run.dataset_name, { cell: 2, gap: 1, showEmpty: false, chip: true }) : '') + escapeHtml(run.dataset_name || '—') + (window.QymShell ? QymShell.datasetVersionInline(run.dataset_version) + QymShell.datasetAliasTags(run.dataset_aliases) : '') }),
-          metaItem('Model', modelName || '—', { html: renderModelLabel(modelName || '—', hasReasoningTraceStats(run.trace_stats)), nowrap: true }),
+          metaItem('Model', modelName || '—', { html: renderModelLabel(modelName || '—', hasReasoningTraceStats(pass ? pass.trace_stats : run.trace_stats)), nowrap: true }),
           metaItem('Owner', ownerLabel === '—' ? '' : ownerLabel),
           metaItem('Project', projectName === '—' ? '' : projectName),
           metaItem('Started', formatIsoDateTime(startedAt), { nowrap: true }),
@@ -6084,7 +6159,7 @@
             '</div>' +
             '<div class="hero-right">' +
               '<div class="hero-status qym-badge ' + statusClass + '"><span class="hero-status-dot"></span>' + statusText +
-                ((samplesCount > 1 && (statusClass === 'running' || statusClass === 'pending'))
+                ((!state.viewPass && samplesCount > 1 && (statusClass === 'running' || statusClass === 'pending'))
                   ? ' • pass ' + Math.min((parseInt(run.last_completed_pass, 10) || 0) + 1, samplesCount) + '/' + samplesCount
                   : '') +
               '</div>' +
@@ -6743,7 +6818,8 @@
         const hiddenMetadataKeys = new Set([
           'langfuse_url', 'langfuse_host', 'langfuse_project_id', 'trace_stats',
           'snapshot', 'rows', 'metric_names', 'task_name', 'model',
-          'model_name', 'dataset', 'dataset_name', 'total_items',
+          'model_name', 'dataset', 'dataset_name', 'total_items', 'samples',
+          'last_completed_pass',
           'git_branch', 'git_commit', 'ingest_incomplete'
         ]);
         const colors = ['var(--accent-primary)', 'var(--accent-secondary)', 'var(--accent-tertiary)', 'var(--chart-4)', 'var(--chart-5)'];
@@ -7679,7 +7755,9 @@
 
         // ── ⚡ Trace Stats card ──
         let traceCard = '';
-        const ts = state.run && state.run.trace_stats;
+        const ts = state.viewPass
+          ? state.passSummary?.trace_stats
+          : (state.run && state.run.trace_stats);
         if (ts && ts.has_spans) {
           const fmtV = (v) => v != null ? _fmtTraceNum(v) : '\u2014';
           const fmtD = (v) => v != null ? v.toFixed(1) : '\u2014';
@@ -8618,6 +8696,10 @@
       function renderRootCauseSection() {
         const section = el('root-cause-section');
         if (!section) return;
+        // Root-cause/review annotations are stored once for the reduced run
+        // item, not per pass. Do not mislabel that aggregate analysis as a
+        // diagnosis of the selected execution.
+        if (state.viewPass) { section.innerHTML = ''; return; }
 
         const rows = state.snapshot.rows || [];
         const filteredItems = getFilteredItems();
@@ -9411,7 +9493,7 @@
           if (IS_EXPORT) return '';
           const attTraceUrl = att.trace_url || buildLangfuseTraceUrl(att.trace_id);
           if (!att.trace_id && !attTraceUrl) return '';
-          const traceEndpoint = apiUrl('api/runs/' + encodeURIComponent(state.run.file_path || '') + '/items/' + encodeURIComponent(itemId) + '/trace');
+          const traceEndpoint = apiUrl('api/runs/' + encodeURIComponent(state.run.file_path || '') + '/items/' + encodeURIComponent(itemId) + '/trace') + '?pass_number=' + encodeURIComponent(att.pass_number);
           return '<button type="button" class="trace-drawer-btn qym-inline-action qym-inline-action--neutral qym-trace-action" data-trace-endpoint="' + escapeAttr(traceEndpoint) + '" data-trace-item-label="' + escapeAttr((state.run.run_name || 'Run') + ' · ' + displayItemId + ' · Pass ' + att.pass_number) + '" data-trace-id="' + escapeAttr(att.trace_id || '') + '" data-trace-url="' + escapeAttr(attTraceUrl || '') + '" title="Open trace viewer for pass ' + att.pass_number + '"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M2.5 4h11M2.5 8h7M2.5 12h9"/><circle cx="12.5" cy="8" r="1.2" fill="currentColor" stroke="none" opacity=".5"/><circle cx="13.5" cy="12" r="1.2" fill="currentColor" stroke="none" opacity=".5"/></svg>Trace</button>';
         };
         const copyBtnFor = (att) => '<button class="copy-btn qym-icon-action" data-copy-text="' + escapeAttr(typeof att.output === 'object' ? JSON.stringify(att.output, null, 2) : String(att.output ?? '')) + '" title="Copy output">' + COPY_ICON + '</button>';
@@ -9616,9 +9698,10 @@
         container.classList.remove('heatmap-mode');
         container.innerHTML = pageItems.map(({ row: baseRow }) => {
           const passAttempts = Array.isArray(baseRow.pass_attempts) ? baseRow.pass_attempts : null;
-          // Repeat runs show every answer side by side in the expanded item;
-          // pass-scoped pages (?pass=N) read as a single run.
-          const isRepeatItem = !state.viewPass && passAttempts && passAttempts.filter(Boolean).length > 1;
+          // Individual run pages use the ordinary item card. Side-by-side
+          // pass rendering is opt-in; normal pass comparisons live in Compare.
+          const isRepeatItem = COMPARE_PASSES && !state.viewPass
+            && passAttempts && passAttempts.filter(Boolean).length > 1;
           const latestOutputPass = passAttempts
             ? passAttempts.reduce((latest, attempt, index) => attempt ? index + 1 : latest, null)
             : null;
@@ -9651,7 +9734,7 @@
 
           // Action chips (right cluster)
           const copyBtn = '<button class="copy-btn qym-icon-action" data-copy-text="' + escapeAttr(typeof output === 'object' ? JSON.stringify(output,null,2) : String(output)) + '" title="Copy output">' + COPY_ICON + '</button>';
-          const traceEndpoint = apiUrl('api/runs/' + encodeURIComponent(state.run.file_path || '') + '/items/' + encodeURIComponent(itemId) + '/trace');
+          const traceEndpoint = apiUrl('api/runs/' + encodeURIComponent(state.run.file_path || '') + '/items/' + encodeURIComponent(itemId) + '/trace') + (state.viewPass ? '?pass_number=' + encodeURIComponent(state.viewPass) : '');
           const traceChip = !IS_EXPORT
             ? '<button type="button" class="trace-drawer-btn qym-inline-action qym-inline-action--neutral qym-trace-action" data-trace-endpoint="' + escapeAttr(traceEndpoint) + '" data-trace-item-label="' + escapeAttr((state.run.run_name || 'Run') + ' \u00B7 ' + displayItemId) + '" data-trace-id="' + escapeAttr(traceId || '') + '" data-trace-url="' + escapeAttr(traceUrl || '') + '" title="Open trace viewer"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M2.5 4h11M2.5 8h7M2.5 12h9"/><circle cx="12.5" cy="8" r="1.2" fill="currentColor" stroke="none" opacity=".5"/><circle cx="13.5" cy="12" r="1.2" fill="currentColor" stroke="none" opacity=".5"/></svg>Trace</button>'
             : '';
@@ -10010,29 +10093,7 @@
           // fields, then re-apply the pass lens so a ?pass=N page stays scoped.
           let next = { ...rows[pos], ...updatedRow };
           if (state.viewPass) {
-            if (next.pass_scores) {
-              next.metric_values = state.allMetrics.map(name => {
-                const scores = next.pass_scores[name];
-                return (Array.isArray(scores) && scores.length >= state.viewPass)
-                  ? scores[state.viewPass - 1]
-                  : null;
-              });
-            }
-            next.metric_meta = scopedPassMetricMeta(
-              next, state.allMetrics, state.viewPass);
-            const att = Array.isArray(next.pass_attempts) ? next.pass_attempts[state.viewPass - 1] : null;
-            if (att) {
-              next = {
-                ...next,
-                status: att.status,
-                error: att.error || '',
-                output: att.output,
-                output_full: att.output,
-                latency_ms: att.latency_ms || 0,
-                trace_id: att.trace_id || '',
-                trace_url: att.trace_url || '',
-              };
-            }
+            next = scopeRowToPass(next, state.allMetrics, state.viewPass);
           }
           rows[pos] = next;
         } catch {}

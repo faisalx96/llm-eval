@@ -144,11 +144,11 @@
   <div class="modal" id="delete-modal" style="display:none;">
     <div class="modal-content modal-small">
       <div class="modal-header">
-        <h2>Delete Run</h2>
+        <h2 id="delete-modal-title">Delete run</h2>
         <button class="modal-close qym-icon-action" aria-label="Close" onclick="document.getElementById('delete-modal').style.display='none'">×</button>
       </div>
       <div class="modal-body">
-        <p>Are you sure you want to delete this run?</p>
+        <p id="delete-modal-description">Are you sure you want to delete this run?</p>
         <p class="delete-run-name" id="delete-run-name"></p>
         <p class="warning-text">This action cannot be undone.</p>
       </div>
@@ -212,6 +212,6 @@
   <script>window.__QYM_INITIAL_VIEW__ = 'table';</script>
   <script src="/static/metrics.js"></script>
   <script src="/static/qym_table.js"></script>
-  <script src="/static/dashboard.js?v=runs-analysis-c1-20260804-20"></script>
+  <script src="/static/dashboard.js?v=run-nav-state-20260809-23"></script>
 </body>
 </html>

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "qym-platform"
-version = "0.2.2"
+version = "0.2.3"
 description = "Deployed web platform for qym evaluation framework"
 license = {text = "MIT"}
 requires-python = ">=3.9"

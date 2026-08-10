@@ -3259,6 +3259,7 @@
 
       return `
         <tr data-idx="${idx}" data-file="${encodeURIComponent(run.file_path)}"
+            data-can-delete-pass="${canDelete && status !== 'RUNNING' && status !== 'PENDING' ? 'true' : 'false'}"
             class="${rowClasses}">
           <td class="col-select" onclick="event.stopPropagation()">
             <label class="custom-checkbox">
@@ -3744,10 +3745,11 @@
         const passDuration = typeof pass.duration_ms === 'number'
           ? formatDurationMs(pass.duration_ms)
           : null;
-        const passRef = runFilePath && !pass._queued && rawStatus === 'completed'
+        const passRef = runFilePath && !pass._queued && ['completed', 'failed'].includes(rawStatus)
           ? `${runFilePath}::pass${firstPass}`
           : '';
         const passSelected = passRef && state.selectedRuns.has(passRef);
+        const canDeletePass = !pass._queued && row?.dataset?.canDeletePass === 'true';
         return `<tr class="pass-member${isLast ? ' pass-member-last' : ''}${pass._queued ? ' pass-member-queued' : ''}"
             data-samples-for="${escapeHtml(runId)}"${pass._queued ? '' : ` data-pass-number="${firstPass}" title="Open Pass ${firstPass} details"`}>
           <td class="col-select" onclick="event.stopPropagation()">${passRef
@@ -3773,7 +3775,7 @@
             ? `<span class="timestamp" title="${escapeHtml(passDate.full)}"><span class="date">${passDate.date}</span><span class="timestamp-sep">·</span><span class="time">${passDate.time}</span></span>`
             : '<span class="metric-na">—</span>'}</td>
           <td class="col-duration"><span class="duration-value">${passDuration || '—'}</span></td>
-          <td class="col-actions"></td>
+          <td class="col-actions">${canDeletePass ? `<button type="button" class="pass-delete-action qym-icon-action action-icon delete-run" data-delete-pass="${firstPass}" title="Delete Pass ${firstPass}" aria-label="Delete Pass ${firstPass}"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" focusable="false"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></button>` : ''}</td>
         </tr>`;
       };
 
@@ -3879,11 +3881,60 @@
           event.stopPropagation();
           const filePath = decodeURIComponent(row.dataset.file || '');
           if (!filePath) return;
+          sessionStorage.removeItem('compareRuns');
+          sessionStorage.removeItem('compareCohorts');
           sessionStorage.setItem('dashboardRunFile', filePath);
           const base = state.currentProject && state.currentProject.slug
             ? projectUrl(state.currentProject.slug, `runs/${encodeURIComponent(filePath)}`)
             : apiUrl(`run/${encodeURIComponent(filePath)}`);
           openUrl(`${base}?pass=${passNumber}`, event);
+        });
+      });
+      inserted.forEach(detail => {
+        const deleteButton = detail.querySelector('.pass-delete-action');
+        if (!deleteButton) return;
+        deleteButton.addEventListener('click', async event => {
+          event.preventDefault();
+          event.stopPropagation();
+          const passNumber = Number(deleteButton.dataset.deletePass);
+          if (!Number.isFinite(passNumber)) return;
+          const confirmation = window.QymShell?.openConfirmDialog
+            ? await window.QymShell.openConfirmDialog({
+                title: `Delete Pass ${passNumber}?`,
+                description: [
+                  `This removes Pass ${passNumber} from every item in the run.`,
+                  'Later passes will be renumbered and aggregate scores will be recalculated.',
+                ],
+                note: 'This action cannot be undone.',
+                confirmLabel: 'Delete pass',
+                confirmClass: 'shell-btn-danger',
+              })
+            : { confirmed: window.confirm(`Delete Pass ${passNumber}? This cannot be undone.`) };
+          if (!confirmation.confirmed) return;
+          deleteButton.disabled = true;
+          deleteButton.setAttribute('aria-busy', 'true');
+          try {
+            const response = await fetch(apiUrl(
+              `api/runs/${encodeURIComponent(runId)}/passes/${passNumber}`
+            ), { method: 'DELETE' });
+            const payload = await response.json().catch(() => ({}));
+            if (!response.ok || payload.error) {
+              throw new Error(payload.detail || payload.error || 'Failed to delete pass');
+            }
+            if (runFilePath) {
+              const passPrefix = `${runFilePath}${PASS_REF_SEP}`;
+              Array.from(state.selectedRuns).forEach(ref => {
+                if (ref.startsWith(passPrefix)) state.selectedRuns.delete(ref);
+              });
+            }
+            delete state._samplesData[runId];
+            await fetchRuns({ refreshAllPages: true });
+            showToast('success', 'Pass deleted', `Pass ${passNumber} was removed from the run.`);
+          } catch (error) {
+            deleteButton.disabled = false;
+            deleteButton.removeAttribute('aria-busy');
+            showToast('error', 'Pass not deleted', error.message || 'Failed to delete pass');
+          }
         });
       });
       // Threshold slider (the platform's inline slider): live label on drag,
@@ -4223,7 +4274,17 @@
         : `${selected.size} selected`;
     }
 
+    const selectedRefs = Array.from(selected);
     const selectedRuns = state.flatRuns.filter(r => selected.has(r.file_path));
+    const selectedTargets = selectedRefs.map(ref => ({
+      ref,
+      run: state.flatRuns.find(candidate => candidate.file_path === passRefBase(ref)),
+    })).filter(target => target.run);
+    const selectedPassCounts = selectedRefs.filter(isPassRef).reduce((counts, ref) => {
+      const base = passRefBase(ref);
+      counts.set(base, (counts.get(base) || 0) + 1);
+      return counts;
+    }, new Map());
 
     const compareBtn = el('compare-view');
     const cohortBtn = el('cohort-view');
@@ -4270,12 +4331,22 @@
       const projectRole = (state.currentProject && state.currentProject.role) || '';
       const currentUserId = state.currentUser && state.currentUser.id;
       const canManageProject = globalRole === 'ADMIN' || projectRole === 'MANAGER';
-      const allDeletable = selectedRuns.length > 0 && selectedRuns.every(run =>
-        canManageProject || !!(currentUserId && run.owner && run.owner.id === currentUserId)
-      );
+      const allDeletable = selectedRefs.length > 0
+        && selectedTargets.length === selectedRefs.length
+        && selectedTargets.every(({ ref, run }) => {
+          const ownsRun = !!(currentUserId && run.owner && run.owner.id === currentUserId);
+          const passIsDeletable = !isPassRef(ref)
+            || (Number(run.samples) > 1
+              && (selectedPassCounts.get(run.file_path) || 0) < Number(run.samples)
+              && !['RUNNING', 'PENDING'].includes(run.status || ''));
+          return (canManageProject || ownsRun) && passIsDeletable;
+        });
+      const hasSelectedPasses = selectedRefs.some(isPassRef);
       deleteBtn.style.display = isCohortMode ? 'none' : 'inline-flex';
       deleteBtn.disabled = !allDeletable;
-      deleteBtn.title = allDeletable ? 'Delete selected runs' : 'You can only delete runs you own';
+      deleteBtn.title = allDeletable
+        ? (hasSelectedPasses ? 'Delete selected runs and passes' : 'Delete selected runs')
+        : 'Only owned, inactive runs and passes can be deleted';
     }
 
     // Bulk actions must follow the same ownership and status rules as row actions.
@@ -5284,6 +5355,8 @@
   }
 
   function openRun(filePath, e) {
+    sessionStorage.removeItem('compareRuns');
+    sessionStorage.removeItem('compareCohorts');
     sessionStorage.setItem('dashboardRunFile', filePath);
     const url = state.currentProject && state.currentProject.slug
       ? projectUrl(state.currentProject.slug, `runs/${encodeURIComponent(filePath)}`)
@@ -5316,6 +5389,14 @@
 
   function isPassRef(ref) {
     return String(ref).indexOf(PASS_REF_SEP) >= 0;
+  }
+
+  function parsePassRef(ref) {
+    if (!isPassRef(ref)) return null;
+    const base = passRefBase(ref);
+    const passNumber = Number(String(ref).slice(base.length + PASS_REF_SEP.length));
+    if (!Number.isInteger(passNumber) || passNumber < 1) return null;
+    return { base, passNumber };
   }
 
   function cohortUnitCount(filePaths) {
@@ -5395,9 +5476,13 @@
 
   function confirmDeleteRun(filePath, runId) {
     const modal = el('delete-modal');
+    const titleEl = el('delete-modal-title');
+    const descriptionEl = el('delete-modal-description');
     const runNameEl = el('delete-run-name');
     const confirmBtn = el('confirm-delete-btn');
 
+    if (titleEl) titleEl.textContent = 'Delete run';
+    if (descriptionEl) descriptionEl.textContent = 'Are you sure you want to delete this run?';
     runNameEl.textContent = runId;
     modal.style.display = 'flex';
 
@@ -5436,14 +5521,24 @@
   }
 
   function confirmDeleteSelected() {
-    const count = state.selectedRuns.size;
+    const selectedRefs = Array.from(state.selectedRuns);
+    const count = selectedRefs.length;
     if (count === 0) return;
 
     const modal = el('delete-modal');
+    const titleEl = el('delete-modal-title');
+    const descriptionEl = el('delete-modal-description');
     const runNameEl = el('delete-run-name');
     const confirmBtn = el('confirm-delete-btn');
+    const passRefs = selectedRefs.filter(isPassRef);
+    const runRefs = selectedRefs.filter(ref => !isPassRef(ref));
+    const selectionParts = [];
+    if (runRefs.length) selectionParts.push(`${runRefs.length} run${runRefs.length === 1 ? '' : 's'}`);
+    if (passRefs.length) selectionParts.push(`${passRefs.length} pass${passRefs.length === 1 ? '' : 'es'}`);
 
-    runNameEl.textContent = `${count} run${count > 1 ? 's' : ''} selected`;
+    if (titleEl) titleEl.textContent = 'Delete selection';
+    if (descriptionEl) descriptionEl.textContent = `Are you sure you want to delete the selected ${selectionParts.join(' and ')}?`;
+    runNameEl.textContent = `${selectionParts.join(' and ')} selected`;
     modal.style.display = 'flex';
 
     // Remove old listener and add new one
@@ -5454,11 +5549,48 @@
       newConfirmBtn.disabled = true;
       newConfirmBtn.textContent = 'Deleting...';
 
-      const filePaths = Array.from(state.selectedRuns);
       let successCount = 0;
       let errorCount = 0;
+      const errors = [];
 
-      for (const filePath of filePaths) {
+      const passGroups = new Map();
+      for (const ref of passRefs) {
+        const parsed = parsePassRef(ref);
+        const run = parsed && state.flatRuns.find(candidate => candidate.file_path === parsed.base);
+        if (!parsed || !run || !run.run_id) {
+          errorCount++;
+          errors.push('A selected pass no longer maps to a run');
+          continue;
+        }
+        if (!passGroups.has(run.run_id)) {
+          passGroups.set(run.run_id, { refs: [], passNumbers: [] });
+        }
+        const group = passGroups.get(run.run_id);
+        group.refs.push(ref);
+        group.passNumbers.push(parsed.passNumber);
+      }
+
+      for (const [runId, group] of passGroups) {
+        try {
+          const response = await fetch(apiUrl(`api/runs/${encodeURIComponent(runId)}/passes`), {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ pass_numbers: group.passNumbers }),
+          });
+          const payload = await response.json().catch(() => ({}));
+          if (!response.ok || payload.error) {
+            throw new Error(payload.detail || payload.error || 'Failed to delete selected passes');
+          }
+          successCount += group.refs.length;
+          group.refs.forEach(ref => state.selectedRuns.delete(ref));
+          delete state._samplesData[runId];
+        } catch (error) {
+          errorCount += group.refs.length;
+          errors.push(error.message || 'Failed to delete selected passes');
+        }
+      }
+
+      for (const filePath of runRefs) {
         try {
           const response = await fetch(apiUrl('api/runs/delete'), {
             method: 'POST',
@@ -5471,9 +5603,12 @@
             state.selectedRuns.delete(filePath);
           } else {
             errorCount++;
+            const payload = await response.json().catch(() => ({}));
+            errors.push(payload.detail || payload.error || 'Failed to delete a selected run');
           }
         } catch (err) {
           errorCount++;
+          errors.push(err.message || 'Failed to delete a selected run');
         }
       }
 
@@ -5485,7 +5620,9 @@
       await fetchRuns({ refreshAllPages: true });
 
       if (errorCount > 0) {
-        alert(`Deleted ${successCount} run(s). Failed to delete ${errorCount} run(s).`);
+        showToast('error', 'Selection partially deleted', `Deleted ${successCount}; failed ${errorCount}. ${errors[0] || ''}`);
+      } else {
+        showToast('success', 'Selection deleted', `Deleted ${successCount} selected item${successCount === 1 ? '' : 's'}.`);
       }
     });
   }
