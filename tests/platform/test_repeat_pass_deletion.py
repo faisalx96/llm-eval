@@ -98,6 +98,8 @@ def _seed(session: Session) -> None:
                 run_config={"samples": 3, "report_k": 3},
                 run_metadata={"samples": 3, "last_completed_pass": 3},
                 status=RunWorkflowStatus.COMPLETED,
+                started_at=datetime(2026, 8, 9, 10, 0),
+                ended_at=datetime(2026, 8, 9, 11, 0),
             ),
             RunItem(
                 run_id=RUN_ID,
@@ -153,6 +155,7 @@ def _seed(session: Session) -> None:
                 status="completed",
                 output=None,
                 trace_id="trace-pass-1",
+                latency_ms=100,
                 task_started_at_ms=1000,
                 is_last_attempt=True,
             ),
@@ -164,6 +167,7 @@ def _seed(session: Session) -> None:
                 status="completed",
                 output="out-pass-2",
                 trace_id="trace-pass-2",
+                latency_ms=300,
                 task_started_at_ms=2000,
                 is_last_attempt=True,
             ),
@@ -175,6 +179,7 @@ def _seed(session: Session) -> None:
                 status="failed",
                 error="boom",
                 trace_id="trace-pass-3",
+                latency_ms=900,
                 task_started_at_ms=3000,
                 is_last_attempt=True,
             ),
@@ -276,6 +281,23 @@ def test_delete_repeat_pass_reindexes_and_repairs_run_state():
         )
         assert audit.before == {"samples": 3, "pass_number": 2}
         assert audit.after["samples"] == 2
+
+    with TestClient(app) as client:
+        response = client.get(
+            "/api/runs?project_slug=project-1",
+            headers=HEADERS,
+        )
+    assert response.status_code == 200
+    summaries = [
+        summary
+        for models in response.json()["tasks"].values()
+        for runs in models.values()
+        for summary in runs
+    ]
+    summary = next(entry for entry in summaries if entry["run_id"] == RUN_ID)
+    assert summary["avg_latency_ms"] == pytest.approx(500.0)
+    assert summary["median_latency_ms"] == pytest.approx(500.0)
+    assert summary["duration_ms"] == pytest.approx(1000.0)
 
 
 def test_delete_multiple_passes_uses_original_numbers_and_is_atomic():

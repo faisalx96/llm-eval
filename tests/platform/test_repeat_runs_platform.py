@@ -434,7 +434,7 @@ def test_detail_passes_and_group_metrics_endpoints():
         }
 
 
-def test_running_pass_reports_only_its_own_progress_and_item_state():
+def test_running_pass_reports_only_its_own_progress_and_stops_with_parent():
     app, SessionLocal = _make_env()
     del app
     with SessionLocal() as session:
@@ -535,6 +535,55 @@ def test_running_pass_reports_only_its_own_progress_and_item_state():
         assert pass_two[0]["output"] == "pass-2-one"
         assert pass_two[1]["output"] is None
         assert pass_two[1]["task_started_at_ms"] == 3_000
+
+        run.status = RunWorkflowStatus.STOPPED
+        run.status_reason = "product_eval_stopped"
+        session.commit()
+
+        stopped_payload = run_passes(RUN_ID, db=session, principal=principal)
+        assert [p["status"] for p in stopped_payload["passes"]] == [
+            "completed",
+            "stopped",
+            "pending",
+        ]
+        assert stopped_payload["passes"][1]["running_count"] == 0
+
+        stopped_detail = _build_run_data(session, run)
+        stopped_pass_two = [
+            row["pass_attempts"][1] for row in stopped_detail["snapshot"]["rows"]
+        ]
+        assert [attempt["status"] for attempt in stopped_pass_two] == [
+            "completed",
+            "stopped",
+        ]
+
+        list_payload = legacy_list_runs(
+            limit=100,
+            offset=0,
+            project_slug="project-1",
+            status=None,
+            exclude_live=False,
+            user=None,
+            user_id=None,
+            owner_user_id=None,
+            db=session,
+            principal=principal,
+        )
+        summaries = [
+            summary
+            for models in list_payload["tasks"].values()
+            for run_list in models.values()
+            for summary in run_list
+        ]
+        stopped_summary = next(
+            summary for summary in summaries if summary["run_id"] == RUN_ID
+        )
+        assert stopped_summary["status"] == "STOPPED"
+        assert [p["status"] for p in stopped_summary["pass_summaries"]] == [
+            "completed",
+            "stopped",
+            "pending",
+        ]
 
 
 def test_attempt_finished_stores_output_without_item_completed():

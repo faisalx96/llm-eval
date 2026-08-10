@@ -114,6 +114,76 @@ def _median(values: List[Optional[float]]) -> float:
     return numeric[mid]
 
 
+def _repeat_pass_status(
+    *, pass_number: int, last_completed: int, has_data: bool, run_status: str
+) -> str:
+    """Derive a pass status without contradicting its parent run."""
+    if pass_number <= last_completed:
+        return "completed"
+
+    normalized_run_status = str(run_status or "").upper()
+    if has_data:
+        terminal_status = {
+            "COMPLETED": "completed",
+            "FAILED": "failed",
+            "STOPPED": "stopped",
+        }.get(normalized_run_status)
+        return terminal_status or "running"
+
+    if normalized_run_status == "RUNNING" and pass_number == last_completed + 1:
+        return "running"
+    return "pending"
+
+
+def _repeat_attempt_summaries(
+    db: Session, run_ids: List[str]
+) -> Dict[str, Dict[str, float]]:
+    """Aggregate latency and runtime across every retained repeat pass."""
+    if not run_ids:
+        return {}
+
+    rows = (
+        db.query(
+            RunItemAttempt.run_id,
+            RunItemAttempt.pass_number,
+            RunItemAttempt.latency_ms,
+            RunItemAttempt.task_started_at_ms,
+        )
+        .filter(
+            RunItemAttempt.run_id.in_(run_ids),
+            RunItemAttempt.is_last_attempt.is_(True),
+        )
+        .all()
+    )
+    latencies_by_run: Dict[str, List[float]] = defaultdict(list)
+    bounds_by_run_pass: Dict[str, Dict[int, List[float]]] = defaultdict(dict)
+    for run_id, pass_number, latency_ms, task_started_at_ms in rows:
+        if latency_ms is not None:
+            latencies_by_run[run_id].append(float(latency_ms))
+        if task_started_at_ms is None or latency_ms is None:
+            continue
+        start = float(task_started_at_ms)
+        end = start + float(latency_ms)
+        bounds = bounds_by_run_pass[run_id].setdefault(int(pass_number), [start, end])
+        bounds[0] = min(bounds[0], start)
+        bounds[1] = max(bounds[1], end)
+
+    summaries: Dict[str, Dict[str, float]] = {}
+    for run_id in set(latencies_by_run) | set(bounds_by_run_pass):
+        latencies = latencies_by_run.get(run_id, [])
+        summary: Dict[str, float] = {}
+        if latencies:
+            summary["avg_latency_ms"] = sum(latencies) / len(latencies)
+            summary["median_latency_ms"] = _median(latencies)
+        pass_bounds = bounds_by_run_pass.get(run_id, {})
+        if pass_bounds:
+            summary["duration_ms"] = sum(
+                max(0.0, end - start) for start, end in pass_bounds.values()
+            )
+        summaries[run_id] = summary
+    return summaries
+
+
 def _stringify(val: Any) -> str:
     """Convert a value to a display string; dicts/lists become pretty JSON."""
     if val is None:
@@ -1422,6 +1492,21 @@ def legacy_list_runs(
     # uncertainty belongs on the run page, where its meaning can be explained;
     # the scan-oriented list intentionally exposes only point estimates.
     sampled_run_ids = [r.id for r in runs if int(getattr(r, "samples", 1) or 1) > 1]
+    repeat_attempt_summaries = _repeat_attempt_summaries(db, sampled_run_ids)
+    for run_id, attempt_summary in repeat_attempt_summaries.items():
+        agg = item_agg.setdefault(
+            run_id,
+            {
+                "total": 0,
+                "error_count": 0,
+                "completed": 0,
+                "total_retries": 0,
+                "avg_latency": 0.0,
+            },
+        )
+        if "avg_latency_ms" in attempt_summary:
+            agg["avg_latency"] = attempt_summary["avg_latency_ms"]
+            agg["median_latency"] = attempt_summary["median_latency_ms"]
     pass_summary_map: Dict[str, List[Dict[str, Any]]] = {}
     if sampled_run_ids:
         from qym_platform.db.models import RunItemAttempt, RunItemPassScore
@@ -1493,16 +1578,12 @@ def legacy_list_runs(
             summaries: List[Dict[str, Any]] = []
             for p in range(1, k + 1):
                 has_data = p in means or p in attempts
-                # The pass right after the last completed one is in flight on a
-                # live run even before its first item lands (matches the
-                # parent badge's "pass j/k" progress text).
-                in_flight = run_status == "RUNNING" and p == last_completed + 1
-                if p <= last_completed:
-                    p_status = "completed"
-                elif has_data or in_flight:
-                    p_status = "running"
-                else:
-                    p_status = "pending"
+                p_status = _repeat_pass_status(
+                    pass_number=p,
+                    last_completed=last_completed,
+                    has_data=has_data,
+                    run_status=run_status,
+                )
                 summaries.append(
                     {
                         "pass_number": p,
@@ -1575,6 +1656,9 @@ def legacy_list_runs(
         duration_ms = None
         if started_at and ended_at and ended_at >= started_at:
             duration_ms = (ended_at - started_at).total_seconds() * 1000.0
+        repeat_duration = repeat_attempt_summaries.get(r.id, {}).get("duration_ms")
+        if repeat_duration is not None:
+            duration_ms = repeat_duration
 
         expected_total = None
         if isinstance(r.run_metadata, dict):
@@ -2201,8 +2285,20 @@ def _build_run_data(db: Session, run: Run) -> Dict[str, Any]:
             if att.output is None
         }
         recovered_outputs = _completed_pass_outputs(db, run.id, missing_output_pairs)
+        run_status = str(getattr(run.status, "value", run.status) or "").upper()
+        terminal_active_status = {
+            "COMPLETED": "completed",
+            "FAILED": "failed",
+            "STOPPED": "stopped",
+        }.get(run_status)
+        active_event_attempts = pass_event_state["active_attempts"]
+        if terminal_active_status:
+            active_event_attempts = {
+                key: {**payload, "status": terminal_active_status}
+                for key, payload in active_event_attempts.items()
+            }
         event_attempts = {
-            **pass_event_state["active_attempts"],
+            **active_event_attempts,
             **pass_event_state["outcomes"],
         }
         trace_ids = {
@@ -2878,13 +2974,12 @@ def run_passes(
             or p in started_items_by_pass
             or p in event_state["starts_by_pass"]
         )
-        in_flight = run_status == "RUNNING" and p == last_completed + 1
-        if p <= last_completed:
-            status = "completed"
-        elif in_flight or has_data:
-            status = "running"
-        else:
-            status = "pending"
+        status = _repeat_pass_status(
+            pass_number=p,
+            last_completed=last_completed,
+            has_data=has_data,
+            run_status=run_status,
+        )
         lat = _lat_stats(latencies_by_pass.get(p))
         pass_starts = starts_by_pass.get(p) or []
         pass_ends = ends_by_pass.get(p) or []
@@ -2905,7 +3000,9 @@ def run_passes(
                 "items_started": started_items_by_pass.get(p, 0),
                 "completed_count": completed_by_pass.get(p, 0),
                 "error_count": errors_by_pass.get(p, 0),
-                "running_count": running_by_pass.get(p, 0),
+                "running_count": (
+                    running_by_pass.get(p, 0) if status == "running" else 0
+                ),
                 "retry_count": retries_by_pass.get(p, 0),
                 "avg_latency_ms": lat["avg"],
                 "median_latency_ms": lat["median"],

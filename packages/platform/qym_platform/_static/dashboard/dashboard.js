@@ -3243,6 +3243,9 @@
       const progressPctText = (status === 'RUNNING' && typeof run.progress_pct === 'number')
         ? `${Math.round(run.progress_pct * 100)}%`
         : '';
+      const parentProgressText = run.samples > 1
+        ? ''
+        : `${progressPctText ? ` • ${progressPctText}` : ''}${progressText ? ` • ${progressText}` : ''}`;
       // Repeat runs: show which pass is executing while live.
       const passText = (run.samples > 1 && (status === 'RUNNING' || status === 'PENDING'))
         ? ` • pass ${Math.min((run.last_completed_pass || 0) + 1, run.samples)}/${run.samples}`
@@ -3268,7 +3271,7 @@
             </label>
           </td>
           <td class="col-status">
-            ${status ? `<span class="status-badge qym-badge status-${status}" title="${escapeHtml(statusTooltip)}">${status}${passText}${progressPctText ? ` • ${progressPctText}` : ''}${progressText ? ` • ${progressText}` : ''}</span>` : ''}${(run.error_count > 0 && status !== 'RUNNING' && status !== 'PENDING') ? `<span class="status-errors" title="${run.error_count} item${run.error_count === 1 ? '' : 's'} errored">${run.error_count}⚠</span>` : ''}${(run.total_retries > 0 && status !== 'RUNNING' && status !== 'PENDING') ? `<span class="status-retries" title="${run.total_retries} total retr${run.total_retries === 1 ? 'y' : 'ies'} across all items">${run.total_retries}↻</span>` : ''}
+            ${status ? `<span class="status-badge qym-badge status-${status}" title="${escapeHtml(statusTooltip)}">${status}${passText}${parentProgressText}</span>` : ''}${(run.error_count > 0 && status !== 'RUNNING' && status !== 'PENDING') ? `<span class="status-errors" title="${run.error_count} item${run.error_count === 1 ? '' : 's'} errored">${run.error_count}⚠</span>` : ''}${(run.total_retries > 0 && status !== 'RUNNING' && status !== 'PENDING') ? `<span class="status-retries" title="${run.total_retries} total retr${run.total_retries === 1 ? 'y' : 'ies'} across all items">${run.total_retries}↻</span>` : ''}
           </td>
           <td class="col-run">
             <div class="run-cell-content">
@@ -3719,9 +3722,22 @@
         const passMeta = pass._queued
           ? (pendingWillNotRun ? `${pass._queuedCount} not run` : `${pass._queuedCount} waiting to start`)
           : '';
-        const rawStatus = String(pass.status || 'unknown').toLowerCase();
-        const badgeClass = { completed: 'COMPLETED', running: 'RUNNING', failed: 'FAILED', queued: 'PENDING' }[rawStatus] || '';
+        const rawPassStatus = String(pass.status || 'unknown').toLowerCase();
+        const terminalPassStatus = {
+          STOPPED: 'stopped',
+          FAILED: 'failed',
+          COMPLETED: 'completed',
+        }[String(runStatus || '').toUpperCase()];
+        const rawStatus = rawPassStatus === 'running' && terminalPassStatus
+          ? terminalPassStatus
+          : rawPassStatus;
+        const badgeClass = { completed: 'COMPLETED', running: 'RUNNING', failed: 'FAILED', stopped: 'STOPPED', queued: 'PENDING' }[rawStatus] || '';
         const statusLabel = rawStatus === 'not-run' ? 'NOT RUN' : rawStatus.replace('-', ' ').toUpperCase();
+        const completedCount = Number(pass.completed_count) || 0;
+        const totalCount = Number(pass.items_total) || 0;
+        const progressLabel = rawStatus === 'running' && totalCount > 0
+          ? ` • ${Math.round((completedCount / totalCount) * 100)}% • ${completedCount}/${totalCount}`
+          : '';
         const errors = Number(pass.error_count) || 0;
         const metricCells = metricsToShow.map(metric => {
           const value = (pass.metric_means || {})[metric];
@@ -3756,7 +3772,7 @@
             ? `<label class="custom-checkbox"><input type="checkbox" class="pass-checkbox" data-pass-ref="${escapeHtml(passRef)}" ${passSelected ? 'checked' : ''} /><span class="checkmark"></span></label>`
             : ''}</td>
           <td class="col-status">${badgeClass
-            ? `<span class="status-badge qym-badge status-${badgeClass}">${statusLabel}</span>`
+            ? `<span class="status-badge qym-badge status-${badgeClass}">${statusLabel}${progressLabel}</span>`
             : `<span class="pass-member-status">${statusLabel}</span>`}${errors
             ? `<span class="status-errors" title="${errors} item${errors === 1 ? '' : 's'} errored in this pass">${errors}⚠</span>`
             : ''}</td>
@@ -3827,6 +3843,7 @@
     }
 
     function insertSamplesDetail(runId, row, panelId, animate) {
+      const runFilePath = decodeURIComponent(row?.dataset?.file || '');
       samplesDetailRows(runId).forEach(detail => detail.remove());
       const runStatus = row.querySelector('.samples-toggle')?.dataset.status || '';
       row.insertAdjacentHTML('afterend', buildSamplesDetailMarkup(
@@ -4043,7 +4060,7 @@
           insertSamplesDetail(runId, row, panelId);
           const cached = state._samplesData[runId];
           const cachedIncomplete = cached && !cached.error && (cached.passes?.passes || [])
-            .some(pass => !['completed', 'failed'].includes(String(pass.status || '').toLowerCase()));
+            .some(pass => String(pass.status || '').toLowerCase() === 'running');
           if (!cached || (!cached.error && (toggle.dataset.live === 'true' || cachedIncomplete))) {
             loadSamplesData(runId, row, panelId);
           }

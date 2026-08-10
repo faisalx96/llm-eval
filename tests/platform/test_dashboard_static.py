@@ -79,6 +79,27 @@ def test_repeat_run_rows_are_ordinary_rows_with_pass_count_chip() -> None:
     assert ".run-pass-count" in styles
 
 
+def test_live_repeat_progress_is_shown_on_the_active_pass_only() -> None:
+    source = DASHBOARD_JS.read_text(encoding="utf-8")
+
+    assert "const parentProgressText = run.samples > 1" in source
+    assert ">${status}${passText}${parentProgressText}</span>" in source
+    assert "const completedCount = Number(pass.completed_count) || 0;" in source
+    assert "const totalCount = Number(pass.items_total) || 0;" in source
+    assert "Math.round((completedCount / totalCount) * 100)" in source
+    assert "${statusLabel}${progressLabel}</span>" in source
+
+
+def test_stopped_repeat_run_never_renders_a_running_pass() -> None:
+    source = DASHBOARD_JS.read_text(encoding="utf-8")
+    api = RUNS_API.read_text(encoding="utf-8")
+
+    assert "stopped: 'STOPPED'" in source
+    assert "rawPassStatus === 'running' && terminalPassStatus" in source
+    assert "String(pass.status || '').toLowerCase() === 'running'" in source
+    assert api.count("_repeat_pass_status(") == 3
+
+
 def test_repeat_passes_use_runs_view_bulk_delete_action() -> None:
     source = (DASHBOARD_DIR / "run.html").read_text(encoding="utf-8")
     dashboard = DASHBOARD_JS.read_text(encoding="utf-8")
@@ -94,7 +115,12 @@ def test_repeat_passes_use_runs_view_bulk_delete_action() -> None:
     assert "data-can-delete-pass=" in dashboard
     assert "await fetchRuns({ refreshAllPages: true });" in dashboard
     assert "delete state._samplesData[runId];" in dashboard
-    assert "dashboard.js?v=run-nav-state-" in index
+    single_delete_handler = dashboard.split(
+        "function insertSamplesDetail(runId, row, panelId, animate)", 1
+    )[1].split("async function loadSamplesData", 1)[0]
+    assert "const runFilePath = decodeURIComponent(row?.dataset?.file || '');" in single_delete_handler
+    assert "if (runFilePath) {" in single_delete_handler
+    assert "dashboard.js?v=pass-live-progress-" in index
     assert '@router.delete("/api/runs/{run_id}/passes/{pass_number}")' in api
     assert '@router.delete("/api/runs/{run_id}/passes")' in api
     assert 'action="run.pass_deleted"' in service
