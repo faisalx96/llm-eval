@@ -1213,7 +1213,7 @@ html {
 }
 
 /* Contextual run actions live in the status bar and appear only after an
-   actual selection. The table checkboxes are always available. */
+   actual selection. The checkbox column exists only in explicit select mode. */
 .selection-actions {
   align-items: center;
   justify-content: flex-start;
@@ -2692,17 +2692,22 @@ body.chart-col-resize-active {
 }
 
 .runs-table {
-  --runs-col-select-width: 40px;
   --runs-col-status-width: 164px;
   --runs-col-status-min-width: 120px;
   --runs-col-status-max-width: 180px;
-  --runs-col-run-width: 308px;
-  --runs-col-run-min-width: 180px;
-  --runs-col-run-max-width: 320px;
+  --runs-col-run-width: 400px;
+  --runs-col-run-min-width: 400px;
+  --runs-col-run-max-width: 400px;
   --runs-col-task-width: 150px;
   --runs-col-task-min-width: 110px;
   --runs-col-model-width: 220px;
   --runs-col-model-min-width: 140px;
+  --runs-col-dataset-width: 160px;
+  --runs-col-dataset-min-width: 120px;
+  --runs-col-owner-width: 140px;
+  --runs-col-owner-min-width: 110px;
+  --runs-col-time-width: 100px;
+  --runs-col-time-min-width: 90px;
   --runs-disclosure-size: var(--control-height);
   --runs-analysis-value-max-width: 160px;
   --runs-cell-padding-inline: 12px;
@@ -2712,6 +2717,9 @@ body.chart-col-resize-active {
   border-spacing: 0;
   font-size: var(--font-base);
   table-layout: auto;
+}
+.table-container:not(.select-mode) .run-select-control {
+  display: none;
 }
 
 /* One-frame natural-layout pass used to measure the visible sticky-column
@@ -2724,7 +2732,10 @@ body.chart-col-resize-active {
   .col-status,
   .col-run,
   .col-task,
-  .col-model
+  .col-model,
+  .col-dataset,
+  .col-owner,
+  .col-time
 ) {
   width: auto;
   min-width: 0;
@@ -2839,12 +2850,6 @@ body.chart-col-resize-active {
 }
 
 /* Column-specific styles */
-.col-select {
-  width: var(--runs-col-select-width);
-  min-width: var(--runs-col-select-width);
-  max-width: var(--runs-col-select-width);
-}
-
 /* Custom Checkbox styling */
 .custom-checkbox {
   display: inline-flex;
@@ -2920,6 +2925,12 @@ body.chart-col-resize-active {
   box-shadow: 0 0 0 2px rgba(0, 212, 170, 0.3);
 }
 
+.run-header-content,
+.run-header-label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
 
 .col-status {
   width: var(--runs-col-status-width);
@@ -3016,7 +3027,9 @@ body.chart-col-resize-active {
 }
 
 .col-dataset {
-  width: 1%;
+  width: var(--runs-col-dataset-width);
+  min-width: var(--runs-col-dataset-width);
+  max-width: var(--runs-col-dataset-width);
 }
 
 .col-analysis {
@@ -3160,30 +3173,40 @@ body.chart-col-resize-active {
   white-space: nowrap;
 }
 
-/* ── Sticky columns: freeze first 5 columns on horizontal scroll ── */
-.runs-table .col-select {
-  position: sticky;
-  left: 0;
-  z-index: 2;
-}
+/* ── Sticky columns: freeze the run identity block on horizontal scroll ── */
 .runs-table .col-status {
   position: sticky;
-  left: var(--runs-col-select-width);
+  left: var(--runs-col-run-width);
   z-index: 2;
 }
 .runs-table .col-run {
   position: sticky;
-  left: calc(var(--runs-col-select-width) + var(--runs-col-status-width));
+  left: 0;
   z-index: 2;
 }
 .runs-table .col-task {
   position: sticky;
-  left: calc(var(--runs-col-select-width) + var(--runs-col-status-width) + var(--runs-col-run-width));
+  left: calc(var(--runs-col-status-width) + var(--runs-col-run-width));
   z-index: 2;
 }
 .runs-table .col-model {
   position: sticky;
-  left: calc(var(--runs-col-select-width) + var(--runs-col-status-width) + var(--runs-col-run-width) + var(--runs-col-task-width));
+  left: calc(var(--runs-col-status-width) + var(--runs-col-run-width) + var(--runs-col-task-width));
+  z-index: 2;
+}
+.runs-table .col-dataset {
+  position: sticky;
+  left: calc(var(--runs-col-status-width) + var(--runs-col-run-width) + var(--runs-col-task-width) + var(--runs-col-model-width));
+  z-index: 2;
+}
+.runs-table .col-owner {
+  position: sticky;
+  left: calc(var(--runs-col-status-width) + var(--runs-col-run-width) + var(--runs-col-task-width) + var(--runs-col-model-width) + var(--runs-col-dataset-width));
+  z-index: 2;
+}
+.runs-table .col-time {
+  position: sticky;
+  left: calc(var(--runs-col-status-width) + var(--runs-col-run-width) + var(--runs-col-task-width) + var(--runs-col-model-width) + var(--runs-col-dataset-width) + var(--runs-col-owner-width));
   z-index: 2;
   box-shadow: 4px 0 8px rgba(0, 0, 0, 0.25);
 }
@@ -3193,7 +3216,10 @@ body.chart-col-resize-active {
 .runs-table thead th.col-status,
 .runs-table thead th.col-run,
 .runs-table thead th.col-task,
-.runs-table thead th.col-model {
+.runs-table thead th.col-model,
+.runs-table thead th.col-dataset,
+.runs-table thead th.col-owner,
+.runs-table thead th.col-time {
   z-index: 12;
 }
 
@@ -3202,46 +3228,67 @@ body.chart-col-resize-active {
 .runs-table tbody tr td.col-status,
 .runs-table tbody tr td.col-run,
 .runs-table tbody tr td.col-task,
-.runs-table tbody tr td.col-model {
+.runs-table tbody tr td.col-model,
+.runs-table tbody tr td.col-dataset,
+.runs-table tbody tr td.col-owner,
+.runs-table tbody tr td.col-time {
   background: var(--bg-base);
 }
 .runs-table tbody tr:nth-child(odd) td.col-select,
 .runs-table tbody tr:nth-child(odd) td.col-status,
 .runs-table tbody tr:nth-child(odd) td.col-run,
 .runs-table tbody tr:nth-child(odd) td.col-task,
-.runs-table tbody tr:nth-child(odd) td.col-model {
+.runs-table tbody tr:nth-child(odd) td.col-model,
+.runs-table tbody tr:nth-child(odd) td.col-dataset,
+.runs-table tbody tr:nth-child(odd) td.col-owner,
+.runs-table tbody tr:nth-child(odd) td.col-time {
   background: var(--bg-surface);
 }
 .runs-table tbody tr.run-row-even td.col-select,
 .runs-table tbody tr.run-row-even td.col-status,
 .runs-table tbody tr.run-row-even td.col-run,
 .runs-table tbody tr.run-row-even td.col-task,
-.runs-table tbody tr.run-row-even td.col-model {
+.runs-table tbody tr.run-row-even td.col-model,
+.runs-table tbody tr.run-row-even td.col-dataset,
+.runs-table tbody tr.run-row-even td.col-owner,
+.runs-table tbody tr.run-row-even td.col-time {
   background: var(--bg-surface);
 }
 .runs-table tbody tr.run-row-odd td.col-select,
 .runs-table tbody tr.run-row-odd td.col-status,
 .runs-table tbody tr.run-row-odd td.col-run,
 .runs-table tbody tr.run-row-odd td.col-task,
-.runs-table tbody tr.run-row-odd td.col-model {
+.runs-table tbody tr.run-row-odd td.col-model,
+.runs-table tbody tr.run-row-odd td.col-dataset,
+.runs-table tbody tr.run-row-odd td.col-owner,
+.runs-table tbody tr.run-row-odd td.col-time {
   background: var(--bg-base);
 }
 .runs-table tbody tr:hover td.col-select,
 .runs-table tbody tr:hover td.col-status,
 .runs-table tbody tr:hover td.col-run,
 .runs-table tbody tr:hover td.col-task,
-.runs-table tbody tr:hover td.col-model {
+.runs-table tbody tr:hover td.col-model,
+.runs-table tbody tr:hover td.col-dataset,
+.runs-table tbody tr:hover td.col-owner,
+.runs-table tbody tr:hover td.col-time {
   background: var(--bg-hover);
 }
 .runs-table tbody tr.selected td.col-select,
 .runs-table tbody tr.selected td.col-status,
 .runs-table tbody tr.selected td.col-run,
 .runs-table tbody tr.selected td.col-task,
-.runs-table tbody tr.selected td.col-model {
+.runs-table tbody tr.selected td.col-model,
+.runs-table tbody tr.selected td.col-dataset,
+.runs-table tbody tr.selected td.col-owner,
+.runs-table tbody tr.selected td.col-time {
   background: var(--bg-active);
 }
 
 .col-owner {
+  width: var(--runs-col-owner-width);
+  min-width: var(--runs-col-owner-width);
+  max-width: var(--runs-col-owner-width);
   white-space: nowrap;
 }
 
@@ -3493,7 +3540,13 @@ body.chart-col-resize-active {
 }
 
 .col-time {
+  width: var(--runs-col-time-width);
+  min-width: var(--runs-col-time-width);
+  max-width: var(--runs-col-time-width);
   white-space: nowrap;
+}
+.runs-table :is(th, td).col-time {
+  padding-inline: var(--space-sm);
 }
 
 .col-duration {
@@ -3501,6 +3554,9 @@ body.chart-col-resize-active {
 }
 
 .timestamp {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
   font-size: var(--font-sm);
   color: var(--text-muted);
   white-space: nowrap;
@@ -3509,7 +3565,7 @@ body.chart-col-resize-active {
 .timestamp .date { color: var(--text-secondary); }
 .timestamp .timestamp-sep {
   color: var(--text-dim);
-  margin: 0 6px;
+  margin: 0;
 }
 .duration-value {
   color: var(--text-secondary);
@@ -9254,11 +9310,11 @@ td.col-trace-metric-value {
 }
 
 /* ═══ Repeat runs (samples=k) ═══ */
-.runs-table thead tr.has-repeat-rows th.col-run::before {
+.runs-table thead tr.has-repeat-rows .run-header-label::before {
   content: "";
   display: inline-block;
   width: var(--runs-disclosure-size);
-  margin-right: var(--space-sm);
+  flex: 0 0 auto;
 }
 
 .run-cell-content {
@@ -9268,10 +9324,12 @@ td.col-trace-metric-value {
   min-width: 0;
 }
 .run-cell-content .run-id {
+  flex: 1 1 auto;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow: visible;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+  white-space: normal;
 }
 
 /* Leading disclosure chevron (mock option C's toggle): one semantic,
@@ -9292,16 +9350,18 @@ td.col-trace-metric-value {
   flex: 0 0 auto;
   transition: color 0.14s ease, background 0.14s ease;
 }
-.samples-toggle:hover {
-  color: var(--text-primary);
-  background: var(--bg-hover);
+.runs-table > tbody > tr[data-idx]:hover .samples-toggle,
+.samples-toggle:is(:hover, :focus-visible, .open) {
+  color: var(--accent-primary);
+  background: transparent;
+}
+.runs-table > tbody > tr[data-idx]:hover .samples-toggle-chevron,
+.samples-toggle:is(:hover, :focus-visible, .open) .samples-toggle-chevron {
+  stroke: var(--accent-primary);
 }
 .samples-toggle:focus-visible {
   outline: 2px solid var(--accent-primary);
   outline-offset: 2px;
-}
-.samples-toggle.open {
-  color: var(--accent-primary);
 }
 .samples-toggle-chevron {
   width: 12px;
@@ -9419,7 +9479,10 @@ td.col-trace-metric-value {
 .runs-table > tbody > tr.samples-open > td.col-status,
 .runs-table > tbody > tr.samples-open > td.col-run,
 .runs-table > tbody > tr.samples-open > td.col-task,
-.runs-table > tbody > tr.samples-open > td.col-model {
+.runs-table > tbody > tr.samples-open > td.col-model,
+.runs-table > tbody > tr.samples-open > td.col-dataset,
+.runs-table > tbody > tr.samples-open > td.col-owner,
+.runs-table > tbody > tr.samples-open > td.col-time {
   background: var(--bg-active);
 }
 .runs-table > tbody > tr.samples-open > td {
@@ -9601,11 +9664,17 @@ td.col-trace-metric-value {
 .runs-table > tbody > tr.pass-member > td.col-run,
 .runs-table > tbody > tr.pass-member > td.col-task,
 .runs-table > tbody > tr.pass-member > td.col-model,
+.runs-table > tbody > tr.pass-member > td.col-dataset,
+.runs-table > tbody > tr.pass-member > td.col-owner,
+.runs-table > tbody > tr.pass-member > td.col-time,
 .runs-table > tbody > tr.pass-member:hover > td.col-select,
 .runs-table > tbody > tr.pass-member:hover > td.col-status,
 .runs-table > tbody > tr.pass-member:hover > td.col-run,
 .runs-table > tbody > tr.pass-member:hover > td.col-task,
-.runs-table > tbody > tr.pass-member:hover > td.col-model {
+.runs-table > tbody > tr.pass-member:hover > td.col-model,
+.runs-table > tbody > tr.pass-member:hover > td.col-dataset,
+.runs-table > tbody > tr.pass-member:hover > td.col-owner,
+.runs-table > tbody > tr.pass-member:hover > td.col-time {
   background: var(--bg-void);
 }
 /* Completed passes open their own detail page: uniform hover across the
@@ -9617,7 +9686,10 @@ td.col-trace-metric-value {
 .runs-table > tbody > tr.pass-member[data-pass-number]:hover > td.col-status,
 .runs-table > tbody > tr.pass-member[data-pass-number]:hover > td.col-run,
 .runs-table > tbody > tr.pass-member[data-pass-number]:hover > td.col-task,
-.runs-table > tbody > tr.pass-member[data-pass-number]:hover > td.col-model {
+.runs-table > tbody > tr.pass-member[data-pass-number]:hover > td.col-model,
+.runs-table > tbody > tr.pass-member[data-pass-number]:hover > td.col-dataset,
+.runs-table > tbody > tr.pass-member[data-pass-number]:hover > td.col-owner,
+.runs-table > tbody > tr.pass-member[data-pass-number]:hover > td.col-time {
   background: var(--bg-hover);
 }
 .runs-table > tbody > tr.pass-member[data-pass-number]:hover .pass-member-id {

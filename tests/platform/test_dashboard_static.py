@@ -68,7 +68,7 @@ def test_repeat_run_rows_are_ordinary_rows_with_pass_count_chip() -> None:
     styles = (DASHBOARD_DIR / "dashboard.css").read_text(encoding="utf-8")
 
     assert 'class="run-pass-count"' in source
-    assert "${run.samples} passes" in source
+    assert "x${run.samples}" in source
     # the dot strip and the special row surface are gone
     assert "renderPassDots" not in source
     assert "repeat-run-header" not in source
@@ -77,6 +77,18 @@ def test_repeat_run_rows_are_ordinary_rows_with_pass_count_chip() -> None:
     assert ".pass-dots" not in styles
 
     assert ".run-pass-count" in styles
+
+
+def test_run_column_wraps_names_at_400px() -> None:
+    styles = (DASHBOARD_DIR / "dashboard.css").read_text(encoding="utf-8")
+
+    assert "--runs-col-run-width: 400px;" in styles
+    assert "--runs-col-run-min-width: 400px;" in styles
+    assert "--runs-col-run-max-width: 400px;" in styles
+    run_id_rule = _rule(styles, ".run-cell-content .run-id {")
+    assert "overflow-wrap: anywhere;" in run_id_rule
+    assert "white-space: normal;" in run_id_rule
+    assert "text-overflow: clip;" in run_id_rule
 
 
 def test_live_repeat_progress_is_shown_on_the_active_pass_only() -> None:
@@ -103,7 +115,6 @@ def test_stopped_repeat_run_never_renders_a_running_pass() -> None:
 def test_repeat_passes_use_runs_view_bulk_delete_action() -> None:
     source = (DASHBOARD_DIR / "run.html").read_text(encoding="utf-8")
     dashboard = DASHBOARD_JS.read_text(encoding="utf-8")
-    index = (DASHBOARD_DIR / "index.html").read_text(encoding="utf-8")
     api = RUNS_API.read_text(encoding="utf-8")
     service = REPEAT_PASSES_SERVICE.read_text(encoding="utf-8")
 
@@ -120,10 +131,28 @@ def test_repeat_passes_use_runs_view_bulk_delete_action() -> None:
     )[1].split("async function loadSamplesData", 1)[0]
     assert "const runFilePath = decodeURIComponent(row?.dataset?.file || '');" in single_delete_handler
     assert "if (runFilePath) {" in single_delete_handler
-    assert "dashboard.js?v=pass-live-progress-" in index
     assert '@router.delete("/api/runs/{run_id}/passes/{pass_number}")' in api
     assert '@router.delete("/api/runs/{run_id}/passes")' in api
     assert 'action="run.pass_deleted"' in service
+
+
+def test_repeat_parent_checkbox_selects_its_current_scope() -> None:
+    source = DASHBOARD_JS.read_text(encoding="utf-8")
+    index = (DASHBOARD_DIR / "index.html").read_text(encoding="utf-8")
+
+    # Collapsed repeat rows represent the logical run; expanded rows represent
+    # the selectable execution members shown directly beneath them.
+    assert "samplesOpen ? 'Select all passes for' : 'Select run'" in source
+    assert "if (expanded) {\n            toggleExpandedPassSelection(run, tr);" in source
+    assert "checkbox.checked = state.selectedRuns.has(filePath);" in source
+    assert "checkbox.checked = refs.length > 0 && selectedCount === refs.length;" in source
+    assert "checkbox.indeterminate = selectedCount > 0 && selectedCount < refs.length;" in source
+    assert "const repeatExpanded = run.samples > 1" in source
+    assert "checkbox.indeterminate = repeatExpanded" in source
+    assert "isPartiallySelected" not in source
+    assert "state.selectedRuns.delete(filePath);" in source
+    assert "if (!allSelected) refs.forEach(ref => state.selectedRuns.add(ref));" in source
+    assert "dashboard.js?v=stable-run-selection-" in index
 
 
 def test_repeat_run_expander_uses_accessible_attached_inspector() -> None:
@@ -172,9 +201,22 @@ def test_repeat_drawer_follows_mock_option_c() -> None:
     assert 'class="samples-toggle-spacer"' in source
     assert "headerRow.classList.toggle('has-repeat-rows', anyRepeatRows)" in source
     assert "--runs-disclosure-size: var(--control-height);" in styles
-    assert ".runs-table thead tr.has-repeat-rows th.col-run::before" in styles
+    assert ".runs-table thead tr.has-repeat-rows .run-header-label::before" in styles
+    for column in ("dataset", "owner", "time"):
+        assert f".runs-table > tbody > tr.samples-open > td.col-{column}" in styles
     assert "width: calc(var(--runs-disclosure-size) + var(--space-sm));" in styles
     assert ".samples-toggle.open .samples-toggle-chevron" in styles
+    toggle_hover = _rule(
+        styles,
+        ".runs-table > tbody > tr[data-idx]:hover .samples-toggle,",
+    )
+    assert "color: var(--accent-primary);" in toggle_hover
+    assert "background: transparent;" in toggle_hover
+    toggle_stroke = _rule(
+        styles,
+        ".runs-table > tbody > tr[data-idx]:hover .samples-toggle-chevron,",
+    )
+    assert "stroke: var(--accent-primary);" in toggle_stroke
     assert "verdict-card" not in source
     assert "verdict-card" not in styles
 
@@ -1863,7 +1905,7 @@ def test_operational_statistics_use_connected_strip_contract() -> None:
     assert "margin-top: 0;" in compact_value
 
 
-def test_run_selection_uses_persistent_checkboxes_and_status_bar_actions() -> None:
+def test_run_selection_uses_explicit_mode_and_reclaims_checkbox_column() -> None:
     markup = (DASHBOARD_DIR / "index.html").read_text(encoding="utf-8")
     source = DASHBOARD_JS.read_text(encoding="utf-8")
     styles = (DASHBOARD_DIR / "dashboard.css").read_text(encoding="utf-8")
@@ -1872,9 +1914,10 @@ def test_run_selection_uses_persistent_checkboxes_and_status_bar_actions() -> No
         '<main class="runs-page-main">',
         1,
     )[0]
-    assert 'id="select-mode-btn"' not in command_bar
+    assert 'id="select-mode-btn"' in command_bar
+    assert command_bar.index('id="select-mode-btn"') < command_bar.index('id="display-tools"')
     assert 'id="compare-panel"' not in command_bar
-    assert 'id="select-mode-btn"' not in markup
+    assert 'aria-pressed="false" aria-controls="runs-table-scroll">Select</button>' in markup
 
     main_at = markup.index('<main class="runs-page-main">')
     table_at = markup.index('id="table-view"')
@@ -1883,7 +1926,8 @@ def test_run_selection_uses_persistent_checkboxes_and_status_bar_actions() -> No
     actions_at = markup.index('id="compare-panel"')
     assert main_at < table_at < select_all_at < footer_at < actions_at
     assert 'aria-label="Select all visible runs"' in markup
-    assert 'class="row-checkbox" aria-label="Select run ' in source
+    assert 'class="row-checkbox"' in source
+    assert "samplesOpen ? 'Select all passes for' : 'Select run'" in source
     assert 'id="selection-status-separator" style="display:none;"' in markup
     assert 'role="group" aria-label="Selected run actions"' in markup
     assert 'id="selection-guidance" aria-live="polite"' in markup
@@ -1906,17 +1950,33 @@ def test_run_selection_uses_persistent_checkboxes_and_status_bar_actions() -> No
     assert "allDeletable" in panel
     assert "isOwner && (status === 'COMPLETED'" in panel
     assert "const selectionAvailable = !!state.runs && state.flatRuns.length > 0;" in source
-    assert "state.selectMode" not in source
-    assert "setSelectMode" not in source
-    assert "select-mode-btn" not in source
-    assert "const isSelectionControl = !!e.target.closest('#compare-panel, .col-select');" in source
-    assert "document.activeElement?.closest?.('#compare-panel, .col-select')" in source
+    assert "selectMode: false" in source
+    assert "function setSelectMode(enabled)" in source
+    assert "tableView.classList.toggle('select-mode', state.selectMode);" in source
+    assert "selectModeBtn.textContent = state.selectMode ? 'Done' : 'Select';" in source
+    assert "el('select-mode-btn')?.addEventListener('click', () => setSelectMode(!state.selectMode));" in source
+    select_mode = source.split("function setSelectMode(enabled)", 1)[1].split(
+        "function toggleModelFilter", 1
+    )[0]
+    assert "state.selectedRuns.clear();" in select_mode
+    assert "state.cohortAnchorRuns = null;" in select_mode
+    assert "const isSelectionControl = !!e.target.closest('#compare-panel, .run-select-control');" in source
+    assert "document.activeElement?.closest?.('#compare-panel, .run-select-control')" in source
     assert "if (restoreTableFocus) el('select-all')?.focus" in source
     assert "selectAllCheckbox.disabled = visibleFilePaths.length === 0;" in source
     assert ".status-bar.selection-active {" in styles
     assert "overflow-x: auto;" in styles
+    hidden_control_rule = _rule(
+        styles, ".table-container:not(.select-mode) .run-select-control {"
+    )
+    assert "display: none;" in hidden_control_rule
+    assert "RUNS_TABLE_BASE_COLUMN_COUNT = 11" in source
+    assert '<th class="col-select">' not in markup
+    assert '<td class="col-select"' not in source
+    assert "--runs-col-select-offset" not in styles
+    assert "--runs-col-select-width" not in styles
+    assert ".runs-table tbody tr:hover > .col-select .custom-checkbox" not in styles
     assert ".runs-selection-toolbar {" not in styles
-    assert ".table-container:not(.select-mode)" not in styles
     assert ".select-mode-btn" not in styles
     assert ".selection-actions {" in styles
     assert ".selection-action.submit {" in styles
@@ -2948,10 +3008,54 @@ def test_runs_table_sticky_columns_size_to_visible_values() -> None:
     assert "function scheduleRunsStickyColumnSizing()" in dashboard_js
     assert "runs-table--measuring-sticky-columns" in dashboard_js
     assert "scheduleRunsStickyColumnSizing();" in dashboard_js
-    for column in ("status", "run", "task", "model"):
+    for column in ("status", "run", "task", "model", "dataset", "owner", "time"):
         assert f"--runs-col-{column}-min-width" in styles
     for column in ("status", "run"):
         assert f"--runs-col-{column}-max-width" in styles
     assert ".runs-table.runs-table--measuring-sticky-columns" in styles
     assert ".runs-table .col-model .model-label-text" in styles
     assert "text-overflow: clip" in styles
+
+
+def test_runs_table_freezes_dataset_owner_and_date_with_identity_columns() -> None:
+    markup = (DASHBOARD_DIR / "index.html").read_text(encoding="utf-8")
+    source = DASHBOARD_JS.read_text(encoding="utf-8")
+    styles = (DASHBOARD_DIR / "dashboard.css").read_text(encoding="utf-8")
+
+    assert markup.index('data-sort="run">RUN NAME</th>') < markup.index(
+        'data-sort="status">STATUS</th>'
+    )
+    run_rule = _rule(styles, ".runs-table .col-run {")
+    status_rule = _rule(styles, ".runs-table .col-status {")
+    assert "left: 0;" in run_rule
+    assert "left: var(--runs-col-run-width);" in status_rule
+
+    run_row = source.index('data-can-delete-pass=')
+    assert source.index('<td class="col-run">', run_row) < source.index(
+        '<td class="col-status">', run_row
+    )
+    pass_row = source.index('return `<tr class="pass-member')
+    assert source.index('<td class="col-run">', pass_row) < source.index(
+        '<td class="col-status">', pass_row
+    )
+
+    identity_headers = [
+        markup.index('class="col-model sortable"'),
+        markup.index('class="col-dataset sortable"'),
+        markup.index('class="col-owner sortable"'),
+        markup.index('class="col-time sortable"'),
+        markup.index('class="col-analysis"'),
+    ]
+    assert identity_headers == sorted(identity_headers)
+    for column in ("dataset", "owner", "time"):
+        rule = _rule(styles, f".runs-table .col-{column} {{")
+        assert "position: sticky;" in rule
+        assert "left: calc(" in rule
+        assert f"th.col-{column}" in styles
+        assert f"td.col-{column}" in styles
+
+    timestamp_rule = _rule(styles, ".timestamp {")
+    assert "display: inline-flex;" in timestamp_rule
+    assert "gap: var(--space-xs);" in timestamp_rule
+    date_cell_rule = _rule(styles, ".runs-table :is(th, td).col-time {")
+    assert "padding-inline: var(--space-sm);" in date_cell_rule

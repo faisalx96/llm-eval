@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>قيِّم • Runs</title>
   <link rel="icon" type="image/png" href="/static/qym_icon.png">
-  <link rel="stylesheet" href="/static/dashboard.css?v=runs-analysis-c1-20260804-25">
+  <link rel="stylesheet" href="/static/dashboard.css?v=repeat-header-color-20260810-36">
   <link rel="stylesheet" href="/static/shell.css">
   <script src="/static/auth.js"></script>
   <script src="/static/shell.js?v=ui-consistency-20260730-15"></script>
@@ -15,6 +15,8 @@
 <body>
   <!-- Command Bar -->
   <div class="command-bar">
+    <button type="button" class="qym-inline-action qym-inline-action--neutral" id="select-mode-btn"
+            aria-pressed="false" aria-controls="runs-table-scroll">Select</button>
     <div class="display-tools" id="display-tools">
       <span class="display-tools-label">Display</span>
       <div class="multi-select-wrapper" id="metric-visibility-wrapper">
@@ -80,24 +82,26 @@
         <table class="runs-table">
           <thead>
             <tr id="table-header-row">
-              <th class="col-select">
-                <label class="custom-checkbox">
-                  <input type="checkbox" id="select-all" aria-label="Select all visible runs" title="Select all visible runs"/>
-                  <span class="checkmark"></span>
-                </label>
+              <th class="col-run sortable" data-sort="run">
+                <span class="run-header-content">
+                  <label class="custom-checkbox run-select-control">
+                    <input type="checkbox" id="select-all" aria-label="Select all visible runs" title="Select all visible runs"/>
+                    <span class="checkmark"></span>
+                  </label>
+                  <span class="run-header-label">RUN NAME</span>
+                </span>
               </th>
               <th class="col-status sortable" data-sort="status">STATUS</th>
-              <th class="col-run sortable" data-sort="run">RUN</th>
               <th class="col-task sortable" data-sort="task">TASK</th>
               <th class="col-model sortable" data-sort="model">MODEL</th>
               <th class="col-dataset sortable" data-sort="dataset">DATASET</th>
+              <th class="col-owner sortable" data-sort="owner">OWNER</th>
+              <th class="col-time sortable" data-sort="time">DATE</th>
               <th class="col-analysis">ANALYSIS</th>
               <th class="col-version sortable" data-sort="version">VERSION</th>
               <!-- Dynamic metric columns inserted here by JS -->
               <th class="col-latency sortable" data-sort="latency">⚡ AVG LATENCY</th>
               <th class="col-latency-median sortable" data-sort="median-latency">⚡ MEDIAN LATENCY</th>
-              <th class="col-owner sortable" data-sort="owner">OWNER</th>
-              <th class="col-time sortable" data-sort="time">DATE</th>
               <th class="col-duration sortable" data-sort="duration">DURATION</th>
               <th class="col-actions">ACTIONS</th>
             </tr>
@@ -203,7 +207,7 @@
           <h4>Selection & Comparison</h4>
           <div class="shortcut"><span class="kbd">x</span> Toggle select row</div>
           <div class="shortcut"><span class="kbd">c</span> Compare selected</div>
-          <div class="shortcut"><span class="kbd">Esc</span> Clear selection</div>
+          <div class="shortcut"><span class="kbd">Esc</span> Exit selection</div>
         </div>
       </div>
     </div>
@@ -212,6 +216,6 @@
   <script>window.__QYM_INITIAL_VIEW__ = 'table';</script>
   <script src="/static/metrics.js"></script>
   <script src="/static/qym_table.js"></script>
-  <script src="/static/dashboard.js?v=pass-live-progress-20260810-25"></script>
+  <script src="/static/dashboard.js?v=stable-run-selection-20260810-35"></script>
 </body>
 </html>

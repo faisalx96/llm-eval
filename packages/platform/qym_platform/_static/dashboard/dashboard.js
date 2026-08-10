@@ -155,6 +155,7 @@
     knownVersions: new Set(),
     knownVersionsProjectSlug: '',
     currentView: window.__QYM_INITIAL_VIEW__ || 'charts',
+    selectMode: false,
     selectedRuns: new Set(),
     focusedIndex: -1,
     aggregations: null,
@@ -231,7 +232,7 @@
     { key: GROUP_CONSISTENCY_COLUMN_KEY, label: 'Consistency' },
     { key: GROUP_RELIABILITY_COLUMN_KEY, label: 'Reliability' },
   ];
-  const RUNS_TABLE_BASE_COLUMN_COUNT = 12;
+  const RUNS_TABLE_BASE_COLUMN_COUNT = 11;
   const MODELS_VIEW_SCORE_STAT_KEYS = ['passAtK', 'passHatK', 'maxAtK', 'consistency', 'reliability', 'avgScore', 'failedCount', 'totalRetries', 'avgLatency', 'medianLatency', 'correctDistribution'];
   const MODELS_VIEW_NUMERIC_STAT_KEYS = ['avgScore', 'minScore', 'maxAtK', 'stddevScore', 'totalScoreSum', 'failedCount', 'totalRetries', 'avgLatency', 'medianLatency'];
   function _traceMetricsForRuns(runs = null) {
@@ -3075,6 +3076,21 @@
       widthVar: '--runs-col-model-width',
       minVar: '--runs-col-model-min-width',
     },
+    {
+      selector: '.col-dataset',
+      widthVar: '--runs-col-dataset-width',
+      minVar: '--runs-col-dataset-min-width',
+    },
+    {
+      selector: '.col-owner',
+      widthVar: '--runs-col-owner-width',
+      minVar: '--runs-col-owner-min-width',
+    },
+    {
+      selector: '.col-time',
+      widthVar: '--runs-col-time-width',
+      minVar: '--runs-col-time-min-width',
+    },
   ];
 
   function scheduleRunsStickyColumnSizing() {
@@ -3194,9 +3210,14 @@
       const idx = pagination.start + pageIdx;
       const dt = formatDate(run.timestamp);
       const durationText = formatDurationMs(run.duration_ms);
-      const isSelected = state.selectedRuns.has(run.file_path);
       const isFocused = idx === state.focusedIndex;
       const samplesOpen = run.samples > 1 && !!(state._samplesExpanded || {})[run.run_id];
+      const selectedPassCount = samplesOpen
+        ? Array.from(state.selectedRuns).filter(ref => isPassRef(ref) && passRefBase(ref) === run.file_path).length
+        : 0;
+      const isSelected = samplesOpen
+        ? selectedPassCount > 0 && selectedPassCount === Number(run.samples)
+        : state.selectedRuns.has(run.file_path);
       const samplesPanelId = `samples-detail-${idx}`;
       const rowClasses = [
         idx % 2 === 0 ? 'run-row-even' : 'run-row-odd',
@@ -3264,17 +3285,14 @@
         <tr data-idx="${idx}" data-file="${encodeURIComponent(run.file_path)}"
             data-can-delete-pass="${canDelete && status !== 'RUNNING' && status !== 'PENDING' ? 'true' : 'false'}"
             class="${rowClasses}">
-          <td class="col-select" onclick="event.stopPropagation()">
-            <label class="custom-checkbox">
-              <input type="checkbox" class="row-checkbox" aria-label="Select run ${escapeHtml(run.external_run_id || run.run_id || '')}" ${isSelected ? 'checked' : ''} />
-              <span class="checkmark"></span>
-            </label>
-          </td>
-          <td class="col-status">
-            ${status ? `<span class="status-badge qym-badge status-${status}" title="${escapeHtml(statusTooltip)}">${status}${passText}${parentProgressText}</span>` : ''}${(run.error_count > 0 && status !== 'RUNNING' && status !== 'PENDING') ? `<span class="status-errors" title="${run.error_count} item${run.error_count === 1 ? '' : 's'} errored">${run.error_count}⚠</span>` : ''}${(run.total_retries > 0 && status !== 'RUNNING' && status !== 'PENDING') ? `<span class="status-retries" title="${run.total_retries} total retr${run.total_retries === 1 ? 'y' : 'ies'} across all items">${run.total_retries}↻</span>` : ''}
-          </td>
           <td class="col-run">
             <div class="run-cell-content">
+              <label class="custom-checkbox run-select-control" onclick="event.stopPropagation()">
+                <input type="checkbox" class="row-checkbox"
+                  aria-label="${samplesOpen ? 'Select all passes for' : 'Select run'} ${escapeHtml(run.external_run_id || run.run_id || '')}"
+                  ${isSelected ? 'checked' : ''} />
+                <span class="checkmark"></span>
+              </label>
               ${run.samples > 1 ? `<button type="button" class="samples-toggle qym-icon-action${samplesOpen ? ' open' : ''}"
                 data-run-id="${run.run_id}" data-panel-id="${samplesPanelId}"
                 data-count="${run.samples}"
@@ -3285,8 +3303,11 @@
                 title="${samplesOpen ? 'Collapse' : 'Expand'} ${run.samples} pass results"><svg class="samples-toggle-chevron" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="m4 6 4 4 4-4"></path></svg></button>`
                 : (anyRepeatRows ? '<span class="samples-toggle-spacer" aria-hidden="true"></span>' : '')}
               <span class="run-id" title="${run.run_id}">${run.external_run_id ? truncateText(run.external_run_id, 30) : run.run_id.substring(0, 8)}</span>
-              ${run.samples > 1 ? `<span class="run-pass-count">${run.samples} passes</span>` : ''}
+              ${run.samples > 1 ? `<span class="run-pass-count">x${run.samples}</span>` : ''}
             </div>
+          </td>
+          <td class="col-status">
+            ${status ? `<span class="status-badge qym-badge status-${status}" title="${escapeHtml(statusTooltip)}">${status}${passText}${parentProgressText}</span>` : ''}${(run.error_count > 0 && status !== 'RUNNING' && status !== 'PENDING') ? `<span class="status-errors" title="${run.error_count} item${run.error_count === 1 ? '' : 's'} errored">${run.error_count}⚠</span>` : ''}${(run.total_retries > 0 && status !== 'RUNNING' && status !== 'PENDING') ? `<span class="status-retries" title="${run.total_retries} total retr${run.total_retries === 1 ? 'y' : 'ies'} across all items">${run.total_retries}↻</span>` : ''}
           </td>
           <td class="col-task">
             <span class="tag qym-tag task" title="${escapeHtml(run.task_name || '')}">${run.task_name ? escapeHtml(run.task_name) : '—'}</span>
@@ -3299,6 +3320,21 @@
           </td>
           <td class="col-dataset">
             <span class="tag qym-tag runs-dataset-tag" title="${run.dataset_name}">${truncateText(run.dataset_name, 25)}${window.QymShell ? QymShell.datasetVersionInline(run.dataset_version) + QymShell.datasetAliasTags(run.dataset_aliases) : ''}</span>
+          </td>
+          <td class="col-owner">
+            ${run.owner ? `
+              <span class="owner-name" title="${run.owner.email}">
+                <span class="owner-avatar">${getInitials(run.owner.display_name)}</span>
+                ${truncateText(run.owner.display_name, 15)}
+              </span>
+            ` : '<span style="color:var(--text-muted)">—</span>'}
+          </td>
+          <td class="col-time">
+            <span class="timestamp" title="${escapeHtml(dt.full)}">
+              <span class="date">${dt.date}</span>
+              <span class="timestamp-sep">·</span>
+              <span class="time">${dt.time}</span>
+            </span>
           </td>
           <td class="col-analysis" onclick="event.stopPropagation()">${renderAnalysisCell(run, status)}</td>
           <td class="col-version">
@@ -3318,21 +3354,6 @@
               return renderTraceMetricTableCell(tm, v);
             }).join('');
           })()}
-          <td class="col-owner">
-            ${run.owner ? `
-              <span class="owner-name" title="${run.owner.email}">
-                <span class="owner-avatar">${getInitials(run.owner.display_name)}</span>
-                ${truncateText(run.owner.display_name, 15)}
-              </span>
-            ` : '<span style="color:var(--text-muted)">—</span>'}
-          </td>
-          <td class="col-time">
-            <span class="timestamp" title="${escapeHtml(dt.full)}">
-              <span class="date">${dt.date}</span>
-              <span class="timestamp-sep">·</span>
-              <span class="time">${dt.time}</span>
-            </span>
-          </td>
           <td class="col-duration">
             <span class="duration-value">${durationText}</span>
           </td>
@@ -3410,11 +3431,23 @@
 
       const checkbox = tr.querySelector('.row-checkbox');
       if (checkbox) {
+        const repeatExpanded = run.samples > 1 && !!state._samplesExpanded?.[run.run_id];
+        const selectedPasses = repeatExpanded
+          ? Array.from(state.selectedRuns).filter(ref => isPassRef(ref) && passRefBase(ref) === filePath).length
+          : 0;
+        checkbox.indeterminate = repeatExpanded
+          && selectedPasses > 0
+          && selectedPasses < Number(run.samples);
         checkbox.addEventListener('click', (e) => {
           e.stopPropagation();
         });
-        checkbox.addEventListener('change', (e) => {
-          toggleSelect(filePath);
+        checkbox.addEventListener('change', () => {
+          const expanded = run.samples > 1 && !!state._samplesExpanded?.[run.run_id];
+          if (expanded) {
+            toggleExpandedPassSelection(run, tr);
+          } else {
+            toggleSelect(filePath);
+          }
         });
       }
 
@@ -3768,28 +3801,27 @@
         const canDeletePass = !pass._queued && row?.dataset?.canDeletePass === 'true';
         return `<tr class="pass-member${isLast ? ' pass-member-last' : ''}${pass._queued ? ' pass-member-queued' : ''}"
             data-samples-for="${escapeHtml(runId)}"${pass._queued ? '' : ` data-pass-number="${firstPass}" title="Open Pass ${firstPass} details"`}>
-          <td class="col-select" onclick="event.stopPropagation()">${passRef
-            ? `<label class="custom-checkbox"><input type="checkbox" class="pass-checkbox" data-pass-ref="${escapeHtml(passRef)}" ${passSelected ? 'checked' : ''} /><span class="checkmark"></span></label>`
-            : ''}</td>
+          <td class="col-run">${passRef
+            ? `<label class="custom-checkbox run-select-control" onclick="event.stopPropagation()"><input type="checkbox" class="pass-checkbox" data-pass-ref="${escapeHtml(passRef)}" ${passSelected ? 'checked' : ''} /><span class="checkmark"></span></label>`
+            : ''}<span class="pass-indent"></span><span class="pass-member-id">${passLabel}</span>${passMeta ? `<span class="pass-member-items">${passMeta}</span>` : ''}</td>
           <td class="col-status">${badgeClass
             ? `<span class="status-badge qym-badge status-${badgeClass}">${statusLabel}${progressLabel}</span>`
             : `<span class="pass-member-status">${statusLabel}</span>`}${errors
             ? `<span class="status-errors" title="${errors} item${errors === 1 ? '' : 's'} errored in this pass">${errors}⚠</span>`
             : ''}</td>
-          <td class="col-run"><span class="pass-indent"></span><span class="pass-member-id">${passLabel}</span>${passMeta ? `<span class="pass-member-items">${passMeta}</span>` : ''}</td>
           ${inherit('col-task')}
           ${inherit('col-model')}
           ${inherit('col-dataset')}
+          ${inherit('col-owner')}
+          <td class="col-time">${passDate
+            ? `<span class="timestamp" title="${escapeHtml(passDate.full)}"><span class="date">${passDate.date}</span><span class="timestamp-sep">·</span><span class="time">${passDate.time}</span></span>`
+            : '<span class="metric-na">—</span>'}</td>
           ${inherit('col-analysis')}
           ${inherit('col-version')}
           ${metricCells}${visibleTraceMetrics.length > 0 ? '<td class="col-trace-separator"></td>' : ''}
           ${visibleSystemColumns.has('latency') ? latencyCell('col-latency', pass.avg_latency_ms, avgLatencyWinners) : ''}
           ${visibleSystemColumns.has('median-latency') ? latencyCell('col-latency-median', pass.median_latency_ms, medianLatencyWinners) : ''}
           ${visibleTraceMetrics.map(tm => renderTraceMetricTableCell(tm, pass.trace_stats?.[tm.key])).join('')}
-          ${inherit('col-owner')}
-          <td class="col-time">${passDate
-            ? `<span class="timestamp" title="${escapeHtml(passDate.full)}"><span class="date">${passDate.date}</span><span class="timestamp-sep">·</span><span class="time">${passDate.time}</span></span>`
-            : '<span class="metric-na">—</span>'}</td>
           <td class="col-duration"><span class="duration-value">${passDuration || '—'}</span></td>
           <td class="col-actions">${canDeletePass ? `<button type="button" class="pass-delete-action qym-icon-action action-icon delete-run" data-delete-pass="${firstPass}" title="Delete Pass ${firstPass}" aria-label="Delete Pass ${firstPass}"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" focusable="false"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></button>` : ''}</td>
         </tr>`;
@@ -3842,6 +3874,64 @@
         .filter(detail => detail.dataset.samplesFor === runId);
     }
 
+    function expandedPassRefs(run, row) {
+      const refs = samplesDetailRows(run.run_id)
+        .flatMap(detail => Array.from(detail.querySelectorAll('.pass-checkbox')))
+        .map(checkbox => checkbox.dataset.passRef)
+        .filter(Boolean);
+      if (refs.length) return Array.from(new Set(refs));
+
+      // A completed legacy run may not carry pass_summaries in the list
+      // payload. All of its scheduled passes are nevertheless selectable
+      // while the detail request fills the expanded rows.
+      if (String(run.status || '').toUpperCase() === 'COMPLETED') {
+        return Array.from(
+          { length: Number(run.samples) || 0 },
+          (_, index) => `${decodeURIComponent(row.dataset.file || '')}${PASS_REF_SEP}${index + 1}`,
+        );
+      }
+      return [];
+    }
+
+    function syncRepeatParentSelection(run, row) {
+      const checkbox = row.querySelector('.row-checkbox');
+      if (!checkbox) return;
+      const filePath = decodeURIComponent(row.dataset.file || '');
+      const expanded = !!state._samplesExpanded?.[run.run_id];
+      if (!expanded) {
+        checkbox.disabled = false;
+        checkbox.checked = state.selectedRuns.has(filePath);
+        checkbox.indeterminate = false;
+        checkbox.setAttribute('aria-label', `Select run ${run.external_run_id || run.run_id || ''}`);
+        row.classList.toggle('selected', checkbox.checked);
+        return;
+      }
+
+      const refs = expandedPassRefs(run, row);
+      const selectedCount = refs.filter(ref => state.selectedRuns.has(ref)).length;
+      checkbox.disabled = refs.length === 0;
+      checkbox.checked = refs.length > 0 && selectedCount === refs.length;
+      checkbox.indeterminate = selectedCount > 0 && selectedCount < refs.length;
+      checkbox.setAttribute('aria-label', `Select all passes for ${run.external_run_id || run.run_id || ''}`);
+      row.classList.toggle('selected', checkbox.checked);
+    }
+
+    function toggleExpandedPassSelection(run, row) {
+      const refs = expandedPassRefs(run, row);
+      if (!refs.length) {
+        syncRepeatParentSelection(run, row);
+        return;
+      }
+      const filePath = decodeURIComponent(row.dataset.file || '');
+      const allSelected = refs.every(ref => state.selectedRuns.has(ref));
+      state.selectedRuns.delete(filePath);
+      Array.from(state.selectedRuns).forEach(ref => {
+        if (isPassRef(ref) && passRefBase(ref) === filePath) state.selectedRuns.delete(ref);
+      });
+      if (!allSelected) refs.forEach(ref => state.selectedRuns.add(ref));
+      render();
+    }
+
     function insertSamplesDetail(runId, row, panelId, animate) {
       const runFilePath = decodeURIComponent(row?.dataset?.file || '');
       samplesDetailRows(runId).forEach(detail => detail.remove());
@@ -3855,6 +3945,8 @@
       ));
       const inserted = samplesDetailRows(runId);
       if (!inserted.length) return null;
+      const run = runs.find(candidate => candidate.run_id === runId);
+      if (run) syncRepeatParentSelection(run, row);
       const controlsRow = inserted.find(detail => detail.classList.contains('samples-detail-row')) || inserted[0];
       if (row.dataset.memberOf) {
         inserted.forEach(detail => { detail.dataset.memberOf = row.dataset.memberOf; });
@@ -4091,6 +4183,8 @@
           // Collapse instantly: rows can't animate height, so a fade would
           // just hold their space and then snap — instant reads as crisp.
           samplesDetailRows(runId).forEach(detail => detail.remove());
+          const run = runs.find(candidate => candidate.run_id === runId);
+          if (run) syncRepeatParentSelection(run, row);
           scheduleRunsStickyColumnSizing();
         }
       });
@@ -4398,8 +4492,24 @@
     const selectionAvailable = !!state.runs && state.flatRuns.length > 0;
 
     if (!selectionAvailable) {
+      state.selectMode = false;
       state.selectedRuns.clear();
       state.cohortAnchorRuns = null;
+    } else if (state.selectedRuns.size > 0 || state.cohortAnchorRuns) {
+      state.selectMode = true;
+    }
+    if (tableView) {
+      tableView.classList.toggle('select-mode', state.selectMode);
+    }
+    const selectModeBtn = el('select-mode-btn');
+    if (selectModeBtn) {
+      const modeVisible = state.currentView === 'table';
+      selectModeBtn.style.display = modeVisible ? 'inline-flex' : 'none';
+      selectModeBtn.disabled = !selectionAvailable;
+      selectModeBtn.textContent = state.selectMode ? 'Done' : 'Select';
+      selectModeBtn.setAttribute('aria-pressed', state.selectMode ? 'true' : 'false');
+      selectModeBtn.classList.toggle('qym-inline-action--neutral', !state.selectMode);
+      selectModeBtn.classList.toggle('qym-inline-action--accent', state.selectMode);
     }
     // Keep selection controls coherent even when loading/empty states return early.
     renderComparePanel();
@@ -5286,6 +5396,7 @@
   }
 
   function toggleSelect(filePath) {
+    state.selectMode = true;
     if (state.selectedRuns.has(filePath)) {
       state.selectedRuns.delete(filePath);
     } else {
@@ -5295,6 +5406,15 @@
         if (isPassRef(ref) && passRefBase(ref) === filePath) state.selectedRuns.delete(ref);
       }
       state.selectedRuns.add(filePath);
+    }
+    render();
+  }
+
+  function setSelectMode(enabled) {
+    state.selectMode = !!enabled;
+    if (!state.selectMode) {
+      state.selectedRuns.clear();
+      state.cohortAnchorRuns = null;
     }
     render();
   }
@@ -5344,7 +5464,7 @@
   }
 
   function clearSelection() {
-    const restoreTableFocus = !!document.activeElement?.closest?.('#compare-panel, .col-select');
+    const restoreTableFocus = !!document.activeElement?.closest?.('#compare-panel, .run-select-control');
     state.selectedRuns.clear();
     state.cohortAnchorRuns = null;
     render();
@@ -5437,6 +5557,7 @@
 
   function togglePassSelection(ref) {
     if (!ref) return;
+    state.selectMode = true;
     if (state.selectedRuns.has(ref)) {
       state.selectedRuns.delete(ref);
     } else {
@@ -6543,6 +6664,7 @@
 
   // Clear all filters button
   el('clear-all-filters')?.addEventListener('click', clearAllFilters);
+  el('select-mode-btn')?.addEventListener('click', () => setSelectMode(!state.selectMode));
 
   // Quick filters
   $$('.filter-btn').forEach(btn => {
@@ -6604,6 +6726,7 @@
   });
 
   // Select all checkbox
+  el('select-all')?.addEventListener('click', (e) => e.stopPropagation());
   el('select-all')?.addEventListener('change', selectAll);
   // Pass checkboxes live inside re-rendered expansion rows; delegate once.
   document.addEventListener('change', (e) => {
@@ -6621,10 +6744,10 @@
     // Keyboard shortcuts must not take over native interactive controls.
     if (e.target.closest('input, select, textarea, button, a, [contenteditable="true"]')) {
       if (e.key === 'Escape') {
-        const isSelectionControl = !!e.target.closest('#compare-panel, .col-select');
-        if (isSelectionControl && (state.selectedRuns.size || state.cohortAnchorRuns)) {
+        const isSelectionControl = !!e.target.closest('#compare-panel, .run-select-control');
+        if (isSelectionControl && state.selectMode) {
           e.preventDefault();
-          clearSelection();
+          setSelectMode(false);
           return;
         }
         e.target.blur();
@@ -6676,7 +6799,8 @@
         break;
       case 'Escape':
         e.preventDefault();
-        clearSelection();
+        if (state.selectMode) setSelectMode(false);
+        else clearSelection();
         break;
       case '?':
         e.preventDefault();

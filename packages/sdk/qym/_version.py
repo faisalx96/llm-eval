@@ -1,3 +1,3 @@
 """Single source of truth for the qym SDK version."""
 
-__version__ = "1.5.3"
+__version__ = "1.5.4"
