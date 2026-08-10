@@ -5644,7 +5644,7 @@
             const metricNames = runData?.snapshot?.metric_names || runData?.run?.metric_names || [];
             return metricNames.indexOf(metricName);
           },
-          getItemId: (row) => row?.item_id || row?.compare_item_id || String(row?.index ?? ''),
+          getItemId: getRowCompareId,
           getRunId: getCompareRunDataId,
         });
       }

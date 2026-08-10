@@ -444,6 +444,18 @@ def test_boolean_metric_observations_stay_boolean_across_item_views() -> None:
     assert run.count("&& !state.viewPass;") >= 2
 
 
+def test_grouped_compare_joins_csv_rows_by_stable_compare_identity() -> None:
+    """CSV row IDs may differ between runs; every compare mode must use the
+    backend's content-derived identity instead of the raw per-run item ID."""
+    compare = (DASHBOARD_DIR / "compare.html").read_text(encoding="utf-8")
+    grouped_outcomes = compare.split(
+        "function getActiveGroupedOutcomeResults()", 1
+    )[1].split("function canShowSweepTab()", 1)[0]
+
+    assert "getItemId: getRowCompareId" in grouped_outcomes
+    assert "row?.item_id || row?.compare_item_id" not in grouped_outcomes
+
+
 def test_item_metric_rows_share_one_responsive_component() -> None:
     run = (DASHBOARD_DIR / "run.html").read_text(encoding="utf-8")
     compare = (DASHBOARD_DIR / "compare.html").read_text(encoding="utf-8")
