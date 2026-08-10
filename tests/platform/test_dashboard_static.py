@@ -152,7 +152,46 @@ def test_repeat_parent_checkbox_selects_its_current_scope() -> None:
     assert "isPartiallySelected" not in source
     assert "state.selectedRuns.delete(filePath);" in source
     assert "if (!allSelected) refs.forEach(ref => state.selectedRuns.add(ref));" in source
-    assert "dashboard.js?v=stable-run-selection-" in index
+    assert "dashboard.js?v=repeat-compare-pass-selection-" in index
+
+
+def test_repeat_comparison_selection_expands_to_exact_passes() -> None:
+    dashboard = DASHBOARD_JS.read_text(encoding="utf-8")
+    compare = (DASHBOARD_DIR / "compare.html").read_text(encoding="utf-8")
+
+    # A collapsed repeat selection is still a logical run in the Runs table,
+    # but comparison columns are executions: selecting x10 yields Pass 1..10.
+    assert (
+        "const files = expandComparisonRefs(Array.from(state.selectedRuns));"
+        in dashboard
+    )
+    assert "function expandComparisonRefs(filePaths)" in dashboard
+    assert "expanded.push(`${ref}${PASS_REF_SEP}${passNumber}`);" in dashboard
+    assert "compareBtn.disabled = selectedExecutionCount < 2;" in dashboard
+    assert (
+        "`${selectedExecutionCount} execution${selectedExecutionCount === 1 ? '' : 's'} selected`"
+        in dashboard
+    )
+    assert "left: expandComparisonRefs(left)" in dashboard
+    assert "right: expandComparisonRefs(right)" in dashboard
+
+    # Shared/manual compare URLs get the same expansion, and a requested pass
+    # is matched by pass_number. It must never inherit the aggregate final pass.
+    pass_slice = compare.split("function sliceRunToPass", 1)[1].split(
+        "function expandPassRefIds", 1
+    )[0]
+    pass_expand = compare.split("function expandPassRefIds", 1)[1].split(
+        "function makeSafeDomId", 1
+    )[0]
+    assert "Number(candidate.pass_number) === passNo" in pass_slice
+    assert "output: att ? (att.output ?? null) : null" in pass_slice
+    assert "return row.metric_values ? row.metric_values[i] : '';" not in pass_slice
+    assert "const fallback = row.metric_meta?.[m];" not in pass_slice
+    assert "for (let passNo = 1; passNo <= samples; passNo += 1)" in pass_expand
+    assert "out.push(`${base}${PASS_REF_SEP}${passNo}`)" in pass_expand
+    assert "[sliceRunToPass(rd, ref, passNo)]" in pass_expand
+    assert "state.explicitGroupedOutcomeGroups.leftRunIds = expandPassRefIds" in compare
+    assert "?pass_number=${encodeURIComponent(passNumber)}" in compare
 
 
 def test_repeat_run_expander_uses_accessible_attached_inspector() -> None:
@@ -181,8 +220,10 @@ def test_individual_run_navigation_clears_comparison_state() -> None:
     )[0]
     assert "sessionStorage.removeItem('compareRuns');" in open_run
     assert "sessionStorage.removeItem('compareCohorts');" in open_run
-    assert "const COMPARE_PASSES =" in run
-    assert "const isRepeatItem = COMPARE_PASSES && !state.viewPass" in run
+    assert "COMPARE_PASSES" not in run
+    assert "const isRepeatItem = !state.viewPass" in run
+    assert "renderAnswerColumns(baseRow, itemId, displayItemId, metric, threshold)" in run
+    assert "? 'OUTPUT · PASS ' + state.viewPass" in run
 
 
 def test_repeat_drawer_follows_mock_option_c() -> None:
@@ -340,14 +381,17 @@ def test_run_page_supports_single_pass_scope() -> None:
     # Repeat Stability chart panels, no per-pass dot strips on item cards
     assert "if (samplesCount <= 1 || IS_EXPORT || state.viewPass)" in source
     assert source.count("const repeatSeries = state.viewPass ? [] :") == 1
-    assert "COMPARE_PASSES && !state.viewPass" in source
+    assert "const isRepeatItem = !state.viewPass" in source
     # edits are allowed and routed to the viewed pass
     assert "const passNumber = Number(btn.dataset.passNumber) || state.viewPass || null;" in source
     assert "updateMetricScore(filePath, rowIndex, metricName, input.value, passNumber)" in source
     assert "...(passNumber ? { pass_number: passNumber } : {})," in source
     # applying the server row keeps per-pass fields and re-applies the lens
     assert "let next = { ...rows[pos], ...updatedRow };" in source
-    assert "row.pass_attempts[passNumber - 1]" in source
+    assert "function scopedPassAttempt(row, passNumber)" in source
+    assert "Number(candidate.pass_number) === passNumber" in source
+    assert "const att = scopedPassAttempt(row, passNumber);" in source
+    assert "? 'OUTPUT · PASS ' + state.viewPass" in source
     assert 'class="hero-samples-pill"' in source
     assert "samplesCount > 1 && !state.viewPass" in source
     assert 'class="hero-pass-pill"' in source
@@ -360,7 +404,7 @@ def test_run_page_supports_single_pass_scope() -> None:
     assert "'samples',\n          'max_metric_concurrency'" in source
 
     # pass scope swaps outputs/latency/traces too, from per-pass attempts
-    assert "row.pass_attempts[passNumber - 1]" in source
+    assert "const positionalAttempt = attempts[passNumber - 1];" in source
     assert "task_started_at_ms: att?.task_started_at_ms ?? null" in source
     assert "retry_count: Number(att?.retry_count || 0)" in source
     assert "trace_stats: att?.trace_stats || null" in source
@@ -1943,7 +1987,10 @@ def test_run_selection_uses_explicit_mode_and_reclaims_checkbox_column() -> None
         1,
     )[0]
     assert "const showActions = selected.size > 0 || isCohortMode;" in panel
-    assert "`${selected.size} selected`" in panel
+    assert (
+        "`${selectedExecutionCount} execution${selectedExecutionCount === 1 ? '' : 's'} selected`"
+        in panel
+    )
     assert "panel.style.display = showActions ? 'inline-flex' : 'none';" in panel
     assert "panel.closest('.status-bar')?.classList.toggle('selection-active', showActions)" in panel
     assert "separator.style.display = showActions ? '' : 'none';" in panel

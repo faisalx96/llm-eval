@@ -5100,8 +5100,6 @@
         const n = parseInt(raw || '', 10);
         return Number.isFinite(n) && n > 0 ? n : null;
       })();
-      const COMPARE_PASSES = new URLSearchParams(window.location.search).get('compare_passes') === '1';
-
       function apiUrl(path) {
         return API_ROOT + path.replace(/^\.?\/?/, '');
       }
@@ -5831,6 +5829,18 @@
         return scoped;
       }
 
+      function scopedPassAttempt(row, passNumber) {
+        const attempts = Array.isArray(row.pass_attempts) ? row.pass_attempts : [];
+        const explicitAttempt = attempts.find(candidate =>
+          candidate && Number(candidate.pass_number) === passNumber
+        );
+        if (explicitAttempt) return explicitAttempt;
+        const positionalAttempt = attempts[passNumber - 1];
+        return positionalAttempt && positionalAttempt.pass_number == null
+          ? positionalAttempt
+          : null;
+      }
+
       function scopeRowToPass(row, metricNames, passNumber) {
         const passValues = metricNames.map(name => {
           const scores = (row.pass_scores || {})[name];
@@ -5838,7 +5848,7 @@
             ? scores[passNumber - 1]
             : null;
         });
-        const att = Array.isArray(row.pass_attempts) ? row.pass_attempts[passNumber - 1] : null;
+        const att = scopedPassAttempt(row, passNumber);
         const hasPassScore = passValues.some(value => value !== null && value !== undefined && value !== '');
         const passMetricMeta = scopedPassMetricMeta(row, metricNames, passNumber);
         const hasErrorMeta = Object.values(passMetricMeta).some(meta =>
@@ -9698,9 +9708,9 @@
         container.classList.remove('heatmap-mode');
         container.innerHTML = pageItems.map(({ row: baseRow }) => {
           const passAttempts = Array.isArray(baseRow.pass_attempts) ? baseRow.pass_attempts : null;
-          // Individual run pages use the ordinary item card. Side-by-side
-          // pass rendering is opt-in; normal pass comparisons live in Compare.
-          const isRepeatItem = COMPARE_PASSES && !state.viewPass
+          // The all-passes view renders every recorded repeat attempt. A
+          // ?pass=N view stays scoped to that one exact attempt.
+          const isRepeatItem = !state.viewPass
             && passAttempts && passAttempts.filter(Boolean).length > 1;
           const latestOutputPass = passAttempts
             ? passAttempts.reduce((latest, attempt, index) => attempt ? index + 1 : latest, null)
@@ -9719,7 +9729,9 @@
           const itemId = row.item_id || String(row.index);
           const safeId = btoa(itemId).replace(/[+/=]/g, '_');
           const isExpanded = !!(state.itemExpanded || {})[itemId];
-          const outputLabel = (!isRepeatItem && latestOutputPass) ? 'OUTPUT · PASS ' + latestOutputPass : 'OUTPUT';
+          const outputLabel = state.viewPass
+            ? 'OUTPUT · PASS ' + state.viewPass
+            : ((!isRepeatItem && latestOutputPass) ? 'OUTPUT · PASS ' + latestOutputPass : 'OUTPUT');
 
           // Display item ID
           let displayItemId = itemId;

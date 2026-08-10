@@ -7489,6 +7489,20 @@
             return;
           }
 
+          if (state.explicitGroupedOutcomeGroups) {
+            state.explicitGroupedOutcomeGroups.leftRunIds = expandPassRefIds(
+              state.explicitGroupedOutcomeGroups.leftRunIds,
+              data.runs,
+            );
+            state.explicitGroupedOutcomeGroups.rightRunIds = expandPassRefIds(
+              state.explicitGroupedOutcomeGroups.rightRunIds,
+              data.runs,
+            );
+            state.explicitGroupedOutcomeGroups.k = Math.min(
+              state.explicitGroupedOutcomeGroups.leftRunIds.length,
+              state.explicitGroupedOutcomeGroups.rightRunIds.length,
+            );
+          }
           state.runs = expandPassRefs(files, data.runs);
           if (state.runs.length < 2) {
             showEmpty();
@@ -10398,11 +10412,20 @@
         const snapshot = { ...(rd.snapshot || {}) };
         const metricNames = snapshot.metric_names || baseRun.metric_names || [];
         snapshot.rows = (snapshot.rows || []).map(row => {
-          const att = Array.isArray(row.pass_attempts) ? row.pass_attempts[passNo - 1] : null;
-          const mv = metricNames.map((m, i) => {
+          const attempts = Array.isArray(row.pass_attempts) ? row.pass_attempts : [];
+          const explicitAttempt = attempts.find(candidate =>
+            candidate && Number(candidate.pass_number) === passNo
+          );
+          const positionalAttempt = attempts[passNo - 1];
+          const att = explicitAttempt || (
+            positionalAttempt && positionalAttempt.pass_number == null
+              ? positionalAttempt
+              : null
+          );
+          const mv = metricNames.map(m => {
             const ps = row.pass_scores ? row.pass_scores[m] : null;
             if (Array.isArray(ps)) return ps[passNo - 1] == null ? '' : ps[passNo - 1];
-            return row.metric_values ? row.metric_values[i] : '';
+            return '';
           });
           const meta = {};
           metricNames.forEach(m => {
@@ -10410,11 +10433,9 @@
             if (Array.isArray(pm)) {
               const v = pm[passNo - 1];
               if (v && typeof v === 'object') meta[m] = v;
-              return;
             }
-            const fallback = row.metric_meta?.[m];
-            if (fallback && typeof fallback === 'object') meta[m] = fallback;
           });
+          const hasPassScore = mv.some(value => value !== null && value !== undefined && value !== '');
           const next = {
             ...row,
             metric_values: mv,
@@ -10422,21 +10443,22 @@
             pass_scores: null,
             pass_attempts: null,
             pass_metric_meta: null,
+            status: att?.status || (hasPassScore ? 'completed' : 'pending'),
+            error: att?.error || '',
+            output: att ? (att.output ?? null) : null,
+            output_full: att ? (att.output ?? null) : null,
+            latency_ms: Number(att?.latency_ms || 0),
+            task_started_at_ms: att?.task_started_at_ms ?? null,
+            retry_count: Number(att?.retry_count || 0),
+            trace_id: att?.trace_id || '',
+            trace_url: att?.trace_url || '',
+            trace_stats: att?.trace_stats || null,
           };
-          if (att) {
-            next.status = att.status;
-            next.error = att.error || '';
-            next.output = att.output;
-            next.output_full = att.output;
-            next.latency_ms = att.latency_ms || 0;
-            next.trace_id = att.trace_id || '';
-            next.trace_url = att.trace_url || '';
-          }
           return next;
         });
         return { ...rd, run, snapshot };
       }
-      function expandPassRefs(requested, loadedRuns) {
+      function expandPassRefIds(requested, loadedRuns) {
         const byPath = new Map(loadedRuns.map(rd => [rd.run?.file_path, rd]));
         const out = [];
         (requested || []).forEach(ref => {
@@ -10444,13 +10466,33 @@
           const rd = byPath.get(base);
           if (!rd) return;
           if (ref === base) {
-            if (!out.includes(rd)) out.push(rd);
+            const samples = Number(rd.run?.samples) || 1;
+            if (samples > 1) {
+              for (let passNo = 1; passNo <= samples; passNo += 1) {
+                out.push(`${base}${PASS_REF_SEP}${passNo}`);
+              }
+            } else if (!out.includes(ref)) {
+              out.push(ref);
+            }
             return;
           }
           const passNo = parseInt(ref.slice(base.length + PASS_REF_SEP.length), 10);
-          if (Number.isFinite(passNo) && passNo >= 1) out.push(sliceRunToPass(rd, ref, passNo));
+          if (Number.isFinite(passNo) && passNo >= 1) out.push(ref);
         });
-        return out;
+        return Array.from(new Set(out));
+      }
+      function expandPassRefs(requested, loadedRuns) {
+        const byPath = new Map(loadedRuns.map(rd => [rd.run?.file_path, rd]));
+        return expandPassRefIds(requested, loadedRuns).flatMap(ref => {
+          const base = passRefBase(ref);
+          const rd = byPath.get(base);
+          if (!rd) return [];
+          if (ref === base) return [rd];
+          const passNo = parseInt(ref.slice(base.length + PASS_REF_SEP.length), 10);
+          return Number.isFinite(passNo) && passNo >= 1
+            ? [sliceRunToPass(rd, ref, passNo)]
+            : [];
+        });
       }
 
       function makeSafeDomId(value) {
@@ -10583,7 +10625,13 @@
           const runItemId = row.item_id || itemId;
           const traceId = row.trace_id;
           const traceUrl = row.trace_url || buildLangfuseTraceUrl(traceId) || buildLangfuseTraceUrlFromRun(traceId, runInfo);
-          const traceEndpoint = apiUrl(`api/runs/${encodeURIComponent(runInfo.file_path || '')}/items/${encodeURIComponent(runItemId)}/trace`);
+          const runFilePath = runInfo.file_path || '';
+          const baseRunFilePath = passRefBase(runFilePath);
+          const passNumber = baseRunFilePath === runFilePath
+            ? null
+            : parseInt(runFilePath.slice(baseRunFilePath.length + PASS_REF_SEP.length), 10);
+          const traceEndpoint = apiUrl(`api/runs/${encodeURIComponent(baseRunFilePath)}/items/${encodeURIComponent(runItemId)}/trace`) +
+            (Number.isFinite(passNumber) ? `?pass_number=${encodeURIComponent(passNumber)}` : '');
           const traceButton = !IS_COMPARE_EXPORT
             ? `<button type="button" class="trace-drawer-btn qym-inline-action qym-inline-action--neutral qym-trace-action" data-trace-endpoint="${escapeAttr(traceEndpoint)}" data-trace-item-label="${escapeAttr(identity + ' · ' + runItemId)}" data-trace-id="${escapeAttr(traceId || '')}" data-trace-url="${escapeAttr(traceUrl || '')}" title="Open trace viewer"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M2.5 4h11M2.5 8h7M2.5 12h9"/><circle cx="12.5" cy="8" r="1.2" fill="currentColor" stroke="none" opacity=".5"/><circle cx="13.5" cy="12" r="1.2" fill="currentColor" stroke="none" opacity=".5"/></svg>Trace</button>`
             : '';

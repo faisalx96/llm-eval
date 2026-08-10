@@ -4378,14 +4378,15 @@
     if (separator) separator.style.display = showActions ? '' : 'none';
     if (!showActions) return;
 
+    const selectedRefs = Array.from(selected);
+    const selectedExecutionCount = cohortUnitCount(selectedRefs);
     const countEl = el('compare-count');
     if (countEl) {
       countEl.textContent = isCohortMode
         ? `Cohort B ${cohortUnitCount(Array.from(selected))}/${cohortUnitCount(cohortAnchor)} executions`
-        : `${selected.size} selected`;
+        : `${selectedExecutionCount} execution${selectedExecutionCount === 1 ? '' : 's'} selected`;
     }
 
-    const selectedRefs = Array.from(selected);
     const selectedRuns = state.flatRuns.filter(r => selected.has(r.file_path));
     const selectedTargets = selectedRefs.map(ref => ({
       ref,
@@ -4409,7 +4410,7 @@
 
     let guidance = '';
     if (!isCohortMode) {
-      guidance = selected.size >= 2
+      guidance = selectedExecutionCount >= 2
         ? 'Ready to compare, or lock this selection as Cohort A.'
         : 'Select runs to compare or create a cohort.';
     } else if (hasOverlap) {
@@ -4426,7 +4427,7 @@
     if (guidanceEl) guidanceEl.textContent = guidance;
     if (compareBtn) {
       compareBtn.style.display = isCohortMode ? 'none' : 'inline-flex';
-      compareBtn.disabled = selected.size < 2;
+      compareBtn.disabled = selectedExecutionCount < 2;
     }
     if (cohortBtn) {
       cohortBtn.style.display = 'inline-flex';
@@ -5502,11 +5503,11 @@
   }
 
   function openComparison(e) {
-    if (state.selectedRuns.size < 2) {
+    const files = expandComparisonRefs(Array.from(state.selectedRuns));
+    if (files.length < 2) {
       showToast('error', 'Cannot Compare', 'Select at least 2 runs to compare');
       return;
     }
-    const files = Array.from(state.selectedRuns);
     sessionStorage.removeItem('compareCohorts');
     sessionStorage.setItem('compareRuns', JSON.stringify(files));
     const params = files.map(f => 'runs=' + encodeURIComponent(f)).join('&');
@@ -5526,6 +5527,29 @@
 
   function isPassRef(ref) {
     return String(ref).indexOf(PASS_REF_SEP) >= 0;
+  }
+
+  // Comparison columns represent executions. A repeat-run ref therefore
+  // expands to every stored pass instead of leaking the aggregate item's
+  // latest (final-pass) output into a single misleading column.
+  function expandComparisonRefs(filePaths) {
+    const expanded = [];
+    (filePaths || []).forEach(ref => {
+      if (isPassRef(ref)) {
+        expanded.push(ref);
+        return;
+      }
+      const run = state.flatRuns.find(candidate => candidate.file_path === ref);
+      const samples = Number(run?.samples) || 1;
+      if (samples <= 1) {
+        expanded.push(ref);
+        return;
+      }
+      for (let passNumber = 1; passNumber <= samples; passNumber += 1) {
+        expanded.push(`${ref}${PASS_REF_SEP}${passNumber}`);
+      }
+    });
+    return Array.from(new Set(expanded));
   }
 
   function parsePassRef(ref) {
@@ -5597,16 +5621,16 @@
     }
 
     const cohortPayload = {
-      left,
-      right,
+      left: expandComparisonRefs(left),
+      right: expandComparisonRefs(right),
       leftLabel: buildCohortLabel(left),
       rightLabel: buildCohortLabel(right),
     };
     sessionStorage.setItem('compareCohorts', JSON.stringify(cohortPayload));
-    sessionStorage.setItem('compareRuns', JSON.stringify([...left, ...right]));
+    sessionStorage.setItem('compareRuns', JSON.stringify([...cohortPayload.left, ...cohortPayload.right]));
     const params = new URLSearchParams();
-    left.forEach(file => params.append('cohortA', file));
-    right.forEach(file => params.append('cohortB', file));
+    cohortPayload.left.forEach(file => params.append('cohortA', file));
+    cohortPayload.right.forEach(file => params.append('cohortB', file));
     params.set('cohortALabel', cohortPayload.leftLabel);
     params.set('cohortBLabel', cohortPayload.rightLabel);
     openUrl(apiUrl('compare?' + params.toString()), e);
