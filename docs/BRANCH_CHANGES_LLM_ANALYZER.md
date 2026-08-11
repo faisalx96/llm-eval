@@ -238,8 +238,8 @@ prevents a prior reviewer label from becoming an instruction or leaking snapshot
 from another item into the current diagnosis. For rule inference, each approved
 correction is projected into these fields: `input`, `expected`, `output`,
 `previous_ai_root_cause`, `previous_ai_root_causes`,
-`previous_ai_category_taxonomy`, `approved_root_cause`, `approved_root_causes`,
-`approved_category_taxonomy`, `approved_detail`, and `reviewer_reasoning`.
+`approved_root_cause`, `approved_root_causes`, `approved_detail`, and
+`reviewer_reasoning`.
 Solutions, solution notes, scores, trace data, item/run identifiers, and review
 metadata are not included in that payload. The approved human diagnosis/detail/note
 are treated as reviewed evidence; previous AI fields are historical hypotheses.

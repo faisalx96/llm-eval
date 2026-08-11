@@ -40,10 +40,8 @@ def test_rule_writer_example_fields_are_filtered(monkeypatch) -> None:
         "output": False,
         "previous_ai_root_cause": False,
         "previous_ai_root_causes": False,
-        "previous_ai_category_taxonomy": False,
         "approved_root_cause": True,
         "approved_root_causes": False,
-        "approved_category_taxonomy": False,
         "approved_detail": False,
         "reviewer_reasoning": False,
     }

@@ -1000,6 +1000,8 @@ def test_auto_analysis_is_a_first_class_project_page() -> None:
     assert 'id="pg-add-examples"' in playground
     assert 'Add documents' in playground
     assert 'Add examples' in playground
+    assert 'previous_ai_category_taxonomy' not in playground
+    assert 'approved_category_taxonomy' not in playground
     assert 'data-example-prompt-field' in playground
     assert 'data-example-fields-toggle' in playground
     assert 'filtersOpen: false' in playground
@@ -1436,6 +1438,9 @@ def test_auto_analysis_page_uses_first_class_run_rules_and_document_tabs() -> No
     assert "id=\"pg-publish-rule-version\"" in playground
     assert "id=\"pg-promote-rule-version\"" in playground
     assert "pg-example-source-control" in playground
+    assert "qym-inline-action pg-example-source-control" in playground
+    assert ">Add examples</button>" in playground
+    assert "qym-help-marker pg-example-source-help" not in playground
     assert "grid-template-columns: minmax(0, 1fr) auto;" in analyzer
     assert "analysis-diagnosis-action-row" in analyzer
     assert 'id="analysis-category-search"' in analyzer

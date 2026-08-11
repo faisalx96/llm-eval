@@ -334,15 +334,9 @@ def _rule_writer_correction_payload(
         "previous_ai_root_cause": correction.ai_root_cause,
         "previous_ai_root_causes": getattr(correction, "ai_root_causes", None)
         or normalize_root_causes(correction.ai_root_cause),
-        "previous_ai_category_taxonomy": getattr(
-            correction, "ai_category_taxonomy", None
-        ),
         "approved_root_cause": correction.human_root_cause,
         "approved_root_causes": getattr(correction, "human_root_causes", None)
         or normalize_root_causes(correction.human_root_cause),
-        "approved_category_taxonomy": getattr(
-            correction, "human_category_taxonomy", None
-        ),
         "approved_detail": correction.human_root_cause_detail,
         "reviewer_reasoning": correction.human_root_cause_note,
     }

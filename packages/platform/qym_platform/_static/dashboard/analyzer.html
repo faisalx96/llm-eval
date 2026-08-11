@@ -5,14 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>قيِّم • Auto-analysis</title>
   <link rel="icon" type="image/png" href="/static/qym_icon.png">
-  <link rel="stylesheet" href="/static/dashboard.css?v=analysis-rules-actions-20260810">
+  <link rel="stylesheet" href="/static/dashboard.css?v=analysis-example-text-20260811">
   <link rel="stylesheet" href="/static/shell.css">
   <script src="/static/auth.js"></script>
   <script src="/static/shell.js?v=accessibility-responsive-20260806"></script>
   <script src="/static/metrics.js"></script>
   <script src="/static/qym_table.js"></script>
   <script src="/static/ui_components.js?v=diagnosis-catalog-layout-20260810" defer></script>
-  <script src="/static/playground.js?v=analysis-rules-actions-20260810"></script>
+  <script src="/static/playground.js?v=analysis-example-text-20260811"></script>
   <style>
     /* Typography and color roles follow docs/DESIGN_LANGUAGE.md. */
     .analysis-page {
@@ -1417,13 +1417,11 @@
     }
     .analysis-project-footer .pg-context-actions .pg-example-source-control {
       width: auto;
-      min-width: calc(var(--space-xl) * 6);
-      height: auto;
-      min-height: calc(var(--space-lg) * 2);
-      flex: 1 1 calc(var(--space-xl) * 6);
-      justify-content: flex-start;
-      padding: var(--space-sm) var(--space-md);
-      text-align: left;
+      min-width: 0;
+      height: var(--control-height);
+      min-height: var(--control-height);
+      flex: 0 0 auto;
+      padding: 0 var(--space-xs);
     }
     .analysis-project-footer #pg-create-rule-version {
       border-color: var(--accent-tertiary);
@@ -3162,7 +3160,8 @@
         width: 100%;
       }
       .analysis-project-footer .pg-context-actions .pg-example-source-control {
-        width: 100%;
+        width: auto;
+        min-width: 0;
         flex-basis: auto;
       }
       .analysis-project-footer .pg-context-action-divider {

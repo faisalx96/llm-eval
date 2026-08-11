@@ -5344,55 +5344,20 @@ body.chart-col-resize-active {
 }
 
 .pg-example-source-control {
-  display: inline-flex;
-  min-width: calc(var(--space-xl) * 6);
-  align-items: center;
-  justify-content: flex-start;
-  gap: var(--space-sm);
-  padding: var(--space-sm) var(--space-md);
-  text-align: left;
-  line-height: normal;
-}
-
-.pg-example-source-control > .pg-action-icon {
-  flex: 0 0 auto;
-  color: var(--accent-primary);
-}
-
-.pg-example-source-control-copy {
-  display: grid;
   min-width: 0;
-  flex: 1 1 auto;
-  gap: var(--space-xs);
-}
-
-.pg-example-source-control-title {
-  color: var(--text-primary);
-  font-size: var(--font-sm);
-  font-weight: 650;
-}
-
-.pg-example-source-control-help {
-  overflow: hidden;
-  color: var(--text-muted);
-  font-size: var(--font-sm);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.pg-example-source-control-chevron {
-  display: inline-flex;
   flex: 0 0 auto;
+  padding: 0 var(--space-xs);
+  background: transparent;
   color: var(--text-muted);
 }
 
-.pg-example-source-control-chevron .pg-action-icon {
-  width: var(--space-md);
-  height: var(--space-md);
+.pg-example-source-control:hover:not(:disabled) {
+  background: transparent;
+  color: var(--text-primary);
 }
 
 .pg-example-source-control--selected {
-  background: color-mix(in srgb, var(--accent-primary) 12%, var(--bg-elevated));
+  color: var(--accent-primary);
 }
 
 .pg-rule-source-checkbox {

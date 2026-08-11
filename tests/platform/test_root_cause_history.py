@@ -3164,14 +3164,14 @@ def test_rule_writer_prompt_includes_every_approved_example(
         "output",
         "previous_ai_root_cause",
         "previous_ai_root_causes",
-        "previous_ai_category_taxonomy",
         "approved_root_cause",
         "approved_root_causes",
-        "approved_category_taxonomy",
         "approved_detail",
         "reviewer_reasoning",
     }
     assert example["approved_root_causes"] == ["Reasoning Error"]
+    assert "previous_ai_category_taxonomy" not in example
+    assert "approved_category_taxonomy" not in example
 
 
 def test_rule_writer_processes_large_example_bank_after_documents_in_patches(

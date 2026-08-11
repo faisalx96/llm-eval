@@ -57,10 +57,8 @@ window.QymPlayground = (function () {
     { key: 'output', label: 'Actual output' },
     { key: 'previous_ai_root_cause', label: 'Previous AI root cause' },
     { key: 'previous_ai_root_causes', label: 'Previous AI root causes' },
-    { key: 'previous_ai_category_taxonomy', label: 'Previous AI taxonomy' },
     { key: 'approved_root_cause', label: 'Approved root cause' },
     { key: 'approved_root_causes', label: 'Approved root causes' },
-    { key: 'approved_category_taxonomy', label: 'Approved taxonomy' },
     { key: 'approved_detail', label: 'Approved detail' },
     { key: 'reviewer_reasoning', label: 'Reviewer reasoning' },
   ];
@@ -1830,13 +1828,7 @@ window.QymPlayground = (function () {
     var button = document.getElementById('pg-add-examples');
     if (!button) return;
     var selectedCount = _selectedApprovedExampleCount();
-    var selectedText = selectedCount > 0
-      ? selectedCount + ' selected · Edit selection'
-      : 'Choose approved examples for the rule writer';
-    button.innerHTML = _icon(selectedCount > 0 ? 'check' : 'plus') +
-      '<span class="pg-example-source-control-copy"><span class="pg-example-source-control-title">Add examples</span>' +
-        '<span class="pg-example-source-control-help">' + _esc(selectedText) + '</span></span>' +
-      '<span class="pg-example-source-control-chevron" aria-hidden="true">' + _icon('chevron') + '</span>';
+    button.textContent = 'Add examples';
     button.setAttribute('aria-label', selectedCount > 0
       ? 'Edit approved examples, ' + selectedCount + ' selected'
       : 'Add approved examples');
@@ -2747,7 +2739,7 @@ window.QymPlayground = (function () {
           '<span class="pg-document-check" aria-hidden="true"></span>' +
           '<span>Add documents</span>' +
         '</label>' +
-        '<button class="qym-inline-action qym-inline-action--neutral pg-example-source-control" id="pg-add-examples" type="button" aria-haspopup="dialog" aria-expanded="false" aria-label="Add approved examples"></button>' +
+        '<button class="qym-inline-action pg-example-source-control" id="pg-add-examples" type="button" aria-haspopup="dialog" aria-expanded="false" aria-label="Add approved examples">Add examples</button>' +
       '</div>' +
       '<div class="pg-rule-empty pg-rule-inference-empty" id="pg-infer-source-empty" role="alert" hidden></div>' +
       '<div class="pg-rule-filters" id="pg-rule-filters" role="search" aria-label="Filter rules">' +
