@@ -6,6 +6,8 @@
 (() => {
   'use strict';
 
+  let dashboardActive = true;
+
   // ═══════════════════════════════════════════════════
   // BASE URL HANDLING (for proxy/subpath compatibility)
   // ═══════════════════════════════════════════════════
@@ -161,6 +163,7 @@
     knownVersions: new Set(),
     knownVersionsProjectSlug: '',
     currentView: window.__QYM_INITIAL_VIEW__ || 'charts',
+    selectMode: false,
     selectedRuns: new Set(),
     focusedIndex: -1,
     aggregations: null,
@@ -237,7 +240,7 @@
     { key: GROUP_CONSISTENCY_COLUMN_KEY, label: 'Consistency' },
     { key: GROUP_RELIABILITY_COLUMN_KEY, label: 'Reliability' },
   ];
-  const RUNS_TABLE_BASE_COLUMN_COUNT = 12;
+  const RUNS_TABLE_BASE_COLUMN_COUNT = 11;
   const MODELS_VIEW_SCORE_STAT_KEYS = ['passAtK', 'passHatK', 'maxAtK', 'consistency', 'reliability', 'avgScore', 'failedCount', 'totalRetries', 'avgLatency', 'medianLatency', 'correctDistribution'];
   const MODELS_VIEW_NUMERIC_STAT_KEYS = ['avgScore', 'minScore', 'maxAtK', 'stddevScore', 'totalScoreSum', 'failedCount', 'totalRetries', 'avgLatency', 'medianLatency'];
   function _traceMetricsForRuns(runs = null) {
@@ -344,46 +347,6 @@
       return `<td class="col-trace-metric-value"><span class="metric-score ${metricClass}">${traceMetric.fmt(value)}</span></td>`;
     }
     return `<td class="col-trace-metric-value">${traceMetric.fmt(value)}</td>`;
-  }
-
-  // Repeat runs: the pass-dot strip — one dot per pass on the parent row,
-  // score-colored by the primary metric. The stability story at a glance
-  // (informational only; the passes toggle opens the detail drawer).
-  function renderPassDots(run) {
-    const summaries = Array.isArray(run.pass_summaries) ? run.pass_summaries : [];
-    if (!(run.samples > 1) || summaries.length === 0) return '';
-    const MAX_DOTS = 8;
-    const shown = summaries.slice(0, MAX_DOTS);
-    const extra = summaries.length - shown.length;
-    const primaryMetric = (run.metrics || [])[0] || '';
-    const firstScored = shown.find(s => typeof s.primary_score === 'number');
-    const mType = state._metricTypes?.[primaryMetric]
-      || window.QymMetrics.detectMetricTypeFromAvg(firstScored ? firstScored.primary_score : null);
-    const dots = shown.map(s => {
-      const status = String(s.status || 'pending').toLowerCase();
-      const score = (typeof s.primary_score === 'number') ? s.primary_score : null;
-      const errs = Number(s.error_count) || 0;
-      let cls = status;
-      if (status === 'completed' && score !== null) {
-        const scoreClass = window.QymMetrics.getMetricColorClass(score, mType);
-        if (scoreClass) cls += ` ${scoreClass}`;
-      }
-      if (errs > 0) cls += ' err';
-      const scoreText = score !== null
-        ? `${primaryMetric} ${window.QymMetrics.formatMetricValue(score, mType)}`
-        : status;
-      const title = `pass ${s.pass_number}/${run.samples} — ${scoreText}`
-        + (errs > 0 ? ` · ${errs} item${errs === 1 ? '' : 's'} errored` : '')
-        + (status !== 'completed' && score !== null ? ` · ${status}` : '');
-      return `<span class="pdot ${cls}" title="${escapeHtml(title)}"></span>`;
-    }).join('');
-    const scoredText = shown
-      .map(s => (typeof s.primary_score === 'number'
-        ? window.QymMetrics.formatMetricValue(s.primary_score, mType)
-        : String(s.status || 'pending')))
-      .join(', ');
-    return `<span class="pass-dots" aria-label="Per-pass ${escapeHtml(primaryMetric)}: ${escapeHtml(scoredText)}">`
-      + `${dots}${extra > 0 ? `<span class="pdot-more">+${extra}</span>` : ''}</span>`;
   }
 
   function getRunComboPeerValues(runs, run, valueGetter) {
@@ -692,18 +655,23 @@
   }
 
   function renderTablePagination(meta) {
-    const infoEls = Array.from(document.querySelectorAll('.table-pagination-info'));
-    const pageEls = Array.from(document.querySelectorAll('.table-pagination-page'));
-    const prevBtns = Array.from(document.querySelectorAll('[data-table-page="prev"]'));
-    const nextBtns = Array.from(document.querySelectorAll('[data-table-page="next"]'));
-    if (!infoEls.length || !pageEls.length || !prevBtns.length || !nextBtns.length) return;
-
+    const host = el('table-pagination');
+    const pagination = window.QymUIComponents?.renderPagination;
+    if (!host || !pagination) return;
     const { totalRuns, pageCount, start, end } = meta;
-    const startLabel = totalRuns === 0 ? 0 : start + 1;
-    infoEls.forEach(infoEl => { infoEl.textContent = `Showing ${startLabel}-${end} of ${totalRuns} runs`; });
-    pageEls.forEach(pageEl => { pageEl.textContent = `Page ${pageCount === 0 ? 0 : state.tablePage} of ${pageCount}`; });
-    prevBtns.forEach(prevBtn => { prevBtn.disabled = state.tablePage <= 1; });
-    nextBtns.forEach(nextBtn => { nextBtn.disabled = state.tablePage >= pageCount; });
+    pagination(host, {
+      page: state.tablePage,
+      pageCount,
+      pageSize: TABLE_PAGE_SIZE,
+      total: totalRuns,
+      start: totalRuns === 0 ? 0 : start + 1,
+      end,
+      noun: 'runs',
+      onPageChange: page => {
+        setTablePage(page, { syncFocus: true });
+        render();
+      },
+    });
   }
 
   function getFilterOptionLabel(value, labelFn = null) {
@@ -777,11 +745,26 @@
     if (!btn || !dropdown) return;
 
     const searchValue = dropdown.querySelector('.model-search-input')?.value || '';
+    const restoreFocus = (kind, value) => {
+      window.setTimeout(() => {
+        const nextDropdown = el(dropdownId);
+        if (!nextDropdown) return;
+        if (kind === 'action') {
+          nextDropdown.querySelector(`.ms-action-btn[data-action="${value}"]`)?.focus({ preventScroll: true });
+          return;
+        }
+        const nextOption = Array.from(nextDropdown.querySelectorAll('.multi-select-option')).find(candidate =>
+          candidate.dataset.value === value
+        );
+        nextOption?.querySelector(kind === 'only' ? '.ms-only-btn' : 'input[type="checkbox"]')?.focus({ preventScroll: true });
+      }, 0);
+    };
 
-    let html = '<div class="ms-actions"><button class="ms-action-btn" data-action="all">Select All</button><button class="ms-action-btn" data-action="none">None</button></div>';
+    let html = '';
     if (showSearch) {
-      html += `<div class="model-search-box"><input type="text" class="model-search-input" placeholder="${searchPlaceholder || 'Search...'}" value="${escapeHtml(searchValue)}" /></div>`;
+      html += `<div class="model-search-box qym-dropdown__search"><input type="text" class="model-search-input qym-control qym-search" placeholder="${searchPlaceholder || 'Search...'}" value="${escapeHtml(searchValue)}" /></div>`;
     }
+    html += '<div class="ms-actions qym-dropdown__actions"><button class="ms-action-btn qym-dropdown__action" data-action="all">Select All</button><button class="ms-action-btn qym-dropdown__action" data-action="none">None</button></div>';
     html += values.map((v, idx) => {
       const checked = stateSet.size === 0 || stateSet.has(v) ? 'checked' : '';
       const label = getFilterOptionLabel(v, labelFn);
@@ -790,7 +773,7 @@
       const emptyClass = v === EMPTY_FILTER_VALUE ? ' is-empty-option' : '';
       const hidden = showSearch && searchValue && !label.toLowerCase().includes(searchValue.toLowerCase()) ? ' style="display:none"' : '';
       const labelHtml = htmlLabelFn ? htmlLabelFn(v, label) : escapeHtml(label);
-      return `<div class="multi-select-option${emptyClass}" data-value="${escapeHtml(v)}" title="${escapeHtml(label)}"${hidden}>${colorDot}<input type="checkbox" ${checked} /><span>${labelHtml}</span></div>`;
+      return `<div class="multi-select-option qym-dropdown__option${emptyClass}" data-value="${escapeHtml(v)}" data-search-label="${escapeHtml(label)}" title="${escapeHtml(label)}"${hidden}>${colorDot}<input type="checkbox" aria-label="${escapeHtml(label)}" ${checked} /><span>${labelHtml}</span><button type="button" class="ms-only-btn qym-dropdown__only" aria-label="Show only ${escapeHtml(label)}" title="Show only this option">Only</button></div>`;
     }).join('');
     dropdown.innerHTML = html;
 
@@ -801,8 +784,8 @@
         searchInput.addEventListener('input', (e) => {
           const q = e.target.value.toLowerCase();
           dropdown.querySelectorAll('.multi-select-option').forEach(opt => {
-            const text = opt.textContent || opt.dataset.value || '';
-            opt.style.display = text.toLowerCase().includes(q) ? '' : 'none';
+            const label = opt.dataset.searchLabel || opt.dataset.value || '';
+            opt.style.display = label.toLowerCase().includes(q) ? '' : 'none';
           });
         });
         searchInput.addEventListener('click', (e) => e.stopPropagation());
@@ -815,7 +798,8 @@
       ab.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
-        if (ab.dataset.action === 'all') {
+        const action = ab.dataset.action;
+        if (action === 'all') {
           stateSet.clear();
         } else {
           stateSet.clear();
@@ -824,6 +808,25 @@
         syncMultiSelect({ btnId, dropdownId, stateSet, values, defaultLabel, labelFn });
         if (onchange) onchange();
         render();
+        restoreFocus('action', action);
+      });
+    });
+
+    // "Only" is explicit and discoverable; it replaces a hidden double-click
+    // gesture while keeping the multi-select open to further refinement.
+    dropdown.querySelectorAll('.ms-only-btn').forEach(onlyBtn => {
+      onlyBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const option = onlyBtn.closest('.multi-select-option');
+        if (!option) return;
+        const selectedValue = option.dataset.value;
+        stateSet.clear();
+        stateSet.add(selectedValue);
+        syncMultiSelect({ btnId, dropdownId, stateSet, values, defaultLabel, labelFn, htmlLabelFn });
+        if (onchange) onchange();
+        render();
+        restoreFocus('only', selectedValue);
       });
     });
 
@@ -851,6 +854,7 @@
         syncMultiSelect({ btnId, dropdownId, stateSet, values, defaultLabel, labelFn, htmlLabelFn });
         if (onchange) onchange();
         render();
+        restoreFocus('checkbox', value);
       });
     });
 
@@ -983,6 +987,19 @@
       ...systemColumns.map(col => col.key),
       ...traceMetrics.map(tm => tm.key),
     ];
+    const restoreMetricVisibilityFocus = (kind, value) => {
+      window.setTimeout(() => {
+        const nextDropdown = el('metric-visibility-dropdown');
+        if (!nextDropdown) return;
+        if (kind === 'action') {
+          nextDropdown.querySelector(value === 'all' ? '#mv-select-all' : '#mv-select-none')?.focus({ preventScroll: true });
+          return;
+        }
+        Array.from(nextDropdown.querySelectorAll('input[data-mv-metric]')).find(candidate =>
+          candidate.dataset.mvMetric === value
+        )?.focus({ preventScroll: true });
+      }, 0);
+    };
 
     wrapper.style.display = '';
 
@@ -1002,36 +1019,36 @@
     const allVisible = visibleMetrics.size === metricOptions.length;
     const searchValue = dropdown.querySelector('.model-search-input')?.value || '';
     dropdown.innerHTML =
-      '<div class="ms-actions">' +
-        '<button class="ms-action-btn" id="mv-select-all">All</button>' +
-        '<button class="ms-action-btn" id="mv-select-none">None</button>' +
+      '<div class="model-search-box qym-dropdown__search"><input type="text" class="model-search-input qym-control qym-search" placeholder="Search columns..." value="' + escapeHtml(searchValue) + '" /></div>' +
+      '<div class="ms-actions qym-dropdown__actions">' +
+        '<button class="ms-action-btn qym-dropdown__action" id="mv-select-all">All</button>' +
+        '<button class="ms-action-btn qym-dropdown__action" id="mv-select-none">None</button>' +
       '</div>' +
-      '<div class="model-search-box"><input type="text" class="model-search-input" placeholder="Search columns..." value="' + escapeHtml(searchValue) + '" /></div>' +
       availableMetrics.map(m => {
         const checked = allVisible || visibleMetrics.has(m) ? 'checked' : '';
         const hidden = searchValue && !getMetricDisplayName(m).toLowerCase().includes(searchValue.toLowerCase()) ? ' style="display:none"' : '';
-        return `<div class="multi-select-option"${hidden}><input type="checkbox" ${checked} data-mv-metric="${escapeHtml(m)}" /><span>${escapeHtml(m)}</span></div>`;
+        return `<label class="multi-select-option qym-dropdown__option"${hidden}><input type="checkbox" ${checked} data-mv-metric="${escapeHtml(m)}" /><span>${escapeHtml(m)}</span></label>`;
       }).join('') +
       (groupColumns.length > 0 ?
         '<div class="mv-trace-separator"></div><div class="mv-trace-label">Grouped Run Columns</div>' +
         groupColumns.map(col => {
           const checked = allVisible || visibleMetrics.has(col.key) ? 'checked' : '';
           const hidden = searchValue && !col.label.toLowerCase().includes(searchValue.toLowerCase()) ? ' style="display:none"' : '';
-          return `<div class="multi-select-option"${hidden}><input type="checkbox" ${checked} data-mv-metric="${escapeHtml(col.key)}" /><span>${escapeHtml(col.label)}</span></div>`;
+          return `<label class="multi-select-option qym-dropdown__option"${hidden}><input type="checkbox" ${checked} data-mv-metric="${escapeHtml(col.key)}" /><span>${escapeHtml(col.label)}</span></label>`;
         }).join('') : '') +
       (systemColumns.length > 0 ?
         '<div class="mv-trace-separator"></div><div class="mv-trace-label">⚡ System Columns</div>' +
         systemColumns.map(col => {
           const checked = allVisible || visibleMetrics.has(col.key) ? 'checked' : '';
           const hidden = searchValue && !col.label.toLowerCase().includes(searchValue.toLowerCase()) ? ' style="display:none"' : '';
-          return `<div class="multi-select-option"${hidden}><input type="checkbox" ${checked} data-mv-metric="${escapeHtml(col.key)}" /><span>${escapeHtml(col.label)}</span></div>`;
+          return `<label class="multi-select-option qym-dropdown__option"${hidden}><input type="checkbox" ${checked} data-mv-metric="${escapeHtml(col.key)}" /><span>${escapeHtml(col.label)}</span></label>`;
         }).join('') : '') +
       (traceMetrics.length > 0 ?
         '<div class="mv-trace-separator"></div><div class="mv-trace-label">⚡ Trace Stats</div>' +
         traceMetrics.map(tm => {
           const checked = allVisible || visibleMetrics.has(tm.key) ? 'checked' : '';
           const hidden = searchValue && !tm.label.toLowerCase().includes(searchValue.toLowerCase()) ? ' style="display:none"' : '';
-          return `<div class="multi-select-option"${hidden}><input type="checkbox" ${checked} data-mv-metric="${escapeHtml(tm.key)}" /><span>${escapeHtml(tm.label)}</span></div>`;
+          return `<label class="multi-select-option qym-dropdown__option"${hidden}><input type="checkbox" ${checked} data-mv-metric="${escapeHtml(tm.key)}" /><span>${escapeHtml(tm.label)}</span></label>`;
         }).join('') : '');
 
     // Update button text
@@ -1055,17 +1072,9 @@
 
     dropdown.querySelectorAll('input[type="checkbox"]').forEach(cb => {
       cb.addEventListener('change', () => {
+        const metric = cb.dataset.mvMetric;
         applyMetricVisibilityFromCheckboxes(metricOptions);
-      });
-    });
-
-    dropdown.querySelectorAll('.multi-select-option').forEach(opt => {
-      const metricCb = opt.querySelector('input[data-mv-metric]');
-      if (!metricCb) return;
-      opt.addEventListener('click', (e) => {
-        e.stopPropagation();
-        metricCb.checked = !metricCb.checked;
-        applyMetricVisibilityFromCheckboxes(metricOptions);
+        restoreMetricVisibilityFocus('checkbox', metric);
       });
     });
 
@@ -1078,6 +1087,7 @@
       saveMetricVisibility();
       syncMetricVisibilityDropdownState(metricOptions);
       render();
+      restoreMetricVisibilityFocus('action', 'all');
     });
     if (selNone) selNone.addEventListener('click', (e) => {
       e.preventDefault();
@@ -1086,6 +1096,7 @@
       saveMetricVisibility();
       syncMetricVisibilityDropdownState(metricOptions);
       render();
+      restoreMetricVisibilityFocus('action', 'none');
     });
   }
 
@@ -1167,9 +1178,9 @@
         case 'totalRetries':
           return { key, label: 'Retries' };
         case 'avgLatency':
-          return { key, label: 'Avg Latency' };
+          return { key, label: '⚡ Avg Latency' };
         case 'medianLatency':
-          return { key, label: 'Median Latency' };
+          return { key, label: '⚡ Median Latency' };
         case 'correctDistribution':
           return { key, label: 'Correct Distribution' };
         case 'minScore':
@@ -1281,6 +1292,19 @@
     if (!wrapper || !dropdown) return;
 
     const options = getModelsViewStatOptions(runs);
+    const restoreModelsStatVisibilityFocus = (kind, value) => {
+      window.setTimeout(() => {
+        const nextDropdown = el('models-stat-visibility-dropdown');
+        if (!nextDropdown) return;
+        if (kind === 'action') {
+          nextDropdown.querySelector(value === 'all' ? '#models-stat-select-all' : '#models-stat-select-none')?.focus({ preventScroll: true });
+          return;
+        }
+        Array.from(nextDropdown.querySelectorAll('input[data-model-stat-key]')).find(candidate =>
+          candidate.dataset.modelStatKey === value
+        )?.focus({ preventScroll: true });
+      }, 0);
+    };
     if (options.length === 0) {
       wrapper.style.display = 'none';
       dropdown.classList.remove('open');
@@ -1294,15 +1318,15 @@
     const searchValue = dropdown.querySelector('.model-search-input')?.value || '';
 
     dropdown.innerHTML =
-      '<div class="ms-actions">' +
-        '<button class="ms-action-btn" id="models-stat-select-all">All</button>' +
-        '<button class="ms-action-btn" id="models-stat-select-none">None</button>' +
+      '<div class="model-search-box qym-dropdown__search"><input type="text" class="model-search-input qym-control qym-search" placeholder="Search shown metrics..." value="' + escapeHtml(searchValue) + '" /></div>' +
+      '<div class="ms-actions qym-dropdown__actions">' +
+        '<button class="ms-action-btn qym-dropdown__action" id="models-stat-select-all">All</button>' +
+        '<button class="ms-action-btn qym-dropdown__action" id="models-stat-select-none">None</button>' +
       '</div>' +
-      '<div class="model-search-box"><input type="text" class="model-search-input" placeholder="Search shown metrics..." value="' + escapeHtml(searchValue) + '" /></div>' +
       options.map((option) => {
         const checked = allVisible || visibleKeys.has(option.key) ? 'checked' : '';
         const hidden = searchValue && !option.label.toLowerCase().includes(searchValue.toLowerCase()) ? ' style="display:none"' : '';
-        return `<div class="multi-select-option"${hidden}><input type="checkbox" ${checked} data-model-stat-key="${escapeHtml(option.key)}" /><span>${escapeHtml(option.label)}</span></div>`;
+        return `<label class="multi-select-option qym-dropdown__option"${hidden}><input type="checkbox" ${checked} data-model-stat-key="${escapeHtml(option.key)}" /><span>${escapeHtml(option.label)}</span></label>`;
       }).join('');
 
     updateModelsStatVisibilityBtn(options);
@@ -1325,17 +1349,9 @@
 
     dropdown.querySelectorAll('input[data-model-stat-key]').forEach(cb => {
       cb.addEventListener('change', () => {
+        const statKey = cb.dataset.modelStatKey;
         applyModelsStatVisibilityFromCheckboxes(options);
-      });
-    });
-
-    dropdown.querySelectorAll('.multi-select-option').forEach(opt => {
-      const statCb = opt.querySelector('input[data-model-stat-key]');
-      if (!statCb) return;
-      opt.addEventListener('click', (e) => {
-        e.stopPropagation();
-        statCb.checked = !statCb.checked;
-        applyModelsStatVisibilityFromCheckboxes(options);
+        restoreModelsStatVisibilityFocus('checkbox', statKey);
       });
     });
 
@@ -1347,6 +1363,7 @@
       setVisibleModelsViewStatsForAvailable(options, new Set(options.map(option => option.key)));
       syncModelsStatVisibilityDropdownState(options);
       renderModelsView();
+      restoreModelsStatVisibilityFocus('action', 'all');
     });
     if (selectNoneBtn) selectNoneBtn.addEventListener('click', (e) => {
       e.preventDefault();
@@ -1354,6 +1371,7 @@
       setVisibleModelsViewStatsForAvailable(options, new Set());
       syncModelsStatVisibilityDropdownState(options);
       renderModelsView();
+      restoreModelsStatVisibilityFocus('action', 'none');
     });
   }
 
@@ -1939,7 +1957,7 @@
 
     // Render chart cards - one per task, with dataset tabs
     const gridEl = el('charts-grid');
-    gridEl.innerHTML = (chartData.tasks || []).map(taskGroup => {
+    gridEl.innerHTML = (chartData.tasks || []).map((taskGroup, taskIndex) => {
       const taskName = taskGroup.task;
       const datasets = taskGroup.datasets;
       const totalTaskRuns = datasets.reduce((s, d) => s + d.totalRuns, 0);
@@ -1950,14 +1968,18 @@
       const activeDataset = state.chartDatasetTab[taskName] || datasets[0]?.dataset || '';
       const combo = datasets.find(d => d.dataset === activeDataset) || datasets[0];
       if (!combo) return '';
+      const chartTabsetId = `chart-datasets-${taskIndex}`;
+      const chartPanelId = `chart-dataset-panel-${taskIndex}`;
+      const activeDatasetIndex = Math.max(0, datasets.findIndex(d => d.dataset === combo.dataset));
+      const activeDatasetTabId = `${chartTabsetId}-tab-${activeDatasetIndex}`;
 
       // Dataset tabs HTML
       const datasetTabsHtml = `
-        <div class="chart-dataset-tabs">
-          ${datasets.map(d => `
-            <div class="chart-dataset-tab ${d.dataset === combo.dataset ? 'active' : ''}" data-task="${taskName}" data-dataset="${d.dataset}">
-              ${d.dataset} <span class="tab-count">${d.totalRuns}</span>
-            </div>
+        <div class="chart-dataset-tabs qym-tabs" id="${chartTabsetId}" role="tablist" aria-label="Datasets for ${taskName}">
+          ${datasets.map((d, datasetIndex) => `
+            <button type="button" role="tab" id="${chartTabsetId}-tab-${datasetIndex}" aria-controls="${chartPanelId}" class="chart-dataset-tab qym-tabs__tab ${d.dataset === combo.dataset ? 'active' : ''}" data-task="${taskName}" data-dataset="${d.dataset}" aria-selected="${d.dataset === combo.dataset}">
+              ${d.dataset} <span class="tab-count qym-tag qym-tag--count">${d.totalRuns}</span>
+            </button>
           `).join('')}
         </div>
       `;
@@ -2023,7 +2045,7 @@
             </div>
             <div class="chart-card">
               ${datasetTabsHtml}
-              <div class="chart-card-body">
+              <div class="chart-card-body" id="${chartPanelId}" role="tabpanel" aria-labelledby="${activeDatasetTabId}">
                 <div class="chart-no-data">No metrics recorded</div>
               </div>
             </div>
@@ -2278,7 +2300,7 @@
           displayHtml = `${displayModel}<span class="run-timestamp">${dt.date} \u00b7 ${dt.time}</span>`;
         }
         const versionStr = runData.git_commit ? (runData.git_branch ? `${runData.git_branch}/${runData.git_commit}` : runData.git_commit) : '';
-        const versionTag = versionStr ? `<span class="chart-version-tag">${versionStr}</span>` : '';
+        const versionTag = versionStr ? `<span class="chart-version-tag qym-tag">${versionStr}</span>` : '';
         const tooltipText = `Run name: ${hoverRunName}${versionStr ? `\nVersion: ${versionStr}` : ''}`;
         const dataCells = displayColumns.map(column => {
           if (column === AVG_LATENCY_COLUMN_KEY) {
@@ -2652,20 +2674,20 @@
         <div class="chart-table-toolbar">
           <div class="chart-group-controls">
             <span class="chart-control-label">Rows</span>
-            <span class="chart-segment-control chart-row-mode-control" data-card="${cardId}">
-              <button class="chart-segment-btn ${groupMode === 'run' ? 'active' : ''}" data-mode="run">Runs</button>
-              <button class="chart-segment-btn ${isGrouped ? 'active' : ''}" data-mode="${isGrouped ? groupMode : 'model'}">Grouped</button>
+            <span class="chart-segment-control qym-segmented chart-row-mode-control" data-card="${cardId}" role="group" data-qym-segmented-key="chart-row-${cardId}" aria-label="Chart row mode">
+              <button class="chart-segment-btn qym-segmented__option ${groupMode === 'run' ? 'active' : ''}" data-mode="run" aria-pressed="${groupMode === 'run'}">Runs</button>
+              <button class="chart-segment-btn qym-segmented__option ${isGrouped ? 'active' : ''}" data-mode="${isGrouped ? groupMode : 'model'}" aria-pressed="${isGrouped}">Grouped</button>
             </span>
             ${isGrouped ? `
               <span class="chart-control-label">Group</span>
-              <span class="chart-segment-control chart-group-axis-control" data-card="${cardId}">
-                <button class="chart-segment-btn ${primaryGroup === 'model' ? 'active' : ''}" data-mode="model">Model</button>
-                <button class="chart-segment-btn ${primaryGroup === 'version' ? 'active' : ''}" data-mode="version" ${groupVersionDisabled ? 'disabled title="No version data available"' : ''}>Version</button>
+              <span class="chart-segment-control qym-segmented chart-group-axis-control" data-card="${cardId}" role="group" data-qym-segmented-key="chart-group-${cardId}" aria-label="Primary grouping">
+                <button class="chart-segment-btn qym-segmented__option ${primaryGroup === 'model' ? 'active' : ''}" data-mode="model" aria-pressed="${primaryGroup === 'model'}">Model</button>
+                <button class="chart-segment-btn qym-segmented__option ${primaryGroup === 'version' ? 'active' : ''}" data-mode="version" aria-pressed="${primaryGroup === 'version'}" ${groupVersionDisabled ? 'disabled title="No version data available"' : ''}>Version</button>
               </span>
               <span class="chart-control-label">Then</span>
-              <span class="chart-segment-control chart-then-axis-control" data-card="${cardId}">
-                <button class="chart-segment-btn ${secondaryGroup === 'model' ? 'active' : ''}" data-mode="version-model" ${thenModelAttrs}>Model</button>
-                <button class="chart-segment-btn ${secondaryGroup === 'version' ? 'active' : ''}" data-mode="model-version" ${thenVersionAttrs}>Version</button>
+              <span class="chart-segment-control qym-segmented chart-then-axis-control" data-card="${cardId}" role="group" data-qym-segmented-key="chart-then-${cardId}" aria-label="Secondary grouping">
+                <button class="chart-segment-btn qym-segmented__option ${secondaryGroup === 'model' ? 'active' : ''}" data-mode="version-model" aria-pressed="${secondaryGroup === 'model'}" ${thenModelAttrs}>Model</button>
+                <button class="chart-segment-btn qym-segmented__option ${secondaryGroup === 'version' ? 'active' : ''}" data-mode="model-version" aria-pressed="${secondaryGroup === 'version'}" ${thenVersionAttrs}>Version</button>
               </span>
               <span class="chart-group-summary">${groupedSummary}</span>
             ` : ''}
@@ -2714,7 +2736,7 @@
             </div>
           <div class="chart-card">
             ${datasetTabsHtml}
-            <div class="chart-card-body">
+            <div class="chart-card-body" id="${chartPanelId}" role="tabpanel" aria-labelledby="${activeDatasetTabId}">
               ${metricChartsHtml}
             </div>
           </div>
@@ -2765,9 +2787,13 @@
     // Wire up segmented control (Run / Version / Model)
     gridEl.querySelectorAll('.chart-segment-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {
-        const cardId = e.target.closest('.chart-segment-control')?.dataset.card;
-        const mode = e.target.dataset.mode;
-        if (!cardId || !mode || e.target.disabled) return;
+        const control = e.currentTarget.closest('.chart-segment-control');
+        const cardId = control?.dataset.card;
+        const mode = e.currentTarget.dataset.mode;
+        const controlKind = ['chart-row-mode-control', 'chart-group-axis-control', 'chart-then-axis-control'].find(className =>
+          control?.classList.contains(className)
+        );
+        if (!cardId || !mode || e.currentTarget.disabled) return;
         if (!state.chartGroupMode) state.chartGroupMode = {};
         state.chartGroupMode[cardId] = mode;
         if (mode !== 'run') {
@@ -2777,6 +2803,13 @@
         const metricSourceRuns = state.filteredRuns.length > 0 ? state.filteredRuns : state.flatRuns;
         populateMetricVisibility(getAvailableMetricsForRuns(metricSourceRuns), metricSourceRuns);
         renderChartsView();
+        const replacementControl = Array.from(document.querySelectorAll('.chart-segment-control')).find(candidate =>
+          candidate.dataset.card === cardId && (!controlKind || candidate.classList.contains(controlKind))
+        );
+        const replacement = replacementControl && Array.from(replacementControl.querySelectorAll('.chart-segment-btn')).find(candidate =>
+          candidate.dataset.mode === mode || (controlKind === 'chart-row-mode-control' && mode !== 'run' && candidate.textContent.trim() === 'Grouped')
+        );
+        replacement?.focus({ preventScroll: true });
       });
     });
 
@@ -2824,6 +2857,13 @@
         if (taskName && dataset) {
           state.chartDatasetTab[taskName] = dataset;
           renderChartsView();
+          const replacement = Array.from(document.querySelectorAll('.chart-dataset-tab')).find(candidate =>
+            candidate.dataset.task === taskName && candidate.dataset.dataset === dataset
+          );
+          if (replacement) {
+            replacement.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+            replacement.focus({ preventScroll: true });
+          }
         }
       });
     });
@@ -2870,6 +2910,31 @@
   // RENDERING: TABLE VIEW
   // ═══════════════════════════════════════════════════
 
+  // The reference three-spark cluster: one dominant left sparkle with a
+  // compact upper-right sparkle and a medium lower-right sparkle. The two
+  // smaller sparks twinkle via CSS on hover.
+  const ANALYSIS_SPARK_ICON = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false"><path class="spark-main" d="M9.6 2.2C9.6 6.1 13.4 10 17.3 10C13.4 10 9.6 13.9 9.6 17.8C9.6 13.9 5.8 10 1.9 10C5.8 10 9.6 6.1 9.6 2.2Z"></path><path class="spark-minor" d="M16.8 13.05C16.8 15.65 19.4 18.25 22 18.25C19.4 18.25 16.8 20.85 16.8 23.45C16.8 20.85 14.2 18.25 11.6 18.25C14.2 18.25 16.8 15.65 16.8 13.05Z"></path><path class="spark-third" d="M17.15 1C17.15 2.6 18.75 4.2 20.35 4.2C18.75 4.2 17.15 5.8 17.15 7.4C17.15 5.8 15.55 4.2 13.95 4.2C15.55 4.2 17.15 2.6 17.15 1Z"></path></svg>';
+
+  // ANALYSIS column cell: a purple chip with the distinct root-cause count
+  // when the run has analysis data, a static Analyze action styled like the
+  // run-detail inline actions when the run is eligible, and a dash while the
+  // run is still live.
+  function renderAnalysisCell(run, status) {
+    const causeCount = Number(run.analysis_cause_count || 0);
+    const analyzerHref = projectUrl(
+      state.currentProject && state.currentProject.slug,
+      `analysis?run=${encodeURIComponent(run.run_id)}`,
+    );
+    if (causeCount > 0) {
+      const label = `${causeCount} cause${causeCount === 1 ? '' : 's'}`;
+      return `<a class="run-analysis-chip" href="${analyzerHref}" title="${label} found — open auto-analysis" aria-label="${label} found — open auto-analysis">${ANALYSIS_SPARK_ICON}${label}</a>`;
+    }
+    if (status !== 'RUNNING' && status !== 'PENDING') {
+      return `<a class="run-analysis-start" href="${analyzerHref}" title="Run auto-analysis" aria-label="Run auto-analysis">${ANALYSIS_SPARK_ICON}Analyze</a>`;
+    }
+    return '<span class="metric-na">—</span>';
+  }
+
   function updateTableHeader(metricsToShow) {
     // Update the table header to include dynamic metric columns
     const headerRow = el('table-header-row');
@@ -2883,7 +2948,7 @@
     // Remove any existing dynamic metric columns and trace columns
     headerRow.querySelectorAll('.col-metric-dynamic, .col-trace-separator, .col-trace-metric').forEach(col => col.remove());
 
-    // Insert metric columns before LATENCY column
+    // Insert metric columns before the ANALYSIS column
     metricsToShow.forEach(metric => {
       const th = document.createElement('th');
       th.className = 'col-metric-dynamic sortable';
@@ -2996,22 +3061,80 @@
     return out;
   }
 
-  // #7: Extract base timestamp from run name/id for grouping.
-  // e.g. "my_task-gpt4-260218-1430-2" -> "260218-1430"
-  // Runs with the same task + base timestamp belong together.
-  function extractRunTimestampGroup(run) {
-    // Repeat runs are ONE logical run — never glue them into legacy
-    // timestamp groups (runs.samples replaced the heuristic for new runs).
-    if (run.samples > 1) return null;
-    const productEval = run.product_eval || {};
-    if (productEval && productEval.eval_id) {
-      return `${run.task_name}|||product_eval:${productEval.eval_id}`;
+  const RUNS_STICKY_COLUMN_LIMITS = [
+    {
+      selector: '.col-status',
+      widthVar: '--runs-col-status-width',
+      minVar: '--runs-col-status-min-width',
+      maxVar: '--runs-col-status-max-width',
+    },
+    {
+      selector: '.col-run',
+      widthVar: '--runs-col-run-width',
+      minVar: '--runs-col-run-min-width',
+      maxVar: '--runs-col-run-max-width',
+    },
+    {
+      selector: '.col-task',
+      widthVar: '--runs-col-task-width',
+      minVar: '--runs-col-task-min-width',
+    },
+    {
+      selector: '.col-model',
+      widthVar: '--runs-col-model-width',
+      minVar: '--runs-col-model-min-width',
+    },
+    {
+      selector: '.col-dataset',
+      widthVar: '--runs-col-dataset-width',
+      minVar: '--runs-col-dataset-min-width',
+    },
+    {
+      selector: '.col-owner',
+      widthVar: '--runs-col-owner-width',
+      minVar: '--runs-col-owner-min-width',
+    },
+    {
+      selector: '.col-time',
+      widthVar: '--runs-col-time-width',
+      minVar: '--runs-col-time-min-width',
+    },
+  ];
+
+  function scheduleRunsStickyColumnSizing() {
+    const table = document.querySelector('.runs-table');
+    if (!table || state.currentView !== 'table') return;
+    if (state._runsStickyColumnFrame) {
+      cancelAnimationFrame(state._runsStickyColumnFrame);
     }
-    const name = run.run_name || run.external_run_id || '';
-    // Match YYMMDD-HHMM (optionally followed by -N counter)
-    const m = name.match(/(\d{6}-\d{4})(?:-\d+)?$/);
-    if (!m) return null;
-    return `${run.task_name}|||${m[1]}`;
+    state._runsStickyColumnFrame = requestAnimationFrame(() => {
+      state._runsStickyColumnFrame = null;
+      if (!table.isConnected || state.currentView !== 'table') return;
+
+      table.classList.add('runs-table--measuring-sticky-columns');
+      const computed = getComputedStyle(table);
+      const measured = [];
+      try {
+        RUNS_STICKY_COLUMN_LIMITS.forEach(config => {
+          const header = table.querySelector(`thead ${config.selector}`);
+          if (!header) return;
+          const naturalWidth = Math.ceil(header.getBoundingClientRect().width);
+          const minWidth = Number.parseFloat(computed.getPropertyValue(config.minVar));
+          const maxWidth = config.maxVar
+            ? Number.parseFloat(computed.getPropertyValue(config.maxVar))
+            : Infinity;
+          measured.push({
+            widthVar: config.widthVar,
+            width: Math.min(maxWidth, Math.max(minWidth, naturalWidth)),
+          });
+        });
+      } finally {
+        table.classList.remove('runs-table--measuring-sticky-columns');
+      }
+      measured.forEach(({ widthVar, width }) => {
+        table.style.setProperty(widthVar, `${width}px`);
+      });
+    });
   }
 
   function renderTableView() {
@@ -3065,6 +3188,7 @@
       visibleTraceMetricCount,
     );
     if (allRuns.length === 0) {
+      if (headerRow) headerRow.classList.remove('has-repeat-rows');
       tbody.innerHTML = `
         <tr>
           <td colspan="${colCount}" style="text-align:center;padding:2rem;color:var(--text-muted);">
@@ -3077,6 +3201,7 @@
       if (selectAllCheckbox) {
         selectAllCheckbox.checked = false;
         selectAllCheckbox.indeterminate = false;
+        selectAllCheckbox.disabled = true;
       }
       return;
     }
@@ -3084,129 +3209,28 @@
     const pagination = getTablePageSlice(allRuns);
     const runs = pagination.pageRuns;
 
-    // #7: Group runs by task + base timestamp (same batch = same task, same YYMMDD-HHMM)
-    const groupMap = {};  // groupKey -> { runs: [{run, idx}], ... }
-    const runGroupKeys = [];
-    runs.forEach((r, idx) => {
-      const key = extractRunTimestampGroup(r);
-      runGroupKeys.push(key);
-      if (key) {
-        if (!groupMap[key]) groupMap[key] = [];
-        groupMap[key].push({ run: r, idx });
-      }
-    });
-
-    // Only groups with >1 run are real groups
-    const realGroups = {};
-    for (const [key, members] of Object.entries(groupMap)) {
-      if (members.length > 1) realGroups[key] = members;
-    }
-
-    // Track which groups are collapsed (default: collapsed)
-    if (!state._collapsedGroups) state._collapsedGroups = {};
-
-    let lastGroupKey = null;
-    let groupCounter = 0;
     // Align run names across rows when any visible run carries a disclosure
     // chevron (mock option C's hidden-toggle trick).
     const anyRepeatRows = runs.some(r => r.samples > 1);
+    if (headerRow) headerRow.classList.toggle('has-repeat-rows', anyRepeatRows);
 
     tbody.innerHTML = runs.map((run, pageIdx) => {
       const idx = pagination.start + pageIdx;
-      const groupKey = runGroupKeys[pageIdx];
-      const isGrouped = groupKey && realGroups[groupKey];
-      const isFirstInGroup = isGrouped && groupKey !== lastGroupKey;
-      const nextGroupKey = runGroupKeys[pageIdx + 1];
-      const isLastInGroup = isGrouped && nextGroupKey !== groupKey;
-      let groupHeaderHtml = '';
-
-      if (isFirstInGroup) {
-        groupCounter++;
-        const groupId = `rg_${groupCounter}`;
-        const members = realGroups[groupKey];
-        const groupSize = members.length;
-        // Derive group title: task_name is always available; show user-provided
-        // run_name only if it differs from the auto-generated task-model pattern
-        const configRunName = run.run_name || '';
-        // Strip timestamp+counter suffix, then strip model suffix to get user's intent
-        let userBaseName = configRunName.replace(/-\d{6}-\d{4}(?:-\d+)?$/, '');
-        // Collect all model names in this group to strip them from the base name
-        const groupModels = [...new Set(members.map(m => stripModelProvider(m.run.model_name || '')).filter(Boolean))];
-        for (const model of groupModels) {
-          if (userBaseName.endsWith('-' + model)) {
-            userBaseName = userBaseName.slice(0, -(model.length + 1));
-          }
-        }
-        const taskName = run.task_name || '';
-        let baseLabel;
-        if (userBaseName && userBaseName !== taskName) {
-          baseLabel = `${userBaseName} · ${taskName}`;
-        } else {
-          baseLabel = taskName || userBaseName || 'Group';
-        }
-        // Extract timestamp for display
-        const tsSource = run.run_name || run.external_run_id || '';
-        const tsMatch = tsSource.match(/(\d{6})-(\d{4})(?:-\d+)?$/);
-        let tsLabel = '';
-        if (tsMatch) {
-          const [, yymmdd, hhmm] = tsMatch;
-          const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-          const mm = yymmdd.slice(2,4); const dd = yymmdd.slice(4,6);
-          const monthName = months[parseInt(mm, 10) - 1] || mm;
-          tsLabel = ` · ${monthName} ${parseInt(dd, 10)} · ${hhmm.slice(0,2)}:${hhmm.slice(2)}`;
-        }
-        const isCollapsed = state._collapsedGroups[groupKey] === true; // default expanded
-        const arrow = isCollapsed ? '▶' : '▼';
-        const memberFilePaths = members.map(m => m.run.file_path);
-        const selectedGroupRunCount = memberFilePaths.filter(filePath => state.selectedRuns.has(filePath)).length;
-        const allGroupRunsSelected = selectedGroupRunCount === memberFilePaths.length;
-        const someGroupRunsSelected = selectedGroupRunCount > 0 && !allGroupRunsSelected;
-
-        groupHeaderHtml = `<tr class="run-group-header${isCollapsed ? ' collapsed' : ''}" data-group-key="${escapeHtml(groupKey)}" data-group-id="${groupId}">
-          <td colspan="${colCount}" style="padding:6px 0;background:var(--bg-elevated);cursor:pointer;user-select:none;">
-            <div class="group-header-content">
-              <div class="group-header-main">
-                <span class="group-toggle-arrow">${arrow}</span>
-                <label class="custom-checkbox group-select-checkbox" onclick="event.stopPropagation();" title="Select all runs in this group">
-                  <input
-                    type="checkbox"
-                    class="group-select-input"
-                    data-group-files='${JSON.stringify(memberFilePaths)}'
-                    ${allGroupRunsSelected ? 'checked' : ''}
-                    ${someGroupRunsSelected ? 'data-indeterminate="true"' : ''}
-                  />
-                  <span class="checkmark"></span>
-                </label>
-                <span class="group-header-title" title="${escapeHtml(baseLabel)}">${escapeHtml(baseLabel)}</span>
-                ${tsLabel ? `<span class="group-header-timestamp">${tsLabel}</span>` : ''}
-                <span class="group-header-count">${groupSize} runs</span>
-              </div>
-              <div class="group-header-actions">
-                <button class="group-compare-btn action-btn" data-group-files='${JSON.stringify(memberFilePaths)}' onclick="event.stopPropagation();">Compare</button>
-              </div>
-            </div>
-          </td>
-        </tr>`;
-      }
-      lastGroupKey = groupKey;
-
-      // If this run belongs to a collapsed group, hide it (header row stays visible)
-      const isCollapsed = isGrouped && state._collapsedGroups[groupKey] === true;
-      const hiddenAttr = (isGrouped && isCollapsed) ? 'style="display:none;"' : '';
-      const groupDataAttr = isGrouped ? `data-member-of="${escapeHtml(groupKey)}"` : '';
       const dt = formatDate(run.timestamp);
       const durationText = formatDurationMs(run.duration_ms);
-      const isSelected = state.selectedRuns.has(run.file_path);
       const isFocused = idx === state.focusedIndex;
       const samplesOpen = run.samples > 1 && !!(state._samplesExpanded || {})[run.run_id];
+      const selectedPassCount = samplesOpen
+        ? Array.from(state.selectedRuns).filter(ref => isPassRef(ref) && passRefBase(ref) === run.file_path).length
+        : 0;
+      const isSelected = samplesOpen
+        ? selectedPassCount > 0 && selectedPassCount === Number(run.samples)
+        : state.selectedRuns.has(run.file_path);
       const samplesPanelId = `samples-detail-${idx}`;
       const rowClasses = [
         idx % 2 === 0 ? 'run-row-even' : 'run-row-odd',
         isSelected ? 'selected' : '',
         isFocused ? 'focused' : '',
-        isGrouped ? 'grouped-run' : '',
-        isGrouped && isFirstInGroup ? 'grouped-run-start' : '',
-        isGrouped && isLastInGroup ? 'grouped-run-end' : '',
         samplesOpen ? 'samples-open' : '',
       ].filter(Boolean).join(' ');
 
@@ -3223,14 +3247,14 @@
         // report_k needs headroom: pass@k estimated from barely k passes is
         // high-noise, so nudge toward samples >= 2k.
         const lowSamples = run.report_k && run.samples < 2 * run.report_k;
+        const noiseCopy = `pass@${run.report_k} estimated from only ${run.samples} passes is high-noise; ${2 * run.report_k}+ recommended.`;
         const noiseHtml = lowSamples
-          ? `<span class="metric-noise-warn" title="pass@${run.report_k} estimated from only ${run.samples} passes is high-noise; ${2 * run.report_k}+ recommended.">⚠</span>`
+          ? `<button type="button" class="metric-noise-warn qym-help-marker" aria-label="Explain high-noise estimate" aria-expanded="false">i<span class="qym-help-tooltip" role="tooltip">${escapeHtml(noiseCopy)}</span></button>`
           : '';
         return `<td class="col-metric-value"><span class="metric-score ${metricClass}">${display}</span>${noiseHtml}</td>`;
       }).join('');
 
       const status = run.status || '';
-      const langfuseUrl = run.langfuse_url;
       const approval = run.approval || null;
 
       const globalRole = (state.currentUser && state.currentUser.role) || '';
@@ -3248,6 +3272,9 @@
       const progressPctText = (status === 'RUNNING' && typeof run.progress_pct === 'number')
         ? `${Math.round(run.progress_pct * 100)}%`
         : '';
+      const parentProgressText = run.samples > 1
+        ? ''
+        : `${progressPctText ? ` • ${progressPctText}` : ''}${progressText ? ` • ${progressText}` : ''}`;
       // Repeat runs: show which pass is executing while live.
       const passText = (run.samples > 1 && (status === 'RUNNING' || status === 'PENDING'))
         ? ` • pass ${Math.min((run.last_completed_pass || 0) + 1, run.samples)}/${run.samples}`
@@ -3262,21 +3289,19 @@
         }
       }
 
-      return `${groupHeaderHtml}
-        <tr data-idx="${idx}" data-file="${encodeURIComponent(run.file_path)}" ${groupDataAttr} ${hiddenAttr}
+      return `
+        <tr data-idx="${idx}" data-file="${encodeURIComponent(run.file_path)}"
+            data-can-delete-pass="${canDelete && status !== 'RUNNING' && status !== 'PENDING' ? 'true' : 'false'}"
             class="${rowClasses}">
-          <td class="col-select" onclick="event.stopPropagation()">
-            <label class="custom-checkbox">
-              <input type="checkbox" class="row-checkbox" ${isSelected ? 'checked' : ''} />
-              <span class="checkmark"></span>
-            </label>
-          </td>
-          <td class="col-status">
-            ${status ? `<span class="status-badge status-${status}" title="${escapeHtml(statusTooltip)}">${status}${passText}${progressPctText ? ` • ${progressPctText}` : ''}${progressText ? ` • ${progressText}` : ''}</span>` : ''}${(run.error_count > 0 && status !== 'RUNNING' && status !== 'PENDING') ? `<span class="status-errors" title="${run.error_count} item${run.error_count === 1 ? '' : 's'} errored">${run.error_count}⚠</span>` : ''}${(run.total_retries > 0 && status !== 'RUNNING' && status !== 'PENDING') ? `<span class="status-retries" title="${run.total_retries} total retr${run.total_retries === 1 ? 'y' : 'ies'} across all items">${run.total_retries}↻</span>` : ''}
-          </td>
           <td class="col-run">
             <div class="run-cell-content">
-              ${run.samples > 1 ? `<button type="button" class="samples-toggle${samplesOpen ? ' open' : ''}"
+              <label class="custom-checkbox run-select-control" onclick="event.stopPropagation()">
+                <input type="checkbox" class="row-checkbox"
+                  aria-label="${samplesOpen ? 'Select all passes for' : 'Select run'} ${escapeHtml(run.external_run_id || run.run_id || '')}"
+                  ${isSelected ? 'checked' : ''} />
+                <span class="checkmark"></span>
+              </label>
+              ${run.samples > 1 ? `<button type="button" class="samples-toggle qym-icon-action${samplesOpen ? ' open' : ''}"
                 data-run-id="${run.run_id}" data-panel-id="${samplesPanelId}"
                 data-count="${run.samples}"
                 data-status="${escapeHtml(status)}"
@@ -3286,43 +3311,24 @@
                 title="${samplesOpen ? 'Collapse' : 'Expand'} ${run.samples} pass results"><svg class="samples-toggle-chevron" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="m4 6 4 4 4-4"></path></svg></button>`
                 : (anyRepeatRows ? '<span class="samples-toggle-spacer" aria-hidden="true"></span>' : '')}
               <span class="run-id" title="${run.run_id}">${run.external_run_id ? truncateText(run.external_run_id, 30) : run.run_id.substring(0, 8)}</span>
-              ${renderPassDots(run)}
+              ${run.samples > 1 ? `<span class="run-pass-count">x${run.samples}</span>` : ''}
             </div>
           </td>
+          <td class="col-status">
+            ${status ? `<span class="status-badge qym-badge status-${status}" title="${escapeHtml(statusTooltip)}">${status}${passText}${parentProgressText}</span>` : ''}${(run.error_count > 0 && status !== 'RUNNING' && status !== 'PENDING') ? `<span class="status-errors" title="${run.error_count} item${run.error_count === 1 ? '' : 's'} errored">${run.error_count}⚠</span>` : ''}${(run.total_retries > 0 && status !== 'RUNNING' && status !== 'PENDING') ? `<span class="status-retries" title="${run.total_retries} total retr${run.total_retries === 1 ? 'y' : 'ies'} across all items">${run.total_retries}↻</span>` : ''}
+          </td>
           <td class="col-task">
-            <span class="tag task" title="${escapeHtml(run.task_name || '')}">${run.task_name ? escapeHtml(run.task_name) : '—'}</span>
+            <span class="tag qym-tag task" title="${escapeHtml(run.task_name || '')}">${run.task_name ? escapeHtml(run.task_name) : '—'}</span>
           </td>
           <td class="col-model">
-            <span class="tag model" title="${run.model_name}">
+            <span class="tag qym-tag model" title="${run.model_name}">
               <span class="model-color-dot" style="background:${CHART_COLORS[state.allModels.indexOf(getRunModelKey(run)) % CHART_COLORS.length]}"></span>
               ${renderModelLabelForRun(run)}
             </span>
           </td>
-          <td class="col-analysis" onclick="event.stopPropagation()">
-            ${status !== 'RUNNING' && status !== 'PENDING'
-              ? `<a class="run-analysis-link" href="${analyzerUrlForRun(run)}">Analyze</a>`
-              : '<span class="run-analysis-unavailable">Not ready</span>'}
-          </td>
           <td class="col-dataset">
-            <span class="tag" title="${run.dataset_name}">${truncateText(run.dataset_name, 25)}${window.QymShell ? QymShell.datasetVersionInline(run.dataset_version) + QymShell.datasetAliasTags(run.dataset_aliases) : ''}</span>
+            <span class="tag qym-tag runs-dataset-tag" title="${run.dataset_name}">${truncateText(run.dataset_name, 25)}${window.QymShell ? QymShell.datasetVersionInline(run.dataset_version) + QymShell.datasetAliasTags(run.dataset_aliases) : ''}</span>
           </td>
-          <td class="col-version">
-            ${run.git_commit ? `<span class="version-badge" title="${run.git_branch ? run.git_branch + '/' : ''}${run.git_commit}">${run.git_branch ? run.git_branch + '/' : ''}${run.git_commit}</span>` : '<span style="color:var(--text-muted)">—</span>'}
-          </td>
-          ${metricCells}${visibleTraceMetrics.length > 0 ? '<td class="col-trace-separator"></td>' : ''}
-          ${visibleSystemColumns.has('latency') ? `<td class="col-latency">
-            <span class="latency-value">${run.avg_latency_ms ? formatLatency(run.avg_latency_ms) : '—'}</span>
-          </td>` : ''}
-          ${visibleSystemColumns.has('median-latency') ? `<td class="col-latency-median">
-            <span class="latency-value">${run.median_latency_ms ? formatLatency(run.median_latency_ms) : '—'}</span>
-          </td>` : ''}${(() => {
-            if (visibleTraceMetrics.length === 0) return '';
-            const ts = run.trace_stats;
-            return visibleTraceMetrics.map(tm => {
-              const v = ts ? ts[tm.key] : null;
-              return renderTraceMetricTableCell(tm, v);
-            }).join('');
-          })()}
           <td class="col-owner">
             ${run.owner ? `
               <span class="owner-name" title="${run.owner.email}">
@@ -3338,13 +3344,31 @@
               <span class="time">${dt.time}</span>
             </span>
           </td>
+          <td class="col-analysis" onclick="event.stopPropagation()">${renderAnalysisCell(run, status)}</td>
+          <td class="col-version">
+            ${run.git_commit ? `<span class="version-badge qym-tag" title="${run.git_branch ? run.git_branch + '/' : ''}${run.git_commit}">${run.git_branch ? run.git_branch + '/' : ''}${run.git_commit}</span>` : '<span style="color:var(--text-muted)">—</span>'}
+          </td>
+          ${metricCells}${visibleTraceMetrics.length > 0 ? '<td class="col-trace-separator"></td>' : ''}
+          ${visibleSystemColumns.has('latency') ? `<td class="col-latency">
+            <span class="latency-value">${run.avg_latency_ms ? formatLatency(run.avg_latency_ms) : '—'}</span>
+          </td>` : ''}
+          ${visibleSystemColumns.has('median-latency') ? `<td class="col-latency-median">
+            <span class="latency-value">${run.median_latency_ms ? formatLatency(run.median_latency_ms) : '—'}</span>
+          </td>` : ''}${(() => {
+            if (visibleTraceMetrics.length === 0) return '';
+            const ts = run.trace_stats;
+            return visibleTraceMetrics.map(tm => {
+              const v = ts ? ts[tm.key] : null;
+              return renderTraceMetricTableCell(tm, v);
+            }).join('');
+          })()}
           <td class="col-duration">
             <span class="duration-value">${durationText}</span>
           </td>
           <td class="col-actions">
             ${(canApprove || canUnapprove || canUnreject) ? `
               <div class="actions-dropdown" onclick="event.stopPropagation()">
-                <button class="actions-trigger workflow-trigger" title="${(canUnapprove || canUnreject) ? 'Review decision actions' : 'Review'}">
+                <button class="actions-trigger qym-icon-action workflow-trigger" title="${(canUnapprove || canUnreject) ? 'Review decision actions' : 'Review'}" aria-label="${(canUnapprove || canUnreject) ? 'Review decision actions' : 'Review run'}">
                   <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
                     <polyline points="14 2 14 8 20 8"></polyline>
@@ -3384,20 +3408,15 @@
               </div>
             ` : ''}
             ${canSubmit ? `
-              <a href="#" class="action-icon submit-run" title="Submit for Approval" onclick="event.stopPropagation()">
+              <a href="#" class="action-icon qym-icon-action submit-run" title="Submit for Approval" aria-label="Submit for approval" onclick="event.stopPropagation()">
                 <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
                   <line x1="22" y1="2" x2="11" y2="13"></line>
                   <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
                 </svg>
               </a>
             ` : ''}
-            ${langfuseUrl ? `
-              <a href="${langfuseUrl}" target="_blank" class="action-icon langfuse-icon" title="View in Langfuse" onclick="event.stopPropagation()">
-                <img src="/static/langfuse-color.svg" alt="Langfuse" width="16" height="16" />
-              </a>
-            ` : ''}
             ${canDelete ? `
-            <a href="#" class="action-icon delete-run" title="Delete" onclick="event.stopPropagation()">
+            <a href="#" class="action-icon qym-icon-action delete-run" title="Delete" aria-label="Delete run" onclick="event.stopPropagation()">
               <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
                 <polyline points="3 6 5 6 21 6"></polyline>
                 <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
@@ -3420,15 +3439,27 @@
 
       const checkbox = tr.querySelector('.row-checkbox');
       if (checkbox) {
+        const repeatExpanded = run.samples > 1 && !!state._samplesExpanded?.[run.run_id];
+        const selectedPasses = repeatExpanded
+          ? Array.from(state.selectedRuns).filter(ref => isPassRef(ref) && passRefBase(ref) === filePath).length
+          : 0;
+        checkbox.indeterminate = repeatExpanded
+          && selectedPasses > 0
+          && selectedPasses < Number(run.samples);
         checkbox.addEventListener('click', (e) => {
           e.stopPropagation();
         });
-        checkbox.addEventListener('change', (e) => {
-          toggleSelect(filePath);
+        checkbox.addEventListener('change', () => {
+          const expanded = run.samples > 1 && !!state._samplesExpanded?.[run.run_id];
+          if (expanded) {
+            toggleExpandedPassSelection(run, tr);
+          } else {
+            toggleSelect(filePath);
+          }
         });
       }
 
-      const analysisLink = tr.querySelector('.run-analysis-link');
+      const analysisLink = tr.querySelector('.run-analysis-chip, .run-analysis-start');
       if (analysisLink) {
         analysisLink.addEventListener('click', (e) => {
           e.preventDefault();
@@ -3544,24 +3575,6 @@
       });
     });
 
-    // #7: Wire group header click to toggle collapse
-    // Convention: state._collapsedGroups[key] === true means collapsed; absent/false means expanded
-    tbody.querySelectorAll('.run-group-header').forEach(header => {
-      header.addEventListener('click', () => {
-        const groupKey = header.dataset.groupKey;
-        if (!groupKey) return;
-        const wasCollapsed = state._collapsedGroups[groupKey] === true;
-        state._collapsedGroups[groupKey] = !wasCollapsed;
-        const nowExpanded = !state._collapsedGroups[groupKey];
-        header.classList.toggle('collapsed', !nowExpanded);
-        const arrow = header.querySelector('.group-toggle-arrow');
-        if (arrow) arrow.textContent = nowExpanded ? '▼' : '▶';
-        tbody.querySelectorAll(`tr[data-member-of="${groupKey}"]`).forEach(row => {
-          row.style.display = nowExpanded ? '' : 'none';
-        });
-      });
-    });
-
     // Repeat runs expand in the table's native group dialect (mock option C):
     // a group-metrics strip styled like a group header, then one real table
     // row per pass — metrics under their columns, inherited context dimmed.
@@ -3641,7 +3654,7 @@
         const tip = escapeHtml(
           `${name} estimated from all ${k} passes`
         );
-        return `Pass<span class="est-atk">${sym}${kRep}</span><span class="stat-info-icon est-info-icon">i<span class="stat-info-tooltip">${tip}</span></span>`;
+        return `Pass<span class="est-atk">${sym}${kRep}</span><button type="button" class="stat-info-icon qym-help-marker est-info-icon" aria-label="Explain this estimate" aria-expanded="false">i<span class="stat-info-tooltip qym-help-tooltip" role="tooltip">${tip}</span></button>`;
       };
       const passAtLabel = estLabel('@', reportK);
       const passHatLabel = estLabel('^', reportK);
@@ -3735,6 +3748,12 @@
         };
       };
 
+      // Pass refs address one execution: "<file_path>::pass<N>". They join
+      // cohorts as single units next to whole runs.
+      const runFilePath = row?.getAttribute
+        ? decodeURIComponent(row.getAttribute('data-file') || '')
+        : '';
+
       const memberRow = (pass, isLast) => {
         const firstPass = Number(pass.pass_number) || 1;
         const lastPass = Number(pass._lastPassNumber) || firstPass;
@@ -3744,9 +3763,22 @@
         const passMeta = pass._queued
           ? (pendingWillNotRun ? `${pass._queuedCount} not run` : `${pass._queuedCount} waiting to start`)
           : '';
-        const rawStatus = String(pass.status || 'unknown').toLowerCase();
-        const badgeClass = { completed: 'COMPLETED', running: 'RUNNING', failed: 'FAILED', queued: 'PENDING' }[rawStatus] || '';
+        const rawPassStatus = String(pass.status || 'unknown').toLowerCase();
+        const terminalPassStatus = {
+          STOPPED: 'stopped',
+          FAILED: 'failed',
+          COMPLETED: 'completed',
+        }[String(runStatus || '').toUpperCase()];
+        const rawStatus = rawPassStatus === 'running' && terminalPassStatus
+          ? terminalPassStatus
+          : rawPassStatus;
+        const badgeClass = { completed: 'COMPLETED', running: 'RUNNING', failed: 'FAILED', stopped: 'STOPPED', queued: 'PENDING' }[rawStatus] || '';
         const statusLabel = rawStatus === 'not-run' ? 'NOT RUN' : rawStatus.replace('-', ' ').toUpperCase();
+        const completedCount = Number(pass.completed_count) || 0;
+        const totalCount = Number(pass.items_total) || 0;
+        const progressLabel = rawStatus === 'running' && totalCount > 0
+          ? ` • ${Math.round((completedCount / totalCount) * 100)}% • ${completedCount}/${totalCount}`
+          : '';
         const errors = Number(pass.error_count) || 0;
         const metricCells = metricsToShow.map(metric => {
           const value = (pass.metric_means || {})[metric];
@@ -3770,30 +3802,36 @@
         const passDuration = typeof pass.duration_ms === 'number'
           ? formatDurationMs(pass.duration_ms)
           : null;
+        const passRef = runFilePath && !pass._queued && ['completed', 'failed'].includes(rawStatus)
+          ? `${runFilePath}::pass${firstPass}`
+          : '';
+        const passSelected = passRef && state.selectedRuns.has(passRef);
+        const canDeletePass = !pass._queued && row?.dataset?.canDeletePass === 'true';
         return `<tr class="pass-member${isLast ? ' pass-member-last' : ''}${pass._queued ? ' pass-member-queued' : ''}"
             data-samples-for="${escapeHtml(runId)}"${pass._queued ? '' : ` data-pass-number="${firstPass}" title="Open Pass ${firstPass} details"`}>
-          <td class="col-select"></td>
+          <td class="col-run">${passRef
+            ? `<label class="custom-checkbox run-select-control" onclick="event.stopPropagation()"><input type="checkbox" class="pass-checkbox" data-pass-ref="${escapeHtml(passRef)}" ${passSelected ? 'checked' : ''} /><span class="checkmark"></span></label>`
+            : ''}<span class="pass-indent"></span><span class="pass-member-id">${passLabel}</span>${passMeta ? `<span class="pass-member-items">${passMeta}</span>` : ''}</td>
           <td class="col-status">${badgeClass
-            ? `<span class="status-badge status-${badgeClass}">${statusLabel}</span>`
+            ? `<span class="status-badge qym-badge status-${badgeClass}">${statusLabel}${progressLabel}</span>`
             : `<span class="pass-member-status">${statusLabel}</span>`}${errors
             ? `<span class="status-errors" title="${errors} item${errors === 1 ? '' : 's'} errored in this pass">${errors}⚠</span>`
             : ''}</td>
-          <td class="col-run"><span class="pass-indent"></span><span class="pass-member-id">${passLabel}</span>${passMeta ? `<span class="pass-member-items">${passMeta}</span>` : ''}</td>
           ${inherit('col-task')}
           ${inherit('col-model')}
-          ${inherit('col-analysis')}
           ${inherit('col-dataset')}
+          ${inherit('col-owner')}
+          <td class="col-time">${passDate
+            ? `<span class="timestamp" title="${escapeHtml(passDate.full)}"><span class="date">${passDate.date}</span><span class="timestamp-sep">·</span><span class="time">${passDate.time}</span></span>`
+            : '<span class="metric-na">—</span>'}</td>
+          ${inherit('col-analysis')}
           ${inherit('col-version')}
           ${metricCells}${visibleTraceMetrics.length > 0 ? '<td class="col-trace-separator"></td>' : ''}
           ${visibleSystemColumns.has('latency') ? latencyCell('col-latency', pass.avg_latency_ms, avgLatencyWinners) : ''}
           ${visibleSystemColumns.has('median-latency') ? latencyCell('col-latency-median', pass.median_latency_ms, medianLatencyWinners) : ''}
           ${visibleTraceMetrics.map(tm => renderTraceMetricTableCell(tm, pass.trace_stats?.[tm.key])).join('')}
-          ${inherit('col-owner')}
-          <td class="col-time">${passDate
-            ? `<span class="timestamp" title="${escapeHtml(passDate.full)}"><span class="date">${passDate.date}</span><span class="timestamp-sep">·</span><span class="time">${passDate.time}</span></span>`
-            : '<span class="metric-na">—</span>'}</td>
           <td class="col-duration"><span class="duration-value">${passDuration || '—'}</span></td>
-          <td class="col-actions"></td>
+          <td class="col-actions">${canDeletePass ? `<button type="button" class="pass-delete-action qym-icon-action action-icon delete-run" data-delete-pass="${firstPass}" title="Delete Pass ${firstPass}" aria-label="Delete Pass ${firstPass}"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" focusable="false"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></button>` : ''}</td>
         </tr>`;
       };
 
@@ -3844,7 +3882,66 @@
         .filter(detail => detail.dataset.samplesFor === runId);
     }
 
+    function expandedPassRefs(run, row) {
+      const refs = samplesDetailRows(run.run_id)
+        .flatMap(detail => Array.from(detail.querySelectorAll('.pass-checkbox')))
+        .map(checkbox => checkbox.dataset.passRef)
+        .filter(Boolean);
+      if (refs.length) return Array.from(new Set(refs));
+
+      // A completed legacy run may not carry pass_summaries in the list
+      // payload. All of its scheduled passes are nevertheless selectable
+      // while the detail request fills the expanded rows.
+      if (String(run.status || '').toUpperCase() === 'COMPLETED') {
+        return Array.from(
+          { length: Number(run.samples) || 0 },
+          (_, index) => `${decodeURIComponent(row.dataset.file || '')}${PASS_REF_SEP}${index + 1}`,
+        );
+      }
+      return [];
+    }
+
+    function syncRepeatParentSelection(run, row) {
+      const checkbox = row.querySelector('.row-checkbox');
+      if (!checkbox) return;
+      const filePath = decodeURIComponent(row.dataset.file || '');
+      const expanded = !!state._samplesExpanded?.[run.run_id];
+      if (!expanded) {
+        checkbox.disabled = false;
+        checkbox.checked = state.selectedRuns.has(filePath);
+        checkbox.indeterminate = false;
+        checkbox.setAttribute('aria-label', `Select run ${run.external_run_id || run.run_id || ''}`);
+        row.classList.toggle('selected', checkbox.checked);
+        return;
+      }
+
+      const refs = expandedPassRefs(run, row);
+      const selectedCount = refs.filter(ref => state.selectedRuns.has(ref)).length;
+      checkbox.disabled = refs.length === 0;
+      checkbox.checked = refs.length > 0 && selectedCount === refs.length;
+      checkbox.indeterminate = selectedCount > 0 && selectedCount < refs.length;
+      checkbox.setAttribute('aria-label', `Select all passes for ${run.external_run_id || run.run_id || ''}`);
+      row.classList.toggle('selected', checkbox.checked);
+    }
+
+    function toggleExpandedPassSelection(run, row) {
+      const refs = expandedPassRefs(run, row);
+      if (!refs.length) {
+        syncRepeatParentSelection(run, row);
+        return;
+      }
+      const filePath = decodeURIComponent(row.dataset.file || '');
+      const allSelected = refs.every(ref => state.selectedRuns.has(ref));
+      state.selectedRuns.delete(filePath);
+      Array.from(state.selectedRuns).forEach(ref => {
+        if (isPassRef(ref) && passRefBase(ref) === filePath) state.selectedRuns.delete(ref);
+      });
+      if (!allSelected) refs.forEach(ref => state.selectedRuns.add(ref));
+      render();
+    }
+
     function insertSamplesDetail(runId, row, panelId, animate) {
+      const runFilePath = decodeURIComponent(row?.dataset?.file || '');
       samplesDetailRows(runId).forEach(detail => detail.remove());
       const runStatus = row.querySelector('.samples-toggle')?.dataset.status || '';
       row.insertAdjacentHTML('afterend', buildSamplesDetailMarkup(
@@ -3856,6 +3953,8 @@
       ));
       const inserted = samplesDetailRows(runId);
       if (!inserted.length) return null;
+      const run = runs.find(candidate => candidate.run_id === runId);
+      if (run) syncRepeatParentSelection(run, row);
       const controlsRow = inserted.find(detail => detail.classList.contains('samples-detail-row')) || inserted[0];
       if (row.dataset.memberOf) {
         inserted.forEach(detail => { detail.dataset.memberOf = row.dataset.memberOf; });
@@ -3880,6 +3979,7 @@
           detail.style.animationDelay = `${i * 30 - elapsed}ms`;
         });
       }
+      scheduleRunsStickyColumnSizing();
       const retry = controlsRow.querySelector('.samples-retry-btn');
       if (retry) {
         retry.addEventListener('click', event => {
@@ -3898,11 +3998,60 @@
           event.stopPropagation();
           const filePath = decodeURIComponent(row.dataset.file || '');
           if (!filePath) return;
+          sessionStorage.removeItem('compareRuns');
+          sessionStorage.removeItem('compareCohorts');
           sessionStorage.setItem('dashboardRunFile', filePath);
           const base = state.currentProject && state.currentProject.slug
             ? projectUrl(state.currentProject.slug, `runs/${encodeURIComponent(filePath)}`)
             : apiUrl(`run/${encodeURIComponent(filePath)}`);
           openUrl(`${base}?pass=${passNumber}`, event);
+        });
+      });
+      inserted.forEach(detail => {
+        const deleteButton = detail.querySelector('.pass-delete-action');
+        if (!deleteButton) return;
+        deleteButton.addEventListener('click', async event => {
+          event.preventDefault();
+          event.stopPropagation();
+          const passNumber = Number(deleteButton.dataset.deletePass);
+          if (!Number.isFinite(passNumber)) return;
+          const confirmation = window.QymShell?.openConfirmDialog
+            ? await window.QymShell.openConfirmDialog({
+                title: `Delete Pass ${passNumber}?`,
+                description: [
+                  `This removes Pass ${passNumber} from every item in the run.`,
+                  'Later passes will be renumbered and aggregate scores will be recalculated.',
+                ],
+                note: 'This action cannot be undone.',
+                confirmLabel: 'Delete pass',
+                confirmClass: 'shell-btn-danger',
+              })
+            : { confirmed: window.confirm(`Delete Pass ${passNumber}? This cannot be undone.`) };
+          if (!confirmation.confirmed) return;
+          deleteButton.disabled = true;
+          deleteButton.setAttribute('aria-busy', 'true');
+          try {
+            const response = await fetch(apiUrl(
+              `api/runs/${encodeURIComponent(runId)}/passes/${passNumber}`
+            ), { method: 'DELETE' });
+            const payload = await response.json().catch(() => ({}));
+            if (!response.ok || payload.error) {
+              throw new Error(payload.detail || payload.error || 'Failed to delete pass');
+            }
+            if (runFilePath) {
+              const passPrefix = `${runFilePath}${PASS_REF_SEP}`;
+              Array.from(state.selectedRuns).forEach(ref => {
+                if (ref.startsWith(passPrefix)) state.selectedRuns.delete(ref);
+              });
+            }
+            delete state._samplesData[runId];
+            await fetchRuns({ refreshAllPages: true });
+            showToast('success', 'Pass deleted', `Pass ${passNumber} was removed from the run.`);
+          } catch (error) {
+            deleteButton.disabled = false;
+            deleteButton.removeAttribute('aria-busy');
+            showToast('error', 'Pass not deleted', error.message || 'Failed to delete pass');
+          }
         });
       });
       // Threshold slider (the platform's inline slider): live label on drag,
@@ -4011,7 +4160,7 @@
           insertSamplesDetail(runId, row, panelId);
           const cached = state._samplesData[runId];
           const cachedIncomplete = cached && !cached.error && (cached.passes?.passes || [])
-            .some(pass => !['completed', 'failed'].includes(String(pass.status || '').toLowerCase()));
+            .some(pass => String(pass.status || '').toLowerCase() === 'running');
           if (!cached || (!cached.error && (toggle.dataset.live === 'true' || cachedIncomplete))) {
             loadSamplesData(runId, row, panelId);
           }
@@ -4042,35 +4191,10 @@
           // Collapse instantly: rows can't animate height, so a fade would
           // just hold their space and then snap — instant reads as crisp.
           samplesDetailRows(runId).forEach(detail => detail.remove());
+          const run = runs.find(candidate => candidate.run_id === runId);
+          if (run) syncRepeatParentSelection(run, row);
+          scheduleRunsStickyColumnSizing();
         }
-      });
-    });
-
-    // #7: Wire "Compare All" buttons on group headers
-    tbody.querySelectorAll('.group-compare-btn').forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        try {
-          const files = JSON.parse(btn.dataset.groupFiles);
-          if (Array.isArray(files) && files.length >= 2) {
-            sessionStorage.setItem('compareRuns', JSON.stringify(files));
-            const params = files.map(f => 'runs=' + encodeURIComponent(f)).join('&');
-            navigateTo(apiUrl('compare?' + params));
-          }
-        } catch {}
-      });
-    });
-
-    tbody.querySelectorAll('.group-select-input').forEach(input => {
-      if (input.dataset.indeterminate === 'true') input.indeterminate = true;
-      input.addEventListener('click', (e) => {
-        e.stopPropagation();
-      });
-      input.addEventListener('change', (e) => {
-        e.stopPropagation();
-        try {
-          toggleGroupSelection(JSON.parse(input.dataset.groupFiles));
-        } catch {}
       });
     });
 
@@ -4080,9 +4204,11 @@
     if (selectAllCheckbox) {
       const visibleFilePaths = runs.map(run => run.file_path);
       const selectedCount = visibleFilePaths.filter(filePath => state.selectedRuns.has(filePath)).length;
+      selectAllCheckbox.disabled = visibleFilePaths.length === 0;
       selectAllCheckbox.checked = visibleFilePaths.length > 0 && selectedCount === visibleFilePaths.length;
       selectAllCheckbox.indeterminate = selectedCount > 0 && selectedCount < visibleFilePaths.length;
     }
+    scheduleRunsStickyColumnSizing();
   }
 
   // ═══════════════════════════════════════════════════
@@ -4203,7 +4329,6 @@
   function renderStatusBar() {
     const total = state.flatRuns.length;
     const filtered = state.filteredRuns.length;
-    const selected = state.selectedRuns.size;
     const countText = filtered === total ? `${total} runs` : `${filtered} of ${total} runs`;
 
     const hasFilters = state.quickFilter !== 'all'
@@ -4245,7 +4370,6 @@
     }
 
     if (el('status-filter')) el('status-filter').textContent = filterText;
-    if (el('status-selected')) el('status-selected').textContent = `${selected} selected`;
   }
 
   function renderComparePanel() {
@@ -4253,108 +4377,110 @@
     const selected = state.selectedRuns;
     const cohortAnchor = Array.isArray(state.cohortAnchorRuns) ? state.cohortAnchorRuns : null;
     const isCohortMode = !!(cohortAnchor && cohortAnchor.length > 0);
+    const showActions = selected.size > 0 || isCohortMode;
 
     if (!panel) return;
-    if (selected.size === 0 && !isCohortMode) {
-      panel.style.display = 'none';
-      return;
-    }
+    panel.closest('.status-bar')?.classList.toggle('selection-active', showActions);
+    panel.style.display = showActions ? 'inline-flex' : 'none';
+    const separator = el('selection-status-separator');
+    if (separator) separator.style.display = showActions ? '' : 'none';
+    if (!showActions) return;
 
-    panel.style.display = 'block';
+    const selectedRefs = Array.from(selected);
+    const selectedExecutionCount = cohortUnitCount(selectedRefs);
     const countEl = el('compare-count');
     if (countEl) {
-      countEl.textContent = isCohortMode ? `${selected.size}/${cohortAnchor.length}` : selected.size;
+      countEl.textContent = isCohortMode
+        ? `Cohort B ${cohortUnitCount(Array.from(selected))}/${cohortUnitCount(cohortAnchor)} executions`
+        : `${selectedExecutionCount} execution${selectedExecutionCount === 1 ? '' : 's'} selected`;
     }
 
-    const chips = el('compare-chips');
     const selectedRuns = state.flatRuns.filter(r => selected.has(r.file_path));
-    const anchorRuns = isCohortMode
-      ? cohortAnchor.map(filePath => state.flatRuns.find(run => run.file_path === filePath)).filter(Boolean)
-      : [];
-
-    // Hide Langfuse button - it's available in row actions
-    const langfuseBtn = el('langfuse-btn');
-    if (langfuseBtn) langfuseBtn.style.display = 'none';
+    const selectedTargets = selectedRefs.map(ref => ({
+      ref,
+      run: state.flatRuns.find(candidate => candidate.file_path === passRefBase(ref)),
+    })).filter(target => target.run);
+    const selectedPassCounts = selectedRefs.filter(isPassRef).reduce((counts, ref) => {
+      const base = passRefBase(ref);
+      counts.set(base, (counts.get(base) || 0) + 1);
+      return counts;
+    }, new Map());
 
     const compareBtn = el('compare-view');
     const cohortBtn = el('cohort-view');
     const clearBtn = el('compare-clear');
     const deleteBtn = el('delete-selected');
-    const headerLabel = panel.querySelector('.compare-header > span');
-    const subtitleEl = el('compare-subtitle');
-    const hasOverlap = isCohortMode && selectedRuns.some(run => cohortAnchor.includes(run.file_path));
+    const hasOverlap = isCohortMode
+      && Array.from(selected).some(ref => cohortAnchor.some(a => cohortRefsConflict(a, ref)));
+    // Cohort balance runs on executions: a repeat run contributes its k passes.
+    const anchorUnits = isCohortMode ? cohortUnitCount(cohortAnchor) : 0;
+    const selectedUnits = isCohortMode ? cohortUnitCount(Array.from(selected)) : 0;
 
-    if (headerLabel) {
-      headerLabel.textContent = isCohortMode
-        ? `⊕ COHORT B ${selected.size}/${cohortAnchor.length} RUNS`
-        : `⊕ SELECTED ${selected.size} RUNS`;
+    let guidance = '';
+    if (!isCohortMode) {
+      guidance = selectedExecutionCount >= 2
+        ? 'Ready to compare, or lock this selection as Cohort A.'
+        : 'Select runs to compare or create a cohort.';
+    } else if (hasOverlap) {
+      guidance = 'Cohort B cannot include runs already locked in Cohort A.';
+    } else if (selectedUnits < anchorUnits) {
+      guidance = `Select ${anchorUnits - selectedUnits} more execution${anchorUnits - selectedUnits === 1 ? '' : 's'} for Cohort B.`;
+    } else if (selectedUnits === anchorUnits) {
+      guidance = `Balanced: ${anchorUnits} vs ${anchorUnits} executions.`;
+    } else {
+      guidance = `Remove ${selectedUnits - anchorUnits} execution${selectedUnits - anchorUnits === 1 ? '' : 's'} from Cohort B.`;
     }
-    if (subtitleEl) {
-      subtitleEl.classList.remove('is-warning', 'is-ready');
-      if (!isCohortMode) {
-        subtitleEl.textContent = selected.size >= 2
-          ? 'Ready to open a flat comparison, or lock this selection as Cohort A.'
-          : 'Select runs, then use Compare for a flat comparison or Cohort for an explicit A vs B setup.';
-      } else if (hasOverlap) {
-        subtitleEl.textContent = 'Cohort B cannot include runs already locked in Cohort A.';
-        subtitleEl.classList.add('is-warning');
-      } else if (selected.size < cohortAnchor.length) {
-        subtitleEl.textContent = `Cohort A is locked. Select ${cohortAnchor.length - selected.size} more run${cohortAnchor.length - selected.size === 1 ? '' : 's'} for Cohort B.`;
-      } else if (selected.size === cohortAnchor.length) {
-        subtitleEl.textContent = 'Cohort B is ready. Click Open Cohort to compare the two groups.';
-        subtitleEl.classList.add('is-ready');
-      }
+    if (countEl) countEl.title = guidance;
+    const guidanceEl = el('selection-guidance');
+    if (guidanceEl) guidanceEl.textContent = guidance;
+    if (compareBtn) {
+      compareBtn.style.display = isCohortMode ? 'none' : 'inline-flex';
+      compareBtn.disabled = selectedExecutionCount < 2;
     }
-    if (compareBtn) compareBtn.style.display = isCohortMode ? 'none' : 'inline-block';
     if (cohortBtn) {
-      cohortBtn.style.display = 'inline-block';
+      cohortBtn.style.display = 'inline-flex';
       cohortBtn.textContent = isCohortMode ? 'Open Cohort' : 'Cohort';
-      cohortBtn.disabled = isCohortMode ? (selected.size !== cohortAnchor.length || hasOverlap) : (selected.size < 1);
+      cohortBtn.disabled = isCohortMode ? (selectedUnits !== anchorUnits || hasOverlap) : (selected.size < 1);
       cohortBtn.title = isCohortMode
-        ? (hasOverlap ? 'Cohort B cannot reuse runs from Cohort A' : `Select exactly ${cohortAnchor.length} runs for Cohort B`)
+        ? (hasOverlap ? 'Cohort B cannot reuse runs from Cohort A' : `Select runs totalling ${anchorUnits} execution${anchorUnits === 1 ? '' : 's'} for Cohort B`)
         : 'Lock the current selection as Cohort A';
     }
     if (clearBtn) clearBtn.textContent = isCohortMode ? 'Cancel Cohort' : 'Clear';
-    if (deleteBtn) deleteBtn.style.display = isCohortMode ? 'none' : 'inline-block';
-
-    // Show Submit button only if:
-    // 1. User is not a manager (managers approve/reject, not submit)
-    // 2. At least 1 run is selected
-    // 3. ALL selected runs are submittable (COMPLETED, FAILED, or REJECTED status)
-    const publishBtn = el('publish-selected');
-    if (publishBtn) {
-      const role = (state.currentUser && state.currentUser.role) || '';
-      const isManager = role === 'MANAGER';
-      const allSubmittable = selectedRuns.length > 0 && selectedRuns.every(r => {
-        const status = r.status || '';
-        return status === 'COMPLETED' || status === 'FAILED' || status === 'REJECTED';
-      });
-      publishBtn.style.display = (!isManager && allSubmittable && !isCohortMode) ? 'inline-block' : 'none';
-      publishBtn.textContent = 'Submit';
+    if (deleteBtn) {
+      const globalRole = (state.currentUser && state.currentUser.role) || '';
+      const projectRole = (state.currentProject && state.currentProject.role) || '';
+      const currentUserId = state.currentUser && state.currentUser.id;
+      const canManageProject = globalRole === 'ADMIN' || projectRole === 'MANAGER';
+      const allDeletable = selectedRefs.length > 0
+        && selectedTargets.length === selectedRefs.length
+        && selectedTargets.every(({ ref, run }) => {
+          const ownsRun = !!(currentUserId && run.owner && run.owner.id === currentUserId);
+          const passIsDeletable = !isPassRef(ref)
+            || (Number(run.samples) > 1
+              && (selectedPassCounts.get(run.file_path) || 0) < Number(run.samples)
+              && !['RUNNING', 'PENDING'].includes(run.status || ''));
+          return (canManageProject || ownsRun) && passIsDeletable;
+        });
+      const hasSelectedPasses = selectedRefs.some(isPassRef);
+      deleteBtn.style.display = isCohortMode ? 'none' : 'inline-flex';
+      deleteBtn.disabled = !allDeletable;
+      deleteBtn.title = allDeletable
+        ? (hasSelectedPasses ? 'Delete selected runs and passes' : 'Delete selected runs')
+        : 'Only owned, inactive runs and passes can be deleted';
     }
 
-    chips.innerHTML = [
-      ...anchorRuns.map(run => `
-        <span class="compare-chip is-cohort-a">
-          <span title="${escapeHtml(run.run_id)}">${escapeHtml(getCohortRunDisplayName(run.file_path) || run.run_id)}</span>
-        </span>
-      `),
-      ...selectedRuns.map(run => `
-        <span class="compare-chip is-cohort-b">
-          <span title="${escapeHtml(run.run_id)}">${escapeHtml(getCohortRunDisplayName(run.file_path) || run.run_id)}</span>
-          <span class="remove" data-file="${encodeURIComponent(run.file_path)}">×</span>
-        </span>
-      `),
-    ].join('');
-
-    chips.querySelectorAll('.remove').forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const filePath = decodeURIComponent(btn.dataset.file);
-        state.selectedRuns.delete(filePath);
-        render();
+    // Bulk actions must follow the same ownership and status rules as row actions.
+    const publishBtn = el('publish-selected');
+    if (publishBtn) {
+      const currentUserId = state.currentUser && state.currentUser.id;
+      const allSubmittable = selectedRuns.length > 0 && selectedRuns.every(r => {
+        const status = r.status || '';
+        const isOwner = !!(currentUserId && r.owner && r.owner.id === currentUserId);
+        return isOwner && (status === 'COMPLETED' || status === 'FAILED' || status === 'REJECTED');
       });
-    });
+      publishBtn.style.display = (allSubmittable && !isCohortMode) ? 'inline-flex' : 'none';
+      publishBtn.textContent = 'Submit';
+    }
   }
 
   // ═══════════════════════════════════════════════════
@@ -4372,6 +4498,30 @@
     const gridView = el('grid-view');
     const timelineView = el('timeline-view');
     const modelsView = el('models-view');
+    const selectionAvailable = !!state.runs && state.flatRuns.length > 0;
+
+    if (!selectionAvailable) {
+      state.selectMode = false;
+      state.selectedRuns.clear();
+      state.cohortAnchorRuns = null;
+    } else if (state.selectedRuns.size > 0 || state.cohortAnchorRuns) {
+      state.selectMode = true;
+    }
+    if (tableView) {
+      tableView.classList.toggle('select-mode', state.selectMode);
+    }
+    const selectModeBtn = el('select-mode-btn');
+    if (selectModeBtn) {
+      const modeVisible = state.currentView === 'table';
+      selectModeBtn.style.display = modeVisible ? 'inline-flex' : 'none';
+      selectModeBtn.disabled = !selectionAvailable;
+      selectModeBtn.textContent = state.selectMode ? 'Done' : 'Select';
+      selectModeBtn.setAttribute('aria-pressed', state.selectMode ? 'true' : 'false');
+      selectModeBtn.classList.toggle('qym-inline-action--neutral', !state.selectMode);
+      selectModeBtn.classList.toggle('qym-inline-action--accent', state.selectMode);
+    }
+    // Keep selection controls coherent even when loading/empty states return early.
+    renderComparePanel();
 
     if (!state.runs) {
       loading.style.display = 'flex';
@@ -4402,6 +4552,7 @@
       if (selectAllCheckbox) {
         selectAllCheckbox.checked = false;
         selectAllCheckbox.indeterminate = false;
+        selectAllCheckbox.disabled = true;
       }
       empty.style.display = 'flex';
       chartsView.style.display = 'none';
@@ -4497,6 +4648,14 @@
     }
   }
 
+  function setQuickFilterSelection(filter) {
+    $$('.filter-btn').forEach(btn => {
+      const active = btn.dataset.filter === filter;
+      btn.classList.toggle('active', active);
+      btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+  }
+
   function clearAllFilters() {
     state.filterTasks.clear();
     state.filterModels.clear();
@@ -4505,7 +4664,7 @@
     state.filterDatasets.clear();
     state.filterUsers.clear();
     state.quickFilter = 'all';
-    $$('.filter-btn').forEach(b => b.classList.toggle('active', b.dataset.filter === 'all'));
+    setQuickFilterSelection('all');
     populateFilterDropdowns();
     render();
   }
@@ -4936,7 +5095,7 @@
 
       // Helper to create info icon with tooltip (same as compare view)
       function infoIcon(tooltip) {
-        return `<span class="stat-info-icon">i<span class="stat-info-tooltip">${tooltip}</span></span>`;
+        return `<button type="button" class="stat-info-icon qym-help-marker" aria-label="More information" aria-expanded="false">i<span class="stat-info-tooltip qym-help-tooltip" role="tooltip">${tooltip}</span></button>`;
       }
 
       function renderModelStatTile(title, value, valueClass = '', tooltip = '') {
@@ -5230,9 +5389,9 @@
     if (!cohortAnchor || !cohortAnchor.length) return true;
 
     if (state.selectedRuns.has(filePath)) return true;
-    if (cohortAnchor.includes(filePath)) {
+    if (cohortAnchor.some(ref => cohortRefsConflict(ref, filePath))) {
       if (showError) {
-        showToast('error', 'Run Already In Cohort A', 'Pick a different run for Cohort B. The two cohorts must be disjoint.');
+        showToast('error', 'Run Already In Cohort A', 'Pick a different run for Cohort B. A whole run and one of its passes cannot face each other.');
       }
       return false;
     }
@@ -5246,11 +5405,25 @@
   }
 
   function toggleSelect(filePath) {
+    state.selectMode = true;
     if (state.selectedRuns.has(filePath)) {
       state.selectedRuns.delete(filePath);
     } else {
       if (!canSelectForCohortB(filePath)) return;
+      // Selecting the whole run supersedes any of its picked passes.
+      for (const ref of Array.from(state.selectedRuns)) {
+        if (isPassRef(ref) && passRefBase(ref) === filePath) state.selectedRuns.delete(ref);
+      }
       state.selectedRuns.add(filePath);
+    }
+    render();
+  }
+
+  function setSelectMode(enabled) {
+    state.selectMode = !!enabled;
+    if (!state.selectMode) {
+      state.selectedRuns.clear();
+      state.cohortAnchorRuns = null;
     }
     render();
   }
@@ -5300,15 +5473,21 @@
   }
 
   function clearSelection() {
+    const restoreTableFocus = !!document.activeElement?.closest?.('#compare-panel, .run-select-control');
     state.selectedRuns.clear();
     state.cohortAnchorRuns = null;
     render();
+    if (restoreTableFocus) el('select-all')?.focus({ preventScroll: true });
   }
 
   function getCohortRunDisplayName(filePath) {
-    const run = state.flatRuns.find(candidate => candidate.file_path === filePath);
+    const base = passRefBase(filePath);
+    const run = state.flatRuns.find(candidate => candidate.file_path === base);
     if (!run) return '';
-    return stripProviderFromRunId(run.run_id || run.run_name || filePath);
+    const name = stripProviderFromRunId(run.run_id || run.run_name || base);
+    if (!isPassRef(filePath)) return name;
+    const passNo = filePath.slice(base.length + PASS_REF_SEP.length);
+    return `${name} · pass ${passNo}`;
   }
 
   function buildCohortLabel(filePaths) {
@@ -5321,22 +5500,9 @@
     return `${labels[0]}, ${labels[1]} +${labels.length - 2}`;
   }
 
-  function toggleGroupSelection(filePaths) {
-    if (!Array.isArray(filePaths) || filePaths.length === 0) return;
-    if (getActiveCohortAnchorRuns()) {
-      showToast('error', 'Group Selection Disabled In Cohort Mode', 'Select Cohort B runs one by one. Cohort mode requires an exact, disjoint set.');
-      return;
-    }
-    const allSelected = filePaths.every(filePath => state.selectedRuns.has(filePath));
-    if (allSelected) {
-      filePaths.forEach(filePath => state.selectedRuns.delete(filePath));
-    } else {
-      filePaths.forEach(filePath => state.selectedRuns.add(filePath));
-    }
-    render();
-  }
-
   function openRun(filePath, e) {
+    sessionStorage.removeItem('compareRuns');
+    sessionStorage.removeItem('compareCohorts');
     sessionStorage.setItem('dashboardRunFile', filePath);
     const url = state.currentProject && state.currentProject.slug
       ? projectUrl(state.currentProject.slug, `runs/${encodeURIComponent(filePath)}`)
@@ -5345,15 +5511,93 @@
   }
 
   function openComparison(e) {
-    if (state.selectedRuns.size < 2) {
+    const files = expandComparisonRefs(Array.from(state.selectedRuns));
+    if (files.length < 2) {
       showToast('error', 'Cannot Compare', 'Select at least 2 runs to compare');
       return;
     }
-    const files = Array.from(state.selectedRuns);
     sessionStorage.removeItem('compareCohorts');
     sessionStorage.setItem('compareRuns', JSON.stringify(files));
     const params = files.map(f => 'runs=' + encodeURIComponent(f)).join('&');
     openUrl(apiUrl('compare?' + params), e);
+  }
+
+  // Cohort unit rule: one unit = one execution. A single run contributes 1,
+  // a repeat run contributes its k passes, and a pass ref
+  // ("<file_path>::pass<N>") contributes exactly 1. The two sides must hold
+  // an equal number of units, whatever mix supplies them.
+  const PASS_REF_SEP = '::pass';
+
+  function passRefBase(ref) {
+    const sep = String(ref).indexOf(PASS_REF_SEP);
+    return sep < 0 ? String(ref) : String(ref).slice(0, sep);
+  }
+
+  function isPassRef(ref) {
+    return String(ref).indexOf(PASS_REF_SEP) >= 0;
+  }
+
+  // Comparison columns represent executions. A repeat-run ref therefore
+  // expands to every stored pass instead of leaking the aggregate item's
+  // latest (final-pass) output into a single misleading column.
+  function expandComparisonRefs(filePaths) {
+    const expanded = [];
+    (filePaths || []).forEach(ref => {
+      if (isPassRef(ref)) {
+        expanded.push(ref);
+        return;
+      }
+      const run = state.flatRuns.find(candidate => candidate.file_path === ref);
+      const samples = Number(run?.samples) || 1;
+      if (samples <= 1) {
+        expanded.push(ref);
+        return;
+      }
+      for (let passNumber = 1; passNumber <= samples; passNumber += 1) {
+        expanded.push(`${ref}${PASS_REF_SEP}${passNumber}`);
+      }
+    });
+    return Array.from(new Set(expanded));
+  }
+
+  function parsePassRef(ref) {
+    if (!isPassRef(ref)) return null;
+    const base = passRefBase(ref);
+    const passNumber = Number(String(ref).slice(base.length + PASS_REF_SEP.length));
+    if (!Number.isInteger(passNumber) || passNumber < 1) return null;
+    return { base, passNumber };
+  }
+
+  function cohortUnitCount(filePaths) {
+    return (filePaths || []).reduce((sum, filePath) => {
+      if (isPassRef(filePath)) return sum + 1;
+      const run = state.flatRuns.find(candidate => candidate.file_path === filePath);
+      const samples = Number(run?.samples) || 1;
+      return sum + (samples > 1 ? samples : 1);
+    }, 0);
+  }
+
+  // A whole run and one of its passes cannot face each other across cohort
+  // sides (the pass is already inside the run). Two different passes of the
+  // same run on opposite sides stay legal.
+  function cohortRefsConflict(a, b) {
+    if (a === b) return true;
+    const aBase = passRefBase(a);
+    if (aBase !== passRefBase(b)) return false;
+    return a === aBase || b === aBase;
+  }
+
+  function togglePassSelection(ref) {
+    if (!ref) return;
+    state.selectMode = true;
+    if (state.selectedRuns.has(ref)) {
+      state.selectedRuns.delete(ref);
+    } else {
+      // A pass and its whole run are exclusive within one selection.
+      state.selectedRuns.delete(passRefBase(ref));
+      state.selectedRuns.add(ref);
+    }
+    render();
   }
 
   function openCohortComparison(e) {
@@ -5366,32 +5610,35 @@
       state.cohortAnchorRuns = selectedFiles;
       state.selectedRuns.clear();
       render();
-      showToast('success', 'Cohort A Locked', `Now select exactly ${selectedFiles.length} run${selectedFiles.length === 1 ? '' : 's'} for Cohort B, then click Open Cohort.`);
+      const units = cohortUnitCount(selectedFiles);
+      showToast('success', 'Cohort A Locked', `Cohort A holds ${units} execution${units === 1 ? '' : 's'}. Select runs totalling ${units} execution${units === 1 ? '' : 's'} for Cohort B, then click Open Cohort.`);
       return;
     }
 
     const left = state.cohortAnchorRuns;
     const right = selectedFiles;
-    if (right.length !== left.length) {
-      showToast('error', 'Cohort B Incomplete', `Cohort A has ${left.length} runs. Select exactly ${left.length} runs for Cohort B before opening the comparison.`);
+    const leftUnits = cohortUnitCount(left);
+    const rightUnits = cohortUnitCount(right);
+    if (rightUnits !== leftUnits) {
+      showToast('error', 'Cohorts Not Balanced', `Cohort A holds ${leftUnits} execution${leftUnits === 1 ? '' : 's'}; the current Cohort B selection holds ${rightUnits}. A repeat run counts as its k passes. Balance the two sides before opening the comparison.`);
       return;
     }
-    if (right.some(file => left.includes(file))) {
+    if (right.some(ref => left.some(l => cohortRefsConflict(l, ref)))) {
       showToast('error', 'Cohorts Must Be Disjoint', 'One or more selected runs are already in Cohort A. Remove them from Cohort B and pick different runs.');
       return;
     }
 
     const cohortPayload = {
-      left,
-      right,
+      left: expandComparisonRefs(left),
+      right: expandComparisonRefs(right),
       leftLabel: buildCohortLabel(left),
       rightLabel: buildCohortLabel(right),
     };
     sessionStorage.setItem('compareCohorts', JSON.stringify(cohortPayload));
-    sessionStorage.setItem('compareRuns', JSON.stringify([...left, ...right]));
+    sessionStorage.setItem('compareRuns', JSON.stringify([...cohortPayload.left, ...cohortPayload.right]));
     const params = new URLSearchParams();
-    left.forEach(file => params.append('cohortA', file));
-    right.forEach(file => params.append('cohortB', file));
+    cohortPayload.left.forEach(file => params.append('cohortA', file));
+    cohortPayload.right.forEach(file => params.append('cohortB', file));
     params.set('cohortALabel', cohortPayload.leftLabel);
     params.set('cohortBLabel', cohortPayload.rightLabel);
     openUrl(apiUrl('compare?' + params.toString()), e);
@@ -5399,9 +5646,13 @@
 
   function confirmDeleteRun(filePath, runId) {
     const modal = el('delete-modal');
+    const titleEl = el('delete-modal-title');
+    const descriptionEl = el('delete-modal-description');
     const runNameEl = el('delete-run-name');
     const confirmBtn = el('confirm-delete-btn');
 
+    if (titleEl) titleEl.textContent = 'Delete run';
+    if (descriptionEl) descriptionEl.textContent = 'Are you sure you want to delete this run?';
     runNameEl.textContent = runId;
     modal.style.display = 'flex';
 
@@ -5440,14 +5691,24 @@
   }
 
   function confirmDeleteSelected() {
-    const count = state.selectedRuns.size;
+    const selectedRefs = Array.from(state.selectedRuns);
+    const count = selectedRefs.length;
     if (count === 0) return;
 
     const modal = el('delete-modal');
+    const titleEl = el('delete-modal-title');
+    const descriptionEl = el('delete-modal-description');
     const runNameEl = el('delete-run-name');
     const confirmBtn = el('confirm-delete-btn');
+    const passRefs = selectedRefs.filter(isPassRef);
+    const runRefs = selectedRefs.filter(ref => !isPassRef(ref));
+    const selectionParts = [];
+    if (runRefs.length) selectionParts.push(`${runRefs.length} run${runRefs.length === 1 ? '' : 's'}`);
+    if (passRefs.length) selectionParts.push(`${passRefs.length} pass${passRefs.length === 1 ? '' : 'es'}`);
 
-    runNameEl.textContent = `${count} run${count > 1 ? 's' : ''} selected`;
+    if (titleEl) titleEl.textContent = 'Delete selection';
+    if (descriptionEl) descriptionEl.textContent = `Are you sure you want to delete the selected ${selectionParts.join(' and ')}?`;
+    runNameEl.textContent = `${selectionParts.join(' and ')} selected`;
     modal.style.display = 'flex';
 
     // Remove old listener and add new one
@@ -5458,11 +5719,48 @@
       newConfirmBtn.disabled = true;
       newConfirmBtn.textContent = 'Deleting...';
 
-      const filePaths = Array.from(state.selectedRuns);
       let successCount = 0;
       let errorCount = 0;
+      const errors = [];
 
-      for (const filePath of filePaths) {
+      const passGroups = new Map();
+      for (const ref of passRefs) {
+        const parsed = parsePassRef(ref);
+        const run = parsed && state.flatRuns.find(candidate => candidate.file_path === parsed.base);
+        if (!parsed || !run || !run.run_id) {
+          errorCount++;
+          errors.push('A selected pass no longer maps to a run');
+          continue;
+        }
+        if (!passGroups.has(run.run_id)) {
+          passGroups.set(run.run_id, { refs: [], passNumbers: [] });
+        }
+        const group = passGroups.get(run.run_id);
+        group.refs.push(ref);
+        group.passNumbers.push(parsed.passNumber);
+      }
+
+      for (const [runId, group] of passGroups) {
+        try {
+          const response = await fetch(apiUrl(`api/runs/${encodeURIComponent(runId)}/passes`), {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ pass_numbers: group.passNumbers }),
+          });
+          const payload = await response.json().catch(() => ({}));
+          if (!response.ok || payload.error) {
+            throw new Error(payload.detail || payload.error || 'Failed to delete selected passes');
+          }
+          successCount += group.refs.length;
+          group.refs.forEach(ref => state.selectedRuns.delete(ref));
+          delete state._samplesData[runId];
+        } catch (error) {
+          errorCount += group.refs.length;
+          errors.push(error.message || 'Failed to delete selected passes');
+        }
+      }
+
+      for (const filePath of runRefs) {
         try {
           const response = await fetch(apiUrl('api/runs/delete'), {
             method: 'POST',
@@ -5475,9 +5773,12 @@
             state.selectedRuns.delete(filePath);
           } else {
             errorCount++;
+            const payload = await response.json().catch(() => ({}));
+            errors.push(payload.detail || payload.error || 'Failed to delete a selected run');
           }
         } catch (err) {
           errorCount++;
+          errors.push(err.message || 'Failed to delete a selected run');
         }
       }
 
@@ -5489,7 +5790,9 @@
       await fetchRuns({ refreshAllPages: true });
 
       if (errorCount > 0) {
-        alert(`Deleted ${successCount} run(s). Failed to delete ${errorCount} run(s).`);
+        showToast('error', 'Selection partially deleted', `Deleted ${successCount}; failed ${errorCount}. ${errors[0] || ''}`);
+      } else {
+        showToast('success', 'Selection deleted', `Deleted ${successCount} selected item${successCount === 1 ? '' : 's'}.`);
       }
     });
   }
@@ -5702,6 +6005,8 @@
   }
 
   function _applyRunsData(data) {
+    if (!dashboardActive) return;
+
     showDashboardChrome();
     state.runs = data;
     if (data && data.project) {
@@ -5754,6 +6059,8 @@
     }
 
     const pages = await Promise.all(pagePromises);
+    if (!dashboardActive) return;
+
     for (const page of pages) {
       if (page) _mergeTasksData(data, page);
     }
@@ -5802,8 +6109,6 @@
   function showDashboardChrome() {
     const commandBar = document.querySelector('.command-bar');
     if (commandBar) commandBar.style.display = '';
-    const comparePanel = el('compare-panel');
-    if (comparePanel) comparePanel.style.display = state.selectedRuns.size ? '' : 'none';
     const footer = document.querySelector('.status-bar');
     if (footer) footer.style.display = '';
     const statsBar = document.querySelector('.stats-bar .stat-cells');
@@ -5888,7 +6193,7 @@
                       <span class="project-hub-card-main">
                         <span class="project-hub-card-name">${escapeHtml(project.name)}</span>
                         <span class="project-hub-card-meta">
-                          <span class="project-hub-pill">${escapeHtml(project.role || '')}</span>
+                          <span class="project-hub-pill qym-tag qym-tag--role role-badge ${escapeHtml(String(project.role || 'member').toLowerCase())}">${escapeHtml(String(project.role || 'MEMBER').toLowerCase().replace(/^./, c => c.toUpperCase()))}</span>
                           <span>${escapeHtml(project.slug || '')}</span>
                         </span>
                       </span>
@@ -5961,6 +6266,8 @@
   }
 
   async function fetchRuns(options = {}) {
+    if (!dashboardActive) return;
+
     const fetchOptions = {
       refreshAllPages: false,
       ...options,
@@ -6011,6 +6318,8 @@
       }
 
       const data = await runsResponse.json();
+      if (!dashboardActive) return;
+
       const totalCount = data.total_count || 0;
       const previousTotalCount = state.runsFetchMeta.totalCount || 0;
       state.runsFetchMeta.totalCount = totalCount;
@@ -6042,6 +6351,7 @@
         state.runsFetchMeta.hasLoadedAllPages = state.flatRuns.length >= totalCount;
       }
     } catch (err) {
+      if (!dashboardActive) return;
       console.error('Failed to fetch runs:', err);
       if (err && err.message === 'Project not found') {
         showProjectNotFound();
@@ -6053,10 +6363,12 @@
       `;
     } finally {
       state.runsFetchMeta.inFlight = false;
-      if (state.runsFetchMeta.pendingOptions) {
+      if (dashboardActive && state.runsFetchMeta.pendingOptions) {
         const pending = state.runsFetchMeta.pendingOptions;
         state.runsFetchMeta.pendingOptions = null;
         fetchRuns(pending);
+      } else if (!dashboardActive) {
+        state.runsFetchMeta.pendingOptions = null;
       }
     }
   }
@@ -6315,7 +6627,7 @@
       btnId: 'filter-status-btn', dropdownId: 'filter-status-dropdown',
       stateSet: state.filterStatuses, values: statusValues,
       labelFn: (s) => isEmptyFilterValue(s) ? 'Empty / Missing' : s.charAt(0) + s.slice(1).toLowerCase(), defaultLabel: 'All Status',
-      showSearch: false,
+      showSearch: true, searchPlaceholder: 'Search statuses...',
     });
 
     // User multi-select
@@ -6384,13 +6696,13 @@
 
   // Clear all filters button
   el('clear-all-filters')?.addEventListener('click', clearAllFilters);
+  el('select-mode-btn')?.addEventListener('click', () => setSelectMode(!state.selectMode));
 
   // Quick filters
   $$('.filter-btn').forEach(btn => {
     btn.addEventListener('click', () => {
-      $$('.filter-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
       state.quickFilter = btn.dataset.filter;
+      setQuickFilterSelection(state.quickFilter);
       state.focusedIndex = -1;
       render();
     });
@@ -6446,16 +6758,13 @@
   });
 
   // Select all checkbox
+  el('select-all')?.addEventListener('click', (e) => e.stopPropagation());
   el('select-all')?.addEventListener('change', selectAll);
-  document.querySelectorAll('[data-table-page="prev"]').forEach(btn => btn.addEventListener('click', () => {
-    setTablePage(state.tablePage - 1, { syncFocus: true });
-    render();
-  }));
-  document.querySelectorAll('[data-table-page="next"]').forEach(btn => btn.addEventListener('click', () => {
-    setTablePage(state.tablePage + 1, { syncFocus: true });
-    render();
-  }));
-
+  // Pass checkboxes live inside re-rendered expansion rows; delegate once.
+  document.addEventListener('change', (e) => {
+    const cb = e.target.closest?.('.pass-checkbox');
+    if (cb) togglePassSelection(cb.dataset.passRef);
+  });
   // Compare actions
   el('compare-view')?.addEventListener('click', openComparison);
   el('cohort-view')?.addEventListener('click', openCohortComparison);
@@ -6464,9 +6773,15 @@
 
   // Keyboard navigation
   document.addEventListener('keydown', (e) => {
-    // Ignore if focused on input
-    if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') {
+    // Keyboard shortcuts must not take over native interactive controls.
+    if (e.target.closest('input, select, textarea, button, a, [contenteditable="true"]')) {
       if (e.key === 'Escape') {
+        const isSelectionControl = !!e.target.closest('#compare-panel, .run-select-control');
+        if (isSelectionControl && state.selectMode) {
+          e.preventDefault();
+          setSelectMode(false);
+          return;
+        }
         e.target.blur();
       }
       return;
@@ -6516,7 +6831,8 @@
         break;
       case 'Escape':
         e.preventDefault();
-        clearSelection();
+        if (state.selectMode) setSelectMode(false);
+        else clearSelection();
         break;
       case '?':
         e.preventDefault();
@@ -6530,7 +6846,7 @@
         if (idx >= 0 && idx < filters.length) {
           e.preventDefault();
           state.quickFilter = filters[idx];
-          $$('.filter-btn').forEach((b, i) => b.classList.toggle('active', i === idx));
+          setQuickFilterSelection(state.quickFilter);
           render();
         }
         break;
@@ -6590,7 +6906,7 @@
         <div class="toast-title">${title}</div>
         ${message ? `<div class="toast-message">${message}</div>` : ''}
       </div>
-      <button class="toast-close">×</button>
+      <button class="toast-close qym-icon-action" type="button" aria-label="Close notification">×</button>
     `;
 
     container.appendChild(toast);
@@ -6737,7 +7053,7 @@
         if (parsed.filterUsers) state.filterUsers = new Set(parsed.filterUsers);
         if (parsed.quickFilter) {
           state.quickFilter = parsed.quickFilter;
-          $$('.filter-btn').forEach(b => b.classList.toggle('active', b.dataset.filter === state.quickFilter));
+          setQuickFilterSelection(state.quickFilter);
         }
         applyChartFirstColWidth(parsed.chartFirstColWidth || CHART_FIRST_COL_DEFAULT_WIDTH);
       } catch (e) {
@@ -6751,7 +7067,16 @@
   // Save state before navigating away
   window.addEventListener('beforeunload', saveDashboardState);
   window.addEventListener('pagehide', saveDashboardState);
-  document.addEventListener('qym:before-navigate', saveDashboardState);
+  function teardownDashboard() {
+    dashboardActive = false;
+    saveDashboardState();
+    state.runsFetchMeta.pendingOptions = null;
+    if (window.__QYM_DASHBOARD_INTERVAL__) {
+      clearInterval(window.__QYM_DASHBOARD_INTERVAL__);
+      window.__QYM_DASHBOARD_INTERVAL__ = null;
+    }
+  }
+  document.addEventListener('qym:before-navigate', teardownDashboard, { once: true });
 
   // Also save on visibility change (for mobile)
   document.addEventListener('visibilitychange', () => {
@@ -6815,6 +7140,7 @@
     window.__QYM_DASHBOARD_INTERVAL__ = null;
   }
   function updateRunsRefreshCadence() {
+    if (!dashboardActive) return;
     try {
       const intervalMs = hasActiveRuns() ? LIVE_REFRESH_INTERVAL_MS : IDLE_REFRESH_INTERVAL_MS;
       if (window.__QYM_DASHBOARD_INTERVAL__) clearInterval(window.__QYM_DASHBOARD_INTERVAL__);
@@ -6827,42 +7153,3 @@
   updateRunsRefreshCadence();
 
 })();
-
-      // Estimator help tooltip: the runs-list strip and sweep cards clip
-      // overflow (and shell ancestors trap position:fixed), so the tooltip
-      // renders in a body-level portal that nothing can clip.
-      (function initEstimatorTooltipPortal() {
-        let portal = null;
-        document.addEventListener('mouseover', (event) => {
-          const icon = event.target && event.target.closest
-            ? event.target.closest('.est-info-icon')
-            : null;
-          if (!icon) {
-            if (portal && (!event.target.closest || !event.target.closest('.est-tooltip-portal'))) {
-              portal.style.display = 'none';
-            }
-            return;
-          }
-          const source = icon.querySelector('.stat-info-tooltip');
-          if (!source) return;
-          if (!portal) {
-            portal = document.createElement('div');
-            portal.className = 'stat-info-tooltip est-tooltip-portal';
-            document.body.appendChild(portal);
-          }
-          portal.textContent = source.textContent;
-          const rect = icon.getBoundingClientRect();
-          portal.style.display = 'block';
-          portal.style.position = 'fixed';
-          const half = 110; // tooltip is 220px wide
-          const viewportWidth = document.documentElement.clientWidth || window.innerWidth;
-          const center = rect.left + rect.width / 2;
-          const left = viewportWidth > 2 * (half + 8)
-            ? Math.max(half + 8, Math.min(viewportWidth - half - 8, center))
-            : center;
-          portal.style.left = Math.round(left) + 'px';
-          portal.style.top = Math.round(rect.top - 8) + 'px';
-          portal.style.bottom = 'auto';
-          portal.style.transform = 'translate(-50%, -100%)';
-        });
-      })();

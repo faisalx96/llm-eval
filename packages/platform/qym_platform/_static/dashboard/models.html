@@ -5,18 +5,20 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>قيِّم • Models</title>
   <link rel="icon" type="image/png" href="/static/qym_icon.png">
-  <link rel="stylesheet" href="/static/dashboard.css">
+  <link rel="stylesheet" href="/static/dashboard.css?v=runs-analysis-c1-20260804-16">
   <link rel="stylesheet" href="/static/shell.css">
   <script src="/static/auth.js"></script>
-  <script src="/static/shell.js"></script>
+  <script src="/static/shell.js?v=ui-consistency-20260730-15"></script>
+  <link rel="stylesheet" href="/static/ui_components.css?v=ui-consistency-20260803-60">
+  <script defer src="/static/ui_components.js?v=ui-consistency-20260803-28"></script>
 </head>
 <body>
   <!-- Command Bar -->
   <div class="command-bar">
-    <div class="quick-filters">
-      <button class="filter-btn active" data-filter="all">All</button>
-      <button class="filter-btn" data-filter="today">Today</button>
-      <button class="filter-btn" data-filter="week">7d</button>
+    <div class="quick-filters qym-segmented" role="group" aria-label="Time range">
+      <button class="filter-btn qym-segmented__option active" data-filter="all" aria-pressed="true">All</button>
+      <button class="filter-btn qym-segmented__option" data-filter="today" aria-pressed="false">Today</button>
+      <button class="filter-btn qym-segmented__option" data-filter="week" aria-pressed="false">7d</button>
     </div>
     <div class="command-bar-filter-row">
       <div class="filter-dropdowns">
@@ -44,7 +46,7 @@
           <button class="multi-select-btn" id="filter-user-btn">All Users</button>
           <div class="multi-select-dropdown" id="filter-user-dropdown"></div>
         </div>
-        <button class="clear-filters-btn" id="clear-all-filters" aria-hidden="true" title="Clear all active filters"><span class="clear-filters-x">&times;</span> Clear <span class="filter-count-badge" id="active-filter-count">0</span></button>
+        <button class="clear-filters-btn" id="clear-all-filters" aria-hidden="true" title="Clear all active filters"><svg class="clear-filters-x" viewBox="0 0 12 12" aria-hidden="true" focusable="false"><path d="M3 3l6 6M9 3 3 9"/></svg><span class="clear-filters-label">Clear</span><span class="filter-count-badge" id="active-filter-count">0</span></button>
       </div>
     </div>
   </div>
@@ -79,7 +81,7 @@
               <label class="filter-label">Pass ≥</label>
               <input type="range" id="models-threshold-slider" class="threshold-slider-inline" min="0" max="100" step="5" value="80">
               <span class="threshold-value" id="models-threshold-value">80%</span>
-              <span class="stat-info-icon threshold-info">i<span class="stat-info-tooltip">Score threshold for Pass@K and Pass^K metrics. Items scoring at or above this threshold are considered "correct".</span></span>
+              <button type="button" class="stat-info-icon qym-help-marker threshold-info" aria-label="Explain the pass threshold" aria-expanded="false">i<span class="stat-info-tooltip qym-help-tooltip" role="tooltip">Score threshold for Pass@K and Pass^K metrics. Items scoring at or above this threshold are considered "correct".</span></button>
             </span>
             <div class="multi-select-wrapper" id="models-stat-visibility-wrapper" style="display:none;">
               <button class="multi-select-btn" id="models-stat-visibility-btn" title="Choose which model summary metrics to show">Shown Metrics</button>
@@ -112,7 +114,7 @@
     <div class="modal-content modal-medium">
       <div class="modal-header">
         <h2>Select Runs for <span id="run-selection-model-name"></span></h2>
-        <button class="modal-close" onclick="document.getElementById('run-selection-modal').style.display='none'">×</button>
+        <button class="modal-close qym-icon-action" aria-label="Close" onclick="document.getElementById('run-selection-modal').style.display='none'">×</button>
       </div>
       <div class="modal-body">
         <p class="modal-description">Choose which runs to include in the comparison. Runs are ordered by most recent first.</p>
@@ -127,6 +129,6 @@
 
   <script>window.__QYM_INITIAL_VIEW__ = 'models';</script>
   <script src="/static/metrics.js"></script>
-  <script src="/static/dashboard.js"></script>
+  <script src="/static/dashboard.js?v=pass-live-progress-20260810-25"></script>
 </body>
 </html>

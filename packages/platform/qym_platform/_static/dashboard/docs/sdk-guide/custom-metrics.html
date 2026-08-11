@@ -173,7 +173,7 @@ def json_validity(output, expected=None):
 </div>
 
 <h3>Guarding against hangs</h3>
-<p>Every metric call is wrapped in a wall-clock budget set by <code>metric_timeout</code> (default <strong>60.0</strong> seconds; see <a href="#sdk-guide/config">Configs &amp; options</a>). A metric that exceeds it is cancelled and recorded as <code>{"score": 0.0, "label": "timeout", "metadata": {"error": "metric timeout after 60.0s"}}</code> so one stuck metric can't hold up the item. Raise <code>metric_timeout</code> for legitimately slow checks, or set it to <code>None</code> to disable the cap. Metrics run with a per-item concurrency of <code>max_metric_concurrency</code> (default <code>1</code>).</p>
+<p>Every metric attempt has a wall-clock budget set by <code>metric_timeout</code> (default <strong>60.0</strong> seconds; see <a href="#sdk-guide/config">Configs &amp; options</a>). A timeout retries up to <code>metric_max_retries</code> (default <strong>2</strong>). If every attempt times out, qym records an ordinary error dict such as <code>{"score": 0, "error": "metric timeout after 60.0s (3 attempts)"}</code>; it is visible in item detail, excluded from the metric mean, and lowers metric success rate. Raise the timeout for legitimately slow checks, lower retries for faster failure, or set <code>metric_timeout=None</code> to disable both. Metrics run with a per-item concurrency of <code>max_metric_concurrency</code> (default <code>1</code>).</p>
 
 <h2>Registering a metric by name</h2>
 <p>For a metric you reuse across runs, register it once at import time and then reference it by string — the same way you use built-ins:</p>

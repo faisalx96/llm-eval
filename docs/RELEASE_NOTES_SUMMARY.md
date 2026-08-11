@@ -1,18 +1,18 @@
 # 🚀 qym — Since v0.9.0 Summary
 
-**📅 March 2026**
+**📅 August 2026**
 
 ---
 
-**Coverage:** this summary groups everything shipped after commit `e2fda02`. The
-current analyzer branch adds the project-scoped changes summarized below; see the
-[full branch record](BRANCH_CHANGES_LLM_ANALYZER.md) for implementation and API
-details.
+**Coverage:** this summary groups everything shipped after commit `e2fda02`. See the
+[full branch record](BRANCH_CHANGES_LLM_ANALYZER.md) for analyzer implementation and
+API details.
 
 ## 🌟 Major Highlights
 
-- 🔁 **Repeat runs & pass@k** *(July 2026)* — `samples=8` evaluates every item 8× as ONE run with Pass@k/Pass^k/Consistency/Reliability, confidence intervals, per-pass storage end-to-end, an accuracy-vs-k curve, and repeat-run UI (×k pills, pass expansion, dot strips); replaces the duplicate-spec duct-tape and the timestamp grouping heuristic
-- 🤖 **AI Evaluator Playground** — preview, test, and run AI analysis with editable prompts, variable mapping, additional instructions, reusable category/detail catalogs, and visible generated context before launching analysis
+- 🔁 **Repeat runs & pass@k** — `samples=n` evaluates every item n times inside one logical run; optional `report_k=k` publishes unbiased Pass@k/Pass^k subset estimates while all n executions remain available for averages, stability, resume, and pass-level review
+- ⚖️ **Noise-aware cohorts** — execution-balanced cohort comparisons support whole runs and selected pass references, with luck bands, p-values, and **Improved / Regressed / Within noise** Sweep verdicts
+- 🤖 **AI Evaluator Playground** — preview, test, and run AI analysis with editable prompts, variable mapping, additional instructions, reusable category/detail catalogs, and visible few-shot examples before launching analysis
 - 🧭 **Project-scoped metric-aware analyzer** — choose several metrics, supply bounded reference documents, generate versioned analyzer rules, and preserve a separate diagnosis/review candidate for each item/metric target
 - 🧠 **Structured analysis workflow** — root-cause analysis expanded from a single label into **category + detail + note + solution + solution note**, with inline editing across run and compare views
 - ✅ **Corrections review system** — a dedicated review queue now supports approval states, inline edits, bulk moderation, immutable revision history, metric-scoped candidates, and approved evidence for rule generation
@@ -33,6 +33,9 @@ details.
 
 ## 🖥️ Run & Compare Views
 
+- Repeat experiments stay as ordinary `×n` run rows; expansion reveals estimator-labelled group metrics and real pass rows with scores, latency, status, deep links, and pass selection
+- Cohorts balance execution units rather than row count: an ordinary run contributes one, a repeat run contributes its `samples`, and a selected `<file_path>::passN` reference contributes one
+- Expanded items use toggleable output cards per pass or compared run, with execution-level verdicts, traces, editable scores, and aligned per-execution judge details; nested AND/OR filters support multi-metric drill-down
 - Run pages can be exported as self-contained HTML, reopened offline, edited locally, and re-downloaded with annotations baked in
 - Compare and run views now show separate badges for root-cause detail, root-cause category, and solution, plus solution Sankey visualizations and detail-aware summaries
 - Domain drill-down now supports AND matching plus an exclusive mode for sole-domain items, and breakdown cards stay aligned with current item filters
@@ -61,6 +64,7 @@ details.
 
 ## 🧰 SDK, CLI & Platform
 
+- The SDK supports `report_k` in repeat and group analysis, exact combinatorial Pass@k/Pass^k estimators, item-clustered confidence intervals, and analytic execution-luck reports for cohort deltas
 - The CLI now provides `qym run`, `qym analyze`, `qym metric`, and `qym config` command groups, `--json` output, legacy command rewriting, and `qym run tasks`
 - Platform task listings can hide configured tasks from both the CLI and dashboard
 - The SDK auto-detects git branch/commit, defaults timeout to `300s`, retries failed items up to `2` times with exponential backoff + jitter, and streams `retry_count` metadata to the platform
@@ -71,5 +75,6 @@ details.
 
 ## 🗃️ Data & Workflow
 
+- Repeat-run storage preserves pass-scoped outputs, attempts, scores, and judge metadata; cached metric curves use score signatures so edits trigger recomputation
 - New migrations persist solution fields, root-cause detail fields, correction approval state, root-cause revision history, run created-at indexing, `PENDING` / `STOPPED` statuses, metric `label` / `explanation` columns, **spans table** (`0011`), and **span links** (`0012`)
 - Platform ingest and event handling now preserve retry metadata, metric labels/explanations, correctly dispatch final status payloads, and handle `span_completed` events with savepoint transactions for safety

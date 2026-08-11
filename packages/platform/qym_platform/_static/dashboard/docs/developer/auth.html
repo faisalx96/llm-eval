@@ -129,11 +129,11 @@ QYM_API_KEY=AbCdEfGh...the-full-token...</pre>
 <div class="docs-callout tip"><svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg><p><span class="docs-callout-title">No key needed for local CSV runs.</span> Streaming to the platform is optional. You can run an evaluation entirely offline and results still save to <code>qym_results/</code> — see <a href="#sdk-guide/results">Results, artifacts &amp; tracing</a>. The API key only matters once you want runs to appear in the dashboard.</p></div>
 
 <h3>Self-signed or internal CA certificates</h3>
-<p>If your deployment serves HTTPS with an internal or self-signed certificate, point the client at your CA bundle so TLS verification succeeds:</p>
+<p>If your deployment serves HTTPS with an internal or self-signed certificate, point SDK streaming and CLI HTTP calls at your CA bundle so TLS verification succeeds:</p>
 
 <pre data-lang="bash">QYM_PLATFORM_CA_BUNDLE=/path/to/internal-ca.pem</pre>
 
-<p>The client falls back to <code>QYM_CA_BUNDLE</code> if <code>QYM_PLATFORM_CA_BUNDLE</code> is unset. As a last resort for local troubleshooting only, disable verification with <code>QYM_PLATFORM_SSL_VERIFY=false</code> (it falls back to <code>QYM_SSL_VERIFY</code>). Never disable verification in production.</p>
+<p>The client falls back to <code>QYM_CA_BUNDLE</code> if <code>QYM_PLATFORM_CA_BUNDLE</code> is unset. As a last resort for local troubleshooting only, disable verification with <code>QYM_PLATFORM_SSL_VERIFY=false</code> (it falls back to <code>QYM_SSL_VERIFY</code>). Never disable verification in production. The current <code>QymDataset</code> download path uses Python's default trust store instead, so private CAs must also be installed there.</p>
 
 <h2>Browser session authentication (deployment auth modes)</h2>
 <p>Dashboard requests are authenticated by the <code>require_ui_principal</code> dependency, whose behavior is set by the deployment's <code>auth_mode</code> setting. This is chosen by whoever operates the platform, not by API callers.</p>
@@ -143,11 +143,17 @@ QYM_API_KEY=AbCdEfGh...the-full-token...</pre>
   <tbody>
     <tr><td><code>none</code></td><td>Local/dev: no identity required. Every request runs as a stable <code>dev@local</code> admin user. The default.</td></tr>
     <tr><td><code>proxy_headers</code></td><td>A trusted reverse proxy injects the user's identity via <code>X-User-Email</code> (or <code>X-Email</code>). With <code>auto_provision_users</code> on (the default), an unknown but proxy-asserted email is created on first sight.</td></tr>
-    <tr><td><code>oidc</code></td><td>Native single sign-on. Unauthenticated dashboard requests get <code>401 Not authenticated</code>.</td></tr>
+    <tr><td><code>oidc</code></td><td>Native Google and/or GitHub sign-in when their client credentials are configured. Unauthenticated dashboard requests get <code>401 Not authenticated</code>. Generic OIDC, SAML, and other SSO providers are not implemented.</td></tr>
   </tbody>
 </table>
 
-<p>A one-time <strong>first-admin bootstrap</strong> is also supported: when no users exist yet, a request carrying <code>X-Admin-Bootstrap</code> equal to the configured <code>admin_bootstrap_token</code> (plus an <code>X-User-Email</code>) provisions the first admin.</p>
+<p>Set <code>QYM_AUTH_LOCAL_ENABLED=true</code> to add email/password signup and login alongside <code>proxy_headers</code> or <code>oidc</code>. Any session-enabled configuration requires <code>QYM_AUTH_SESSION_SECRET</code>. Session cookies are HTTPS-only outside <code>dev</code>, <code>test</code>, and <code>local</code> environments, and browser state-changing requests must pass the platform's same-origin check.</p>
+
+<p>First-admin bootstrap depends on the auth path:</p>
+<ul>
+  <li><strong>Proxy headers:</strong> when no user exists, send <code>X-Admin-Bootstrap: &lt;QYM_ADMIN_BOOTSTRAP_TOKEN&gt;</code> with <code>X-User-Email</code>.</li>
+  <li><strong>OIDC or local password:</strong> sign in first, then call <code>POST /v1/auth/bootstrap-admin</code> with <code>{"bootstrap_token": "..."}</code>. It promotes the current user only while no active admin exists.</li>
+</ul>
 
 <div class="docs-callout warn"><svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><p><span class="docs-callout-title">An API key cannot stand in for a session.</span> Endpoints that manage projects, members, API keys, or run review require <code>require_ui_principal</code> — a Bearer key will not satisfy them. Conversely, run ingestion requires an API key and will not accept a session. Choose the credential that matches the endpoint.</p></div>
 

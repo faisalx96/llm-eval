@@ -30,11 +30,11 @@ print(CsvDataset)</pre>
 
 <h2>Optional: LLM-as-judge metrics</h2>
 <p>The seven built-in <strong>code metrics</strong> ship with the base install and need nothing extra: <code>exact_match</code>, <code>contains</code>, <code>fuzzy_match</code>, <code>response_time</code>, <code>token_count</code>, <code>correctness</code>, and <code>faithfulness</code>.</p>
-<p>The seven <strong>LLM-as-judge metrics</strong> — <code>relevance</code>, <code>faithfulness_llm</code>, <code>correctness_llm</code>, <code>conciseness</code>, <code>hallucination</code>, <code>toxicity</code>, and <code>tool_calling</code> — are gated behind the <code>openai</code> package. qym imports them only if <code>openai</code> is installed; without it, those names are simply absent from the metric registry. Install it with:</p>
+<p>The seven <strong>LLM-as-judge metrics</strong> — <code>relevance</code>, <code>faithfulness_llm</code>, <code>correctness_llm</code>, <code>conciseness</code>, <code>hallucination</code>, <code>toxicity</code>, and <code>tool_calling</code> — are always present in the metric registry, but calling one requires the optional <code>openai</code> client. Install it separately:</p>
 <pre data-lang="bash">pip install openai</pre>
 <div class="docs-callout warn">
   <svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-  <p><span class="docs-callout-title">About <code>pip install qym[judges]</code>.</span> If you call a judge without <code>openai</code> installed, the error message suggests <code>pip install qym[judges]</code>. That extra resolves to the same dependency — the <code>openai</code> package — so <code>pip install openai</code> is the reliable command. Judges also need runtime configuration (a model and an API key); see <a href="#sdk-guide/judges">LLM-as-judge &amp; pairwise</a> for judge setup.</p>
+  <p><span class="docs-callout-title">There is no <code>qym[judges]</code> extra.</span> Install <code>openai</code> directly. Judges also need runtime configuration (a model and an API key); see <a href="#sdk-guide/judges">LLM-as-judge &amp; pairwise</a> for judge setup.</p>
 </div>
 <p>The judges use any OpenAI-compatible Chat Completions endpoint (OpenAI, vLLM, Ollama, and similar), so a self-hosted model works as long as the <code>openai</code> client can reach it.</p>
 
@@ -92,7 +92,7 @@ export QYM_JUDGE_BASE_URL=https://api.openai.com/v1</pre>
     </tr>
     <tr>
       <td>Judge metric raises <code>ImportError</code></td>
-      <td>The <code>openai</code> package is missing. Run <code>pip install openai</code>. The error text suggests <code>pip install qym[judges]</code>, which installs the same dependency.</td>
+      <td>The <code>openai</code> package is missing. Run <code>pip install openai</code>.</td>
     </tr>
     <tr>
       <td>Judge metric raises <code>RuntimeError</code> before scoring</td>
@@ -100,7 +100,7 @@ export QYM_JUDGE_BASE_URL=https://api.openai.com/v1</pre>
     </tr>
     <tr>
       <td><code>Metric 'X' not found. Available metrics: ...</code></td>
-      <td>Either a typo in the metric name, or a judge metric requested without <code>openai</code> installed (judge names only register when <code>openai</code> is present). Check the spelling against the listed names.</td>
+      <td>The name is not registered. Check its spelling or import the module that calls <code>register_metric</code>. Built-in judge names remain registered even when <code>openai</code> is absent.</td>
     </tr>
     <tr>
       <td>Platform runs don't appear</td>

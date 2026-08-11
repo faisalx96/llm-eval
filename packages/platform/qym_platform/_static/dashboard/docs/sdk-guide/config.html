@@ -73,14 +73,16 @@ result = Evaluator(
     <tr><td><code>max_concurrency</code></td><td><code>int</code> (≥1)</td><td><code>10</code></td><td>How many dataset items run at once. Lower it for provider rate limits; raise it once the run is stable.</td></tr>
     <tr><td><code>max_metric_concurrency</code></td><td><code>int</code> (≥1)</td><td><code>1</code></td><td>How many metrics evaluate concurrently per item. Raise it when metrics call external services.</td></tr>
     <tr><td><code>timeout</code></td><td>optional <code>float</code> (&gt;0)</td><td><code>300</code></td><td>Wall-clock cap per task item, in seconds. Set <code>None</code> only when you trust the task never to hang.</td></tr>
-    <tr><td><code>metric_timeout</code></td><td>optional <code>float</code> (&gt;0)</td><td><code>60.0</code></td><td>Hard wall-clock cap per metric call. A metric that exceeds it is cancelled and recorded as score <code>0</code> with a timeout label, so one hung metric (e.g. an LLM judge that never returns) cannot hold an item hostage. Set <code>None</code> to disable.</td></tr>
+    <tr><td><code>metric_timeout</code></td><td>optional <code>float</code> (&gt;0)</td><td><code>60.0</code></td><td>Wall-clock cap for each metric attempt. A timeout is retried; after the final attempt it is recorded through the normal metric-error path as score <code>0</code> plus an <code>error</code>, so it is visible but excluded from the metric mean. Set <code>None</code> to disable the cap and timeout retries.</td></tr>
+    <tr><td><code>metric_max_retries</code></td><td><code>int</code> (&ge;0)</td><td><code>2</code></td><td>Retries after a metric attempt reaches <code>metric_timeout</code>. The default allows three total attempts. This is separate from <code>max_retries</code>, which retries the task itself.</td></tr>
     <tr><td><code>max_retries</code></td><td><code>int</code> (≥0)</td><td><code>2</code></td><td>Retries on task failure. Use <code>0</code> for deterministic smoke tests and debugging.</td></tr>
     <tr><td><code>samples</code></td><td><code>int</code> (≥1)</td><td><code>1</code></td><td>Repeat runs: evaluate every item k times (k sequential passes) as ONE run and report <code>Pass@k</code>/<code>Pass^k</code>/Consistency/Reliability. See <a href="#sdk-guide/repeats">Repeat runs &amp; pass@k</a>.</td></tr>
+    <tr><td><code>report_k</code></td><td>optional <code>int</code> (≥1)</td><td><code>None</code></td><td>Publish Pass@k and Pass^k at a subset size no larger than <code>samples</code>, using unbiased estimates from all stored passes. Other repeat statistics still use the full pass pool.</td></tr>
     <tr><td><code>interrupt_grace_seconds</code></td><td><code>float</code></td><td><code>2.0</code></td><td>Grace window for cleanup and final-status emission when a run is interrupted.</td></tr>
   </tbody>
 </table>
 
-<div class="docs-callout tip"><svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg><p><span class="docs-callout-title">The default <code>metric_timeout</code> is 60 seconds, not 120.</span> That comfortably covers a healthy LLM judge (typically 5-30s) while still catching a hung upstream within about a minute. Bump it explicitly for genuinely slow custom metrics.</p></div>
+<div class="docs-callout tip"><svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg><p><span class="docs-callout-title">Timeout budget is per attempt.</span> With the defaults, one permanently hung metric can consume about three minutes before it is recorded as an error: <code>60s &times; (2 retries + 1)</code>. Tune <code>metric_timeout</code> and <code>metric_max_retries</code> together for your provider and CI budget.</p></div>
 
 <h3>Output, checkpointing &amp; recovery</h3>
 <table>
@@ -174,7 +176,7 @@ result = Evaluator(
 <div class="docs-callout warn"><svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><p><span class="docs-callout-title">Prefer a CA bundle over disabling verification.</span> Setting <code>QYM_PLATFORM_SSL_VERIFY=0</code> turns off certificate checks entirely. Point <code>QYM_PLATFORM_CA_BUNDLE</code> at your internal CA instead whenever you can.</p></div>
 
 <h3>Judge metrics</h3>
-<p>LLM-as-judge metrics (the <code>[judges]</code> extra) read their provider configuration from the environment. See <a href="#sdk-guide/judges">LLM-as-judge</a> for the full behavior.</p>
+<p>LLM-as-judge metrics use the separately installed <code>openai</code> client and read their provider configuration from the environment. See <a href="#sdk-guide/judges">LLM-as-judge</a> for the full behavior.</p>
 <table>
   <thead><tr><th>Variable</th><th>Falls back to</th><th>Notes</th></tr></thead>
   <tbody>

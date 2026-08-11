@@ -1,10 +1,21 @@
 # 🚧 qym — Since v0.9.0
 
-**📅 March 2026**
+**📅 August 2026**
 
 ---
 
-The entries below cover every commit after `e2fda02`, in chronological order (through `548e15a`).
+The entries below cover the shipped work after `e2fda02` through `067cc6e`. The current consolidated entry is followed by the preserved historical commit notes.
+
+---
+
+### August 2026 — Estimator-aware repeats, balanced cohorts, and unified item review
+
+- 🎯 **Collected n, reported k** — repeat experiments remain one logical `samples=n` run, while optional `report_k=k` publishes unbiased Pass@k and Pass^k from every possible k-pass subset of the larger stored pool; Avg, Max, Consistency, and Reliability continue to use all n executions
+- 📐 **Uncertainty that matches the experiment** — repeat means use item-clustered bootstrap intervals, platform curves persist deterministic 95% item-bootstrap bands when at least 20 items are eligible, and score edits invalidate the cached analysis
+- ⚖️ **Noise-aware decisions** — cohort comparisons now report metric deltas with execution-luck bands, two-sided p-values, and **Improved / Regressed / Within noise** verdicts; the Sweep view labels estimated Pass@k values and explains that “within noise” is insufficient evidence, not equality
+- 🧮 **Execution-balanced cohorts** — cohort sides balance executions rather than rows: an ordinary run counts as one, a repeat run counts as its `samples`, and a completed pass can be selected independently through a `<file_path>::passN` reference
+- 🧭 **Current repeat workflow** — the Runs table keeps each repeat experiment as one ordinary `×n` row and expands to group metrics plus real pass rows; completed passes deep-link into detail and can join cohorts directly
+- 🔎 **Unified item review** — item rows stay compact until expanded, then expose independently toggleable output cards per pass or compared run, execution-level verdicts and traces, editable metric scores, and aligned per-execution judge details; nested AND/OR filters support multi-metric investigation
 
 ---
 
@@ -43,8 +54,8 @@ metric-aware analysis workspace. The complete developer/operator record is in
 - 🔁 **Native repeat runs** — `Evaluator(..., samples=8)` (or `qym run create --samples 8`) evaluates every dataset item 8 times as **one logical run**: k sequential passes with progressive per-pass metrics in the live TUI, per-(item, pass) checkpointing and resume, and the group set — **Pass@k, Pass^k, Avg@k, Max@k, Consistency, Reliability** — reported automatically
 - 🎯 **Any k after the fact** — all passes are stored, so `result.pass_at(3)` / `result.pass_hat(3)` compute unbiased Pass@k/Pass^k for any k ≤ samples without re-running; `get_metric_stats()` gains bootstrap 95% CIs when sampling
 - 🗄️ **Pass-aware platform storage** — migration `0023_repeat_runs` adds `runs.samples`, pass-scoped attempts (with per-pass outputs), and the `run_item_pass_scores` table; `run_item_scores` keeps one reduced-mean row per item/metric so every existing view keeps working, and old SDKs ingest unchanged
-- 📊 **Repeat-run UI** — runs list shows one row per repeat run with a `×k` pill, `±CI` beside metric means, live `pass j/k` badges, and an expandable per-pass breakdown; run detail gains a **Samples analysis** card with an accuracy-vs-k curve (Pass@k vs Pass^k), a per-pass table, and per-item pass-dot strips; models-view group analysis pools attempts across selected runs
-- 🧹 **Duct-tape retired** — duplicating a run spec k times for pass@k is deprecated (the SDK warns "did you mean samples=k?"), the timestamp grouping heuristic is gated to legacy runs, and product-eval presets now run one `samples=k` run instead of k parallel runs (API contract unchanged)
+- 📊 **Repeat-run UI** — the runs list keeps one row per repeat run with an `×k` tag and expandable pass rows; run detail provides estimator-labelled group tiles, Pass@k/Pass^k curves, pass-count distributions, sweep rows, and pass-aware item outputs
+- 🧹 **Duct-tape retired** — duplicating a run spec k times for pass@k is deprecated (the SDK warns "did you mean samples=k?"), and product-eval presets run one `samples=k` experiment instead of k parallel runs (API contract unchanged)
 
 ---
 

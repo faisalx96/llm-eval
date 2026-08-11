@@ -99,7 +99,7 @@ register_metric("valid_json", valid_json)
 <h2>LLM-as-judge</h2>
 <p><strong>What it is.</strong> An LLM scores a single output against criteria expressed in a prompt, returning a verdict that maps to a number. Use the seven prebuilt judges or build your own with <code>create_judge</code>.</p>
 <p><strong>When to use it.</strong> When "good" is semantic and no deterministic rule captures it — relevance, faithfulness, tone, helpfulness. Add judges <em>after</em> the deterministic loop already works, since they are slower, cost money, and are non-deterministic.</p>
-<p><strong>Inputs they need.</strong> Judges require the optional <code>openai</code> extra and judge credentials (see callout). The prebuilt judges read these item fields via their prompt templates:</p>
+<p><strong>Inputs they need.</strong> Judges require the optional <code>openai</code> client and judge credentials (see callout). The prebuilt judges read these item fields via their prompt templates:</p>
 <table>
   <thead><tr><th>Judge</th><th>Reads</th><th>Labels &rarr; score</th></tr></thead>
   <tbody>
@@ -133,7 +133,7 @@ helpfulness = create_judge(
 result = Evaluator(task, dataset, metrics=[helpfulness]).run(show_tui=False)</pre>
 <div class="docs-callout warn">
   <svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-  <p><span class="docs-callout-title">Setup &amp; template footguns.</span> Judges need <code>pip install qym[judges]</code> (missing &rarr; <code>ImportError</code>). The judge config <code>validate()</code> raises <code>RuntimeError</code> if the model or API key is missing — there is no default model. A prompt placeholder with no matching key (e.g. <code>{context}</code> when the item has no <code>context</code>) is left as <strong>literal text</strong> — it does not error — so confirm your dataset actually carries the fields a judge reads.</p>
+  <p><span class="docs-callout-title">Setup &amp; prompt validation.</span> Judges need <code>pip install openai</code> (missing &rarr; <code>ImportError</code>). The judge config <code>validate()</code> raises <code>RuntimeError</code> if the model or API key is missing. A prompt placeholder with no matching key raises <code>JudgeInputError</code> before the LLM call; align dataset fields or use <code>input_mapping</code>.</p>
 </div>
 <p><strong>Limitations.</strong> Cost, latency, and non-determinism (even at temperature 0). A judge is only as good as its prompt and label set, and can be miscalibrated or biased. Treat judge scores as evidence to review, not ground truth. Full details in <a href="#sdk-guide/judges">LLM-as-judge &amp; pairwise judging</a>.</p>
 
@@ -156,7 +156,7 @@ vs_reference = create_pairwise_judge(
 )
 # output_b defaults to the item's `expected`; the verdict maps A=1.0 / B=0.0 / tie=0.5
 result = Evaluator(task, dataset, metrics=[vs_reference]).run(show_tui=False)</pre>
-<p><strong>Limitations.</strong> A single A/B call can have position bias (which answer is shown first), and a per-item pairwise score is not a calibrated quality number — it only says A beat B on this item. It needs both outputs available at scoring time. Like all judges, it requires the <code>[judges]</code> extra and judge credentials.</p>
+<p><strong>Limitations.</strong> A single A/B call can have position bias (which answer is shown first), and a per-item pairwise score is not a calibrated quality number — it only says A beat B on this item. It needs both outputs available at scoring time. Like all judges, it requires the <code>openai</code> client and judge credentials.</p>
 
 <h2>Multi-run / group analysis (Pass@K)</h2>
 <p><strong>What it is.</strong> A <em>statistical</em> way to evaluate: run the same dataset multiple times (e.g. a non-deterministic system K times), then aggregate per-item scores across runs to measure not just average quality but <strong>consistency</strong> and <strong>reliability</strong>. This is the only method that operates on a group of results rather than a single output.</p>
@@ -208,8 +208,8 @@ results = Evaluator.run_parallel(
   <tbody>
     <tr><td>Code metrics</td><td>No</td><td>Yes</td><td>output, expected (+ context)</td><td><code>metrics=["name"]</code></td></tr>
     <tr><td>Custom callables</td><td>Your choice</td><td>Your choice</td><td>whatever you declare</td><td><code>metrics=[fn]</code></td></tr>
-    <tr><td>LLM-as-judge</td><td>Yes (<code>[judges]</code>)</td><td>No</td><td>output + named fields</td><td><code>metrics=["relevance"]</code> / <code>create_judge</code></td></tr>
-    <tr><td>Pairwise judging</td><td>Yes (<code>[judges]</code>)</td><td>No</td><td>output_a + output_b</td><td><code>create_pairwise_judge</code></td></tr>
+    <tr><td>LLM-as-judge</td><td>Yes (<code>openai</code>)</td><td>No</td><td>output + named fields</td><td><code>metrics=["relevance"]</code> / <code>create_judge</code></td></tr>
+    <tr><td>Pairwise judging</td><td>Yes (<code>openai</code>)</td><td>No</td><td>output_a + output_b</td><td><code>create_pairwise_judge</code></td></tr>
     <tr><td>Group analysis</td><td>No (post-hoc)</td><td>Yes</td><td>a list of results</td><td><code>analyze_group_runs(...)</code></td></tr>
   </tbody>
 </table>

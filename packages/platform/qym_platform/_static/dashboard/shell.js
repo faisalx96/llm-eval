@@ -671,7 +671,7 @@
       + '<div class="shell-modal">'
       +   '<div class="shell-modal-header">'
       +     '<div class="shell-modal-title">Create Project</div>'
-      +     '<button class="shell-modal-close" type="button">&times;</button>'
+      +     '<button class="shell-modal-close qym-icon-action" type="button" aria-label="Close">&times;</button>'
       +   '</div>'
       +   '<div class="shell-modal-body">'
       +     '<div class="shell-form-group">'
@@ -778,7 +778,7 @@
         + '<div class="shell-modal" role="dialog" aria-modal="true" aria-labelledby="shell-confirm-title">'
         +   '<div class="shell-modal-header">'
         +     '<div class="shell-modal-title" id="shell-confirm-title">' + esc(options.title || 'Confirm Action') + '</div>'
-        +     '<button class="shell-modal-close" type="button" aria-label="Close">&times;</button>'
+        +     '<button class="shell-modal-close qym-icon-action" type="button" aria-label="Close">&times;</button>'
         +   '</div>'
         +   '<div class="shell-modal-body">'
         +     descriptions.map(function (line) {
@@ -941,7 +941,7 @@
         + '<div class="shell-modal" role="dialog" aria-modal="true" style="width:' + (options.width || 480) + 'px;">'
         +   '<div class="shell-modal-header">'
         +     '<div class="shell-modal-title">' + esc(options.title || 'Form') + '</div>'
-        +     '<button class="shell-modal-close" type="button" aria-label="Close">&times;</button>'
+        +     '<button class="shell-modal-close qym-icon-action" type="button" aria-label="Close">&times;</button>'
         +   '</div>'
         +   '<div class="shell-modal-body">'
         +     descHtml
@@ -1053,7 +1053,7 @@
       +       (options.subtitle ? '<div class="shell-drawer-subtitle" id="shell-drawer-subtitle">' + esc(options.subtitle) + '</div>' : '<div class="shell-drawer-subtitle" id="shell-drawer-subtitle"></div>')
       +     '</div>'
       +     '<div class="shell-drawer-actions" id="shell-drawer-actions"></div>'
-      +     '<button class="shell-modal-close shell-drawer-close" type="button" aria-label="Close">&times;</button>'
+      +     '<button class="shell-modal-close shell-drawer-close qym-icon-action" type="button" aria-label="Close">&times;</button>'
       +   '</div>'
       +   '<div class="shell-drawer-body" id="shell-drawer-body"></div>'
       +   '<div class="shell-drawer-footer" id="shell-drawer-footer" style="display:none;"></div>'
@@ -1092,7 +1092,7 @@
         if (!a) return;
         var btn = document.createElement('button');
         btn.type = 'button';
-        btn.className = 'shell-drawer-header-action';
+        btn.className = 'shell-drawer-header-action qym-icon-action';
         btn.innerHTML = esc(a.icon || a.label || '');
         var tip = a.tooltip || a.title;
         if (tip) { btn.title = tip; btn.setAttribute('aria-label', tip); }
@@ -1188,6 +1188,7 @@
         if (userPopover) userPopover.classList.remove('open');
       }
     });
+
   }
 
   // ══════════════════════════════════════════════════
@@ -1310,12 +1311,15 @@
     // Remove old page-specific styles
     document.querySelectorAll('style[data-shell-page]').forEach(function (s) { s.remove(); });
 
-    // Inject new page-specific styles
+    // Keep route-local rules before the canonical component layer. Appending
+    // them to <head> made legacy page CSS win only after client-side
+    // navigation, even though a full load had the correct source order.
+    var sharedComponentsLink = document.querySelector('link[href*="ui_components.css"]');
     newStyles.forEach(function (style) {
       var s = document.createElement('style');
       s.setAttribute('data-shell-page', '1');
       s.textContent = style.textContent;
-      document.head.appendChild(s);
+      document.head.insertBefore(s, sharedComponentsLink || null);
     });
 
     var fragment = document.createDocumentFragment();
@@ -1455,6 +1459,13 @@
   function init() {
     // Skip if already initialized
     if (document.getElementById('qym-app')) return;
+
+    // The inline styles present on the initial full-page load belong to that
+    // route. Mark them so the first client-side navigation removes them just
+    // like styles injected by later navigations.
+    document.querySelectorAll('head > style:not([data-shell-page])').forEach(function (style) {
+      style.setAttribute('data-shell-page', '1');
+    });
 
     // Parse current route
     _routeCtx = parseRoute();

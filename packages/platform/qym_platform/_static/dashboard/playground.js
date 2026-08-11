@@ -15,24 +15,12 @@ window.QymPlayground = (function () {
   var _previewTimer = null;
   var _matchedPage = 0;
   var _PAGE_SIZE = 10;
-  var _CATEGORY_PAGE_SIZE = 10;
-  var _categoryNavigationQuery = '';
-  var _selectedTarget = null;
+  var _selectedItemId = null;
   var _customVars = [];
   var _configUnlocked = false;
   var _referenceDocuments = [];
-  var _selectedApprovedExampleIds = new Set();
-  var _selectedApprovedExampleFields = new Set();
-  var _selectedApprovedExampleCharacters = 0;
-  var _approvedExampleCharacterById = {};
-  var _examplePickerOverlay = null;
-  var _examplePickerState = null;
-  var _examplePickerOpener = null;
   var _analysisRules = [];
-  var _analysisRulesPage = 1;
-  var _RULES_PAGE_SIZE = 10;
   var _editingRuleIndex = null;
-  var _analysisRuleSearch = '';
   var _ruleVersions = [];
   var _selectedRuleVersionId = null;
   var _canDeleteRuleVersions = false;
@@ -40,379 +28,19 @@ window.QymPlayground = (function () {
   var _canRestoreRuleVersions = false;
   var _documentUploadsInFlight = 0;
   var _contextFeedbackTimer = null;
-  var _analysisRuleSaveTimer = null;
   var _ruleCompareOriginalParent = null;
   var _ruleCompareOriginalNextSibling = null;
-  var _analysisJobId = null;
-  var _analysisPollTimer = null;
-  var _analysisPollGeneration = 0;
-  var _analysisCancelRequested = false;
-
-  // Keep the examples picker on the same field-toggle convention used by
-  // Variable Mapping. These are the fields already projected into the writer
-  // payload; no separate field-discovery request is needed.
-  var _APPROVED_EXAMPLE_FIELD_DEFINITIONS = [
-    { key: 'input', label: 'Input' },
-    { key: 'expected', label: 'Expected output' },
-    { key: 'output', label: 'Actual output' },
-    { key: 'previous_ai_root_cause', label: 'Previous AI root cause' },
-    { key: 'previous_ai_root_causes', label: 'Previous AI root causes' },
-    { key: 'approved_root_cause', label: 'Approved root cause' },
-    { key: 'approved_root_causes', label: 'Approved root causes' },
-    { key: 'approved_detail', label: 'Approved detail' },
-    { key: 'reviewer_reasoning', label: 'Reviewer reasoning' },
-  ];
-
-  function _approvedExampleFieldKeys() {
-    return _APPROVED_EXAMPLE_FIELD_DEFINITIONS.map(function (field) { return field.key; });
-  }
-
-  function _approvedExampleFieldMap(fields) {
-    var selected = fields || _selectedApprovedExampleFields;
-    var result = {};
-    _approvedExampleFieldKeys().forEach(function (key) {
-      result[key] = selected.has(key);
-    });
-    return result;
-  }
-
-  function _analysisProgressNodes() {
-    return {
-      progress: document.getElementById('pg-runall-progress'),
-      fill: document.getElementById('pg-runall-progress-fill'),
-      progressText: document.getElementById('pg-runall-progress-text'),
-      subtext: document.getElementById('pg-runall-progress-subtext'),
-      button: document.getElementById('pg-runall-btn'),
-    };
-  }
-
-  function _analysisCategoryCount(data) {
-    var categories = data && data.categories;
-    if (Array.isArray(categories)) return categories.length;
-    if (!categories || typeof categories !== 'object') return 0;
-    return Object.keys(categories).length;
-  }
-
-  function _runLinkMarkup() {
-    var href = _opts.getRunUrl ? _opts.getRunUrl() : '';
-    if (!href) return '';
-    return '<a class="qym-inline-action qym-inline-action--neutral pg-runall-open-run" href="' + _escAttr(href) +
-      '">View run</a>';
-  }
-
-  function _updateAnalysisProgress(progressState) {
-    var nodes = _analysisProgressNodes();
-    var state = progressState || {};
-    var total = Number(state.total || 0);
-    var completed = Number(state.completed || 0);
-    var errors = Number(state.errors || 0);
-    var pct = total > 0 ? Math.round((completed / total) * 100) : 0;
-    if (nodes.progress) nodes.progress.style.display = 'block';
-    if (nodes.fill) {
-      nodes.fill.style.transition = 'width 0.25s ease-out';
-      nodes.fill.style.width = pct + '%';
-      if (state.phase !== 'failed') nodes.fill.style.background = '';
-    }
-    if (state.phase === 'aggregating') {
-      if (nodes.button) nodes.button.textContent = 'Aggregating…';
-      if (nodes.progressText) nodes.progressText.textContent = 'Aggregating root causes…';
-      if (nodes.subtext) {
-        nodes.subtext.textContent = 'Analysis complete. Consolidating related categories, details, and solutions.' +
-          (errors > 0 ? ' Errors: ' + errors : '');
-      }
-      return;
-    }
-    if (nodes.button) nodes.button.textContent = 'Analyzing…';
-    if (nodes.progressText) {
-      nodes.progressText.textContent = total > 0
-        ? 'Analyzing metric failures: ' + completed + '/' + total + ' (' + pct + '%)'
-        : 'Preparing analysis…';
-    }
-    if (nodes.subtext) {
-      var itemText = state.item_id
-        ? 'Last: ' + String(state.item_id).slice(0, 32) + (state.metric_name ? ' · ' + state.metric_name : '')
-        : 'Running in the background. You can leave this page and return later.';
-      nodes.subtext.textContent = itemText + (errors > 0 ? ' | Errors: ' + errors : '');
-    }
-  }
-
-  function _finishRunAll(data) {
-    data = data || {};
-    var nodes = _analysisProgressNodes();
-    var analyzed = Number(data.total_analyzed || 0);
-    var categoryCount = _analysisCategoryCount(data);
-    var categoryLabel = categoryCount === 1 ? 'category' : 'categories';
-    var aggregationError = String(data.aggregation_error || '').trim();
-    var runLink = _runLinkMarkup();
-    var completionText = analyzed > 0
-      ? 'Analyzed <strong>' + analyzed + '</strong> metric failures successfully'
-      : 'Existing root-cause analysis checked successfully';
-    if (!aggregationError) {
-      completionText += '<div>Created <strong>' + categoryCount + '</strong> ' + categoryLabel + '</div>';
-    }
-    if (nodes.fill) {
-      nodes.fill.style.transition = 'width 0.3s ease-out';
-      nodes.fill.style.width = '100%';
-    }
-    if (nodes.progressText) {
-      nodes.progressText.textContent = aggregationError
-        ? 'Analysis saved; aggregation failed'
-        : 'Analysis Complete!';
-    }
-    if (nodes.subtext) {
-      nodes.subtext.textContent = aggregationError
-        ? 'Raw diagnoses were saved without consolidation. You can retry from the run page.'
-        : 'Finalizing results...';
-    }
-    var resultsEl = document.getElementById('pg-runall-results');
-    if (resultsEl) {
-      resultsEl.innerHTML = '<div class="pg-runall-done' + (aggregationError ? ' pg-runall-partial' : '') + '">' +
-        '<div class="pg-runall-done-icon">' + (aggregationError ? '⚠️' : '✨') + '</div>' +
-        '<div class="pg-runall-done-text">' + completionText +
-        (data.errors > 0 ? '<div class="pg-runall-done-error">⚠️ ' + data.errors + ' metric analyses failed</div>' : '') +
-        (aggregationError ? '<div class="pg-runall-aggregation-error">Aggregation failed: ' + _esc(aggregationError) + '</div>' : '') +
-        '</div>' +
-        (runLink ? '<div class="pg-runall-done-actions">' + runLink + '</div>' : '') +
-        '</div></div>';
-    }
-    if (_opts.showToast) {
-      if (aggregationError) {
-        _opts.showToast('error', 'Aggregation Failed', 'Analysis was saved without label consolidation.');
-      } else {
-        var toastText = analyzed + ' metric failures analyzed';
-        toastText += ' · Created ' + categoryCount + ' ' + categoryLabel;
-        _opts.showToast('success', 'Analysis Complete', toastText);
-      }
-    }
-    if (_opts.onAnalysisComplete) _opts.onAnalysisComplete(data);
-    _onFilterChange();
-    setTimeout(function () {
-      if (nodes.progress) nodes.progress.style.display = 'none';
-    }, 3000);
-  }
-
-  function _showAnalysisFailure(message) {
-    var nodes = _analysisProgressNodes();
-    var errorMessage = message || 'An error occurred during analysis.';
-    if (nodes.progress) nodes.progress.style.display = 'block';
-    if (nodes.progressText) nodes.progressText.textContent = 'Analysis failed';
-    if (nodes.subtext) nodes.subtext.textContent = errorMessage;
-    if (nodes.fill) {
-      nodes.fill.style.transition = 'width 0.3s ease-out';
-      nodes.fill.style.width = '0%';
-      nodes.fill.style.background = 'var(--error)';
-    }
-    if (_opts.showToast) _opts.showToast('error', 'Analysis Failed', errorMessage);
-  }
-
-  function _showAnalysisCancelled() {
-    var nodes = _analysisProgressNodes();
-    if (nodes.progress) nodes.progress.style.display = 'block';
-    if (nodes.progressText) nodes.progressText.textContent = 'Analysis cancelled';
-    if (nodes.subtext) nodes.subtext.textContent = 'No further analysis requests will run.';
-    if (nodes.fill) {
-      nodes.fill.style.transition = 'width 0.3s ease-out';
-      nodes.fill.style.background = 'var(--warning)';
-    }
-    if (_opts.showToast) _opts.showToast('warning', 'Analysis Cancelled', 'The background analysis was stopped.');
-  }
-
-  function _pollAnalysisJob(job, generation) {
-    if (!job || !job.job_id || generation !== _analysisPollGeneration) return;
-    _analysisJobId = job.job_id;
-    _analysisCancelRequested = job.status === 'cancelling' || !!job.cancel_requested;
-    _running = true;
-    _updateAnalysisProgress(job.progress);
-    _syncActionAvailability();
-    if (job.status === 'completed') {
-      _analysisJobId = null;
-      _analysisCancelRequested = false;
-      _running = false;
-      _finishRunAll(job.result || {});
-      _syncActionAvailability();
-      return;
-    }
-    if (job.status === 'cancelled') {
-      _analysisJobId = null;
-      _analysisCancelRequested = false;
-      _running = false;
-      _showAnalysisCancelled();
-      _syncActionAvailability();
-      return;
-    }
-    if (job.status === 'failed') {
-      _analysisJobId = null;
-      _analysisCancelRequested = false;
-      _running = false;
-      _showAnalysisFailure(job.error || 'An error occurred during analysis.');
-      _syncActionAvailability();
-      return;
-    }
-    var base = _opts.apiUrl || function (p) { return '/' + p; };
-    _analysisPollTimer = setTimeout(function () {
-      fetch(base(_analysisJobsPath(encodeURIComponent(job.job_id))))
-        .then(function (response) {
-          if (!response.ok) throw new Error('Analysis status: HTTP ' + response.status);
-          return response.json();
-        })
-        .then(function (nextJob) { _pollAnalysisJob(nextJob, generation); })
-        .catch(function (error) {
-          if (generation !== _analysisPollGeneration) return;
-          var nodes = _analysisProgressNodes();
-          if (nodes.subtext) nodes.subtext.textContent = 'Reconnecting to background analysis…';
-          _analysisPollTimer = setTimeout(function () {
-            _pollAnalysisJob(job, generation);
-          }, 1000);
-          console.warn('Analysis status polling interrupted:', error.message);
-        });
-    }, 600);
-  }
-
-  function _resumeActiveAnalysis() {
-    if (!_getRunId()) return;
-    var base = _opts.apiUrl || function (p) { return '/' + p; };
-    var generation = ++_analysisPollGeneration;
-    fetch(base(_analysisJobsPath('active')))
-      .then(function (response) {
-        if (!response.ok) throw new Error('Active analysis: HTTP ' + response.status);
-        return response.json();
-      })
-      .then(function (data) {
-        if (generation !== _analysisPollGeneration || !data || !data.job) return;
-        _pollAnalysisJob(data.job, generation);
-      })
-      .catch(function (error) {
-        console.warn('Could not resume background analysis:', error.message);
-      });
-  }
-
-  function _cancelAnalysis() {
-    if (!_analysisJobId || _analysisCancelRequested) return;
-    var jobId = _analysisJobId;
-    var base = _opts.apiUrl || function (p) { return '/' + p; };
-    _analysisCancelRequested = true;
-    _syncActionAvailability();
-    fetch(base(_analysisJobsPath(encodeURIComponent(jobId) + '/cancel')), { method: 'POST' })
-      .then(function (response) {
-        if (!response.ok) throw new Error('Cancel analysis: HTTP ' + response.status);
-        return response.json();
-      })
-      .then(function (job) { _pollAnalysisJob(job, _analysisPollGeneration); })
-      .catch(function (error) {
-        _analysisCancelRequested = false;
-        _syncActionAvailability();
-        if (_opts.showToast) _opts.showToast('error', 'Cancellation Failed', error.message);
-      });
-  }
-
-  function _runAll(skipHumanConfirmation) {
-    if (_running) return;
-    if (!skipHumanConfirmation) {
-      var humanOverwriteEl = document.getElementById('pg-allow-human-overwrite');
-      if (humanOverwriteEl && humanOverwriteEl.checked) {
-        var humanTargets = _getHumanOverwriteTargets(_getMatchedItems());
-        if (humanTargets.length > 0) {
-          _running = true;
-          _confirmHumanOverwrite(humanTargets).then(function (confirmed) {
-            _running = false;
-            if (confirmed) _runAll(true);
-            else _updateFooterCount();
-          }, function (error) {
-            _running = false;
-            if (_opts.showToast) _opts.showToast('error', 'Confirmation failed', error.message || 'Human labels were not overwritten.');
-            _updateFooterCount();
-          });
-          return;
-        }
-      }
-    }
-
-    var runId = _getRunId();
-    if (!runId) return;
-    var base = _opts.apiUrl || function (p) { return '/' + p; };
-    var cfg = _buildConfigPayload();
-    var maxScoreEl = document.getElementById('pg-max-score');
-    var skipEl = document.getElementById('pg-skip-analyzed');
-    var humanOverwriteEl = document.getElementById('pg-allow-human-overwrite');
-    var body = {
-      metric: _opts.getMetric ? _opts.getMetric() : null,
-      item_filter: 'failed',
-      max_score: maxScoreEl ? (parseFloat(maxScoreEl.value) / 100) || undefined : undefined,
-      only_unanalyzed: skipEl ? skipEl.checked : true,
-      allow_human_overwrite: humanOverwriteEl ? humanOverwriteEl.checked : false,
-      threshold: _opts.getThreshold ? _opts.getThreshold() : 0.8,
-      config: cfg,
-      connection_id: _connectionId,
-    };
-    var requestedLimit = _getTargetLimit();
-    if (requestedLimit != null && requestedLimit > 0) body.limit = requestedLimit;
-    if (_opts.getMetrics) {
-      body.metric = null;
-      body.metrics = _getSelectedMetrics();
-    }
-
-    _running = true;
-    _analysisCancelRequested = false;
-    var nodes = _analysisProgressNodes();
-    if (nodes.button) { nodes.button.disabled = true; nodes.button.textContent = 'Starting…'; }
-    if (nodes.progress) nodes.progress.style.display = 'block';
-    if (nodes.fill) {
-      nodes.fill.style.transition = 'none';
-      nodes.fill.style.width = '0%';
-      nodes.fill.style.background = '';
-      void nodes.fill.offsetWidth;
-      nodes.fill.style.transition = 'width 0.25s ease-out';
-    }
-    if (nodes.progressText) nodes.progressText.textContent = 'Preparing analysis…';
-    if (nodes.subtext) nodes.subtext.textContent = 'Starting a background analysis job…';
-    _syncActionAvailability();
-
-    var generation = ++_analysisPollGeneration;
-    fetch(base(_analysisJobsPath()), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    })
-      .then(function (response) {
-        return response.json().catch(function () { return {}; }).then(function (data) {
-          if (!response.ok) throw new Error(data.detail || 'Analysis failed');
-          if (!data.job_id) throw new Error('Analysis did not return a job id.');
-          return data;
-        });
-      })
-      .then(function (job) { _pollAnalysisJob(job, generation); })
-      .catch(function (error) {
-        if (generation !== _analysisPollGeneration) return;
-        _analysisJobId = null;
-        _analysisCancelRequested = false;
-        _running = false;
-        _showAnalysisFailure(error.message);
-        _syncActionAvailability();
-      });
-  }
 
   // ── Public API ──
 
-  function init(opts) {
-    if (_analysisPollTimer) clearTimeout(_analysisPollTimer);
-    if (_analysisRuleSaveTimer) clearTimeout(_analysisRuleSaveTimer);
-    _analysisPollGeneration += 1;
-    _analysisPollTimer = null;
-    _analysisRuleSaveTimer = null;
-    _analysisJobId = null;
-    _analysisCancelRequested = false;
-    _running = false;
-    _opts = opts || {};
-  }
+  function init(opts) { _opts = opts || {}; }
 
   function open() {
-    if (_overlay) { _overlay.style.display = 'flex'; return Promise.resolve(); }
-    return _fetchConfigAndOpen();
+    if (_overlay) { _overlay.style.display = 'flex'; return; }
+    _fetchConfigAndOpen();
   }
 
   function close() {
-    // Dedicated-page mode owns the page root; it is not a dismissible modal.
-    if (_opts.dedicatedPage) return;
     if (_opts.onClose) {
       _opts.onClose();
       return;
@@ -423,33 +51,25 @@ window.QymPlayground = (function () {
   // ── Fetch analyzer configuration then build modal ──
 
   function _fetchConfigAndOpen() {
-    if (!_hasAnalysisContext()) {
-      return Promise.reject(new Error('Could not determine the analysis context.'));
-    }
+    var runId = _getRunId();
+    if (!runId) return;
     var base = _opts.apiUrl || function (p) { return '/' + p; };
 
-    return Promise.all([
-      fetch(base(_analysisContextPath('analysis-config'))).then(function (r) { if (!r.ok) throw new Error('Config: HTTP ' + r.status); return r.json(); }),
-      fetch(base(_analysisContextPath('analysis-documents'))).then(function (r) { if (!r.ok) throw new Error('Documents: HTTP ' + r.status); return r.json(); }),
-      fetch(base(_analysisContextPath('analysis-rule-versions?include_deleted=true'))).then(function (r) { if (!r.ok) throw new Error('Rule versions: HTTP ' + r.status); return r.json(); }),
+    Promise.all([
+      fetch(base('api/runs/' + runId + '/analysis-config')).then(function (r) { if (!r.ok) throw new Error('Config: HTTP ' + r.status); return r.json(); }),
+      fetch(base('api/runs/' + runId + '/analysis-documents')).then(function (r) { if (!r.ok) throw new Error('Documents: HTTP ' + r.status); return r.json(); }),
+      fetch(base('api/runs/' + runId + '/analysis-rule-versions?include_deleted=true')).then(function (r) { if (!r.ok) throw new Error('Rule versions: HTTP ' + r.status); return r.json(); }),
     ]).then(function (results) {
       _config = results[0];
       var _conns = (_config && _config.llm_connections) || [];
       _connectionId = (_config && _config.default_connection_id) || (_conns[0] && _conns[0].id) || null;
       _testResults = [];
       _matchedPage = 0;
-      _selectedTarget = null;
+      _selectedItemId = null;
       _customVars = [];
       _configUnlocked = true;
       _referenceDocuments = (results[1] && results[1].documents) || [];
-      _selectedApprovedExampleIds = new Set();
-      _selectedApprovedExampleFields = new Set(_approvedExampleFieldKeys());
-      _selectedApprovedExampleCharacters = 0;
-      _approvedExampleCharacterById = {};
-      _examplePickerOverlay = null;
-      _examplePickerState = null;
       _analysisRules = (_config && _config.analysis_rules) || [];
-      _analysisRuleSearch = '';
       _editingRuleIndex = null;
       _ruleVersions = (results[2] && results[2].versions) || [];
       _selectedRuleVersionId = (_config && _config.analysis_rule_version && _config.analysis_rule_version.id)
@@ -464,33 +84,15 @@ window.QymPlayground = (function () {
       _documentUploadsInFlight = 0;
       _createModal();
       _overlay.style.display = 'flex';
-      _resumeActiveAnalysis();
     }).catch(function (err) {
       console.error('Playground: failed to load config', err);
       if (_opts.showToast) _opts.showToast('error', 'Playground Error', 'Failed to load configuration');
-      throw err;
     });
   }
 
   // ── Helpers ──
 
   function _getRunId() { return _opts.getRunId ? _opts.getRunId() : null; }
-
-  function _hasAnalysisContext() {
-    return !!_getRunId() || !!(_opts.projectScoped && _opts.projectSlug);
-  }
-
-  function _analysisContextPath(suffix) {
-    if (_opts.projectScoped && _opts.projectSlug) {
-      return 'api/projects/' + encodeURIComponent(_opts.projectSlug) + '/' + suffix;
-    }
-    return 'api/runs/' + _getRunId() + '/' + suffix;
-  }
-
-  function _analysisJobsPath(suffix) {
-    var path = _analysisContextPath('analysis-jobs');
-    return suffix ? path + '/' + suffix : path;
-  }
 
   function _getSelectedMetrics() {
     if (_opts.getMetrics) {
@@ -499,35 +101,6 @@ window.QymPlayground = (function () {
     }
     var metric = _opts.getMetric ? _opts.getMetric() : null;
     return metric ? [metric] : null;
-  }
-
-  function _getPrimaryMetric(row) {
-    var metricNames = row && Array.isArray(row._matched_metric_names)
-      ? row._matched_metric_names : [];
-    return metricNames[0] || '';
-  }
-
-  function _targetFromRow(row) {
-    if (!row || row.item_id == null) return null;
-    var metricName = _getPrimaryMetric(row);
-    return { item_id: row.item_id, metric_name: metricName || null };
-  }
-
-  function _targetMatchesRow(target, row) {
-    if (!target || !row || target.item_id == null || row.item_id == null) return false;
-    return String(target.item_id) === String(row.item_id) &&
-      String(target.metric_name || '') === String(_getPrimaryMetric(row) || '');
-  }
-
-  function _resolveSelectedTarget(matchedItems) {
-    var matched = Array.isArray(matchedItems) ? matchedItems : [];
-    if (_selectedTarget && matched.some(function (row) {
-      return _targetMatchesRow(_selectedTarget, row);
-    })) {
-      return _selectedTarget;
-    }
-    _selectedTarget = matched.length > 0 ? _targetFromRow(matched[0]) : null;
-    return _selectedTarget;
   }
 
   function _esc(text) {
@@ -549,23 +122,6 @@ window.QymPlayground = (function () {
     } catch (error) {
       return String(value);
     }
-  }
-
-  function _rootCauseCategories(value) {
-    var raw = value;
-    if (value && typeof value === 'object' && !Array.isArray(value)) {
-      if (Object.prototype.hasOwnProperty.call(value, 'root_causes')) raw = value.root_causes;
-      else if (Object.prototype.hasOwnProperty.call(value, 'root_cause_categories')) raw = value.root_cause_categories;
-      else raw = value.root_cause;
-    }
-    var values = Array.isArray(raw) ? raw : (raw ? [raw] : []);
-    var seen = {};
-    return values.map(function (item) { return String(item || '').trim(); }).filter(function (item) {
-      var key = item.toLocaleLowerCase();
-      if (!item || seen[key]) return false;
-      seen[key] = true;
-      return true;
-    });
   }
 
   function _buildCategoryExamples(examples) {
@@ -597,343 +153,36 @@ window.QymPlayground = (function () {
     }).join('') + '</div>';
   }
 
-  function _categoryTaxonomyFor(taxonomy, category) {
-    var map = taxonomy && typeof taxonomy === 'object' ? taxonomy : {};
-    var key = String(category || '').toLowerCase();
-    var match = Object.keys(map).find(function (candidate) {
-      return String(candidate || '').toLowerCase() === key;
-    });
-    var entry = match ? map[match] : null;
-    return entry && typeof entry === 'object' ? entry : {};
-  }
-
-  function _categoryDomKey(category) {
-    var encoded = encodeURIComponent(String(category || '').trim())
-      .replace(/%/g, '-')
-      .replace(/[^A-Za-z0-9_-]/g, '-');
-    return encoded || 'category';
-  }
-
-  function _uniqueCategoryDomKey(category) {
-    var base = 'category-' + _categoryDomKey(category);
-    var used = _categoryGroups().map(function (group) { return group.dataset.categoryKey || ''; });
-    var candidate = base;
-    var suffix = 2;
-    while (used.indexOf(candidate) !== -1) {
-      candidate = base + '-' + suffix;
-      suffix += 1;
-    }
-    return candidate;
-  }
-
-  function _detailExampleCount(examples, detail) {
-    var normalized = String(detail || '').trim().toLocaleLowerCase();
-    if (!normalized) return 0;
-    return (Array.isArray(examples) ? examples : []).filter(function (example) {
-      return String((example && example.detail) || '').trim().toLocaleLowerCase() === normalized;
-    }).length;
-  }
-
-  function _detailCountLabel(count) {
-    return count + (count === 1 ? ' example' : ' examples');
-  }
-
-  function _buildCategoryDetailItems(category, details, examples) {
-    var catDetails = Array.isArray(details) ? details : [];
-    return catDetails.map(function (detail) {
-      var count = _detailExampleCount(examples, detail);
-      return '<div class="pg-detail-item" data-detail="' + _escAttr(detail) + '" data-detail-example-count="' + count + '" data-parent-cat="' + _escAttr(category) + '">' +
-        '<span class="pg-detail-copy"><span class="pg-detail-name" dir="auto">' + _esc(detail) + '</span>' +
-          '<span class="qym-tag qym-tag--count pg-detail-example-count">' + _detailCountLabel(count) + '</span></span>' +
-        '<button class="pg-detail-remove qym-icon-action" type="button" title="Remove detail" aria-label="Remove ' + _escAttr(detail) + ' detail">' + _icon('close') + '</button>' +
-      '</div>';
-    }).join('');
-  }
-
-  function _categoryTabMarkup(category, categoryKey, tab, label, countLabel) {
-    var tabId = 'pg-category-' + categoryKey + '-' + tab + '-tab';
-    var panelId = 'pg-category-' + categoryKey + '-' + tab + '-panel';
-    return '<button class="pg-category-tab qym-tabs__tab" id="' + tabId + '" type="button" role="tab" data-category-tab="' + tab + '"' +
-      ' aria-selected="' + (tab === 'guidance' ? 'true' : 'false') + '" aria-controls="' + panelId + '" tabindex="' + (tab === 'guidance' ? '0' : '-1') + '">' +
-      _esc(label) + (countLabel ? '<span class="qym-tag qym-tag--count pg-category-tab-count">' + _esc(countLabel) + '</span>' : '') + '</button>';
-  }
-
-  function _buildCategoryGroup(category, details, examples, taxonomy, categoryKey) {
+  function _buildCategoryGroup(category, details, examples) {
     var cat = String(category || '').trim();
     var catDetails = Array.isArray(details) ? details : [];
     var catExamples = Array.isArray(examples) ? examples : [];
-    var catTaxonomy = _categoryTaxonomyFor(taxonomy, cat);
-    var domKey = categoryKey || _categoryDomKey(cat);
-    var guidancePanelId = 'pg-category-' + domKey + '-guidance-panel';
-    var detailsPanelId = 'pg-category-' + domKey + '-details-panel';
-    var examplesPanelId = 'pg-category-' + domKey + '-examples-panel';
-    var html = '<article class="pg-category-group" data-cat="' + _escAttr(cat) + '" data-category-key="' + _escAttr(domKey) + '" data-example-count="' + catExamples.length + '" hidden aria-hidden="true">';
-    html += '<div class="pg-category-panel-heading">' +
-      '<div class="pg-category-panel-copy"><h3 class="pg-category-panel-name" dir="auto">' + _esc(cat) + '</h3></div>' +
+    var html = '<article class="pg-category-group" data-cat="' + _escAttr(cat) + '" data-example-count="' + catExamples.length + '">';
+    html += '<div class="pg-category-item">' +
+      '<div class="pg-category-heading"><span class="pg-category-name">' + _esc(cat) + '</span>' +
+        '<span class="pg-category-example-count">' + catExamples.length + (catExamples.length === 1 ? ' example' : ' examples') + '</span></div>' +
+      '<button class="pg-category-remove" type="button" title="Remove category from this analysis" aria-label="Remove ' + _escAttr(cat) + ' category from this analysis">Remove</button>' +
     '</div>';
-    html += '<div class="pg-category-tabs-row">' +
-      '<div class="pg-category-tabs qym-tabs" role="tablist" aria-label="Edit ' + _escAttr(cat) + ' category">' +
-      _categoryTabMarkup(cat, domKey, 'guidance', 'Guidance') +
-      _categoryTabMarkup(cat, domKey, 'details', 'Details', String(catDetails.length)) +
-      _categoryTabMarkup(cat, domKey, 'examples', 'Examples', String(catExamples.length)) +
-      '</div>' +
-      '<div class="pg-category-panel-actions">' +
-        '<button class="pg-category-remove qym-icon-action qym-icon-action--danger" type="button" title="Remove category from this analysis" aria-label="Remove ' + _escAttr(cat) + ' category from this analysis">' + _icon('trash') + '</button>' +
-      '</div>' +
-    '</div>';
-    html += '<div class="pg-category-content">';
-    html += '<section class="pg-category-tab-panel pg-category-taxonomy" id="' + guidancePanelId + '" data-category-panel="guidance" role="tabpanel" aria-labelledby="pg-category-' + domKey + '-guidance-tab">' +
-      '<h4>Category guidance</h4><p class="pg-category-taxonomy-hint">Define the meaning of this label and the signal that should trigger it.</p>' +
-      '<label class="pg-category-taxonomy-field"><span>Description</span><textarea data-taxonomy-field="description" rows="3" placeholder="What this category means..." spellcheck="true">' + _esc(catTaxonomy.description || '') + '</textarea></label>' +
-      '<label class="pg-category-taxonomy-field"><span>Use when</span><textarea data-taxonomy-field="when_to_use" rows="3" placeholder="When the analyzer should use this category..." spellcheck="true">' + _esc(catTaxonomy.when_to_use || '') + '</textarea></label>' +
-    '</section>';
-    html += '<section class="pg-category-tab-panel pg-category-details" id="' + detailsPanelId + '" data-category-panel="details" role="tabpanel" aria-labelledby="pg-category-' + domKey + '-details-tab" hidden>' +
-      '<div class="pg-category-tab-heading"><div><h4>Category details</h4><p>Keep recurring issue patterns distinct enough for reliable diagnosis.</p></div><span class="qym-tag qym-tag--count pg-detail-total-count">' + catDetails.length + '</span></div>' +
-      '<div class="pg-category-details-tools"><label class="pg-detail-search-field"><span class="pg-filter-label">Search details</span><input class="pg-detail-search qym-control qym-input qym-search" type="search" data-detail-search placeholder="Filter by detail name" aria-label="Search ' + _escAttr(cat) + ' details" /></label>' +
-        '<label class="pg-detail-filter-field"><span class="pg-filter-label">Show</span><select class="pg-detail-filter qym-control qym-select" data-detail-filter aria-label="Filter ' + _escAttr(cat) + ' details"><option value="all">All details</option><option value="with_examples">With examples</option><option value="without_examples">Needs examples</option></select></label>' +
-        '<span class="pg-detail-result-count" data-detail-result-count aria-live="polite"></span></div>' +
-      '<div class="pg-details-sublist" data-cat="' + _escAttr(cat) + '">' + _buildCategoryDetailItems(cat, catDetails, catExamples) + '</div>' +
-      '<div class="qym-pagination pg-category-pagination" data-category-pagination="details" role="navigation" aria-label="' + _escAttr(cat) + ' details pagination" hidden></div>' +
-      '<p class="pg-category-details-empty" data-detail-empty hidden>No details match this filter.</p>' +
-      '<div class="pg-add-detail-row" data-cat="' + _escAttr(cat) + '"><input type="text" placeholder="Add detail..." aria-label="Add a detail to ' + _escAttr(cat) + '" class="pg-add-input pg-add-detail-input qym-control qym-input" />' +
-        '<button type="button" class="pg-add-detail-btn pg-add-btn qym-inline-action qym-inline-action--neutral">Add detail</button></div>' +
-    '</section>';
-    html += '<section class="pg-category-tab-panel pg-category-examples" id="' + examplesPanelId + '" data-category-panel="examples" role="tabpanel" aria-labelledby="pg-category-' + domKey + '-examples-tab" hidden>' +
-      '<div class="pg-category-tab-heading"><div><h4>Approved examples</h4><p>Use approved corrections as evidence for this category.</p></div><span class="qym-tag qym-tag--count">' + catExamples.length + '</span></div>' + _buildCategoryExamples(catExamples) +
-      '<div class="qym-pagination pg-category-pagination" data-category-pagination="examples" role="navigation" aria-label="' + _escAttr(cat) + ' examples pagination" hidden></div>' +
-    '</section></div></article>';
-    return html;
-  }
-
-  function _categoryGroups() {
-    var categoryList = document.getElementById('pg-categories-list');
-    return categoryList
-      ? Array.prototype.slice.call(categoryList.querySelectorAll('.pg-category-group'))
-      : [];
-  }
-
-  function _setCategoryTab(group, tab, focus) {
-    if (!group) return;
-    var selectedTab = tab || group.dataset.activeTab || 'guidance';
-    var tabs = Array.prototype.slice.call(group.querySelectorAll('[data-category-tab]'));
-    var panels = Array.prototype.slice.call(group.querySelectorAll('[data-category-panel]'));
-    var found = tabs.some(function (button) { return button.dataset.categoryTab === selectedTab; });
-    if (!found) selectedTab = 'guidance';
-    group.dataset.activeTab = selectedTab;
-    tabs.forEach(function (button) {
-      var selected = button.dataset.categoryTab === selectedTab;
-      button.setAttribute('aria-selected', selected ? 'true' : 'false');
-      button.tabIndex = selected ? 0 : -1;
-      if (selected && focus) button.focus();
-    });
-    panels.forEach(function (panel) {
-      panel.hidden = panel.dataset.categoryPanel !== selectedTab;
-    });
-  }
-
-  function _categoryPageKey(tab) {
-    return tab === 'examples' ? 'examplesPage' : 'detailsPage';
-  }
-
-  function _categoryPage(group, tab) {
-    if (!group) return 0;
-    var page = parseInt(group.dataset[_categoryPageKey(tab)], 10);
-    return Number.isNaN(page) || page < 0 ? 0 : page;
-  }
-
-  function _setCategoryPage(group, tab, page, total) {
-    if (!group) return 0;
-    var pageCount = Math.max(1, Math.ceil(Math.max(0, Number(total) || 0) / _CATEGORY_PAGE_SIZE));
-    var nextPage = parseInt(page, 10);
-    if (Number.isNaN(nextPage)) nextPage = 0;
-    nextPage = Math.min(pageCount - 1, Math.max(0, nextPage));
-    group.dataset[_categoryPageKey(tab)] = String(nextPage);
-    return nextPage;
-  }
-
-  function _resetCategoryPage(group, tab) {
-    if (group) group.dataset[_categoryPageKey(tab)] = '0';
-  }
-
-  function _renderCategoryPagination(group, tab, total) {
-    if (!group) return;
-    var pagination = group.querySelector('[data-category-pagination="' + tab + '"]');
-    if (!pagination) return;
-    var page = _setCategoryPage(group, tab, _categoryPage(group, tab), total);
-    if (total <= _CATEGORY_PAGE_SIZE || !window.QymUIComponents || typeof window.QymUIComponents.renderPagination !== 'function') {
-      pagination.hidden = true;
-      pagination.innerHTML = '';
-      return;
-    }
-    pagination.hidden = false;
-    window.QymUIComponents.renderPagination(pagination, {
-      total: total,
-      pageSize: _CATEGORY_PAGE_SIZE,
-      page: page,
-      variant: 'run',
-    });
-  }
-
-  function _filterCategoryDetails(group) {
-    if (!group) return;
-    var panel = group.querySelector('[data-category-panel="details"]');
-    if (!panel) return;
-    var search = panel.querySelector('[data-detail-search]');
-    var filter = panel.querySelector('[data-detail-filter]');
-    var query = String(search && search.value || '').trim().toLocaleLowerCase();
-    var mode = String(filter && filter.value || 'all');
-    var items = Array.prototype.slice.call(panel.querySelectorAll('.pg-detail-item'));
-    var matchingItems = items.filter(function (item) {
-      var name = String(item.dataset.detail || '').toLocaleLowerCase();
-      var count = Number(item.dataset.detailExampleCount || 0);
-      var matchesSearch = !query || name.indexOf(query) !== -1;
-      var matchesFilter = mode === 'all' || (mode === 'with_examples' && count > 0) || (mode === 'without_examples' && count === 0);
-      return matchesSearch && matchesFilter;
-    });
-    var page = _setCategoryPage(group, 'details', _categoryPage(group, 'details'), matchingItems.length);
-    var pageStart = page * _CATEGORY_PAGE_SIZE;
-    var pageEnd = Math.min(pageStart + _CATEGORY_PAGE_SIZE, matchingItems.length);
-    items.forEach(function (item) {
-      var matchIndex = matchingItems.indexOf(item);
-      item.hidden = matchIndex < 0 || matchIndex < pageStart || matchIndex >= pageEnd;
-    });
-    var empty = panel.querySelector('[data-detail-empty]');
-    if (empty) {
-      empty.hidden = matchingItems.length > 0;
-      empty.textContent = items.length > 0 ? 'No details match this filter.' : 'No details configured yet.';
-    }
-    var count = panel.querySelector('[data-detail-result-count]');
-    if (count) {
-      count.textContent = matchingItems.length
-        ? (pageStart + 1) + '–' + pageEnd + ' of ' + matchingItems.length + ' details'
-        : '0 of ' + items.length + ' details';
-    }
-    _renderCategoryPagination(group, 'details', matchingItems.length);
-  }
-
-  function _filterCategoryExamples(group) {
-    if (!group) return;
-    var panel = group.querySelector('[data-category-panel="examples"]');
-    if (!panel) return;
-    var items = Array.prototype.slice.call(panel.querySelectorAll('.pg-category-example'));
-    var page = _setCategoryPage(group, 'examples', _categoryPage(group, 'examples'), items.length);
-    var pageStart = page * _CATEGORY_PAGE_SIZE;
-    var pageEnd = Math.min(pageStart + _CATEGORY_PAGE_SIZE, items.length);
-    items.forEach(function (item, index) {
-      item.hidden = index < pageStart || index >= pageEnd;
-    });
-    _renderCategoryPagination(group, 'examples', items.length);
-  }
-
-  function _updateCategoryDetailCounts(group) {
-    if (!group) return;
-    var items = Array.prototype.slice.call(group.querySelectorAll('.pg-detail-item'));
-    var total = group.querySelector('.pg-detail-total-count');
-    if (total) total.textContent = String(items.length);
-    var tabCount = group.querySelector('[data-category-tab="details"] .pg-category-tab-count');
-    if (tabCount) tabCount.textContent = String(items.length);
-    _filterCategoryDetails(group);
-  }
-
-  function _renderCategoryNavigation(selectedCategory) {
-    var nav = document.getElementById('pg-category-nav');
-    var empty = document.getElementById('pg-category-nav-empty');
-    var count = document.getElementById('pg-category-nav-count');
-    var groups = _categoryGroups();
-    if (count) count.textContent = String(groups.length);
-    if (!nav) return;
-    var query = String(_categoryNavigationQuery || '').trim().toLocaleLowerCase();
-    var matchingGroups = groups.filter(function (group) {
-      return !query || String(group.dataset.cat || '').toLocaleLowerCase().indexOf(query) !== -1;
-    });
-    if (empty) {
-      empty.hidden = matchingGroups.length > 0;
-      empty.textContent = query ? 'No categories match this search.' : 'No categories configured yet.';
-    }
-    nav.innerHTML = matchingGroups.map(function (group) {
-      var category = group.dataset.cat || '';
-      var exampleCount = Number(group.dataset.exampleCount || 0);
-      var selected = selectedCategory != null
-        ? String(category) === String(selectedCategory)
-        : !group.hidden;
-      var status = exampleCount > 0 ? 'validated' : 'needs examples';
-      return '<button class="pg-category-nav-item" type="button" data-category-select="' + _escAttr(category) + '"' +
-        ' aria-current="' + (selected ? 'true' : 'false') + '" aria-label="' + _escAttr(category + ', ' + _detailCountLabel(exampleCount) + ', ' + status) + '">' +
-        '<span class="pg-category-nav-copy"><span class="pg-category-nav-name" dir="auto">' + _esc(category) + '</span>' +
-          '</span><span class="pg-category-nav-meta"><span class="pg-category-status-dot pg-category-status-dot--' + (exampleCount > 0 ? 'validated' : 'pending') + '" aria-hidden="true"></span><span class="pg-category-nav-count">' + exampleCount + '</span></span>' +
-        '<span class="pg-category-nav-chevron" aria-hidden="true">' + _icon('chevron') + '</span>' +
-      '</button>';
-    }).join('');
-  }
-
-  function _filterCategoryNavigation(query) {
-    _categoryNavigationQuery = String(query || '').trim();
-    var active = _categoryGroups().find(function (group) { return !group.hidden; });
-    _renderCategoryNavigation(active && active.dataset.cat);
-  }
-
-  function _confirmCategoryRemoval(category) {
-    if (!window.QymShell || typeof window.QymShell.openConfirmDialog !== 'function') {
-      if (_opts.showToast) {
-        _opts.showToast('error', 'Confirmation unavailable', 'The category was not removed. Reload the page and try again.');
+    html += '<div class="pg-category-content"><section class="pg-category-details"><h4>Category details</h4>';
+    if (catDetails.length > 0) {
+      html += '<div class="pg-details-sublist" data-cat="' + _escAttr(cat) + '">';
+      for (var i = 0; i < catDetails.length; i++) {
+        html += '<div class="pg-detail-item" data-detail="' + _escAttr(catDetails[i]) + '" data-parent-cat="' + _escAttr(cat) + '">' +
+          '<span class="pg-detail-name">' + _esc(catDetails[i]) + '</span>' +
+          '<button class="pg-detail-remove" type="button" title="Remove detail" aria-label="Remove ' + _escAttr(catDetails[i]) + ' detail">&times;</button>' +
+        '</div>';
       }
-      return Promise.resolve(false);
+      html += '</div>';
+    } else {
+      html += '<p class="pg-category-details-empty">No details configured.</p>';
     }
-    return window.QymShell.openConfirmDialog({
-      mount: _overlay || document.body,
-      title: 'Remove category?',
-      description: [
-        'Remove “' + category + '” from the category catalog?',
-        'Its guidance and details will be removed from this unsaved catalog draft.',
-      ],
-      note: 'Save changes to apply the removal to future analyses.',
-      cancelLabel: 'Keep category',
-      confirmLabel: 'Remove category',
-      confirmClass: 'shell-btn-danger',
-    }).then(function (result) {
-      return !!(result && result.confirmed);
-    });
-  }
-
-  function _selectCategory(category, focus) {
-    var groups = _categoryGroups();
-    if (!groups.length) {
-      _renderCategoryNavigation(null);
-      var emptyActiveName = document.getElementById('pg-category-active-name');
-      if (emptyActiveName) emptyActiveName.textContent = 'Select a category';
-      return null;
-    }
-    var target = groups.find(function (group) {
-      return String(group.dataset.cat || '') === String(category == null ? '' : category);
-    }) || groups[0];
-    groups.forEach(function (group) {
-      var selected = group === target;
-      group.hidden = !selected;
-      group.setAttribute('aria-hidden', selected ? 'false' : 'true');
-      group.classList.toggle('pg-category-group--active', selected);
-    });
-    _renderCategoryNavigation(target.dataset.cat || '');
-    _setCategoryTab(target, target.dataset.activeTab || 'guidance', false);
-    _filterCategoryDetails(target);
-    _filterCategoryExamples(target);
-    var activeName = document.getElementById('pg-category-active-name');
-    if (activeName) activeName.textContent = target.dataset.cat || '';
-    if (focus) {
-      var panel = target.querySelector('[data-category-panel="' + (target.dataset.activeTab || 'guidance') + '"]');
-      if (panel) panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    }
-    return target;
-  }
-
-  function _initializeCategoryWorkspace() {
-    var groups = _categoryGroups();
-    groups.forEach(function (group) {
-      group.dataset.activeTab = group.dataset.activeTab || 'guidance';
-      _setCategoryTab(group, group.dataset.activeTab, false);
-      _filterCategoryDetails(group);
-      _filterCategoryExamples(group);
-    });
-    _selectCategory(groups[0] && groups[0].dataset.cat, false);
+    html += '<div class="pg-add-detail-row" data-cat="' + _escAttr(cat) + '">' +
+      '<input type="text" placeholder="Add detail..." aria-label="Add a detail to ' + _escAttr(cat) + '" class="pg-add-input pg-add-detail-input" />' +
+      '<button type="button" class="pg-add-detail-btn pg-add-btn">Add</button>' +
+    '</div></section>';
+    html += '<section class="pg-category-examples"><div class="pg-category-examples-heading"><h4>Approved examples</h4>' +
+      '<span>' + catExamples.length + '</span></div>' + _buildCategoryExamples(catExamples) + '</section></div></article>';
+    return html;
   }
 
   function _icon(name) {
@@ -946,15 +195,11 @@ window.QymPlayground = (function () {
       edit: '<path d="M12 20h9"></path><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4Z"></path>',
       expand: '<path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5"></path>',
       eye: '<path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z"></path><circle cx="12" cy="12" r="2.5"></circle>',
-      arrow: '<path d="M5 12h14"></path><path d="m13 6 6 6-6 6"></path>',
       dots: '<circle cx="12" cy="5" r="1.4" fill="currentColor" stroke="none"></circle><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"></circle><circle cx="12" cy="19" r="1.4" fill="currentColor" stroke="none"></circle>',
-      download: '<path d="M12 4v11"></path><path d="m7 11 5 5 5-5"></path><path d="M5 20h14"></path>',
       merge: '<path d="M6 4v4c0 4 2 6 6 6h6"></path><path d="M6 20v-4c0-4 2-6 6-6h6"></path><path d="m15 7 3 3-3 3"></path>',
       upload: '<path d="M12 14V4"></path><path d="m7 9 5-5 5 5"></path><path d="M5 14v6h14v-6"></path>',
       rocket: '<path d="M4.5 16.5c-1.5 1.3-2 5-2 5s3.7-.5 5-2a2.2 2.2 0 0 0-.1-2.9 2.2 2.2 0 0 0-2.9-.1Z"></path><path d="m12 15-3-3a22 22 0 0 1 2-4A13 13 0 0 1 22 2c0 2.7-.8 7.2-6 10a22 22 0 0 1-4 3Z"></path><path d="M9 12H4s.6-3 2-4c1.6-1.1 5 0 5 0"></path><path d="M12 15v5s3-.6 4-2c1.1-1.6 0-5 0-5"></path><circle cx="16" cy="8" r="1"></circle>',
       chevron: '<path d="m9 18 6-6-6-6"></path>',
-      chevronUp: '<path d="m6 15 6-6 6 6"></path>',
-      chevronDown: '<path d="m6 9 6 6 6-6"></path>',
       plus: '<path d="M12 5v14M5 12h14"></path>',
       trash: '<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v5M14 11v5"></path>',
     };
@@ -1076,42 +321,16 @@ window.QymPlayground = (function () {
   function _highlightPreview(escaped) {
     // Keep project rules readable without changing the copied prompt text.
     escaped = escaped.replace(
-      /(ANALYSIS RULES(?:\s*\([^\)\n]*\))?:\n)([\s\S]*?)(\n\n(?:EVALUATION ITEM DATA:|SUPPLIED ANALYSIS DATA|Respond ONLY))/m,
+      /(ANALYSIS RULES:\n)([\s\S]*?)(\n\nBUSINESS CONTEXT:)/m,
       function (section, heading, rules, nextSection) {
-        return '<span class="pg-hl-label">' + heading.replace(/\n$/, '') + '</span>\n' +
+        return heading +
           rules.replace(/^(\d+\. .+)$/gm, '<span class="pg-hl-rule-title">$1</span>') +
           nextSection;
       }
     );
-    // Keep the configured category limit in the same yellow treatment as the
-    // injected category vocabulary, whether it appears in the default prompt
-    // sentence or the fallback section added for custom prompts.
-    escaped = escaped.replace(
-      /^(MAXIMUM ROOT-CAUSE CATEGORIES:\n)([^\n]+)$/m,
-      '<span class="pg-hl-category">$1$2</span>'
-    );
-    escaped = escaped.replace(
-      /(\bno more than )(\d+)( categories\b)/gi,
-      '$1<span class="pg-hl-category">$2</span>$3'
-    );
-    // Highlight structural prompt labels, including trace headings and
-    // per-step evidence labels such as TRACE EVIDENCE:, INPUT:, and RESULT:.
-    // The leading whitespace stays outside the span so indentation remains
-    // part of the copied prompt's visual structure.
-    escaped = escaped.replace(
-      /^([ \t]*)([A-Z][A-Z0-9_-]*(?:[ \t]+[A-Z0-9][A-Z0-9_-]*)*[ \t]*:)/gm,
-      '$1<span class="pg-hl-label">$2</span>'
-    );
-    // Highlight the title-case labels emitted inside context blocks.
-    escaped = escaped.replace(
-      /^([ \t]*)(Description|Use when|Known root-cause detail guidance|Project|Evaluation task|Dataset):/gm,
-      '$1<span class="pg-hl-label">$2:</span>'
-    );
-    // Highlight the numbered diagnosis fields in the instructions as labels.
-    escaped = escaped.replace(
-      /^(\d+\.\s+(?:root_causes|category_taxonomy|root_cause_detail|root_cause_reason|confidence|root_cause_note|root_cause)\b)/gm,
-      '<span class="pg-hl-label">$1</span>'
-    );
+    // Highlight section labels like INPUT:, EXPECTED OUTPUT:, ACTUAL OUTPUT:, etc.
+    escaped = escaped.replace(/^(REFERENCE DOCUMENTS:|DOCUMENT:|INPUT:|EXPECTED OUTPUT:|ACTUAL OUTPUT:|ERROR:|SELECTED METRIC RESULT:|ITEM METADATA:|SELECTED METADATA:)/gm,
+      '<span class="pg-hl-label">$1</span>');
     // Use one yellow treatment for every root-cause category, including custom languages.
     escaped = escaped.replace(/^( *- .+)$/gm, '<span class="pg-hl-category">$1</span>');
     // Highlight category headers in grouped details (e.g. "  Gold Query:")
@@ -1120,9 +339,8 @@ window.QymPlayground = (function () {
     // Highlight Additional Instructions block (label + all content after it until end)
     escaped = escaped.replace(/(Additional Instructions:\n)([\s\S]*)$/m,
       '<span class="pg-hl-label">$1</span><span class="pg-hl-dynamic">$2</span>');
-    // JSON keys are labels too; highlight every escaped object key rather
-    // than maintaining a list that can drift as the response schema evolves.
-    escaped = escaped.replace(/((?:&quot;|")[A-Za-z_][A-Za-z0-9_.-]*(?:&quot;|"))(?=\s*:)/g,
+    // Highlight JSON response format hints
+    escaped = escaped.replace(/(&quot;root_cause&quot;|&quot;root_cause_detail&quot;|&quot;root_cause_note&quot;|&quot;confidence&quot;)/g,
       '<span class="pg-hl-json-key">$1</span>');
     return escaped;
   }
@@ -1447,18 +665,6 @@ window.QymPlayground = (function () {
 
   // ── Client-side filtering ──
 
-  function _isHumanMetricAnalysis(md, metricName) {
-    if (!md || typeof md !== 'object') return false;
-    var metricAnalyses = md.metric_analyses && typeof md.metric_analyses === 'object'
-      ? md.metric_analyses : {};
-    var analysis = metricAnalyses[metricName];
-    var source = analysis && (analysis.source || analysis.root_cause_source);
-    if (String(source || '').trim().toLowerCase() === 'human') return true;
-    if (String(md.root_cause_source || '').trim().toLowerCase() !== 'human') return false;
-    var legacyMetric = String(md.root_cause_metric_name || '').trim();
-    return !legacyMetric || legacyMetric === String(metricName || '').trim();
-  }
-
   function _getMatchedItems() {
     var rows = _getRows();
     var maxScoreEl = document.getElementById('pg-max-score');
@@ -1474,8 +680,7 @@ window.QymPlayground = (function () {
 
     return rows.filter(function (r) {
       var md = r.item_metadata;
-      var metricAnalyses = md && md.metric_analyses && typeof md.metric_analyses === 'object'
-        ? md.metric_analyses : {};
+      if (!allowHumanOverwrite && md && typeof md === 'object' && md.root_cause_source === 'human') return false;
       var isError = !!r.error;
       var score = r.metric_score;
       var metricScores = r.metric_scores && typeof r.metric_scores === 'object' ? r.metric_scores : null;
@@ -1493,25 +698,16 @@ window.QymPlayground = (function () {
               ? Number(metricScore) <= metricThreshold
               : Number(metricScore) >= metricThreshold
           );
-          if ((isError || !metricPassed) &&
-              (allowHumanOverwrite || !_isHumanMetricAnalysis(md, metricName))) {
-            failedMetrics.push(metricName);
-          }
+          if (isError || !metricPassed) failedMetrics.push(metricName);
         });
       }
       if (!metricScores && (isError || score == null || score < threshold)) {
-        var fallbackMetric = _opts.getMetric ? (_opts.getMetric() || 'metric') : 'metric';
-        if (allowHumanOverwrite || !_isHumanMetricAnalysis(md, fallbackMetric)) {
-          failedMetrics.push(fallbackMetric);
-        }
+        failedMetrics.push(_opts.getMetric ? (_opts.getMetric() || 'metric') : 'metric');
       }
       if (skipAnalyzed && failedMetrics.length > 0) {
+        var existing = md && typeof md.metric_analyses === 'object' ? md.metric_analyses : {};
         failedMetrics = failedMetrics.filter(function (metricName) {
-          var existing = metricAnalyses[metricName];
-          // The explicit human-overwrite option takes precedence over the
-          // general "Skip analyzed" option for human-owned diagnoses.
-          if (allowHumanOverwrite && _isHumanMetricAnalysis(md, metricName)) return true;
-          return !(existing && existing.root_cause);
+          return !(existing[metricName] && existing[metricName].root_cause);
         });
       }
       if (itemFilter === 'errors') {
@@ -1540,25 +736,11 @@ window.QymPlayground = (function () {
     });
   }
 
-  function _getHumanOverwriteTargets(matchedItems) {
-    var targets = [];
-    (matchedItems || []).forEach(function (row) {
-      var metricNames = Array.isArray(row._matched_metric_names) ? row._matched_metric_names : [];
-      metricNames.forEach(function (metricName) {
-        if (_isHumanMetricAnalysis(row.item_metadata, metricName)) {
-          targets.push({ item_id: row.item_id, metric_name: metricName });
-        }
-      });
-    });
-    return targets;
-  }
-
-  function _getMatchedItemCount(matchedItems) {
-    return (matchedItems || []).length;
-  }
-
-  function _formatAnalyzeItemCount(itemCount) {
-    return 'Analyze ' + itemCount + (itemCount === 1 ? ' item' : ' items');
+  function _getMatchedTargetCount(matchedItems) {
+    return (matchedItems || []).reduce(function (total, row) {
+      var metrics = Array.isArray(row._matched_metric_names) ? row._matched_metric_names : [];
+      return total + Math.max(metrics.length, 1);
+    }, 0);
   }
 
   // ── Create modal DOM ──
@@ -1614,27 +796,10 @@ window.QymPlayground = (function () {
     var conns = (_config && _config.llm_connections) || [];
     var connSelect = '';
     if (conns.length) {
-      var selectedConnection = conns.find(function (connection) { return connection.id === _connectionId; }) || conns[0];
-      connSelect = '<div class="pg-connection" id="pg-connection-picker">' +
-        '<button class="pg-connection-trigger" id="pg-connection-trigger" type="button" aria-haspopup="listbox" aria-expanded="false">' +
-          '<span class="pg-connection-icon" aria-hidden="true">◈</span>' +
-          '<span class="pg-connection-copy"><span class="pg-connection-label">LLM connection</span>' +
-          '<span class="pg-connection-value" id="pg-connection-value">' + _esc(selectedConnection.name) +
-            (selectedConnection.llm_model ? ' · ' + _esc(selectedConnection.llm_model) : '') + '</span></span>' +
-          '<span class="pg-connection-chevron" aria-hidden="true">⌄</span>' +
-        '</button>' +
-        '<div class="pg-connection-menu" id="pg-connection-menu" role="listbox" aria-label="LLM connections" hidden>' +
-          conns.map(function (c) {
-            var selected = c.id === _connectionId;
-            return '<button class="pg-connection-option" type="button" role="option" data-connection-id="' + _escAttr(c.id) + '"' +
-              ' aria-selected="' + (selected ? 'true' : 'false') + '"' + (c.llm_api_key_set ? '' : ' disabled') + '>' +
-              '<span class="pg-connection-option-copy"><strong>' + _esc(c.name) + '</strong>' +
-                '<span>' + _esc(c.llm_model || 'Model not set') + '</span></span>' +
-              '<span class="pg-connection-option-state">' + (c.llm_api_key_set ? (selected ? 'Selected' : 'Available') : 'Key missing') + '</span>' +
-            '</button>';
-          }).join('') +
-        '</div>' +
-        '<select id="pg-connection" class="pg-connection-select" tabindex="-1" aria-hidden="true">' +
+      connSelect = '<div class="pg-connection" title="LLM connection used for analysis">' +
+        '<span class="pg-connection-icon">◈</span>' +
+        '<span class="pg-connection-label">LLM</span>' +
+        '<select id="pg-connection" class="pg-connection-select">' +
         conns.map(function (c) {
           return '<option value="' + _esc(c.id) + '"' + (c.id === _connectionId ? ' selected' : '') +
             (c.llm_api_key_set ? '' : ' disabled') + '>' + _esc(c.name) + (c.llm_model ? ' (' + _esc(c.llm_model) + ')' : '') + '</option>';
@@ -1645,13 +810,15 @@ window.QymPlayground = (function () {
     footer.innerHTML =
       connSelect +
       '<button class="pg-footer-btn pg-footer-test" id="pg-test-btn" ' + (!llmOk ? 'disabled' : '') + '>Test Selected</button>' +
-      '<button class="pg-footer-btn pg-footer-runall" id="pg-runall-btn" ' + (!llmOk ? 'disabled' : '') + '>' + _formatAnalyzeItemCount(_getMatchedItemCount(_getMatchedItems())) + '</button>' +
-      '<button class="pg-footer-btn pg-footer-cancel" id="pg-cancel-btn" type="button" hidden>Cancel analysis</button>';
+      '<button class="pg-footer-btn pg-footer-runall" id="pg-runall-btn" ' + (!llmOk ? 'disabled' : '') + '>Analyze ' + _getTargetLimit(_getMatchedTargetCount(_getMatchedItems())) + ' targets</button>';
     footer.hidden = false;
     modal.appendChild(footer);
     var connEl = footer.querySelector('#pg-connection');
-    if (connEl) connEl.addEventListener('change', function () { _connectionId = connEl.value || null; });
-    _wireConnectionPicker(footer);
+    if (connEl) connEl.addEventListener('change', function () {
+      _connectionId = connEl.value || null;
+      _syncActionAvailability();
+      _scheduleAutoPreview(0);
+    });
 
     overlay.appendChild(modal);
     (pageContainer || document.body).appendChild(overlay);
@@ -1667,85 +834,7 @@ window.QymPlayground = (function () {
 
   function _onKeyDown(e) {
     if (e.key !== 'Escape' || !_overlay || _overlay.style.display === 'none') return;
-    if (e.defaultPrevented) return;
-    var nestedDialog = e.target && typeof e.target.closest === 'function'
-      ? e.target.closest('[role="dialog"][aria-modal="true"]') : null;
-    if (nestedDialog) return;
-    var nestedDropdown = e.target && typeof e.target.closest === 'function'
-      ? e.target.closest('.qym-dropdown') : null;
-    if (nestedDropdown) return;
-    var connectionMenu = document.getElementById('pg-connection-menu');
-    if (connectionMenu && !connectionMenu.hidden) {
-      e.preventDefault();
-      _setConnectionMenuOpen(false);
-      return;
-    }
-    // In dedicated-page mode, nested overlays handle Escape but the page root
-    // must remain mounted and visible.
-    if (_opts.dedicatedPage) return;
-    e.preventDefault();
     close();
-  }
-
-  function _setConnectionMenuOpen(open) {
-    var trigger = document.getElementById('pg-connection-trigger');
-    var menu = document.getElementById('pg-connection-menu');
-    if (!trigger || !menu) return;
-    menu.hidden = !open;
-    trigger.setAttribute('aria-expanded', open ? 'true' : 'false');
-    if (open) {
-      var selected = menu.querySelector('[aria-selected="true"]:not(:disabled)');
-      var first = menu.querySelector('.pg-connection-option:not(:disabled)');
-      (selected || first || menu).focus();
-    }
-  }
-
-  function _normalizeCategoryLimitInput(input) {
-    if (!input) return 1;
-    var value = Number(input.value);
-    if (!Number.isFinite(value) || value <= 0) value = 1;
-    value = Math.min(10, Math.max(1, Math.trunc(value)));
-    input.value = String(value);
-    return value;
-  }
-
-  function _wireConnectionPicker(footer) {
-    var picker = footer.querySelector('#pg-connection-picker');
-    var trigger = footer.querySelector('#pg-connection-trigger');
-    var menu = footer.querySelector('#pg-connection-menu');
-    var select = footer.querySelector('#pg-connection');
-    if (!picker || !trigger || !menu || !select) return;
-    trigger.addEventListener('click', function () {
-      _setConnectionMenuOpen(menu.hidden);
-    });
-    menu.addEventListener('click', function (event) {
-      var option = event.target.closest('.pg-connection-option');
-      if (!option || option.disabled) return;
-      var connection = ((_config && _config.llm_connections) || []).find(function (item) {
-        return item.id === option.dataset.connectionId;
-      });
-      if (!connection) return;
-      _connectionId = connection.id;
-      select.value = connection.id;
-      var value = footer.querySelector('#pg-connection-value');
-      if (value) value.textContent = connection.name + (connection.llm_model ? ' · ' + connection.llm_model : '');
-      menu.querySelectorAll('.pg-connection-option').forEach(function (candidate) {
-        var selected = candidate === option;
-        candidate.setAttribute('aria-selected', selected ? 'true' : 'false');
-        var state = candidate.querySelector('.pg-connection-option-state');
-        if (state && !candidate.disabled) state.textContent = selected ? 'Selected' : 'Available';
-      });
-      _setConnectionMenuOpen(false);
-      trigger.focus();
-      _syncActionAvailability();
-      _scheduleAutoPreview(0);
-    });
-    var modal = footer.closest('.playground-modal');
-    if (modal) {
-      modal.addEventListener('click', function (event) {
-        if (!picker.contains(event.target) && !menu.hidden) _setConnectionMenuOpen(false);
-      });
-    }
   }
 
   // ── Build scrollable content ──
@@ -1770,121 +859,6 @@ window.QymPlayground = (function () {
     return Number(value || 0).toLocaleString() + ' characters';
   }
 
-  function _enabledReferenceDocumentCount() {
-    return _referenceDocuments.filter(function (document) {
-      return document.selected !== false && String(document.content || '').trim();
-    }).length;
-  }
-
-  function _analysisLimits() {
-    return (_config && _config.analysis_limits) || {};
-  }
-
-  function _documentPromptCharacterLimit() {
-    var limits = _analysisLimits();
-    return Number(limits.documents_prompt_characters || 80000);
-  }
-
-  function _documentPerFilePromptLimit() {
-    var limits = _analysisLimits();
-    return Number(limits.document_prompt_characters || 40000);
-  }
-
-  function _documentCountLimit() {
-    var limits = _analysisLimits();
-    return Number(limits.max_reference_documents || 8);
-  }
-
-  function _writerDocumentCharacterLimit() {
-    var limits = _analysisLimits();
-    return Number(limits.rule_writer_document_characters || 256000);
-  }
-
-  function _writerExampleCharacterLimit() {
-    var limits = _analysisLimits();
-    return Number(limits.rule_writer_example_characters || 256000);
-  }
-
-  function _selectedReferenceDocumentCharacters() {
-    return _referenceDocuments.reduce(function (total, referenceDocument) {
-      if (referenceDocument.selected === false || !String(referenceDocument.content || '').trim()) return total;
-      return total + Number(referenceDocument.characters || String(referenceDocument.content || '').length);
-    }, 0);
-  }
-
-  function _approvedExampleCount() {
-    var raw = _config && _config.approved_example_count != null
-      ? _config.approved_example_count
-      : (_config && _config.correction_bank_size);
-    var count = Number(raw);
-    return Number.isFinite(count) && count > 0 ? Math.floor(count) : 0;
-  }
-
-  function _selectedApprovedExampleCount() {
-    return _selectedApprovedExampleIds ? _selectedApprovedExampleIds.size : 0;
-  }
-
-  function _renderApprovedExampleSourceControl() {
-    var button = document.getElementById('pg-add-examples');
-    if (!button) return;
-    var selectedCount = _selectedApprovedExampleCount();
-    button.textContent = 'Add examples';
-    button.setAttribute('aria-label', selectedCount > 0
-      ? 'Edit approved examples, ' + selectedCount + ' selected'
-      : 'Add approved examples');
-    button.title = selectedCount > 0 ? 'Edit selected approved examples' : 'Add approved examples';
-    button.classList.toggle('pg-example-source-control--selected', selectedCount > 0);
-  }
-
-  function _inferenceSourceState() {
-    var documentsInput = document.getElementById('pg-infer-use-documents');
-    var documentsAvailable = _enabledReferenceDocumentCount();
-    var examplesAvailable = _approvedExampleCount();
-    var includeDocuments = !documentsInput || documentsInput.checked;
-    var selectedExampleCount = _selectedApprovedExampleCount();
-    var includeExamples = selectedExampleCount > 0;
-    var selectedDocuments = includeDocuments ? documentsAvailable : 0;
-    var selectedExamples = selectedExampleCount;
-    var selectedDocumentCharacters = includeDocuments ? _selectedReferenceDocumentCharacters() : 0;
-    var hasUsableSource = selectedDocuments > 0 || selectedExamples > 0;
-    var message;
-    if (!hasUsableSource) {
-      if (documentsAvailable === 0 && examplesAvailable === 0) {
-        message = 'Rules cannot be generated yet. This project has neither an ' +
-          'enabled project document nor an approved example. Add and enable a ' +
-          'project document, or approve an example, then try again.';
-      } else if (includeDocuments && documentsAvailable === 0) {
-        message = 'Rules cannot be generated yet. No enabled project documents ' +
-          'are available. Add an approved example, or add and enable a project ' +
-          'document, then try again.';
-      } else if (examplesAvailable > 0 && selectedExamples === 0) {
-        message = 'Add at least one approved example before generating rules, or turn on Project documents.';
-      } else {
-        message = 'Rules cannot be generated yet. No approved examples are ' +
-          'available, and Project documents are turned off. Add an approved ' +
-          'example or turn on Project documents, then try again.';
-      }
-    } else {
-      message = '';
-    }
-    return {
-      documentsAvailable: documentsAvailable,
-      examplesAvailable: examplesAvailable,
-      includeDocuments: includeDocuments,
-      includeExamples: includeExamples,
-      selectedDocuments: selectedDocuments,
-      selectedExamples: selectedExamples,
-      selectedDocumentCharacters: selectedDocumentCharacters,
-      selectedApprovedExampleCharacters: _selectedApprovedExampleCharacters,
-      documentCharacterLimit: _documentPromptCharacterLimit(),
-      documentCountLimit: _documentCountLimit(),
-      writerDocumentCharacterLimit: _writerDocumentCharacterLimit(),
-      writerExampleCharacterLimit: _writerExampleCharacterLimit(),
-      hasUsableSource: hasUsableSource,
-      message: message,
-    };
-  }
-
   function _formatRuleCount() {
     var count = _analysisRules.length;
     var characters = _analysisRules.reduce(function (total, rule) {
@@ -1895,43 +869,6 @@ window.QymPlayground = (function () {
       ' · ~' + estimatedTokens.toLocaleString() + ' prompt tokens · no rule count limit';
   }
 
-  function _filteredAnalysisRuleEntries() {
-    var query = String(_analysisRuleSearch || '').trim().toLowerCase();
-    return _analysisRules.map(function (rule, index) {
-      return { rule: rule, index: index };
-    }).filter(function (entry) {
-      if (!query) return true;
-      return [entry.rule.title, entry.rule.instruction]
-        .join(' ')
-        .toLowerCase()
-        .indexOf(query) >= 0;
-    });
-  }
-
-  function _renderRuleFilterControls() {
-    var search = document.getElementById('pg-rule-search');
-    if (search && search.value !== _analysisRuleSearch) search.value = _analysisRuleSearch;
-  }
-
-  function _analysisRulesPageCount() {
-    return Math.max(1, Math.ceil(_filteredAnalysisRuleEntries().length / _RULES_PAGE_SIZE));
-  }
-
-  function _setAnalysisRulesPage(page) {
-    var pageCount = _analysisRulesPageCount();
-    var nextPage = Number(page);
-    if (!Number.isFinite(nextPage)) nextPage = 1;
-    _analysisRulesPage = Math.min(pageCount, Math.max(1, Math.floor(nextPage)));
-    return _analysisRulesPage;
-  }
-
-  function _analysisRulesPageForIndex(index) {
-    var position = _filteredAnalysisRuleEntries().findIndex(function (entry) {
-      return entry.index === index;
-    });
-    return _setAnalysisRulesPage(Math.floor(Math.max(0, position) / _RULES_PAGE_SIZE) + 1);
-  }
-
   function _buildAnalysisRulesEditor() {
     var selected = _ruleVersions.find(function (version) { return version.id === _selectedRuleVersionId; });
     var readOnly = !selected || selected.status !== 'draft';
@@ -1940,60 +877,22 @@ window.QymPlayground = (function () {
         ? 'This version has no rules. Create a draft before editing.'
         : 'No rules yet. Generate rules after selecting reference documents, or add one manually.') + '</div>';
     }
-    var entries = _filteredAnalysisRuleEntries();
-    if (entries.length === 0) {
-      return '<div class="pg-rule-empty">No rules match the current search.</div>';
-    }
-    var page = _setAnalysisRulesPage(_analysisRulesPage);
-    var pageStart = (page - 1) * _RULES_PAGE_SIZE;
-    return entries.slice(pageStart, pageStart + _RULES_PAGE_SIZE).map(function (entry) {
-      var rule = entry.rule;
-      var index = entry.index;
+    return _analysisRules.map(function (rule, index) {
       var editing = _editingRuleIndex === index;
       var ruleName = rule.title || 'rule ' + (index + 1);
       var instruction = rule.instruction || 'No instruction yet.';
-      var deleteAction = !readOnly
-        ? '<button class="qym-icon-action qym-icon-action--danger pg-rule-remove" type="button" data-delete-rule="' + index + '" title="Delete ' + _escAttr(ruleName) + '" aria-label="Delete ' + _escAttr(ruleName) + '">' + _icon('trash') + '</button>'
-        : '';
       return '<div class="pg-rule-item' + (editing ? ' pg-rule-item-editing' : '') + '" data-rule-index="' + index + '" data-rule-id="' + _escAttr(rule.id || '') + '">' +
-        '<div class="pg-rule-item-head" role="group" aria-label="' + _escAttr(ruleName) + '">' +
-          '<span class="pg-rule-item-number" aria-label="Rule ' + (index + 1) + '">' + (index + 1) + '</span>' +
-          '<button class="pg-rule-toggle" data-toggle-rule="' + index + '" type="button" aria-expanded="' + (editing ? 'true' : 'false') + '" aria-controls="pg-rule-fields-' + index + '" aria-label="' + (editing ? 'Collapse ' : 'Expand ') + _escAttr(ruleName) + '">' +
-            '<span class="pg-rule-item-summary"><strong title="' + _escAttr(rule.title || 'Untitled rule') + '">' + _esc(rule.title || 'Untitled rule') + '</strong><span title="' + _escAttr(instruction) + '" dir="auto">' + _esc(instruction) + '</span></span>' +
-            '<span class="pg-rule-disclosure" aria-hidden="true">' + _icon('chevron') + '</span>' +
-          '</button>' +
-          deleteAction +
-        '</div>' +
-        '<div class="pg-rule-fields" id="pg-rule-fields-' + index + '"' + (editing ? '' : ' hidden') + '>' +
-          '<label class="pg-rule-field"><span class="pg-rule-field-label">Rule title</span><input class="pg-rule-title" type="text" value="' + _escAttr(rule.title || '') + '" placeholder="Rule title" aria-label="Rule title" dir="auto"' + (readOnly ? ' disabled' : '') + ' /></label>' +
-          '<label class="pg-rule-field"><span class="pg-rule-field-label">Instruction</span><textarea class="pg-rule-instruction" placeholder="What must be checked and how it affects the diagnosis" aria-label="Rule instruction" dir="auto"' + (readOnly ? ' disabled' : '') + '>' + _esc(rule.instruction || '') + '</textarea></label>' +
-          '<div class="pg-rule-metadata" aria-label="Rule metadata">' +
-            '<div class="pg-rule-metadata-item"><span class="pg-rule-metadata-label">Inferred from</span><p class="pg-rule-metadata-value" dir="auto">' + _esc(rule.inferred_from || 'Not provided by the rule writer.') + '</p></div>' +
-            '<div class="pg-rule-metadata-item"><span class="pg-rule-metadata-label">Why this rule helps the analyzer</span><p class="pg-rule-metadata-value" dir="auto">' + _esc(rule.explanation || 'Not provided by the rule writer.') + '</p></div>' +
-            '<span class="pg-rule-metadata-note">Metadata only · not included in the analyzer prompt.</span>' +
-          '</div>' +
+        '<div class="pg-rule-item-head" data-toggle-rule="' + index + '" role="button" tabindex="0" aria-expanded="' + (editing ? 'true' : 'false') + '" aria-label="' + (editing ? 'Collapse ' : 'Expand ') + _escAttr(ruleName) + '">' +
+          '<span class="pg-rule-item-number">' + (index + 1) + '</span>' +
+          '<span class="pg-rule-item-summary"><strong title="' + _escAttr(rule.title || 'Untitled rule') + '">' + _esc(rule.title || 'Untitled rule') + '</strong><span title="' + _escAttr(instruction) + '">' + _esc(instruction) + '</span></span>' +
+          '<span class="pg-rule-disclosure" aria-hidden="true">' + _icon('chevron') + '</span>' +
+          (!readOnly ? '<button class="pg-rule-action pg-rule-action-danger pg-icon-button pg-rule-remove" type="button" data-rule-index="' + index + '" title="Remove ' + _escAttr(ruleName) + '" aria-label="Remove ' + _escAttr(ruleName) + '">' + _icon('trash') + '</button>' : '') + '</div>' +
+        '<div class="pg-rule-fields"' + (editing ? '' : ' hidden') + '>' +
+          '<input class="pg-rule-title" type="text" value="' + _escAttr(rule.title || '') + '" placeholder="Rule title" aria-label="Rule title"' + (readOnly ? ' disabled' : '') + ' />' +
+          '<textarea class="pg-rule-instruction" placeholder="What must be checked and how it affects the diagnosis" aria-label="Rule instruction"' + (readOnly ? ' disabled' : '') + '>' + _esc(rule.instruction || '') + '</textarea>' +
         '</div>' +
       '</div>';
     }).join('');
-  }
-
-  function _renderAnalysisRulePagination() {
-    var pagination = document.getElementById('pg-rule-pagination');
-    if (!pagination) return;
-    if (_filteredAnalysisRuleEntries().length === 0) {
-      pagination.hidden = true;
-      pagination.innerHTML = '';
-      return;
-    }
-    var page = _setAnalysisRulesPage(_analysisRulesPage);
-    pagination.hidden = false;
-    if (!window.QymUIComponents || typeof window.QymUIComponents.renderPagination !== 'function') return;
-    window.QymUIComponents.renderPagination(pagination, {
-      total: _filteredAnalysisRuleEntries().length,
-      pageSize: _RULES_PAGE_SIZE,
-      page: page - 1,
-      variant: 'run',
-    });
   }
 
   function _ruleVersionStateLabel(version) {
@@ -2004,48 +903,28 @@ window.QymPlayground = (function () {
     return raw.charAt(0).toUpperCase() + raw.slice(1).toLowerCase();
   }
 
-  function _formatRelativeRuleDate(value) {
-    if (!value) return 'Unknown date';
-    var timestamp = new Date(value);
-    if (Number.isNaN(timestamp.getTime())) return 'Unknown date';
-    var delta = Date.now() - timestamp.getTime();
-    var future = delta < 0;
-    var seconds = Math.round(Math.abs(delta) / 1000);
-    if (seconds < 60) return future ? 'in a moment' : 'just now';
-    var units = [
-      { amount: 60, label: 'minute' },
-      { amount: 60, label: 'hour' },
-      { amount: 24, label: 'day' },
-      { amount: 7, label: 'week' },
-      { amount: 4.345, label: 'month' },
-      { amount: 12, label: 'year' },
-    ];
-    var valueInUnit = seconds;
-    var label = 'second';
-    for (var i = 0; i < units.length; i++) {
-      if (valueInUnit < units[i].amount) break;
-      valueInUnit /= units[i].amount;
-      label = units[i].label;
-    }
-    var amount = Math.max(1, Math.round(valueInUnit));
-    var text = amount + ' ' + label + (amount === 1 ? '' : 's');
-    return future ? 'in ' + text : text + ' ago';
-  }
-
   function _buildRuleVersionHistory() {
     if (_ruleVersions.length === 0) {
       return '<div class="pg-rule-empty">No saved versions yet.</div>';
     }
     var liveVersionCount = _ruleVersions.filter(function (version) { return !version.is_deleted; }).length;
+    var versionById = {};
+    _ruleVersions.forEach(function (version) { versionById[version.id] = version; });
     return _ruleVersions.map(function (version) {
       var state = _ruleVersionStateLabel(version);
-      var created = _formatRelativeRuleDate(version.created_at);
-      var createdFull = version.created_at ? new Date(version.created_at).toLocaleString() : 'Unknown date';
-      var stateTone = version.is_active ? 'success' : (version.status === 'draft' ? 'warning' : 'neutral');
-      var menuActions = [];
-      if (!version.is_deleted) {
-        menuActions.push('<button type="button" role="menuitem" data-download-rule-version="' + _escAttr(version.id) + '">' + _icon('download') + '<span>Download</span></button>');
+      var created = version.created_at ? new Date(version.created_at).toLocaleString() : 'Unknown date';
+      var lifecycleAction = '';
+      if (version.status === 'draft' && _canActivateRuleVersions) {
+        lifecycleAction = '<button class="pg-rule-version-lifecycle pg-rule-version-lifecycle-draft" type="button" data-publish-rule-version="' + _escAttr(version.id) + '" title="Publish v' + version.version + '" aria-label="Publish version ' + version.version + '">' + _icon('upload') + '<span class="pg-rule-version-lifecycle-label">Publish</span></button>';
+      } else if (version.status === 'published' && !version.is_active && _canActivateRuleVersions) {
+        lifecycleAction = '<button class="pg-rule-version-lifecycle pg-rule-version-lifecycle-published" type="button" data-activate-rule-version="' + _escAttr(version.id) + '" title="Promote v' + version.version + ' to production" aria-label="Promote version ' + version.version + ' to production">' + _icon('rocket') + '<span class="pg-rule-version-lifecycle-label">Promote</span></button>';
+      } else if (version.is_active) {
+        lifecycleAction = '<span class="pg-rule-version-lifecycle pg-rule-version-production" title="Live version" aria-label="Live version">' + _icon('checkFilled') + '<span class="pg-rule-version-lifecycle-label">Live</span></span>';
+      } else {
+        lifecycleAction = '<span class="pg-rule-version-lifecycle" title="' + _escAttr(state) + '" aria-label="' + _escAttr(state) + '">' + _icon('check') + '<span class="pg-rule-version-lifecycle-label">' + _esc(state) + '</span></span>';
       }
+
+      var menuActions = [];
       if (liveVersionCount > 1 && !version.is_deleted) {
         menuActions.push('<button type="button" role="menuitem" data-compare-rule-version="' + _escAttr(version.id) + '">' + _icon('compare') + '<span>Compare with…</span></button>');
         menuActions.push('<button type="button" role="menuitem" data-merge-rule-version="' + _escAttr(version.id) + '">' + _icon('merge') + '<span>Merge with…</span></button>');
@@ -2053,18 +932,26 @@ window.QymPlayground = (function () {
       if (_canDeleteRuleVersions && !version.is_deleted && liveVersionCount > 1) {
         menuActions.push('<button class="pg-rule-version-menu-danger" type="button" role="menuitem" data-delete-rule-version="' + _escAttr(version.id) + '">' + _icon('trash') + '<span>Delete version</span></button>');
       }
+      var parent = versionById[version.parent_version_id];
+      var mergeParents = (version.merge_parent_ids || []).map(function (id) { return versionById[id]; }).filter(Boolean);
+      var lineage = [];
+      if (parent) lineage.push('forked from v' + parent.version);
+      if (mergeParents.length) lineage.push('merged ' + mergeParents.map(function (item) { return 'v' + item.version; }).join(', '));
       var versionDescription = state + ', ' + version.rules.length + ' rules, ' + created;
-      var mergeParentIds = Array.isArray(version.merge_parent_ids) ? version.merge_parent_ids.join(',') : '';
-      var menu = '<div class="pg-rule-version-overflow">' +
-          '<button class="qym-icon-action pg-rule-version-menu-toggle" type="button" data-rule-version-menu-toggle title="More actions for v' + version.version + '" aria-label="More actions for version ' + version.version + '" aria-expanded="false">' + _icon('dots') + '</button>' +
-          '<div class="pg-rule-version-menu" role="menu" hidden>' + menuActions.join('') + '</div>' +
-        '</div>';
-      return '<div class="pg-rule-version' + (version.id === _selectedRuleVersionId ? ' pg-rule-version-selected' : '') + '" role="group" aria-label="Version ' + version.version + '. ' + _escAttr(versionDescription) + '" ' +
-        'data-rule-version-id="' + _escAttr(version.id) + '" data-rule-version-status="' + _escAttr(state) + '" data-rule-version-live="' + (version.is_active ? 'true' : 'false') + '" data-rule-parent-id="' + _escAttr(version.parent_version_id || '') + '" data-rule-merge-parent-ids="' + _escAttr(mergeParentIds) + '">' +
-        '<button class="pg-rule-version-open" type="button" data-open-rule-version="' + _escAttr(version.id) + '" aria-label="Open version ' + version.version + '. ' + _escAttr(versionDescription) + '">' +
-          '<span class="pg-rule-version-copy"><span class="pg-rule-version-heading"><span class="pg-rule-version-name">v' + version.version + '</span><span class="qym-badge qym-badge--' + stateTone + '">' + _esc(state) + '</span></span><span class="pg-rule-version-summary"><span class="qym-tag qym-tag--count pg-rule-version-rule-count">' + version.rules.length + ' rules</span><time class="pg-rule-version-created" datetime="' + _escAttr(version.created_at || '') + '" title="' + _escAttr(createdFull) + '">' + _esc(created) + '</time></span></span>' +
-        '</button>' +
-        '<span class="pg-rule-version-controls">' + menu + '</span>' +
+      var menu = menuActions.length
+        ? '<div class="pg-rule-version-overflow">' +
+            '<button class="pg-rule-version-menu-toggle" type="button" data-rule-version-menu-toggle title="More actions for v' + version.version + '" aria-label="More actions for version ' + version.version + '" aria-expanded="false">' + _icon('dots') + '</button>' +
+            '<div class="pg-rule-version-menu" role="menu" hidden>' + menuActions.join('') + '</div>' +
+          '</div>'
+        : '';
+      return '<div class="pg-rule-version' + (version.id === _selectedRuleVersionId ? ' pg-rule-version-selected' : '') + '" role="button" tabindex="0" aria-label="Open version ' + version.version + '. ' + _escAttr(versionDescription) + '" ' +
+        'data-rule-version-id="' + _escAttr(version.id) + '" data-rule-parent-id="' + _escAttr(version.parent_version_id || '') + '" ' +
+        'data-rule-version-status="' + _escAttr(state) + '" data-rule-merge-parent-ids="' + _escAttr((version.merge_parent_ids || []).join(',')) + '">' +
+        '<span class="pg-rule-node" data-version-node="' + _escAttr(version.id) + '" aria-hidden="true"></span>' +
+        '<span class="pg-rule-version-name">v' + version.version + '</span>' +
+        '<span class="pg-visually-hidden pg-rule-version-state">' + _esc(state) + '</span>' +
+        (lineage.length ? '<span class="pg-visually-hidden pg-rule-version-lineage">' + _esc(lineage.join(' · ')) + '</span>' : '') +
+        '<span class="pg-rule-version-controls">' + lifecycleAction + menu + '</span>' +
       '</div>';
     }).join('');
   }
@@ -2075,13 +962,7 @@ window.QymPlayground = (function () {
     }
     return _referenceDocuments.map(function (document, index) {
       var meta = _formatCharacterCount(document.characters || document.content.length);
-      if (document.content_over_limit || document.content_was_cut) {
-        meta += ' · content capped at storage limit';
-      } else if (document.truncated && Number(document.characters || 0) <= _documentPerFilePromptLimit()) {
-        meta += ' · shortened to prompt-safe limit';
-      } else if (Number(document.characters || 0) > _documentPerFilePromptLimit()) {
-        meta += ' · full content retained; writer will patch it';
-      }
+      if (document.truncated) meta += ' · shortened to prompt limit';
       var selected = document.selected !== false;
       return '<div class="pg-document-item' + (selected ? '' : ' pg-document-item-excluded') + '" data-document-index="' + index + '">' +
         '<label class="pg-document-toggle" title="' + (selected ? 'Included in project analysis' : 'Excluded from project analysis') + '">' +
@@ -2090,7 +971,7 @@ window.QymPlayground = (function () {
           '<span class="pg-document-state">' + (selected ? 'Included' : 'Excluded') + '</span>' +
         '</label>' +
         '<div class="pg-document-copy">' +
-          '<span class="pg-document-name" dir="auto">' + _esc(document.name) + '</span>' +
+          '<span class="pg-document-name">' + _esc(document.name) + '</span>' +
           '<span class="pg-document-meta">' + _esc(meta) + '</span>' +
         '</div>' +
         '<button class="pg-document-remove pg-icon-button" type="button" data-document-index="' + index + '" title="Delete ' + _escAttr(document.name) + '" aria-label="Delete ' + _escAttr(document.name) + '">' + _icon('trash') + '</button>' +
@@ -2098,656 +979,29 @@ window.QymPlayground = (function () {
     }).join('');
   }
 
-  function _examplePickerPayload(state) {
-    var filters = state.filters || {};
-    return {
-      page: state.page,
-      page_size: state.pageSize,
-      task: filters.task || [],
-      dataset: filters.dataset || [],
-      model: filters.model || [],
-      run_name: filters.run_name || [],
-      user_id: filters.user_id || [],
-      source: filters.source || null,
-      conf_min: filters.conf_min == null ? 0 : filters.conf_min,
-      conf_max: filters.conf_max == null ? 100 : filters.conf_max,
-      search: filters.search || null,
-      selected_ids: Array.from(_selectedApprovedExampleIds),
-      selected_only: Boolean(state.viewSelected),
-    };
-  }
-
-  function _examplePickerFilterValues(state, key) {
-    return (state.filters && state.filters[key]) || [];
-  }
-
-  function _examplePickerActiveFilterEntries(state) {
-    var filters = state.filters || {};
-    var entries = [];
-    if (filters.search) {
-      entries.push({ key: 'search', label: 'Search', value: String(filters.search) });
-    }
-    [
-      ['task', 'Task'],
-      ['dataset', 'Dataset'],
-      ['model', 'Model'],
-      ['run_name', 'Run'],
-      ['user_id', 'User'],
-    ].forEach(function (definition) {
-      var values = Array.isArray(filters[definition[0]]) ? filters[definition[0]] : [];
-      if (!values.length) return;
-      entries.push({
-        key: definition[0],
-        label: definition[1],
-        value: values.length === 1 ? String(values[0]) : values.length.toLocaleString() + ' selected',
-      });
-    });
-    var sourceLabels = {
-      ai_only: 'AI only',
-      human_only: 'Human only',
-      corrected: 'Corrected',
-    };
-    if (filters.source) {
-      entries.push({ key: 'source', label: 'Source', value: sourceLabels[filters.source] || String(filters.source) });
-    }
-    var confMin = Number(filters.conf_min == null ? 0 : filters.conf_min);
-    var confMax = Number(filters.conf_max == null ? 100 : filters.conf_max);
-    if (!Number.isFinite(confMin)) confMin = 0;
-    if (!Number.isFinite(confMax)) confMax = 100;
-    if (confMin > 0 || confMax < 100) {
-      entries.push({ key: 'confidence', label: 'Confidence', value: confMin + '–' + confMax });
-    }
-    return entries;
-  }
-
-  function _examplePickerFilterChips(state) {
-    var entries = _examplePickerActiveFilterEntries(state);
-    return entries.length
-      ? '<div class="pg-example-picker-filter-chips" role="list" aria-label="Active filters">' +
-        entries.map(function (entry) {
-          var text = entry.label + ': ' + entry.value;
-          return '<span class="qym-chip" role="listitem"><span>' + _esc(text) + '</span><button class="pg-example-picker-filter-chip-remove" type="button" data-example-clear-filter="' + _escAttr(entry.key) + '" aria-label="Clear ' + _escAttr(entry.label) + ' filter">×</button></span>';
-        }).join('') +
-      '</div>'
-      : '';
-  }
-
-  function _examplePickerDropdown(state, key, label, values, valueLabel) {
-    var selected = _examplePickerFilterValues(state, key);
-    var triggerLabel = selected.length ? selected.length.toLocaleString() + ' selected' : 'All values';
-    var menuId = 'pg-example-filter-' + key;
-    var isOpen = state.openFilterKey === key;
-    var options = (values || []).map(function (value) {
-      var rawValue = typeof value === 'object' ? value.id : value;
-      var textValue = typeof value === 'object'
-        ? (valueLabel ? valueLabel(value) : (value.display_name || value.email || value.id))
-        : value;
-      var checked = selected.indexOf(String(rawValue)) >= 0;
-      return '<div class="qym-dropdown__option" data-qym-dropdown-search-text="' + _escAttr(textValue) + '">' +
-        '<label class="qym-dropdown__option-label"><input type="checkbox" data-example-filter-key="' + _escAttr(key) + '" value="' + _escAttr(rawValue) + '" aria-label="' + _escAttr(label + ': ' + textValue) + '"' + (checked ? ' checked' : '') + ' />' +
-        '<span class="qym-dropdown__option-text">' + _esc(textValue) + '</span></label></div>';
-    }).join('');
-    if (!options) options = '<div class="qym-dropdown__empty">No options in the current result set.</div>';
-    return '<div class="qym-dropdown pg-example-filter' + (isOpen ? ' is-open' : '') + '" data-example-filter="' + _escAttr(key) + '">' +
-      '<span class="pg-example-picker-filter-field-label">' + _esc(label) + '</span>' +
-      '<button class="qym-control qym-select qym-dropdown__trigger" type="button" aria-expanded="' + (isOpen ? 'true' : 'false') + '" aria-haspopup="true" aria-controls="' + menuId + '" aria-label="' + _escAttr(label + ' filter; select one or more values') + '"><span class="pg-example-picker-filter-trigger-value">' + _esc(triggerLabel) + '</span></button>' +
-      '<div class="qym-dropdown__menu" id="' + menuId + '" role="group" aria-label="' + _escAttr(label + ' filter options; select one or more values') + '">' +
-        '<input class="qym-control qym-search qym-dropdown__search" type="search" aria-label="Search ' + _escAttr(label) + '" placeholder="Search ' + _escAttr(label) + '" />' +
-        '<div class="qym-dropdown__actions"><button type="button" class="qym-inline-action qym-inline-action--neutral" data-example-filter-action="all">Select all</button><button type="button" class="qym-inline-action qym-inline-action--neutral" data-example-filter-action="none">Clear</button></div>' +
-        '<div class="qym-dropdown__options">' + options + '</div>' +
-      '</div>' +
-    '</div>';
-  }
-
-  function _examplePickerSourceControl(state) {
-    var source = String((state.filters && state.filters.source) || '');
-    return '<div class="pg-example-picker-source" role="group" aria-label="Example source filter">' +
-      '<span class="pg-filter-label">Source</span>' +
-      '<div class="qym-segmented" data-qym-segmented-key="pg-example-source">' +
-        '<button class="qym-segmented__option" type="button" data-example-source="" aria-pressed="' + (!source ? 'true' : 'false') + '">All</button>' +
-        '<button class="qym-segmented__option" type="button" data-example-source="ai_only" aria-pressed="' + (source === 'ai_only' ? 'true' : 'false') + '">AI only</button>' +
-        '<button class="qym-segmented__option" type="button" data-example-source="human_only" aria-pressed="' + (source === 'human_only' ? 'true' : 'false') + '">Human only</button>' +
-        '<button class="qym-segmented__option" type="button" data-example-source="corrected" aria-pressed="' + (source === 'corrected' ? 'true' : 'false') + '">Corrected</button>' +
-      '</div>' +
-      '</div>';
-  }
-
-  function _examplePickerFieldSelector(state) {
-    var selected = state.exampleFields || new Set(_approvedExampleFieldKeys());
-    var selectedCount = selected.size;
-    var isOpen = Boolean(state.exampleFieldsOpen);
-    return '<div class="pg-example-picker-fields" role="group" aria-labelledby="pg-example-picker-fields-title">' +
-      '<button class="qym-inline-action qym-inline-action--accent pg-example-picker-fields-trigger" type="button" data-example-fields-toggle aria-expanded="' + (isOpen ? 'true' : 'false') + '" aria-controls="pg-example-picker-fields-panel">' +
-        '<span class="pg-example-picker-fields-trigger-copy">' + _icon('edit') + '<span class="pg-example-picker-fields-trigger-label" id="pg-example-picker-fields-title">Choose prompt fields</span><span class="pg-example-picker-fields-count">' + selectedCount + ' selected</span></span>' +
-        '<span class="pg-example-picker-fields-chevron" aria-hidden="true">' + (isOpen ? '▴' : '▾') + '</span>' +
-      '</button>' +
-      (isOpen ? '<div class="pg-mapping-additional pg-example-picker-fields-panel" id="pg-example-picker-fields-panel">' +
-        '<div class="pg-example-picker-fields-head"><div><span class="pg-example-picker-fields-help">Choose what the rule writer sees from each approved example.</span></div>' +
-          '<div class="pg-example-picker-fields-actions"><button class="qym-inline-action qym-inline-action--neutral" type="button" data-example-fields-action="all">Select all</button><button class="qym-inline-action qym-inline-action--neutral" type="button" data-example-fields-action="none">Clear</button></div></div>' +
-        '<div class="pg-example-picker-fields-options">' +
-          _APPROVED_EXAMPLE_FIELD_DEFINITIONS.map(function (field) {
-            return _fieldToggleMarkup(field, selected.has(field.key), 'data-example-prompt-field');
-          }).join('') +
-        '</div>' +
-      '</div>' : '') +
-    '</div>';
-  }
-
-  function _examplePickerRow(example) {
-    var id = Number(example.id);
-    _approvedExampleCharacterById[id] = Number(example.source_characters || 0);
-    var checked = _selectedApprovedExampleIds.has(id);
-    var user = example.corrected_by || example.reviewed_by;
-    var userText = user ? (user.display_name || user.email || user.id) : 'Unknown user';
-    var categories = Array.isArray(example.root_causes) ? example.root_causes.join(', ') : '';
-    var confidenceValue = Number(example.confidence);
-    var confidence = Number.isFinite(confidenceValue)
-      ? Math.round((confidenceValue <= 1 ? confidenceValue * 100 : confidenceValue)) + '%'
-      : '—';
-    var source = String(example.source || 'Unknown');
-    var sourceTone = source === 'Corrected' ? 'success' : (source === 'Human' ? 'info' : 'neutral');
-    return '<div class="pg-example-picker-row" role="row">' +
-      '<div class="pg-example-picker-select" role="cell"><label class="pg-example-picker-check" aria-label="Select approved example ' + _escAttr(id) + '">' +
-        '<input type="checkbox" data-approved-example-id="' + _escAttr(id) + '"' + (checked ? ' checked' : '') + ' />' +
-        '<span class="pg-document-check" aria-hidden="true"></span></label></div>' +
-      '<div class="pg-example-picker-main" role="cell"><strong>#' + _esc(id) + ' · ' + _esc(example.item_id || 'item') + '</strong><span>' + _esc(categories || example.detail || 'Approved correction') + '</span></div>' +
-      '<div class="pg-example-picker-context" role="cell"><span>' + _esc(example.task || '—') + '</span><span>' + _esc(example.dataset || '—') + ' · ' + _esc(example.model || '—') + '</span></div>' +
-      '<div class="pg-example-picker-user" role="cell"><span>' + _esc(userText) + '</span><span>' + _esc(example.run_name || '—') + '</span></div>' +
-      '<div class="pg-example-picker-confidence-value" role="cell">' + _esc(confidence) + '</div>' +
-      '<div class="pg-example-picker-source-value" role="cell"><span class="qym-tag qym-tag--' + sourceTone + '">' + _esc(source) + '</span></div>' +
-      '<div class="pg-example-picker-size" role="cell">' + Number(example.source_characters || 0).toLocaleString() + ' chars</div>' +
-    '</div>';
-  }
-
-  function _examplePickerFilteredSelection(data) {
-    var sourceIds = data && Array.isArray(data.matching_ids)
-      ? data.matching_ids
-      : (data && data.examples || []).map(function (example) { return example.id; });
-    var matchingIds = sourceIds.map(function (id) { return Number(id); }).filter(function (id) { return Number.isFinite(id); });
-    var selectedCount = matchingIds.filter(function (id) { return _selectedApprovedExampleIds.has(id); }).length;
-    return {
-      ids: matchingIds,
-      all: matchingIds.length > 0 && selectedCount === matchingIds.length,
-      some: selectedCount > 0 && selectedCount < matchingIds.length,
-    };
-  }
-
-  function _renderApprovedExamplePicker() {
-    if (!_examplePickerOverlay || !_examplePickerState) return;
-    var state = _examplePickerState;
-    var data = state.data || { examples: [], total: 0, page: state.page, page_size: state.pageSize, page_count: 0, facets: { tasks: [], datasets: [], models: [], run_names: [], users: [] } };
-    var limits = _analysisLimits();
-    var selectedCharacters = Number(data.selected_characters != null ? data.selected_characters : _selectedApprovedExampleCharacters);
-    _selectedApprovedExampleCharacters = selectedCharacters;
-    var exampleLimit = Number(limits.rule_writer_example_characters || 256000);
-    var overBudget = selectedCharacters > exampleLimit;
-    var facets = data.facets || {};
-    var selectedCount = _selectedApprovedExampleCount();
-    var filteredSelection = _examplePickerFilteredSelection(data);
-    var progress = exampleLimit > 0 ? Math.min(100, Math.round((selectedCharacters / exampleLimit) * 100)) : 0;
-    var progressValue = Math.min(selectedCharacters, exampleLimit);
-    var viewSelected = Boolean(state.viewSelected);
-    var activeFilterEntries = _examplePickerActiveFilterEntries(state);
-    var activeFilterCount = activeFilterEntries.length;
-    var filterPanelOpen = Boolean(state.filtersOpen);
-    var dialog = _examplePickerOverlay.querySelector('.pg-example-picker-dialog');
-    if (!dialog) return;
-    dialog.innerHTML =
-      '<div class="pg-example-picker-header">' +
-        '<div><p class="pg-eyebrow">Approved example library</p><h2 id="pg-example-picker-title">Choose examples for rule writing</h2>' +
-        '<p class="pg-example-picker-lead">Selections persist across pages and filters.</p></div>' +
-        '<button class="pg-example-picker-close qym-icon-action" type="button" data-example-picker-close aria-label="Close example picker">×</button>' +
-      '</div>' +
-      '<div class="pg-example-picker-filters" role="search" aria-label="Filter approved examples">' +
-        '<div class="pg-example-picker-filter-heading">' +
-          '<div class="pg-example-picker-filter-heading-copy"><h3 class="pg-example-picker-filter-title">Filter approved examples</h3><p class="pg-example-picker-filter-help">Choose one or more values in each list. Filters from different lists are combined.</p></div>' +
-          '<div class="pg-example-picker-filter-heading-actions"><span class="pg-example-picker-active-filter-count"><strong>' + activeFilterCount.toLocaleString() + '</strong> active</span><button class="qym-inline-action qym-inline-action--neutral" type="button" data-example-clear-all' + (activeFilterCount ? '' : ' disabled') + '>Clear all</button></div>' +
-        '</div>' +
-        '<div class="pg-example-picker-search-row">' +
-          '<label class="pg-example-picker-search"><span class="pg-visually-hidden">Search examples</span><input class="qym-control qym-input qym-search" type="search" data-example-search placeholder="Search examples" aria-label="Search examples" value="' + _escAttr((state.filters && state.filters.search) || '') + '" /></label>' +
-          '<button class="qym-control pg-example-picker-filter-panel-trigger" type="button" data-example-filter-panel-trigger aria-expanded="' + (filterPanelOpen ? 'true' : 'false') + '" aria-haspopup="true" aria-controls="pg-example-picker-filter-panel-menu"><span class="pg-example-picker-filter-panel-trigger-label">' + (filterPanelOpen ? 'Hide filters' : 'Show filters') + '</span>' + (activeFilterCount ? '<span class="qym-tag qym-tag--accent pg-example-picker-filter-count">' + activeFilterCount + '</span>' : '') + '</button>' +
-        '</div>' +
-        '<div class="pg-example-picker-filter-panel' + (filterPanelOpen ? ' is-open' : '') + '" data-example-filter-panel>' +
-          '<div class="pg-example-picker-filter-panel-menu" id="pg-example-picker-filter-panel-menu" role="region" aria-label="Example filters">' +
-            '<div class="pg-example-picker-filter-section" aria-labelledby="pg-example-picker-dimension-heading">' +
-              '<div class="pg-example-picker-filter-section-heading"><span class="pg-example-picker-filter-section-title" id="pg-example-picker-dimension-heading">Example dimensions</span><span class="pg-example-picker-filter-section-help">Multi-select supported</span></div>' +
-              '<div class="pg-example-picker-dimension-filters">' +
-                _examplePickerDropdown(state, 'task', 'Task', facets.tasks) +
-                _examplePickerDropdown(state, 'dataset', 'Dataset', facets.datasets) +
-                _examplePickerDropdown(state, 'model', 'Model', facets.models) +
-                _examplePickerDropdown(state, 'run_name', 'Run', facets.run_names) +
-                _examplePickerDropdown(state, 'user_id', 'User', facets.users, function (user) { return user.display_name || user.email || user.id; }) +
-              '</div>' +
-            '</div>' +
-            '<div class="pg-example-picker-filter-section" aria-labelledby="pg-example-picker-secondary-heading">' +
-              '<div class="pg-example-picker-filter-section-heading"><span class="pg-example-picker-filter-section-title" id="pg-example-picker-secondary-heading">Additional filters</span><span class="pg-example-picker-filter-section-help">Source is a single category; confidence uses a range.</span></div>' +
-              '<div class="pg-example-picker-secondary-filters">' +
-                _examplePickerSourceControl(state) +
-                '<div class="pg-example-picker-confidence"><span class="pg-filter-label">Confidence range</span><div class="pg-example-picker-confidence-inputs"><label class="pg-example-picker-confidence-field"><span>From</span><input class="qym-control" type="number" min="0" max="100" data-example-conf-min value="' + _escAttr(state.filters.conf_min) + '" placeholder="0" aria-label="Minimum confidence percentage" /></label><span class="pg-example-picker-confidence-separator" aria-hidden="true">to</span><label class="pg-example-picker-confidence-field"><span>To</span><input class="qym-control" type="number" min="0" max="100" data-example-conf-max value="' + _escAttr(state.filters.conf_max) + '" placeholder="100" aria-label="Maximum confidence percentage" /></label></div></div>' +
-              '</div>' +
-            '</div>' +
-          '</div>' +
-        '</div>' +
-        _examplePickerFilterChips(state) +
-      '</div>' +
-      _examplePickerFieldSelector(state) +
-      '<div class="pg-example-picker-actions"><span class="pg-example-picker-selection-count" role="status" aria-live="polite"><strong>' + selectedCount.toLocaleString() + '</strong> selected</span></div>' +
-      '<div class="pg-example-picker-table" role="table" aria-label="Approved examples">' +
-        '<div class="pg-example-picker-table-head" role="row"><div class="pg-example-picker-page-select" role="columnheader"><label class="pg-example-picker-check" aria-label="Select all filtered examples"><input type="checkbox" data-example-select-filtered-toggle /><span class="pg-document-check" aria-hidden="true"></span></label><span class="pg-example-picker-table-menu-wrap" data-example-table-menu-wrap><button class="pg-example-picker-table-menu-trigger qym-icon-action" type="button" data-example-table-menu-trigger aria-expanded="false" aria-haspopup="menu" aria-controls="pg-example-picker-selection-menu" aria-label="Example selection actions"><span aria-hidden="true">▾</span></button><span class="pg-example-picker-table-menu" id="pg-example-picker-selection-menu" role="menu" aria-label="Example selection actions"><button class="pg-example-picker-table-menu-item" type="button" role="menuitem" data-example-select-filtered>Select all filtered (' + Number(data.total || 0).toLocaleString() + ')</button><button class="pg-example-picker-table-menu-item" type="button" role="menuitem" data-example-clear-filtered>Clear filtered</button></span></span></div><span role="columnheader">Example</span><span role="columnheader">Context</span><span role="columnheader">User / run</span><span role="columnheader">Confidence</span><span role="columnheader">Source</span><span role="columnheader">Size</span></div>' +
-        (state.loading ? '<div class="pg-example-picker-empty">Loading approved examples…</div>' : (state.error ? '<div class="pg-example-picker-empty pg-budget-over">' + _esc(state.error) + '</div>' : ((data.examples || []).map(_examplePickerRow).join('') || '<div class="pg-example-picker-empty">No approved examples match these filters.</div>'))) +
-      '</div>' +
-      '<div class="pg-example-picker-footer">' +
-        '<div class="pg-example-picker-budget' + (overBudget ? ' pg-example-picker-budget-over' : '') + '" role="status" aria-label="Selected example character budget" aria-live="polite"><span class="pg-example-picker-budget-value"><strong>' + selectedCharacters.toLocaleString() + ' / ' + exampleLimit.toLocaleString() + '</strong> chars</span><div class="pg-example-picker-budget-track" role="progressbar" aria-label="Selected example character budget" aria-valuemin="0" aria-valuemax="' + exampleLimit + '" aria-valuenow="' + progressValue + '" aria-valuetext="' + _escAttr(selectedCharacters.toLocaleString() + ' of ' + exampleLimit.toLocaleString() + ' characters') + '"><span class="pg-example-picker-budget-progress" style="width: ' + progress + '%"></span></div></div>' +
-        '<div class="pg-example-picker-footer-pagination"><div class="qym-pagination qym-pagination--compact" id="pg-example-picker-pagination" role="navigation" aria-label="Approved example pagination"></div></div>' +
-        '<div class="pg-example-picker-footer-actions"><button class="qym-inline-action pg-example-picker-view-selected" type="button" data-example-view-selected>' + (viewSelected ? 'Show all examples' : 'View selected') + '</button><button class="qym-inline-action qym-inline-action--accent" type="button" data-example-picker-apply' + (selectedCount > 0 && (!state.exampleFields || state.exampleFields.size === 0) ? ' disabled' : '') + '>Use ' + selectedCount + ' selected example' + (selectedCount === 1 ? '' : 's') + (overBudget ? ' in patches' : '') + '</button></div>' +
-      '</div>';
-    var pagination = dialog.querySelector('#pg-example-picker-pagination');
-    if (pagination && window.QymUIComponents && typeof window.QymUIComponents.renderPagination === 'function') {
-      window.QymUIComponents.renderPagination(pagination, {
-        variant: 'compact',
-        total: Number(data.total || 0),
-        pageSize: state.pageSize,
-        page: Math.max(0, Number(data.page || state.page) - 1),
-        onPageChange: function (nextPage) {
-          if (!_examplePickerState) return;
-          _examplePickerState.page = nextPage + 1;
-          _loadApprovedExamplePicker();
-        },
-      });
-    }
-    var filteredCheckbox = dialog.querySelector('[data-example-select-filtered-toggle]');
-    if (filteredCheckbox) {
-      filteredCheckbox.checked = filteredSelection.all;
-      filteredCheckbox.indeterminate = filteredSelection.some;
-      filteredCheckbox.disabled = filteredSelection.ids.length === 0;
-    }
-    if (window.QymUIComponents && typeof window.QymUIComponents.refresh === 'function') {
-      window.QymUIComponents.refresh(dialog);
-    }
-  }
-
-  function _loadApprovedExamplePicker() {
-    if (!_examplePickerState) return Promise.resolve();
-    var state = _examplePickerState;
-    var requestGeneration = (state.loadGeneration || 0) + 1;
-    state.loadGeneration = requestGeneration;
-    state.loading = true;
-    _renderApprovedExamplePicker();
-    var base = _opts.apiUrl || function (p) { return '/' + p; };
-    return fetch(base(_analysisContextPath('analysis-examples')), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(_examplePickerPayload(state)),
-    })
-      .then(function (response) {
-        return response.text().then(function (text) {
-          var payload = {};
-          try { payload = text ? JSON.parse(text) : {}; } catch (error) {}
-          if (!response.ok) throw new Error(_responseErrorMessage(payload, text || 'Could not load approved examples'));
-          return payload;
-        });
-      })
-      .then(function (data) {
-        if (!_examplePickerState || _examplePickerState !== state || state.loadGeneration !== requestGeneration) return;
-        state.loading = false;
-        state.error = '';
-        state.data = data || {};
-        (state.data.examples || []).forEach(function (example) {
-          _approvedExampleCharacterById[Number(example.id)] = Number(example.source_characters || 0);
-        });
-        _selectedApprovedExampleCharacters = Number(state.data.selected_characters || 0);
-        _renderApprovedExamplePicker();
-      })
-      .catch(function (error) {
-        if (!_examplePickerState || _examplePickerState !== state || state.loadGeneration !== requestGeneration) return;
-        state.loading = false;
-        state.error = error.message || 'Could not load approved examples.';
-        _renderApprovedExamplePicker();
-        if (_opts.showToast) _opts.showToast('error', 'Example Picker Failed', state.error);
-      });
-  }
-
-  function _closeApprovedExamplePicker() {
-    if (!_examplePickerOverlay) return;
-    var opener = _examplePickerOpener;
-    _examplePickerOverlay.remove();
-    _examplePickerOverlay = null;
-    _examplePickerState = null;
-    _examplePickerOpener = null;
-    _syncInferenceSourceSummary();
-    if (opener) opener.setAttribute('aria-expanded', 'false');
-    if (opener && typeof opener.focus === 'function') opener.focus();
-  }
-
-  function _setExamplePickerFilterPanelOpen(open) {
-    if (!_examplePickerOverlay) return;
-    var panel = _examplePickerOverlay.querySelector('[data-example-filter-panel]');
-    if (!panel) return;
-    var isOpen = Boolean(open);
-    panel.classList.toggle('is-open', isOpen);
-    var trigger = _examplePickerOverlay.querySelector('[data-example-filter-panel-trigger]');
-    if (trigger) {
-      trigger.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
-      var triggerLabel = trigger.querySelector('.pg-example-picker-filter-panel-trigger-label');
-      if (triggerLabel) triggerLabel.textContent = isOpen ? 'Hide filters' : 'Show filters';
-    }
-    if (_examplePickerState) {
-      _examplePickerState.filtersOpen = isOpen;
-      if (!isOpen) _examplePickerState.openFilterKey = '';
-    }
-  }
-
-  function _setExamplePickerTableMenuOpen(open) {
-    if (!_examplePickerOverlay) return;
-    var menuWrap = _examplePickerOverlay.querySelector('[data-example-table-menu-wrap]');
-    if (!menuWrap) return;
-    var isOpen = Boolean(open);
-    menuWrap.classList.toggle('is-open', isOpen);
-    var trigger = menuWrap.querySelector('[data-example-table-menu-trigger]');
-    if (trigger) trigger.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
-  }
-
-  function _openApprovedExamplePicker() {
-    if (_examplePickerOverlay) return;
-    _examplePickerOpener = document.getElementById('pg-add-examples');
-    if (_examplePickerOpener) _examplePickerOpener.setAttribute('aria-expanded', 'true');
-    _examplePickerState = {
-      page: 1,
-      pageSize: 20,
-      loading: true,
-      data: null,
-      filters: {
-        search: '',
-        task: [],
-        dataset: [],
-        model: [],
-        run_name: [],
-        user_id: [],
-        source: '',
-        conf_min: 0,
-        conf_max: 100,
-      },
-      viewSelected: false,
-      exampleFields: new Set(_selectedApprovedExampleFields),
-      exampleFieldsOpen: false,
-      filtersOpen: false,
-      openFilterKey: '',
-    };
-    var overlay = document.createElement('div');
-    overlay.className = 'pg-example-picker-backdrop';
-    overlay.innerHTML = '<div class="pg-example-picker-dialog" role="dialog" aria-modal="true" aria-labelledby="pg-example-picker-title" tabindex="-1"></div>';
-    (_overlay || document.body).appendChild(overlay);
-    _examplePickerOverlay = overlay;
-    overlay.addEventListener('click', function (event) {
-      if (event.target === overlay || event.target.closest('[data-example-picker-close]')) {
-        _closeApprovedExamplePicker();
-        return;
-      }
-      var filterPanelTrigger = event.target.closest('[data-example-filter-panel-trigger]');
-      if (filterPanelTrigger) {
-        _setExamplePickerTableMenuOpen(false);
-        _setExamplePickerFilterPanelOpen(filterPanelTrigger.getAttribute('aria-expanded') !== 'true');
-        return;
-      }
-      var filterTrigger = event.target.closest('.pg-example-filter .qym-dropdown__trigger');
-      if (filterTrigger) {
-        var filterDropdown = filterTrigger.closest('[data-example-filter]');
-        if (filterDropdown && _examplePickerState) {
-          _examplePickerState.openFilterKey = filterDropdown.classList.contains('is-open')
-            ? ''
-            : filterDropdown.dataset.exampleFilter;
-        }
-        return;
-      }
-      var tableMenuTrigger = event.target.closest('[data-example-table-menu-trigger]');
-      if (tableMenuTrigger) {
-        _setExamplePickerFilterPanelOpen(false);
-        _setExamplePickerTableMenuOpen(!tableMenuTrigger.closest('[data-example-table-menu-wrap]').classList.contains('is-open'));
-        return;
-      }
-      if (!event.target.closest('.qym-dropdown') && _examplePickerState) _examplePickerState.openFilterKey = '';
-      if (!event.target.closest('[data-example-filter-panel]') && !event.target.closest('.pg-example-picker-filters')) _setExamplePickerFilterPanelOpen(false);
-      if (!event.target.closest('[data-example-table-menu-wrap]')) _setExamplePickerTableMenuOpen(false);
-      var clearAll = event.target.closest('[data-example-clear-all]');
-      if (clearAll) {
-        _examplePickerState.filters = {
-          search: '',
-          task: [],
-          dataset: [],
-          model: [],
-          run_name: [],
-          user_id: [],
-          source: '',
-          conf_min: 0,
-          conf_max: 100,
-        };
-        _examplePickerState.openFilterKey = '';
-        _examplePickerState.page = 1;
-        _loadApprovedExamplePicker();
-        return;
-      }
-      var clearFilter = event.target.closest('[data-example-clear-filter]');
-      if (clearFilter) {
-        var filterKeyToClear = clearFilter.dataset.exampleClearFilter;
-        if (filterKeyToClear === 'source') _examplePickerState.filters.source = '';
-        else if (filterKeyToClear === 'confidence') {
-          _examplePickerState.filters.conf_min = 0;
-          _examplePickerState.filters.conf_max = 100;
-        } else if (filterKeyToClear === 'search') {
-          _examplePickerState.filters.search = '';
-        } else if (_examplePickerState.filters[filterKeyToClear]) {
-          _examplePickerState.filters[filterKeyToClear] = [];
-        }
-        _examplePickerState.openFilterKey = '';
-        _examplePickerState.page = 1;
-        _loadApprovedExamplePicker();
-        return;
-      }
-      var action = event.target.closest('[data-example-filter-action]');
-      if (action) {
-        var filter = action.closest('[data-example-filter]');
-        if (!filter) return;
-        var key = filter.dataset.exampleFilter;
-        var facetKey = {
-          task: 'tasks',
-          dataset: 'datasets',
-          model: 'models',
-          run_name: 'run_names',
-          user_id: 'users',
-        }[key];
-        var values = (((_examplePickerState.data || {}).facets || {})[facetKey]) || [];
-        _examplePickerState.filters[key] = action.dataset.exampleFilterAction === 'all'
-          ? values.map(function (value) { return String(typeof value === 'object' ? value.id : value); })
-          : [];
-        _examplePickerState.openFilterKey = key;
-        _examplePickerState.page = 1;
-        _loadApprovedExamplePicker();
-        return;
-      }
-      var source = event.target.closest('[data-example-source]');
-      if (source) {
-        _examplePickerState.filters.source = source.dataset.exampleSource || '';
-        _examplePickerState.page = 1;
-        _loadApprovedExamplePicker();
-        return;
-      }
-      var selectFiltered = event.target.closest('[data-example-select-filtered]');
-      if (selectFiltered) {
-        _examplePickerFilteredSelection(_examplePickerState.data || {}).ids.forEach(function (id) { _selectedApprovedExampleIds.add(id); });
-        _loadApprovedExamplePicker();
-        return;
-      }
-      var clearFiltered = event.target.closest('[data-example-clear-filtered]');
-      if (clearFiltered) {
-        _examplePickerFilteredSelection(_examplePickerState.data || {}).ids.forEach(function (id) { _selectedApprovedExampleIds.delete(id); });
-        _loadApprovedExamplePicker();
-        return;
-      }
-      var viewSelected = event.target.closest('[data-example-view-selected]');
-      if (viewSelected) {
-        _examplePickerState.viewSelected = !_examplePickerState.viewSelected;
-        _examplePickerState.page = 1;
-        _loadApprovedExamplePicker();
-        return;
-      }
-      var fieldsToggle = event.target.closest('[data-example-fields-toggle]');
-      if (fieldsToggle) {
-        _examplePickerState.exampleFieldsOpen = !_examplePickerState.exampleFieldsOpen;
-        _renderApprovedExamplePicker();
-        return;
-      }
-      var fieldAction = event.target.closest('[data-example-fields-action]');
-      if (fieldAction) {
-        _examplePickerState.exampleFields = fieldAction.dataset.exampleFieldsAction === 'all'
-          ? new Set(_approvedExampleFieldKeys())
-          : new Set();
-        _renderApprovedExamplePicker();
-        return;
-      }
-      var pageButton = event.target.closest('[data-qym-page]');
-      if (pageButton && !pageButton.disabled) {
-        var nextPage = Number(pageButton.dataset.qymPage);
-        if (Number.isFinite(nextPage) && nextPage >= 0) {
-          _examplePickerState.page = nextPage + 1;
-          _loadApprovedExamplePicker();
-        }
-        return;
-      }
-      var apply = event.target.closest('[data-example-picker-apply]');
-      if (apply && !apply.disabled) {
-        _selectedApprovedExampleFields = new Set(_examplePickerState.exampleFields || []);
-        _closeApprovedExamplePicker();
-      }
-    });
-    overlay.addEventListener('change', function (event) {
-      var filteredCheckbox = event.target.closest('[data-example-select-filtered-toggle]');
-      if (filteredCheckbox) {
-        var filteredIds = _examplePickerFilteredSelection((_examplePickerState.data || {})).ids;
-        filteredIds.forEach(function (id) {
-          if (filteredCheckbox.checked) _selectedApprovedExampleIds.add(id);
-          else _selectedApprovedExampleIds.delete(id);
-        });
-        _loadApprovedExamplePicker();
-        return;
-      }
-      var checkbox = event.target.closest('[data-approved-example-id]');
-      if (checkbox) {
-        var id = Number(checkbox.dataset.approvedExampleId);
-        if (checkbox.checked) _selectedApprovedExampleIds.add(id);
-        else _selectedApprovedExampleIds.delete(id);
-        _loadApprovedExamplePicker();
-        return;
-      }
-      var fieldCheckbox = event.target.closest('[data-example-prompt-field]');
-      if (fieldCheckbox) {
-        var fieldKey = String(fieldCheckbox.dataset.examplePromptField || '');
-        if (!_examplePickerState.exampleFields) _examplePickerState.exampleFields = new Set();
-        if (fieldCheckbox.checked) _examplePickerState.exampleFields.add(fieldKey);
-        else _examplePickerState.exampleFields.delete(fieldKey);
-        _renderApprovedExamplePicker();
-        return;
-      }
-      var filterCheckbox = event.target.closest('[data-example-filter-key]');
-      if (filterCheckbox) {
-        var key = filterCheckbox.dataset.exampleFilterKey;
-        var values = _examplePickerState.filters[key] || [];
-        var value = String(filterCheckbox.value);
-        _examplePickerState.filters[key] = filterCheckbox.checked
-          ? (values.indexOf(value) >= 0 ? values : values.concat([value]))
-          : values.filter(function (item) { return item !== value; });
-        _examplePickerState.openFilterKey = key;
-        _examplePickerState.page = 1;
-        _loadApprovedExamplePicker();
-        return;
-      }
-      var confMin = event.target.closest('[data-example-conf-min]');
-      var confMax = event.target.closest('[data-example-conf-max]');
-      if (confMin || confMax) {
-        _examplePickerState.filters.conf_min = Math.max(0, Math.min(100, Number((overlay.querySelector('[data-example-conf-min]') || {}).value || 0)));
-        _examplePickerState.filters.conf_max = Math.max(0, Math.min(100, Number((overlay.querySelector('[data-example-conf-max]') || {}).value || 100)));
-        _examplePickerState.openFilterKey = '';
-        _examplePickerState.page = 1;
-        _loadApprovedExamplePicker();
-      }
-    });
-    overlay.addEventListener('input', function (event) {
-      var search = event.target.closest('[data-example-search]');
-      if (!search) return;
-      _examplePickerState.filters.search = search.value;
-      _examplePickerState.openFilterKey = '';
-      if (_examplePickerState.searchTimer) clearTimeout(_examplePickerState.searchTimer);
-      _examplePickerState.searchTimer = setTimeout(function () {
-        _examplePickerState.page = 1;
-        _loadApprovedExamplePicker();
-      }, 250);
-    });
-    overlay.addEventListener('keydown', function (event) {
-      if (event.key === 'Escape') {
-        if (overlay.querySelector('.qym-dropdown.is-open')) {
-          if (_examplePickerState) _examplePickerState.openFilterKey = '';
-          return;
-        }
-        if (overlay.querySelector('[data-example-table-menu-wrap].is-open')) {
-          event.preventDefault();
-          event.stopPropagation();
-          _setExamplePickerTableMenuOpen(false);
-          var tableMenuTrigger = overlay.querySelector('[data-example-table-menu-trigger]');
-          if (tableMenuTrigger) tableMenuTrigger.focus();
-          return;
-        }
-        if (overlay.querySelector('[data-example-filter-panel].is-open')) {
-          event.preventDefault();
-          event.stopPropagation();
-          _setExamplePickerFilterPanelOpen(false);
-          var filterPanelTrigger = overlay.querySelector('[data-example-filter-panel-trigger]');
-          if (filterPanelTrigger) filterPanelTrigger.focus();
-          return;
-        }
-        if (_examplePickerState && _examplePickerState.exampleFieldsOpen) {
-          event.preventDefault();
-          event.stopPropagation();
-          _examplePickerState.exampleFieldsOpen = false;
-          _renderApprovedExamplePicker();
-          return;
-        }
-        event.preventDefault();
-        event.stopPropagation();
-        _closeApprovedExamplePicker();
-      }
-    });
-    _renderApprovedExamplePicker();
-    _loadApprovedExamplePicker();
-    setTimeout(function () {
-      var dialog = overlay.querySelector('.pg-example-picker-dialog');
-      if (dialog) dialog.focus();
-    }, 0);
-  }
-
   function _buildScrollContent() {
     var cats = (_config && _config.default_categories) || [
       'Hallucination', 'Incomplete Answer', 'Wrong Format', 'Context Missing',
       'Reasoning Error', 'Tool Use Error', 'Instruction Following', 'Knowledge Gap',
-      'Dataset Issue',
     ];
     var html = '<div class="pg-workspace">';
 
-    var sourceState = _inferenceSourceState();
-    var inferenceDisabled = sourceState.hasUsableSource ? '' : ' disabled';
-    var rulesBody = '<div class="pg-rule-source-actions" role="group" aria-label="Rule sources">' +
-        '<label class="pg-rule-source-checkbox">' +
-          '<input id="pg-infer-use-documents" type="checkbox" checked />' +
-          '<span class="pg-document-check" aria-hidden="true"></span>' +
-          '<span>Add documents</span>' +
-        '</label>' +
-        '<button class="qym-inline-action pg-example-source-control" id="pg-add-examples" type="button" aria-haspopup="dialog" aria-expanded="false" aria-label="Add approved examples">Add examples</button>' +
-      '</div>' +
-      '<div class="pg-rule-empty pg-rule-inference-empty" id="pg-infer-source-empty" role="alert" hidden></div>' +
-      '<div class="pg-rule-filters" id="pg-rule-filters" role="search" aria-label="Filter rules">' +
-        '<label class="pg-rule-filter-field pg-rule-filter-search"><span class="pg-visually-hidden">Search rules</span><input class="qym-control qym-input qym-search" id="pg-rule-search" type="search" placeholder="Search rules" autocomplete="off" /></label>' +
-      '</div>' +
+    var rulesBody = '<details class="pg-rule-inference-options">' +
+        '<summary class="pg-rule-inference-heading"><span>Generate rules from</span><span class="pg-rule-inference-summary"><span id="pg-infer-source-summary">2 of 2 sources enabled</span><span class="pg-rule-inference-chevron" aria-hidden="true">' + _icon('chevron') + '</span></span></summary>' +
+        '<div class="pg-rule-inference-content">' +
+          '<label class="pg-inference-toggle">' +
+            '<input id="pg-infer-use-documents" type="checkbox" checked />' +
+            '<span class="pg-inference-switch" aria-hidden="true"></span>' +
+            '<span class="pg-inference-copy"><strong>Project documents</strong><span>Use the documents enabled for this project.</span></span>' +
+          '</label>' +
+          '<label class="pg-inference-toggle">' +
+            '<input id="pg-infer-use-examples" type="checkbox" checked />' +
+            '<span class="pg-inference-switch" aria-hidden="true"></span>' +
+            '<span class="pg-inference-copy"><strong>Approved examples</strong><span>Use every approved correction for this project and task.</span></span>' +
+          '</label>' +
+        '</div>' +
+      '</details>' +
       '<div class="pg-rule-list" id="pg-rule-list">' + _buildAnalysisRulesEditor() + '</div>' +
-      '<div class="qym-pagination" id="pg-rule-pagination" role="navigation" aria-label="Rule list pagination"></div>' +
-      '<div class="pg-rule-version-actions" id="pg-rule-version-actions" role="group" aria-label="Selected version actions" hidden></div>' +
       '<div class="pg-rule-editor-actions">' +
         '<span class="pg-rule-count" id="pg-rule-count" aria-live="polite">' + _formatRuleCount() + '</span>' +
         '<button class="pg-context-secondary pg-icon-button" id="pg-add-rule" type="button" title="Add rule" aria-label="Add rule">' + _icon('plus') + '</button>' +
@@ -2756,32 +1010,33 @@ window.QymPlayground = (function () {
       '<h3 class="pg-context-title">Version history</h3>' +
       '<div class="pg-rule-version-list" id="pg-rule-version-list">' + _buildRuleVersionHistory() + '</div>' +
       '<div class="pg-rule-compare" id="pg-rule-version-compare" hidden></div>';
-    html += '<section class="pg-context-panel" aria-labelledby="pg-context-title">' +
-      '<h2 class="pg-context-title" id="pg-context-title">Analysis rules</h2>' + rulesBody +
+    html += '<aside class="pg-context-panel">' +
+      '<h2 class="pg-context-title">Analysis rules</h2>' + rulesBody +
       '<div class="pg-context-actions">' +
         '<div class="pg-context-action-group pg-context-action-group-manual" aria-label="Manual rule actions">' +
+          '<button class="pg-context-secondary" id="pg-save-context" type="button">Save changes</button>' +
           '<button class="pg-context-secondary" id="pg-create-rule-version" type="button">Create draft</button>' +
         '</div>' +
         '<span class="pg-context-action-divider" aria-hidden="true"></span>' +
         '<div class="pg-context-action-group pg-context-action-group-generation" aria-label="Rule generation actions">' +
-          '<button class="pg-context-primary" id="pg-infer-rules" type="button"' + inferenceDisabled + ' title="Generate additional non-redundant rules from the selected sources">Generate rules</button>' +
+          '<button class="pg-context-secondary" id="pg-update-rules" type="button" title="Incrementally update the current rules from the selected sources">Update rules</button>' +
+          '<button class="pg-context-primary" id="pg-infer-rules" type="button" title="Generate a fresh draft from the selected sources">Generate rules</button>' +
         '</div>' +
       '</div>' +
       '<div class="pg-context-status" id="pg-context-status" role="status" aria-live="polite"></div>' +
       '<div class="pg-context-feedback" id="pg-context-feedback" role="status" aria-live="polite" hidden></div>' +
-    '</section>';
+    '</aside>';
     html += '<div class="pg-analysis-main">';
 
     // ── Reference Documents ──
     var documentsBody = '';
-    documentsBody += '<div class="pg-instructions-hint">Choose which documents belong in project analysis. The run workspace can then include or exclude all enabled documents with one switch. A document over ' + Number(_documentPerFilePromptLimit()).toLocaleString() + ' characters is called out before it is saved.</div>';
-    documentsBody += '<label class="pg-document-dropzone" id="pg-document-dropzone" for="pg-document-input" role="button" tabindex="0" aria-controls="pg-document-input" aria-label="Upload project documents">' +
+    documentsBody += '<div class="pg-instructions-hint">Choose which documents belong in project analysis. The run workspace can then include or exclude all enabled documents with one switch.</div>';
+    documentsBody += '<label class="pg-document-dropzone" id="pg-document-dropzone" for="pg-document-input">' +
       '<span class="pg-document-upload-title">Choose documents or drop them here</span>' +
-      '<span class="pg-document-upload-help">PDF, DOCX, TXT, Markdown, HTML, CSV, JSON, or YAML · up to 10 MB each · larger text requires a decision</span>' +
+      '<span class="pg-document-upload-help">PDF, DOCX, TXT, Markdown, HTML, CSV, JSON, or YAML · up to 10 MB each</span>' +
     '</label>';
-    documentsBody += '<input class="pg-document-input" id="pg-document-input" type="file" multiple accept=".pdf,.docx,.txt,.text,.md,.markdown,.html,.htm,.csv,.json,.yaml,.yml,.log,.rst" aria-label="Choose project documents" />';
+    documentsBody += '<input class="pg-document-input" id="pg-document-input" type="file" multiple accept=".pdf,.docx,.txt,.text,.md,.markdown,.html,.htm,.csv,.json,.yaml,.yml,.log,.rst" />';
     documentsBody += '<div class="pg-document-upload-status" id="pg-document-upload-status" role="status" aria-live="polite"></div>';
-    documentsBody += '<div class="pg-document-budget" id="pg-document-budget" role="status" aria-live="polite"></div>';
     documentsBody += '<div class="pg-document-list" id="pg-document-list">' + _buildReferenceDocumentList() + '</div>';
     var enabledDocumentCount = _referenceDocuments.filter(function (document) { return document.selected !== false; }).length;
     html += _section('Project documents', documentsBody, { badge: enabledDocumentCount + ' of ' + _referenceDocuments.length + ' enabled', badgeId: 'pg-documents-badge' });
@@ -2789,39 +1044,33 @@ window.QymPlayground = (function () {
     // ── Additional Instructions ──
     var instrBody = '';
     instrBody += '<div class="pg-instructions-hint">Customize how the AI analyzes items. Use <code>{variable_name}</code> to reference item data \u2014 detected variables appear in Variable Mapping below.</div>';
-    instrBody += '<textarea class="pg-instructions-textarea" id="pg-additional-instructions" dir="auto" placeholder="e.g. Focus on whether the response addresses all parts of the question.\nPay special attention to the {rubric} criteria." spellcheck="false"></textarea>';
+    instrBody += '<textarea class="pg-instructions-textarea" id="pg-additional-instructions" placeholder="e.g. Focus on whether the response addresses all parts of the question.\nPay special attention to the {rubric} criteria." spellcheck="false"></textarea>';
     html += _section('Additional Instructions', instrBody);
 
     // ── Root Cause Categories & Details ──
     var detailsMap = (_config && _config.category_details_map) || {};
-    var categoryTaxonomy = (_config && (_config.category_taxonomy || _config.category_taxonomies)) || {};
     var categoryExamples = (_config && _config.category_examples) || {};
     var totalDetails = 0;
     var catDetBody = '';
-    catDetBody += '<div class="pg-category-workspace" id="pg-category-workspace">';
-    catDetBody += '<aside class="pg-category-sidebar" aria-labelledby="pg-category-sidebar-title"><div class="pg-category-sidebar-heading"><h3 id="pg-category-sidebar-title">Categories</h3></div><nav class="pg-category-nav" id="pg-category-nav" aria-label="Diagnosis categories"></nav>' +
-      '<p class="pg-category-nav-empty" id="pg-category-nav-empty" hidden>No categories configured yet.</p><span class="pg-visually-hidden" id="pg-category-nav-count">0</span></aside>';
-    var maxCategories = Number((_config && _config.max_root_cause_categories) || 3);
-    if (!Number.isFinite(maxCategories) || maxCategories < 1) maxCategories = 3;
-    catDetBody += '<div class="pg-category-editor"><div class="pg-category-editor-toolbar"><div class="pg-category-editor-heading"><span class="pg-category-panel-kicker">Category catalog</span><strong id="pg-category-active-name">Select a category</strong><span>Changes apply to future analyses after you save the catalog.</span></div>' +
-      '<div class="pg-add-category-form"><label class="pg-visually-hidden" for="pg-new-category">New category</label><input type="text" id="pg-new-category" placeholder="New category..." class="pg-add-input qym-control qym-input" hidden /><button id="pg-add-category-btn" class="pg-add-btn qym-inline-action qym-inline-action--neutral" type="button">' + _icon('plus') + '<span>Add category</span></button></div>' +
-      '<div class="pg-category-limit-field" data-category-limit-field role="group" aria-labelledby="pg-max-root-cause-categories-label"><label class="pg-category-limit-label" id="pg-max-root-cause-categories-label" for="pg-max-root-cause-categories">Max categories per item</label><button class="qym-help-marker" type="button" aria-label="How the category limit works">i<span class="qym-help-tooltip" role="tooltip">Limits how many diagnosis categories the analyzer can return for each item. Higher values allow multiple independent causes.</span></button><input class="qym-control qym-input" id="pg-max-root-cause-categories" type="number" min="1" max="10" step="1" inputmode="numeric" value="' + Math.min(10, Math.max(1, Math.trunc(maxCategories))) + '" /></div></div>' +
-      '<div id="pg-categories-list">';
+    catDetBody += '<div id="pg-categories-list">';
     for (var i = 0; i < cats.length; i++) {
       var cat = cats[i];
       var catDets = detailsMap[cat] || [];
       totalDetails += catDets.length;
-      catDetBody += _buildCategoryGroup(cat, catDets, categoryExamples[cat] || [], categoryTaxonomy, 'category-' + i + '-' + _categoryDomKey(cat));
+      catDetBody += _buildCategoryGroup(cat, catDets, categoryExamples[cat] || []);
     }
     catDetBody += '</div>';
-    catDetBody += '</div></div>';
+    catDetBody += '<div class="pg-add-category">' +
+      '<input type="text" id="pg-new-category" placeholder="New category..." class="pg-add-input" />' +
+      '<button id="pg-add-category-btn" class="pg-add-btn">+ Add</button>' +
+    '</div>';
     html += _section('Root Cause Categories & Details', catDetBody, { open: false, badge: cats.length + ' / ' + totalDetails });
 
     // ── Variable Mapping ──
     html += _buildVariableMapping();
 
     // ── Filter & Matched Items ──
-    var matchedCount = _getMatchedItemCount(_getMatchedItems());
+    var matchedCount = _getMatchedTargetCount(_getMatchedItems());
     var filterBody = '';
     filterBody += '<div class="pg-filter-row">';
     filterBody += '<div class="pg-filter-group">';
@@ -2835,17 +1084,8 @@ window.QymPlayground = (function () {
     filterBody += '<label class="pg-filter-check"><span class="custom-checkbox"><input type="checkbox" id="pg-skip-analyzed" checked /><span class="checkmark"></span></span><span>Skip analyzed</span></label>';
     filterBody += '<label class="pg-filter-check"><span class="custom-checkbox"><input type="checkbox" id="pg-allow-human-overwrite" /><span class="checkmark"></span></span><span>Re-analyze human labels</span></label>';
     filterBody += '</div></div>';
-    filterBody += '<div class="pg-filter-limit pg-target-limit-group"><label class="pg-filter-label" for="pg-target-limit">Analyze limit</label>' +
-      '<div class="pg-target-limit-row">' +
-        '<div class="pg-target-limit-control">' +
-          '<input type="text" id="pg-target-limit" inputmode="numeric" pattern="[0-9]*" maxlength="4" placeholder="All" autocomplete="off" />' +
-          '<div class="pg-target-limit-steppers" role="group" aria-label="Adjust analyze limit">' +
-            '<button class="pg-target-limit-step" type="button" data-target-limit-step="increase" aria-label="Increase analyze limit" aria-controls="pg-target-limit">' + _icon('chevronUp') + '</button>' +
-            '<button class="pg-target-limit-step" type="button" data-target-limit-step="decrease" aria-label="Decrease analyze limit" aria-controls="pg-target-limit">' + _icon('chevronDown') + '</button>' +
-          '</div>' +
-        '</div>' +
-        '<div class="qym-pagination" id="pg-target-pagination" role="navigation" aria-label="Analysis target pagination" hidden></div>' +
-      '</div></div>';
+    filterBody += '<div class="pg-filter-limit"><label class="pg-filter-label" for="pg-target-limit">Analyze limit</label>' +
+      '<input type="text" id="pg-target-limit" inputmode="numeric" pattern="[0-9]*" maxlength="4" placeholder="All" autocomplete="off" /></div>';
     filterBody += '</div>';
     filterBody += '<div id="pg-matched-section">';
     filterBody += _buildMatchedItemsTable();
@@ -2855,7 +1095,6 @@ window.QymPlayground = (function () {
     // ── Prompt Preview ──
     var previewBody = '';
     previewBody += '<div id="pg-preview-loading" style="display:none;padding:8px 14px;font-size:var(--font-base);color:var(--accent-tertiary);background:rgba(168,85,247,0.06);border-bottom:1px solid rgba(168,85,247,0.15);">Generating preview\u2026</div>';
-    previewBody += '<div id="pg-prompt-budget" class="pg-prompt-budget" role="status" aria-live="polite">Final prompt budget is enforced before each provider request.</div>';
     previewBody += '<div id="pg-preview-content" class="pg-prompt-preview-content">Loading prompt preview\u2026</div>';
     previewBody += '<div class="pg-preview-actions">' +
       '<button class="pg-toggle-expand pg-icon-button" id="pg-preview-toggle" type="button" style="display:none;" title="Expand prompt preview" aria-label="Expand prompt preview">' + _icon('expand') + '</button>' +
@@ -2884,14 +1123,6 @@ window.QymPlayground = (function () {
   }
 
   // ── Variable Mapping Section ──
-
-  function _fieldToggleMarkup(field, checked, dataAttribute) {
-    var attribute = dataAttribute || 'data-field';
-    return '<label class="pg-field-toggle">' +
-      '<span class="custom-checkbox"><input type="checkbox" ' + attribute + '="' + _escAttr(field.key) + '"' + (checked ? ' checked' : '') + ' /><span class="checkmark"></span></span>' +
-      '<span>' + _esc(field.label) + '</span>' +
-    '</label>';
-  }
 
   function _buildVariableMapping() {
     var sourceFields = ['input', 'output', 'expected', 'error', 'metric_metadata'];
@@ -2937,7 +1168,10 @@ window.QymPlayground = (function () {
       { key: 'metadata', label: 'Metric Metadata' },
     ];
     for (var e = 0; e < extras.length; e++) {
-      body += _fieldToggleMarkup(extras[e], true);
+      body += '<label class="pg-field-toggle">' +
+        '<span class="custom-checkbox"><input type="checkbox" data-field="' + extras[e].key + '" checked /><span class="checkmark"></span></span>' +
+        '<span>' + extras[e].label + '</span>' +
+      '</label>';
     }
     body += '</div>';
     var metadataPicker = _buildPathPicker('pg-metadata-paths', 'metric_metadata');
@@ -2975,26 +1209,6 @@ window.QymPlayground = (function () {
 
   // ── Matched Items Table ──
 
-  function _renderTargetPagination(matched) {
-    var pagination = document.getElementById('pg-target-pagination');
-    if (!pagination) return;
-    if (!matched || matched.length === 0) {
-      pagination.hidden = true;
-      pagination.innerHTML = '';
-      return;
-    }
-    var pageCount = Math.max(1, Math.ceil(matched.length / _PAGE_SIZE));
-    _matchedPage = Math.min(pageCount - 1, Math.max(0, _matchedPage));
-    pagination.hidden = false;
-    if (!window.QymUIComponents || typeof window.QymUIComponents.renderPagination !== 'function') return;
-    window.QymUIComponents.renderPagination(pagination, {
-      total: matched.length,
-      pageSize: _PAGE_SIZE,
-      page: _matchedPage,
-      variant: 'run',
-    });
-  }
-
   function _buildMatchedItemsTable() {
     var matched = _getMatchedItems();
     var threshold = _opts.getThreshold ? _opts.getThreshold() : 0.8;
@@ -3012,36 +1226,31 @@ window.QymPlayground = (function () {
       return html;
     }
 
-    var pageCount = Math.max(1, Math.ceil(matched.length / _PAGE_SIZE));
-    _matchedPage = Math.min(pageCount - 1, Math.max(0, _matchedPage));
-    var pageStart = _matchedPage * _PAGE_SIZE;
-    var pageEnd = Math.min(matched.length, pageStart + _PAGE_SIZE);
-    html += '<div class="pg-items-list" role="listbox" aria-label="Matching analysis targets">';
-    for (var i = pageStart; i < pageEnd; i++) {
+    html += '<div class="pg-items-list">';
+    var visibleCount = Math.min(matched.length, (_matchedPage + 1) * _PAGE_SIZE);
+    for (var i = 0; i < visibleCount; i++) {
       var r = matched[i];
       var failedMetricNames = Array.isArray(r._matched_metric_names) ? r._matched_metric_names : [];
-      var primaryMetric = _getPrimaryMetric(r);
+      var primaryMetric = failedMetricNames[0] || '';
       var scoreNum = primaryMetric && r.metric_scores ? r.metric_scores[primaryMetric] : r.metric_score;
       var scoreStr = scoreNum != null ? scoreNum.toFixed(2) : '\u2014';
       var status = r.error ? 'error' : (scoreNum != null ? (scoreNum < threshold ? 'failed' : 'passed') : 'none');
-      var isSelected = _targetMatchesRow(_selectedTarget, r);
+      var isSelected = r.item_id === _selectedItemId;
       var md = r.item_metadata && typeof r.item_metadata === 'object' ? r.item_metadata : {};
-      var rcCategories = _rootCauseCategories(md);
-      var rc = rcCategories.join(', ');
+      var rc = md.root_cause || '';
       var rcDetail = md.root_cause_detail || '';
       var rcSource = md.root_cause_source || '';
       var rcConfidence = md.root_cause_confidence;
       var isAi = rcSource === 'ai';
-      var rcColor = _rootCauseColor(rcCategories[0] || rc);
-      var targetLabel = 'Target #' + (r.index != null ? r.index : i) + ', ' + (primaryMetric || 'all metrics') + ', ' + status;
-      html += '<div class="pg-item-card' + (isSelected ? ' pg-item-selected' : '') + '" role="option" tabindex="0" aria-selected="' + (isSelected ? 'true' : 'false') + '" aria-label="' + _escAttr(targetLabel) + '" data-item-id="' + _escAttr(r.item_id) + '" data-metric-name="' + _escAttr(primaryMetric) + '">';
+      var rcColor = _rootCauseColor(rc);
+      html += '<div class="pg-item-card' + (isSelected ? ' pg-item-selected' : '') + '" data-item-id="' + _escAttr(r.item_id) + '">';
 
       // Top row: index, score, status
       html += '<div class="pg-item-top">';
       html += '<span class="pg-item-idx">#' + (r.index != null ? r.index : i) + '</span>';
       if (primaryMetric) html += '<span class="pg-item-metric">' + _esc(primaryMetric) + '</span>';
       if (scoreNum != null) html += '<span class="pg-item-score pg-status-' + status + '">' + scoreStr + '</span>';
-      html += '<span class="pg-status-badge pg-status-' + status + '">' + (status === 'none' ? 'no score' : status) + '</span>';
+      html += '<span class="pg-status-badge qym-badge pg-status-' + status + '">' + (status === 'none' ? 'no score' : status) + '</span>';
       if (failedMetricNames.length > 1) html += '<span class="pg-item-target-count">+' + (failedMetricNames.length - 1) + ' metric target' + (failedMetricNames.length === 2 ? '' : 's') + '</span>';
       html += '</div>';
 
@@ -3057,17 +1266,14 @@ window.QymPlayground = (function () {
             var dotColor = rcConfidence >= 0.8 ? '#22c55e' : (rcConfidence >= 0.5 ? '#eab308' : '#ef4444');
             confDot = '<span class="pg-item-rc-conf" style="background:' + dotColor + ';" title="Confidence: ' + Math.round(rcConfidence * 100) + '%"></span>';
           }
-          html += rcCategories.map(function (category) {
-            var categoryColor = _rootCauseColor(category);
-            return '<span class="pg-item-rc-cat" style="border-color:' + categoryColor + '40;color:' + categoryColor + ';background:' + categoryColor + '15;">' + _esc(category) + confDot + '</span>';
-          }).join('');
+          html += '<span class="pg-item-rc-cat" style="border-color:' + rcColor + '40;color:' + rcColor + ';background:' + rcColor + '15;">' + _esc(rc) + confDot + '</span>';
         }
         html += '</div>';
       }
 
       // Input preview
       html += '<div class="pg-item-preview">';
-      html += '<span class="pg-item-text" dir="auto">' + _esc(_truncate(r.input, 100)) + '</span>';
+      html += '<span class="pg-item-text">' + _esc(_truncate(r.input, 100)) + '</span>';
       html += '</div>';
 
       // Error
@@ -3078,33 +1284,26 @@ window.QymPlayground = (function () {
       html += '</div>'; // pg-item-card
     }
     html += '</div>';
+    if (visibleCount < matched.length) {
+      html += '<button class="pg-show-more" id="pg-show-more" type="button">Show ' +
+        Math.min(_PAGE_SIZE, matched.length - visibleCount) + ' more</button>';
+    }
 
     return html;
   }
 
   // ── Build Config Payload ──
 
-  function _analysisRuleForAnalyzer(rule) {
-    return {
-      id: rule && rule.id || undefined,
-      title: rule && rule.title || '',
-      instruction: rule && rule.instruction || '',
-    };
-  }
-
   function _buildConfigPayload() {
     var cfg = {};
     var rulesToggle = document.getElementById('pg-use-project-rules');
     var documentsToggle = document.getElementById('pg-use-project-documents');
-    var traceToggle = document.getElementById('pg-use-trace');
     if (rulesToggle) cfg.include_project_rules = rulesToggle.checked;
     if (documentsToggle) cfg.include_project_documents = documentsToggle.checked;
 
     if (!_opts.dedicatedPage) {
       var rules = _readAnalysisRulesFromEditor();
-      // Keep reviewer metadata in the version API, but never send it as part
-      // of an analysis configuration.
-      cfg.analysis_rules = rules.map(_analysisRuleForAnalyzer);
+      cfg.analysis_rules = rules;
     }
 
     if (!_opts.dedicatedPage && _referenceDocuments.length > 0) {
@@ -3123,30 +1322,18 @@ window.QymPlayground = (function () {
     var catGroups = document.querySelectorAll('#pg-categories-list .pg-category-group');
     if (catGroups.length > 0) {
       var cats = [];
-        var cdMap = {};
-        var taxonomyMap = {};
-        catGroups.forEach(function (group) {
+      var cdMap = {};
+      catGroups.forEach(function (group) {
         var cat = group.dataset.cat;
         cats.push(cat);
         var dets = [];
         group.querySelectorAll('.pg-detail-item').forEach(function (el) {
           dets.push(el.dataset.detail);
         });
-          if (dets.length > 0) cdMap[cat] = dets;
-          var taxonomy = {};
-          group.querySelectorAll('[data-taxonomy-field]').forEach(function (field) {
-            var value = field.value.trim();
-            if (value) taxonomy[field.dataset.taxonomyField] = value;
-          });
-          if (taxonomy.description || taxonomy.when_to_use) taxonomyMap[cat] = taxonomy;
-        });
-        cfg.root_cause_categories = cats;
-        cfg.category_details_map = cdMap;
-        cfg.category_taxonomy = taxonomyMap;
-    }
-    var maxCategoriesEl = document.getElementById('pg-max-root-cause-categories');
-    if (maxCategoriesEl) {
-      cfg.max_root_cause_categories = _normalizeCategoryLimitInput(maxCategoriesEl);
+        if (dets.length > 0) cdMap[cat] = dets;
+      });
+      cfg.root_cause_categories = cats;
+      cfg.category_details_map = cdMap;
     }
 
     // Include fields
@@ -3154,14 +1341,11 @@ window.QymPlayground = (function () {
     if (fieldChecks.length > 0) {
       var fields = { input: true, expected: true, output: true };
       fieldChecks.forEach(function (cb) { fields[cb.dataset.field] = cb.checked; });
-      if (traceToggle) fields.trace = traceToggle.checked;
       cfg.include_fields = fields;
       if (fields.metadata) {
         var metadataSelection = _getPathPickerSelection('pg-metadata-paths', 'metric_metadata');
         if (metadataSelection.custom) cfg.metadata_fields = metadataSelection.source;
       }
-    } else if (traceToggle) {
-      cfg.include_fields = { trace: traceToggle.checked };
     }
 
     // Field mapping (standard)
@@ -3183,7 +1367,6 @@ window.QymPlayground = (function () {
       var enabled = _referenceDocuments.filter(function (document) { return document.selected !== false; }).length;
       badge.textContent = enabled + ' of ' + _referenceDocuments.length + ' enabled';
     }
-    _syncInferenceSourceSummary();
     _syncActionAvailability();
   }
 
@@ -3194,74 +1377,31 @@ window.QymPlayground = (function () {
     status.className = 'pg-document-upload-status' + (isError ? ' pg-document-upload-error' : '');
   }
 
-  function _uploadReferenceDocument(file, largeDocumentAction) {
-    if (!_hasAnalysisContext()) return Promise.reject(new Error('Could not determine the analysis context.'));
+  function _uploadReferenceDocument(file) {
+    var runId = _getRunId();
+    if (!runId) return Promise.reject(new Error('Could not determine the run ID.'));
     var base = _opts.apiUrl || function (p) { return '/' + p; };
     var form = new FormData();
     form.append('file', file, file.name);
-    form.append('large_document_action', largeDocumentAction || 'ask');
-    return fetch(base(_analysisContextPath('analysis-documents')), {
+    return fetch(base('api/runs/' + runId + '/analysis-documents'), {
       method: 'POST',
       body: form,
     }).then(function (response) {
       return response.text().then(function (text) {
         var payload = {};
         try { payload = text ? JSON.parse(text) : {}; } catch (e) {}
-        if (!response.ok) {
-          var detail = payload.detail;
-          var message = detail && typeof detail === 'object'
-            ? detail.message
-            : detail;
-          var error = new Error(message || text || 'Document upload failed');
-          error.code = detail && typeof detail === 'object' ? detail.code : '';
-          error.detail = detail;
-          throw error;
-        }
+        if (!response.ok) throw new Error(payload.detail || text || 'Document upload failed');
         if (!payload.document) throw new Error('Document upload returned no extracted content.');
         return payload.document;
       });
     });
   }
 
-  function _confirmLargeReferenceDocument(file, detail) {
-    if (!window.QymShell || typeof window.QymShell.openConfirmDialog !== 'function') {
-      return Promise.reject(new Error('Confirmation is unavailable, so the large document was not added.'));
-    }
-    var sourceCharacters = Number(detail && detail.source_characters || 0);
-    var promptLimit = Number(detail && detail.prompt_limit || _documentPerFilePromptLimit());
-    var contentLimit = Number(detail && detail.content_limit || 200000);
-    var contentWillBeCut = !!(detail && detail.content_will_be_cut);
-    return window.QymShell.openConfirmDialog({
-      mount: _overlay || document.body,
-      title: 'Large document needs a decision',
-      description: [
-        file.name + ' is about ' + sourceCharacters.toLocaleString() + ' characters, above the ' + promptLimit.toLocaleString() + '-character prompt-safe limit.',
-        (contentWillBeCut
-          ? 'This upload also exceeds the absolute content limit. Even the full option will retain only the first ' + contentLimit.toLocaleString() + ' extracted characters.'
-          : 'Use the shortened version for normal analysis, or add up to ' + contentLimit.toLocaleString() + ' characters in full.'),
-        'Full content is the evaluator owner’s responsibility and the rule writer will process it in patches.',
-      ],
-      cancelLabel: 'Use shortened version',
-      confirmLabel: 'Add full content',
-      confirmClass: 'shell-btn-danger',
-    }).then(function (result) {
-      return result && result.confirmed ? 'full' : 'truncate';
-    });
-  }
-
-  function _uploadOneReferenceDocument(file) {
-    return _uploadReferenceDocument(file, 'ask').catch(function (error) {
-      if (error.code !== 'DOCUMENT_CONTENT_LIMIT') throw error;
-      return _confirmLargeReferenceDocument(file, error.detail).then(function (action) {
-        return _uploadReferenceDocument(file, action);
-      });
-    });
-  }
-
   function _deleteReferenceDocument(document) {
-    if (!_hasAnalysisContext() || !document.id) return Promise.reject(new Error('Could not identify the saved document.'));
+    var runId = _getRunId();
+    if (!runId || !document.id) return Promise.reject(new Error('Could not identify the saved document.'));
     var base = _opts.apiUrl || function (p) { return '/' + p; };
-    return fetch(base(_analysisContextPath('analysis-documents/' + encodeURIComponent(document.id))), {
+    return fetch(base('api/runs/' + runId + '/analysis-documents/' + encodeURIComponent(document.id)), {
       method: 'DELETE',
     }).then(function (response) {
       if (!response.ok) return response.text().then(function (text) { throw new Error(text || 'Document deletion failed'); });
@@ -3269,32 +1409,11 @@ window.QymPlayground = (function () {
     });
   }
 
-  function _confirmReferenceDocumentDeletion(referenceDocument) {
-    if (!window.QymShell || typeof window.QymShell.openConfirmDialog !== 'function') {
-      if (_opts.showToast) {
-        _opts.showToast('error', 'Confirmation unavailable', 'The document was not deleted. Reload the page and try again.');
-      }
-      return Promise.resolve(false);
-    }
-    return window.QymShell.openConfirmDialog({
-      mount: _overlay || document.body,
-      title: 'Delete document?',
-      description: [
-        'Remove “' + referenceDocument.name + '” from the project library?',
-        'It will no longer be available to future analyses.',
-      ],
-      cancelLabel: 'Keep document',
-      confirmLabel: 'Delete document',
-      confirmClass: 'shell-btn-danger',
-    }).then(function (result) {
-      return !!(result && result.confirmed);
-    });
-  }
-
   function _updateReferenceDocumentSelection(document, selected) {
-    if (!_hasAnalysisContext() || !document.id) return Promise.reject(new Error('Could not identify the saved document.'));
+    var runId = _getRunId();
+    if (!runId || !document.id) return Promise.reject(new Error('Could not identify the saved document.'));
     var base = _opts.apiUrl || function (p) { return '/' + p; };
-    return fetch(base(_analysisContextPath('analysis-documents/' + encodeURIComponent(document.id))), {
+    return fetch(base('api/runs/' + runId + '/analysis-documents/' + encodeURIComponent(document.id)), {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ selected: selected }),
@@ -3315,19 +1434,13 @@ window.QymPlayground = (function () {
     _setDocumentUploadStatus('Extracting ' + files.length + ' document' + (files.length === 1 ? '' : 's') + '…', false);
     _renderReferenceDocuments();
 
-    var uploads = [];
-    var sequence = Promise.resolve();
-    files.forEach(function (file) {
-      sequence = sequence.then(function () {
-        return _uploadOneReferenceDocument(file).then(function (document) {
-          uploads.push({ document: document });
-        }).catch(function (error) {
-          uploads.push({ error: error, filename: file.name });
-        });
+    Promise.all(files.map(function (file) {
+      return _uploadReferenceDocument(file).then(function (document) {
+        return { document: document };
+      }).catch(function (error) {
+        return { error: error, filename: file.name };
       });
-    });
-    sequence.then(function () {
-      var results = uploads;
+    })).then(function (results) {
       var added = 0;
       var failed = 0;
       results.forEach(function (result) {
@@ -3391,30 +1504,13 @@ window.QymPlayground = (function () {
   function _readAnalysisRuleDraftsFromEditor() {
     var list = document.getElementById('pg-rule-list');
     if (!list) return _analysisRules.slice();
-    var rules = _analysisRules.map(function (rule) {
-      return {
-        id: rule && rule.id,
-        title: rule && rule.title || '',
-        instruction: rule && rule.instruction || '',
-        inferred_from: rule && rule.inferred_from || undefined,
-        explanation: rule && rule.explanation || undefined,
-      };
-    });
+    var rules = [];
     list.querySelectorAll('.pg-rule-item').forEach(function (item) {
       var titleEl = item.querySelector('.pg-rule-title');
       var instructionEl = item.querySelector('.pg-rule-instruction');
-      var index = parseInt(item.dataset.ruleIndex, 10);
-      if (Number.isNaN(index) || index < 0 || index >= rules.length) return;
       var title = titleEl ? titleEl.value.trim() : '';
       var instruction = instructionEl ? instructionEl.value.trim() : '';
-      var existing = rules[index] || {};
-      rules[index] = {
-        id: item.dataset.ruleId || undefined,
-        title: title,
-        instruction: instruction,
-        inferred_from: existing.inferred_from || undefined,
-        explanation: existing.explanation || undefined,
-      };
+      rules.push({ id: item.dataset.ruleId || undefined, title: title, instruction: instruction });
     });
     return rules;
   }
@@ -3427,39 +1523,22 @@ window.QymPlayground = (function () {
 
   function _validateAnalysisRuleDrafts() {
     var list = document.getElementById('pg-rule-list');
-    _analysisRules = _readAnalysisRuleDraftsFromEditor();
-    var invalidIndex = -1;
-    var invalidTitle = false;
-    _analysisRules.some(function (rule, index) {
-      var titleMissing = !rule.title;
-      var instructionMissing = !rule.instruction;
-      if (titleMissing || instructionMissing) {
-        invalidIndex = index;
-        invalidTitle = titleMissing;
-        return true;
-      }
-      return false;
-    });
-    if (invalidIndex < 0) return true;
-
-    _analysisRulesPageForIndex(invalidIndex);
-    _editingRuleIndex = invalidIndex;
-    _renderAnalysisRulesEditor();
-    var invalidItem = list && list.querySelector('[data-rule-index="' + invalidIndex + '"]');
+    if (!list) return true;
     var invalidField = null;
-    if (invalidItem) {
-      var titleEl = invalidItem.querySelector('.pg-rule-title');
-      var instructionEl = invalidItem.querySelector('.pg-rule-instruction');
+    list.querySelectorAll('.pg-rule-item').forEach(function (item) {
+      var titleEl = item.querySelector('.pg-rule-title');
+      var instructionEl = item.querySelector('.pg-rule-instruction');
       var titleMissing = !titleEl || !titleEl.value.trim();
       var instructionMissing = !instructionEl || !instructionEl.value.trim();
       if (titleEl) titleEl.classList.toggle('pg-field-invalid', titleMissing);
       if (instructionEl) instructionEl.classList.toggle('pg-field-invalid', instructionMissing);
-      invalidField = invalidTitle ? titleEl : instructionEl;
-      if (!invalidField && (titleMissing || instructionMissing)) invalidField = titleMissing ? titleEl : instructionEl;
-    }
-    if (!invalidField) return false;
+      if (!invalidField && (titleMissing || instructionMissing)) {
+        invalidField = titleMissing ? titleEl : instructionEl;
+      }
+    });
+    if (!invalidField) return true;
     invalidField.focus();
-    _setContextStatus('Complete the title and instruction for every rule before changes can be saved.', true);
+    _setContextStatus('Complete the title and instruction for every rule before saving.', true);
     return false;
   }
 
@@ -3519,33 +1598,24 @@ window.QymPlayground = (function () {
     });
   }
 
-  function _renderAnalysisRulesEditor(scrollToTop) {
+  function _renderAnalysisRulesEditor() {
     var list = document.getElementById('pg-rule-list');
-    _renderRuleFilterControls();
     if (list) list.innerHTML = _buildAnalysisRulesEditor();
-    _renderAnalysisRulePagination();
     var count = document.getElementById('pg-rule-count');
     if (count) count.textContent = _formatRuleCount();
     var selected = _ruleVersions.find(function (version) { return version.id === _selectedRuleVersionId; });
-    var editorTitle = document.getElementById('pg-rule-editor-title');
-    if (editorTitle) editorTitle.textContent = selected ? 'Rules in v' + selected.version : 'Rules';
     var editable = !!selected && selected.status === 'draft';
     var addButton = document.getElementById('pg-add-rule');
-    var createButton = document.getElementById('pg-create-rule-version');
+    var saveButton = document.getElementById('pg-save-context');
     if (addButton) {
       addButton.disabled = !editable;
       addButton.title = editable ? 'Add rule' : 'Create a draft to add rules';
       addButton.setAttribute('aria-label', editable ? 'Add rule' : 'Create a draft to add rules');
     }
-    if (createButton) {
-      createButton.hidden = false;
-      createButton.classList.remove('pg-context-primary');
-      createButton.classList.add('pg-context-secondary');
-    }
-    var generateButton = document.getElementById('pg-infer-rules');
-    if (generateButton) {
-      generateButton.classList.remove('pg-context-secondary');
-      generateButton.classList.add('pg-context-primary');
+    if (saveButton) {
+      saveButton.disabled = !editable;
+      saveButton.title = editable ? 'Save changes to this draft' : 'Create a draft to edit rules';
+      saveButton.setAttribute('aria-label', editable ? 'Save changes to this draft' : 'Create a draft to edit rules');
     }
     var viewState = document.getElementById('pg-rule-view-state');
     if (viewState) {
@@ -3555,60 +1625,18 @@ window.QymPlayground = (function () {
       viewState.title = editable ? 'Rules in this draft can be edited.' : 'Create a draft before editing these rules.';
     }
     _renderRuleVersionMeta(selected);
-    _renderRuleVersionActions();
     _renderRuleViewStatus();
-    if (scrollToTop && list) list.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }
-
-  function _renderRuleVersionActions() {
-    var actions = document.getElementById('pg-rule-version-actions');
-    if (!actions) return;
-    var selected = _ruleVersions.find(function (version) { return version.id === _selectedRuleVersionId; });
-    actions.innerHTML = '';
-    actions.hidden = true;
-    if (!selected || selected.is_deleted || !_canActivateRuleVersions) return;
-    if (selected.status === 'draft') {
-      actions.innerHTML = '<button class="qym-inline-action qym-inline-action--accent" id="pg-publish-rule-version" type="button" data-publish-rule-version="' + _escAttr(selected.id) + '">' + _icon('upload') + '<span>Publish</span></button>';
-    } else if (selected.status === 'published' && !selected.is_active) {
-      actions.innerHTML = '<button class="qym-inline-action qym-inline-action--accent" id="pg-promote-rule-version" type="button" data-activate-rule-version="' + _escAttr(selected.id) + '">' + _icon('rocket') + '<span>Promote</span></button>';
-    } else {
-      return;
-    }
-    actions.hidden = false;
   }
 
   function _syncInferenceSourceSummary() {
-    return _syncInferenceSourceAvailability();
-  }
-
-  function _syncInferenceSourceAvailability() {
-    var state = _inferenceSourceState();
-    _renderApprovedExampleSourceControl();
-    var empty = document.getElementById('pg-infer-source-empty');
-    if (empty) {
-      empty.textContent = state.message;
-      empty.hidden = state.hasUsableSource;
-    }
-    var generateButton = document.getElementById('pg-infer-rules');
-    if (generateButton) {
-      generateButton.disabled = !state.hasUsableSource;
-      generateButton.title = state.hasUsableSource ? 'Generate additional non-redundant rules from the selected sources' : state.message;
-    }
-    var documentBudget = document.getElementById('pg-document-budget');
-    if (documentBudget) {
-      var documentCharacters = Number(state.selectedDocumentCharacters || 0);
-      var documentLimit = Number(state.documentCharacterLimit || 0);
-      var documentCount = Number(state.selectedDocuments || 0);
-      var documentCountLimit = Number(state.documentCountLimit || 0);
-      documentBudget.textContent = 'Selected document content: ' + documentCharacters.toLocaleString() +
-        ' / ' + documentLimit.toLocaleString() + ' prompt characters · ' + documentCount +
-        ' / ' + documentCountLimit + ' documents in the final prompt. ' +
-        (documentCharacters > documentLimit || documentCount > documentCountLimit
-          ? 'The rule writer will divide this into patches; the final analyzer prompt will disclose any bounded documents.'
-          : 'This selection fits the final analyzer document budget.');
-      documentBudget.classList.toggle('pg-budget-over', documentCharacters > documentLimit);
-    }
-    return state;
+    var summary = document.getElementById('pg-infer-source-summary');
+    if (!summary) return;
+    var inputs = [
+      document.getElementById('pg-infer-use-documents'),
+      document.getElementById('pg-infer-use-examples'),
+    ].filter(Boolean);
+    var enabled = inputs.filter(function (input) { return input.checked; }).length;
+    summary.textContent = enabled + ' of ' + inputs.length + ' sources enabled';
   }
 
   function _setRuleEditorBusy(isBusy) {
@@ -3619,25 +1647,17 @@ window.QymPlayground = (function () {
     });
     var addButton = document.getElementById('pg-add-rule');
     if (addButton) addButton.disabled = isBusy;
-    var pagination = document.getElementById('pg-rule-pagination');
-    if (pagination) pagination.querySelectorAll('button').forEach(function (control) {
-      var targetPage = parseInt(control.dataset.qymPage, 10);
-      control.disabled = isBusy || Number.isNaN(targetPage) || targetPage < 0 || targetPage >= _analysisRulesPageCount();
-    });
   }
 
   function _renderRuleVersionHistory() {
     var list = document.getElementById('pg-rule-version-list');
-    if (list) {
-      list.innerHTML = _buildRuleVersionHistory();
-      document.dispatchEvent(new CustomEvent('qym:rule-version-history-rendered'));
-    }
+    if (list) list.innerHTML = _buildRuleVersionHistory();
   }
 
   function _refreshRuleVersions(syncEditor) {
-    if (!_hasAnalysisContext()) return Promise.reject(new Error('Could not determine the analysis context.'));
+    var runId = _getRunId();
     var base = _opts.apiUrl || function (p) { return '/' + p; };
-    return fetch(base(_analysisContextPath('analysis-rule-versions?include_deleted=true')))
+    return fetch(base('api/runs/' + runId + '/analysis-rule-versions?include_deleted=true'))
       .then(function (response) {
         if (!response.ok) throw new Error('Could not load rule version history');
         return response.json();
@@ -3654,24 +1674,22 @@ window.QymPlayground = (function () {
             _selectedRuleVersionId = selected ? selected.id : null;
           }
           _analysisRules = selected ? selected.rules : [];
-          _analysisRulesPage = 1;
           _editingRuleIndex = null;
           if (_config) _config.analysis_rules = _analysisRules;
           _renderAnalysisRulesEditor();
         }
         _renderRuleVersionHistory();
-        _renderRuleVersionActions();
         _renderRuleViewStatus();
       });
   }
 
   function _changeRuleVersion(versionId, action) {
-    if (!_hasAnalysisContext()) return Promise.reject(new Error('Could not determine the analysis context.'));
+    var runId = _getRunId();
     var base = _opts.apiUrl || function (p) { return '/' + p; };
     var suffix = action === 'restore'
       ? '/restore'
       : (action === 'activate' ? '/activate' : (action === 'permanent-delete' ? '/permanent' : ''));
-    return fetch(base(_analysisContextPath('analysis-rule-versions/' + encodeURIComponent(versionId) + suffix)), {
+    return fetch(base('api/runs/' + runId + '/analysis-rule-versions/' + encodeURIComponent(versionId) + suffix), {
       method: action === 'delete' || action === 'permanent-delete' ? 'DELETE' : 'POST',
     }).then(function (response) {
       if (!response.ok) return response.json().then(function (data) { throw new Error(data.detail || 'Could not update rule version'); });
@@ -3714,50 +1732,11 @@ window.QymPlayground = (function () {
     });
   }
 
-  function _confirmAnalysisRuleDeletion(index) {
-    var rule = _analysisRules[index];
-    if (!rule) return Promise.resolve(false);
-    if (!window.QymShell || typeof window.QymShell.openConfirmDialog !== 'function') {
-      _setContextStatus('The confirmation dialog is unavailable. Reload the page and try again.', true);
-      return Promise.resolve(false);
-    }
-    var name = rule.title || 'this rule';
-    return window.QymShell.openConfirmDialog({
-      mount: _overlay || document.body,
-      title: 'Delete this rule?',
-      description: [
-        'Delete “' + name + '” from the current draft.',
-        'This can\'t be undone.',
-      ],
-      cancelLabel: 'Cancel',
-      confirmLabel: 'Delete rule',
-      confirmClass: 'shell-btn-danger',
-    }).then(function (result) {
-      if (!result || !result.confirmed) return false;
-      _analysisRules = _readAnalysisRuleDraftsFromEditor();
-      _analysisRules.splice(index, 1);
-      _editingRuleIndex = null;
-      _renderAnalysisRulesEditor();
-      _setRuleEditorBusy(true);
-      _setContextStatus('Removing rule from the current version…', false);
-      return _saveAnalysisContext().then(function () {
-        _setContextStatus('Rule deleted.', false);
-        return true;
-      }).catch(function (error) {
-        _setContextStatus(error.message || 'The rule was removed locally but could not be saved.', true);
-        return false;
-      }).finally(function () {
-        _setRuleEditorBusy(false);
-      });
-    });
-  }
-
   function _openRuleVersion(versionId) {
     var version = _ruleVersions.find(function (candidate) { return candidate.id === versionId; });
     if (!version) return;
     _selectedRuleVersionId = version.id;
     _analysisRules = (version.rules || []).slice();
-    _analysisRulesPage = 1;
     _editingRuleIndex = null;
     if (_config) _config.analysis_rules = _analysisRules;
     _renderAnalysisRulesEditor();
@@ -3770,14 +1749,14 @@ window.QymPlayground = (function () {
   }
 
   function _createRuleDraft(fromVersionId) {
-    if (!_hasAnalysisContext()) return Promise.reject(new Error('Could not determine the analysis context.'));
+    var runId = _getRunId();
     var base = _opts.apiUrl || function (p) { return '/' + p; };
     var sourceVersionId = fromVersionId || _selectedRuleVersionId;
     var selected = _ruleVersions.find(function (version) { return version.id === sourceVersionId; });
     if (!selected || selected.is_deleted) {
       return Promise.reject(new Error('Select an available version before creating a draft.'));
     }
-    return fetch(base(_analysisContextPath('analysis-rule-versions')), {
+    return fetch(base('api/runs/' + runId + '/analysis-rule-versions'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -3795,9 +1774,9 @@ window.QymPlayground = (function () {
   }
 
   function _mergeRuleVersion(targetId, sourceId, apply, resolutions) {
-    if (!_hasAnalysisContext()) return Promise.reject(new Error('Could not determine the analysis context.'));
+    var runId = _getRunId();
     var base = _opts.apiUrl || function (p) { return '/' + p; };
-    return fetch(base(_analysisContextPath('analysis-rule-versions/' + encodeURIComponent(targetId) + ':merge')), {
+    return fetch(base('api/runs/' + runId + '/analysis-rule-versions/' + encodeURIComponent(targetId) + ':merge'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -4063,28 +2042,6 @@ window.QymPlayground = (function () {
     });
   }
 
-  function _downloadRuleVersion(versionId) {
-    var version = _ruleVersions.find(function (candidate) { return candidate.id === versionId; });
-    if (!version) return;
-    var payload = {
-      name: version.name || 'v' + version.version,
-      version: version.version,
-      status: version.status,
-      created_at: version.created_at,
-      rules: version.rules || [],
-    };
-    var blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-    var url = URL.createObjectURL(blob);
-    var link = document.createElement('a');
-    link.href = url;
-    link.download = 'analysis-rules-v' + version.version + '.json';
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    setTimeout(function () { URL.revokeObjectURL(url); }, 0);
-    _setContextStatus('Downloaded v' + version.version + '.', false);
-  }
-
   function _publishRuleVersion(versionId) {
     var version = _ruleVersions.find(function (candidate) { return candidate.id === versionId; });
     if (!version) return Promise.resolve();
@@ -4092,7 +2049,7 @@ window.QymPlayground = (function () {
       _setContextStatus('The publish dialog is unavailable. Reload the page and try again.', true);
       return Promise.resolve();
     }
-    if (!_hasAnalysisContext()) return Promise.reject(new Error('Could not determine the analysis context.'));
+    var runId = _getRunId();
     var base = _opts.apiUrl || function (p) { return '/' + p; };
     var setProduction = false;
     return window.QymShell.openFormDialog({
@@ -4112,7 +2069,7 @@ window.QymPlayground = (function () {
       confirmLabel: 'Publish version',
       submittingLabel: 'Publishing…',
       onSubmit: function (values) {
-        return fetch(base(_analysisContextPath('analysis-rule-versions/' + encodeURIComponent(String(version.version)) + ':publish')), {
+        return fetch(base('api/runs/' + runId + '/analysis-rule-versions/' + encodeURIComponent(String(version.version)) + ':publish'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ set_alias: values.setProduction ? 'production' : null }),
@@ -4138,9 +2095,9 @@ window.QymPlayground = (function () {
     var version = _ruleVersions.find(function (candidate) { return candidate.id === versionId; });
     var parent = version && _ruleVersions.find(function (candidate) { return candidate.id === baseVersionId; });
     if (!version || !parent) return Promise.resolve();
-    if (!_hasAnalysisContext()) return Promise.reject(new Error('Could not determine the analysis context.'));
+    var runId = _getRunId();
     var base = _opts.apiUrl || function (p) { return '/' + p; };
-    return fetch(base(_analysisContextPath('analysis-rule-versions/' + encodeURIComponent(String(version.version)) + ':compare?base=' + encodeURIComponent(String(parent.version)))))
+    return fetch(base('api/runs/' + runId + '/analysis-rule-versions/' + encodeURIComponent(String(version.version)) + ':compare?base=' + encodeURIComponent(String(parent.version))))
       .then(function (response) {
         if (!response.ok) return response.json().then(function (data) { throw new Error(data.detail || 'Could not compare rule versions'); });
         return response.json();
@@ -4208,44 +2165,17 @@ window.QymPlayground = (function () {
     _showContextFeedback(message, isError);
   }
 
-  function _responseErrorMessage(data, fallback) {
-    var detail = data && data.detail;
-    if (detail && typeof detail === 'object') {
-      return String(detail.message || detail.detail || fallback);
-    }
-    return String(detail || fallback);
-  }
-
-  function _scheduleAnalysisRuleAutoSave() {
-    if (_analysisRuleSaveTimer) clearTimeout(_analysisRuleSaveTimer);
-    _analysisRuleSaveTimer = null;
-    var selected = _ruleVersions.find(function (version) { return version.id === _selectedRuleVersionId; });
-    if (!selected || selected.status !== 'draft') return;
-    _analysisRuleSaveTimer = setTimeout(function () {
-      _analysisRuleSaveTimer = null;
-      var drafts = _readAnalysisRuleDraftsFromEditor();
-      if (drafts.some(function (rule) { return !rule.title || !rule.instruction; })) return;
-      _saveAnalysisContext().catch(function () {});
-    }, 700);
-  }
-
   function _saveAnalysisContext(createNewVersion) {
     if (!_validateAnalysisRuleDrafts()) return Promise.reject(new Error('Every rule requires a title and instruction'));
-    if (!_hasAnalysisContext()) return Promise.reject(new Error('Could not determine the analysis context.'));
+    var runId = _getRunId();
     var base = _opts.apiUrl || function (p) { return '/' + p; };
     var payload = {
       analysis_rules: _readAnalysisRulesFromEditor(),
       create_new_version: !!createNewVersion,
       rule_version_id: _selectedRuleVersionId,
     };
-    var selectedVersion = _ruleVersions.find(function (version) { return version.id === _selectedRuleVersionId; });
-    _setContextStatus(
-      createNewVersion
-        ? 'Creating a new rule version…'
-        : (selectedVersion && selectedVersion.status === 'draft' ? 'Saving draft…' : 'Saving rules…'),
-      false
-    );
-    return fetch(base(_analysisContextPath('analysis-context')), {
+    _setContextStatus(createNewVersion ? 'Creating a new rule version…' : 'Saving production rules…', false);
+    return fetch(base('api/runs/' + runId + '/analysis-context'), {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -4255,7 +2185,6 @@ window.QymPlayground = (function () {
     }).then(function (data) {
       _selectedRuleVersionId = data.rule_version && data.rule_version.id;
       _analysisRules = data.analysis_rules || [];
-      _analysisRulesPage = 1;
       if (_config) {
         _config.analysis_rules = _analysisRules;
       }
@@ -4265,7 +2194,7 @@ window.QymPlayground = (function () {
           createNewVersion
             ? 'Created draft v' + data.rule_version.version + '.'
             : (data.rule_version.status === 'draft'
-              ? 'Changes saved automatically to draft v' + data.rule_version.version + '.'
+              ? 'Saved draft v' + data.rule_version.version + '.'
               : 'Saved rules. Production remains on v' + data.rule_version.version + '.'),
           false
         );
@@ -4280,76 +2209,59 @@ window.QymPlayground = (function () {
     });
   }
 
-  function _inferAnalysisRules() {
-    var mode = 'generate';
-    if (!_hasAnalysisContext()) {
-      _setContextStatus('Could not determine the analysis context.', true);
-      return;
-    }
+  function _inferAnalysisRules(mode) {
+    mode = mode === 'update' ? 'update' : 'generate';
+    var runId = _getRunId();
     var base = _opts.apiUrl || function (p) { return '/' + p; };
     var useDocumentsEl = document.getElementById('pg-infer-use-documents');
+    var useExamplesEl = document.getElementById('pg-infer-use-examples');
     var inferenceSources = {
       include_documents: !useDocumentsEl || useDocumentsEl.checked,
-      include_examples: _selectedApprovedExampleCount() > 0,
+      include_examples: !useExamplesEl || useExamplesEl.checked,
     };
     if (!inferenceSources.include_documents && !inferenceSources.include_examples) {
       _setContextStatus('Select at least one source before running rule inference.', true);
       return;
     }
-    var sourceState = _syncInferenceSourceAvailability();
-    if (!sourceState.hasUsableSource) {
-      _setContextStatus(sourceState.message, true);
-      return;
-    }
-    var button = document.getElementById('pg-infer-rules');
+    var button = document.getElementById(mode === 'update' ? 'pg-update-rules' : 'pg-infer-rules');
     if (button) {
       button.disabled = true;
-      button.textContent = 'Generating…';
+      button.textContent = mode === 'update' ? 'Updating…' : 'Generating…';
     }
-    _setContextStatus('Generating rules from the selected sources…', false);
-    fetch(base(_analysisContextPath('analysis-rules/infer')), {
+    _setContextStatus(
+      mode === 'update'
+        ? 'Updating the current rules from the selected sources…'
+        : 'Generating rules from the selected sources…',
+      false
+    );
+    fetch(base('api/runs/' + runId + '/analysis-rules/infer'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         include_documents: inferenceSources.include_documents,
         include_examples: inferenceSources.include_examples,
-        approved_example_ids: Array.from(_selectedApprovedExampleIds),
-        include_fields: _approvedExampleFieldMap(),
         mode: mode,
         rule_version_id: _selectedRuleVersionId,
         connection_id: _connectionId,
       }),
     }).then(function (response) {
-      if (!response.ok) return response.json().then(function (data) { throw new Error(_responseErrorMessage(data, 'Could not generate rules')); });
+      if (!response.ok) return response.json().then(function (data) { throw new Error(data.detail || 'Could not generate rules'); });
       return response.json();
     }).then(function (data) {
       _analysisRules = data.analysis_rules || [];
-      _analysisRulesPage = 1;
       _selectedRuleVersionId = data.rule_version && data.rule_version.id;
       if (_config) {
         _config.analysis_rules = _analysisRules;
       }
       _renderAnalysisRulesEditor();
       return _refreshRuleVersions(false).then(function () {
-        var inferenceStats = data.inference_stats || {};
-        var addedCount = data.changes && Number.isFinite(Number(data.changes.added))
-          ? Number(data.changes.added)
-          : Number(data.generated_rule_count || 0);
-        var patchText = inferenceStats.writer_calls
-          ? ' · ' + inferenceStats.writer_calls + ' writer call' + (inferenceStats.writer_calls === 1 ? '' : 's') +
-            (inferenceStats.patching_used ? ' across bounded patches' : '')
-          : '';
-        var version = data.rule_version || {};
-        var versionText;
-        if (addedCount === 0) {
-          versionText = 'No new non-redundant rules were found; v' + version.version + ' is unchanged.';
-        } else if (data.created_new_version) {
-          versionText = 'Created draft v' + version.version + ' with ' + addedCount + ' additional ' + (addedCount === 1 ? 'rule' : 'rules') + '.';
-        } else {
-          versionText = 'Added ' + addedCount + ' new ' + (addedCount === 1 ? 'rule' : 'rules') + ' to draft v' + version.version + '.';
-        }
+        var changes = data.changes || {};
+        var changeText = mode === 'update'
+          ? (changes.added || 0) + ' added, ' + (changes.changed || 0) + ' changed, ' + (changes.removed || 0) + ' removed'
+          : _analysisRules.length + ' rules generated';
         _setContextStatus(
-          versionText + patchText + (addedCount > 0 ? ' Review and publish when ready.' : ''),
+          (mode === 'update' ? 'Updated' : 'Generated') + ' draft v' + data.rule_version.version +
+          ' · ' + changeText + '. Review and publish when ready.',
           false
         );
         _scheduleAutoPreview(0);
@@ -4359,33 +2271,17 @@ window.QymPlayground = (function () {
       if (_opts.showToast) _opts.showToast('error', 'Rule Generation Failed', error.message);
     }).finally(function () {
       if (button) {
-        button.textContent = 'Generate rules';
+        button.disabled = false;
+        button.textContent = mode === 'update' ? 'Update rules' : 'Generate rules';
       }
-      _syncInferenceSourceAvailability();
     });
   }
 
   // ── Wire all events ──
 
   function _wireEvents() {
-    document.querySelectorAll('#pg-infer-use-documents').forEach(function (input) {
+    document.querySelectorAll('#pg-infer-use-documents, #pg-infer-use-examples').forEach(function (input) {
       input.addEventListener('change', _syncInferenceSourceSummary);
-    });
-    var addExamples = document.getElementById('pg-add-examples');
-    if (addExamples) addExamples.addEventListener('click', _openApprovedExamplePicker);
-    var ruleVersionActions = document.getElementById('pg-rule-version-actions');
-    if (ruleVersionActions) ruleVersionActions.addEventListener('click', function (event) {
-      var publish = event.target.closest('[data-publish-rule-version]');
-      var promote = event.target.closest('[data-activate-rule-version]');
-      if (publish) {
-        _publishRuleVersion(publish.dataset.publishRuleVersion).catch(function (error) {
-          _setContextStatus(error.message || 'Could not publish rule version.', true);
-        });
-        return;
-      }
-      if (promote) {
-        _changeRuleVersion(promote.dataset.activateRuleVersion, 'activate');
-      }
     });
     _syncInferenceSourceSummary();
     var ruleList = document.getElementById('pg-rule-list');
@@ -4393,24 +2289,28 @@ window.QymPlayground = (function () {
       ruleList.addEventListener('input', function (event) {
         if (event.target) event.target.classList.remove('pg-field-invalid');
         _analysisRules = _readAnalysisRuleDraftsFromEditor();
-        _scheduleAnalysisRuleAutoSave();
         _scheduleAutoPreview();
       });
       ruleList.addEventListener('click', function (event) {
-        var remove = event.target.closest('[data-delete-rule]');
+        var remove = event.target.closest('.pg-rule-remove');
         if (remove) {
-          var removeIndex = parseInt(remove.dataset.deleteRule, 10);
-          if (!Number.isNaN(removeIndex)) _confirmAnalysisRuleDeletion(removeIndex);
-          return;
-        }
-        var row = event.target.closest('.pg-rule-item');
-        if (row && !event.target.closest('button, input, select, textarea')) {
-          var rowToggle = row.querySelector('[data-toggle-rule]');
-          if (rowToggle) rowToggle.click();
+          _analysisRules = _readAnalysisRuleDraftsFromEditor();
+          var index = parseInt(remove.dataset.ruleIndex, 10);
+          if (Number.isNaN(index)) return;
+          _analysisRules.splice(index, 1);
+          _editingRuleIndex = null;
+          _renderAnalysisRulesEditor();
+          _setRuleEditorBusy(true);
+          _setContextStatus('Removing rule from the current version…', false);
+          _saveAnalysisContext().catch(function () {
+            _setContextStatus('The rule was removed locally but could not be saved. Retry Save context before refreshing.', true);
+          }).finally(function () {
+            _setRuleEditorBusy(false);
+          });
           return;
         }
         var toggle = event.target.closest('[data-toggle-rule]');
-        if (!toggle) return;
+        if (!toggle || event.target.closest('input, textarea, select, button')) return;
         _analysisRules = _readAnalysisRuleDraftsFromEditor();
         var toggleIndex = parseInt(toggle.dataset.toggleRule, 10);
         if (Number.isNaN(toggleIndex)) return;
@@ -4424,34 +2324,6 @@ window.QymPlayground = (function () {
         toggle.click();
       });
     }
-    var ruleSearch = document.getElementById('pg-rule-search');
-    if (ruleSearch) ruleSearch.addEventListener('input', function () {
-      _analysisRules = _readAnalysisRuleDraftsFromEditor();
-      _analysisRuleSearch = ruleSearch.value;
-      _analysisRulesPage = 1;
-      _editingRuleIndex = null;
-      _renderAnalysisRulesEditor();
-    });
-    var targetPagination = document.getElementById('pg-target-pagination');
-    if (targetPagination) targetPagination.addEventListener('click', function (event) {
-      var pageButton = event.target.closest('[data-qym-page]');
-      if (!pageButton || pageButton.disabled) return;
-      var nextPage = parseInt(pageButton.dataset.qymPage, 10);
-      if (Number.isNaN(nextPage)) return;
-      _matchedPage = nextPage;
-      _refreshMatchedTable(true);
-    });
-    var rulePagination = document.getElementById('pg-rule-pagination');
-    if (rulePagination) rulePagination.addEventListener('click', function (event) {
-      var pageButton = event.target.closest('[data-qym-page]');
-      if (!pageButton || pageButton.disabled) return;
-      _analysisRules = _readAnalysisRuleDraftsFromEditor();
-      var nextPage = parseInt(pageButton.dataset.qymPage, 10) + 1;
-      if (Number.isNaN(nextPage)) return;
-      _setAnalysisRulesPage(nextPage);
-      _editingRuleIndex = null;
-      _renderAnalysisRulesEditor(true);
-    });
     var addRule = document.getElementById('pg-add-rule');
     if (addRule) addRule.addEventListener('click', function () {
       var selected = _ruleVersions.find(function (version) { return version.id === _selectedRuleVersionId; });
@@ -4460,16 +2332,19 @@ window.QymPlayground = (function () {
         return;
       }
       _analysisRules = _readAnalysisRuleDraftsFromEditor();
-      _analysisRuleSearch = '';
       _analysisRules.push({ title: '', instruction: '' });
       _editingRuleIndex = _analysisRules.length - 1;
-      _analysisRulesPageForIndex(_editingRuleIndex);
       _renderAnalysisRulesEditor();
-      var newRuleTitle = ruleList && ruleList.querySelector('[data-rule-index="' + _editingRuleIndex + '"] .pg-rule-title');
+      var newRuleTitle = ruleList.querySelector('.pg-rule-item:last-child .pg-rule-title');
       if (newRuleTitle) {
         newRuleTitle.scrollIntoView({ block: 'nearest' });
         newRuleTitle.focus();
       }
+    });
+    var saveContext = document.getElementById('pg-save-context');
+    if (saveContext) saveContext.addEventListener('click', function () {
+      saveContext.disabled = true;
+      _saveAnalysisContext().catch(function () {}).finally(function () { saveContext.disabled = false; });
     });
     _renderAnalysisRulesEditor();
     var createRuleVersion = document.getElementById('pg-create-rule-version');
@@ -4485,7 +2360,9 @@ window.QymPlayground = (function () {
       }).finally(function () { createRuleVersion.disabled = false; });
     });
     var inferRules = document.getElementById('pg-infer-rules');
-    if (inferRules) inferRules.addEventListener('click', function () { _inferAnalysisRules(); });
+    if (inferRules) inferRules.addEventListener('click', function () { _inferAnalysisRules('generate'); });
+    var updateRules = document.getElementById('pg-update-rules');
+    if (updateRules) updateRules.addEventListener('click', function () { _inferAnalysisRules('update'); });
     var ruleVersionList = document.getElementById('pg-rule-version-list');
     if (ruleVersionList) ruleVersionList.addEventListener('click', function (event) {
       var versionRow = event.target.closest('[data-rule-version-id]');
@@ -4496,12 +2373,9 @@ window.QymPlayground = (function () {
       var merge = event.target.closest('[data-merge-rule-version]');
       var compare = event.target.closest('[data-compare-rule-version]');
       var remove = event.target.closest('[data-delete-rule-version]');
-      var download = event.target.closest('[data-download-rule-version]');
-      var openVersion = event.target.closest('[data-open-rule-version]');
       if (versionId && (activate || publish || merge || compare || remove)) {
         _openRuleVersion(versionId);
       }
-      if (versionId && download) _openRuleVersion(versionId);
       if (menuToggle) {
         if (versionId && versionId !== _selectedRuleVersionId) {
           _openRuleVersion(versionId);
@@ -4516,28 +2390,18 @@ window.QymPlayground = (function () {
         ruleVersionList.querySelectorAll('.pg-rule-version-menu').forEach(function (candidate) {
           if (candidate !== menu) {
             candidate.hidden = true;
-            var candidateRow = candidate.closest('[data-rule-version-id]');
-            if (candidateRow) candidateRow.classList.remove('pg-rule-version-menu-open');
             var otherToggle = candidate.closest('.pg-rule-version-overflow').querySelector('[data-rule-version-menu-toggle]');
             if (otherToggle) otherToggle.setAttribute('aria-expanded', 'false');
           }
         });
         if (menu) {
           menu.hidden = !menu.hidden;
-          var menuOpen = !menu.hidden;
-          if (versionRow) versionRow.classList.toggle('pg-rule-version-menu-open', menuOpen);
           menuToggle.setAttribute('aria-expanded', menu.hidden ? 'false' : 'true');
-          if (menuOpen) {
+          if (!menu.hidden) {
             var firstAction = menu.querySelector('button');
             if (firstAction) firstAction.focus();
           }
-        } else if (versionRow) {
-          versionRow.classList.remove('pg-rule-version-menu-open');
         }
-        return;
-      }
-      if (openVersion) {
-        _openRuleVersion(openVersion.dataset.openRuleVersion);
         return;
       }
       if (activate) {
@@ -4556,10 +2420,6 @@ window.QymPlayground = (function () {
         _openRuleCompare(compare.dataset.compareRuleVersion);
         return;
       }
-      if (download) {
-        _downloadRuleVersion(download.dataset.downloadRuleVersion);
-        return;
-      }
       if (remove) {
         _confirmRuleVersionDeletion(remove.dataset.deleteRuleVersion);
         return;
@@ -4569,18 +2429,16 @@ window.QymPlayground = (function () {
       if (versionRow) _openRuleVersion(versionRow.dataset.ruleVersionId);
     });
     if (ruleVersionList) ruleVersionList.addEventListener('keydown', function (event) {
-      var openVersion = event.target.closest('[data-open-rule-version]');
-      if (!openVersion || event.target !== openVersion || (event.key !== 'Enter' && event.key !== ' ')) return;
+      var versionRow = event.target.closest('[data-rule-version-id]');
+      if (!versionRow || event.target !== versionRow || (event.key !== 'Enter' && event.key !== ' ')) return;
       event.preventDefault();
-      _openRuleVersion(openVersion.dataset.openRuleVersion);
+      _openRuleVersion(versionRow.dataset.ruleVersionId);
     });
     if (ruleVersionList) {
       (_overlay || document).addEventListener('click', function (event) {
         if (event.target.closest('[data-rule-version-menu-toggle], .pg-rule-version-menu')) return;
         ruleVersionList.querySelectorAll('.pg-rule-version-menu').forEach(function (menu) {
           menu.hidden = true;
-          var row = menu.closest('[data-rule-version-id]');
-          if (row) row.classList.remove('pg-rule-version-menu-open');
           var toggle = menu.closest('.pg-rule-version-overflow').querySelector('[data-rule-version-menu-toggle]');
           if (toggle) toggle.setAttribute('aria-expanded', 'false');
         });
@@ -4595,7 +2453,6 @@ window.QymPlayground = (function () {
     if (ruleVersionCompare) ruleVersionCompare.addEventListener('keydown', function (event) {
       if (event.key !== 'Escape' || !ruleVersionCompare.classList.contains('pg-rule-compare-picker')) return;
       event.preventDefault();
-      event.stopPropagation();
       _closeRuleCompareDialog(ruleVersionCompare);
     });
 
@@ -4608,12 +2465,6 @@ window.QymPlayground = (function () {
     }
     var documentDropzone = document.getElementById('pg-document-dropzone');
     if (documentDropzone) {
-      documentDropzone.addEventListener('keydown', function (event) {
-        if (event.key !== 'Enter' && event.key !== ' ') return;
-        if (!documentInput || documentInput.disabled) return;
-        event.preventDefault();
-        documentInput.click();
-      });
       ['dragenter', 'dragover'].forEach(function (eventName) {
         documentDropzone.addEventListener(eventName, function (event) {
           event.preventDefault();
@@ -4660,16 +2511,13 @@ window.QymPlayground = (function () {
         var index = parseInt(remove.dataset.documentIndex, 10);
         if (Number.isNaN(index) || index < 0 || index >= _referenceDocuments.length) return;
         var removed = _referenceDocuments[index];
-        _confirmReferenceDocumentDeletion(removed).then(function (confirmed) {
-          if (!confirmed) return;
-          remove.disabled = true;
-          return _deleteReferenceDocument(removed).then(function () {
-            var currentIndex = _referenceDocuments.indexOf(removed);
-            if (currentIndex >= 0) _referenceDocuments.splice(currentIndex, 1);
-            _setDocumentUploadStatus(removed.name + ' deleted from the project library.', false);
-            _renderReferenceDocuments();
-            _scheduleAutoPreview(0);
-          });
+        remove.disabled = true;
+        _deleteReferenceDocument(removed).then(function () {
+          var currentIndex = _referenceDocuments.indexOf(removed);
+          if (currentIndex >= 0) _referenceDocuments.splice(currentIndex, 1);
+          _setDocumentUploadStatus(removed.name + ' deleted from the project library.', false);
+          _renderReferenceDocuments();
+          _scheduleAutoPreview(0);
         }).catch(function (error) {
           remove.disabled = false;
           _setDocumentUploadStatus('Could not delete ' + removed.name + '.', true);
@@ -4687,138 +2535,59 @@ window.QymPlayground = (function () {
       });
     }
 
-    // Category navigation and editor interactions
+    // Remove category (removes entire group including its details)
     var catList = document.getElementById('pg-categories-list');
-    var categoryNav = document.getElementById('pg-category-nav');
-    if (categoryNav) categoryNav.addEventListener('click', function (event) {
-      var button = event.target.closest('[data-category-select]');
-      if (!button) return;
-      _selectCategory(button.dataset.categorySelect, false);
-    });
-    var maxCategoriesInput = document.getElementById('pg-max-root-cause-categories');
-    if (maxCategoriesInput) {
-      maxCategoriesInput.addEventListener('input', function () {
-        if (maxCategoriesInput.value !== '') _normalizeCategoryLimitInput(maxCategoriesInput);
-        _scheduleAutoPreview();
-      });
-      maxCategoriesInput.addEventListener('change', function () {
-        _normalizeCategoryLimitInput(maxCategoriesInput);
-        _scheduleAutoPreview();
-      });
-    }
     if (catList) catList.addEventListener('click', function (e) {
-      var pagination = e.target.closest('[data-category-pagination]');
-      var pageButton = e.target.closest('[data-qym-page]');
-      if (pagination && pageButton && pagination.contains(pageButton)) {
-        var paginationGroup = pagination.closest('.pg-category-group');
-        var paginationTab = pagination.dataset.categoryPagination;
-        var nextPage = parseInt(pageButton.dataset.qymPage, 10);
-        if (paginationGroup && !Number.isNaN(nextPage)) {
-          paginationGroup.dataset[_categoryPageKey(paginationTab)] = String(Math.max(0, nextPage));
-          if (paginationTab === 'examples') _filterCategoryExamples(paginationGroup);
-          else _filterCategoryDetails(paginationGroup);
-        }
-        return;
-      }
-      var tabButton = e.target.closest('[data-category-tab]');
-      if (tabButton) {
-        _setCategoryTab(tabButton.closest('.pg-category-group'), tabButton.dataset.categoryTab, false);
-        return;
-      }
       var removeBtn = e.target.closest('.pg-category-remove');
       if (removeBtn) {
         var group = removeBtn.closest('.pg-category-group');
-        if (group) {
-          var category = String(group.dataset.cat || 'this category');
-          removeBtn.disabled = true;
-          _confirmCategoryRemoval(category).then(function (confirmed) {
-            if (!confirmed) return;
-            var nextGroup = group.nextElementSibling || group.previousElementSibling;
-            var nextCategory = nextGroup && nextGroup.dataset ? nextGroup.dataset.cat : null;
-            group.remove();
-            _renderCategoryNavigation(nextCategory);
-            _selectCategory(nextCategory, false);
-            _scheduleAutoPreview();
-          }).catch(function (error) {
-            if (_opts.showToast) _opts.showToast('error', 'Category removal failed', error.message || 'The category was not removed.');
-          }).finally(function () {
-            removeBtn.disabled = false;
-          });
-        }
-        return;
+        if (group) { group.remove(); _scheduleAutoPreview(); }
       }
+      // Remove individual detail
       var detRemoveBtn = e.target.closest('.pg-detail-remove');
       if (detRemoveBtn) {
         var detItem = detRemoveBtn.closest('.pg-detail-item');
-        var detGroup = detRemoveBtn.closest('.pg-category-group');
-        if (detItem) {
-          detItem.remove();
-          _updateCategoryDetailCounts(detGroup);
-          _scheduleAutoPreview();
-        }
-        return;
+        if (detItem) { detItem.remove(); _scheduleAutoPreview(); }
       }
+      // Add detail to a category
       var addDetBtn = e.target.closest('.pg-add-detail-btn');
       if (addDetBtn) {
         var row = addDetBtn.closest('.pg-add-detail-row');
         var input = row && row.querySelector('.pg-add-detail-input');
-        var detailGroup = addDetBtn.closest('.pg-category-group');
-        if (input && detailGroup) {
+        if (input) {
           var val = input.value.trim();
           if (!val) return;
           var parentCat = row.dataset.cat;
           var sublist = row.parentElement.querySelector('.pg-details-sublist[data-cat="' + parentCat + '"]');
+          if (!sublist) {
+            sublist = document.createElement('div');
+            sublist.className = 'pg-details-sublist';
+            sublist.dataset.cat = parentCat;
+            row.parentElement.insertBefore(sublist, row);
+            var emptyDetails = row.parentElement.querySelector('.pg-category-details-empty');
+            if (emptyDetails) emptyDetails.remove();
+          }
           var div = document.createElement('div');
           div.className = 'pg-detail-item';
           div.dataset.detail = val;
-          div.dataset.detailExampleCount = '0';
           div.dataset.parentCat = parentCat;
-          div.innerHTML = '<span class="pg-detail-copy"><span class="pg-detail-name" dir="auto">' + _esc(val) + '</span>' +
-            '<span class="qym-tag qym-tag--count pg-detail-example-count">0 examples</span></span>' +
-            '<button class="pg-detail-remove qym-icon-action" type="button" title="Remove detail" aria-label="Remove ' + _escAttr(val) + ' detail">' + _icon('close') + '</button>';
+          div.innerHTML = '<span class="pg-detail-name">' + _esc(val) + '</span>' +
+            '<button class="pg-detail-remove" type="button" title="Remove detail" aria-label="Remove ' + _escAttr(val) + ' detail">&times;</button>';
           sublist.appendChild(div);
           input.value = '';
-          _updateCategoryDetailCounts(detailGroup);
           _scheduleAutoPreview();
         }
       }
     });
 
-    // Keyboard behavior for category tabs and inline detail inputs
+    // Enter key for inline detail inputs
     if (catList) catList.addEventListener('keydown', function (e) {
-      var tabButton = e.target.closest('[data-category-tab]');
-      if (tabButton && (e.key === 'ArrowRight' || e.key === 'ArrowLeft' || e.key === 'Home' || e.key === 'End')) {
-        e.preventDefault();
-        var group = tabButton.closest('.pg-category-group');
-        var tabs = Array.prototype.slice.call(group.querySelectorAll('[data-category-tab]'));
-        var index = tabs.indexOf(tabButton);
-        var nextIndex = e.key === 'Home' ? 0 : e.key === 'End' ? tabs.length - 1 : (index + (e.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
-        _setCategoryTab(group, tabs[nextIndex].dataset.categoryTab, true);
-        return;
-      }
       if (e.key === 'Enter') {
         var input = e.target.closest('.pg-add-detail-input');
         if (input) {
           var btn = input.parentElement.querySelector('.pg-add-detail-btn');
           if (btn) btn.click();
         }
-      }
-    });
-    if (catList) catList.addEventListener('input', function (e) {
-      if (e.target.closest('[data-taxonomy-field]')) _scheduleAutoPreview();
-      var search = e.target.closest('[data-detail-search]');
-      if (search) {
-        var searchGroup = search.closest('.pg-category-group');
-        _resetCategoryPage(searchGroup, 'details');
-        _filterCategoryDetails(searchGroup);
-      }
-    });
-    if (catList) catList.addEventListener('change', function (e) {
-      var filter = e.target.closest('[data-detail-filter]');
-      if (filter) {
-        var filterGroup = filter.closest('.pg-category-group');
-        _resetCategoryPage(filterGroup, 'details');
-        _filterCategoryDetails(filterGroup);
       }
     });
 
@@ -4828,25 +2597,12 @@ window.QymPlayground = (function () {
     if (addBtn && addInput) {
       var addCat = function () {
         var val = addInput.value.trim();
-        if (!val) {
-          addInput.hidden = false;
-          addInput.focus();
-          return;
-        }
+        if (!val) return;
         var wrapper = document.createElement('div');
-        wrapper.innerHTML = _buildCategoryGroup(val, [], [], {}, _uniqueCategoryDomKey(val));
+        wrapper.innerHTML = _buildCategoryGroup(val, [], []);
         var group = wrapper.firstElementChild;
         catList.appendChild(group);
-        _setCategoryTab(group, 'guidance', false);
-        _filterCategoryDetails(group);
-        _filterCategoryExamples(group);
-        _categoryNavigationQuery = '';
-        var categorySearch = document.getElementById('analysis-category-search');
-        if (categorySearch) categorySearch.value = '';
-        _renderCategoryNavigation(val);
-        _selectCategory(val, false);
         addInput.value = '';
-        addInput.hidden = true;
         _scheduleAutoPreview();
       };
       addBtn.addEventListener('click', addCat);
@@ -4893,25 +2649,12 @@ window.QymPlayground = (function () {
         if (targetLimit.value !== digits) targetLimit.value = digits;
         _updateFooterCount();
       });
-      document.querySelectorAll('[data-target-limit-step]').forEach(function (stepButton) {
-        stepButton.addEventListener('click', function (event) {
-          event.preventDefault();
-          var direction = stepButton.dataset.targetLimitStep === 'decrease' ? -1 : 1;
-          var current = parseInt(targetLimit.value, 10);
-          var next = Number.isFinite(current) ? current + direction : (direction > 0 ? 1 : '');
-          if (next !== '' && next < 1) next = '';
-          if (next !== '') next = Math.min(next, Math.pow(10, targetLimit.maxLength || 4) - 1);
-          targetLimit.value = next === '' ? '' : String(next);
-          targetLimit.dispatchEvent(new Event('input', { bubbles: true }));
-          targetLimit.focus();
-        });
-      });
       targetLimit.addEventListener('blur', function () {
         if (targetLimit.value && parseInt(targetLimit.value, 10) < 1) targetLimit.value = '';
         _updateFooterCount();
       });
     }
-    ['pg-use-project-rules', 'pg-use-project-documents', 'pg-use-trace'].forEach(function (id) {
+    ['pg-use-project-rules', 'pg-use-project-documents'].forEach(function (id) {
       var toggle = document.getElementById(id);
       if (toggle) toggle.addEventListener('change', function () {
         _syncActionAvailability();
@@ -4919,11 +2662,9 @@ window.QymPlayground = (function () {
       });
     });
 
-    _initializeCategoryWorkspace();
-
     // Row selection
     _wireRowSelection();
-    _wireMatchedItems();
+    _wireShowMore();
 
     // Preview toggle
     var toggleBtn = document.getElementById('pg-preview-toggle');
@@ -4963,27 +2704,25 @@ window.QymPlayground = (function () {
     // Run All button
     var runAllBtn = document.getElementById('pg-runall-btn');
     if (runAllBtn) runAllBtn.addEventListener('click', _runAll);
-
-    // Background analysis cancellation
-    var cancelBtn = document.getElementById('pg-cancel-btn');
-    if (cancelBtn) cancelBtn.addEventListener('click', _cancelAnalysis);
   }
 
   function _wireRowSelection() {
     if (!_overlay) return;
     _overlay.querySelectorAll('.pg-item-card').forEach(function (card) {
       card.addEventListener('click', function () {
-        _selectTarget(card.dataset.itemId, card.dataset.metricName || null);
-      });
-      card.addEventListener('keydown', function (event) {
-        if (event.key !== 'Enter' && event.key !== ' ') return;
-        event.preventDefault();
-        card.click();
+        _selectItem(card.dataset.itemId);
       });
     });
   }
 
-  function _wireMatchedItems() {
+  function _wireShowMore() {
+    var showMore = document.getElementById('pg-show-more');
+    if (showMore) {
+      showMore.addEventListener('click', function () {
+        _matchedPage++;
+        _refreshMatchedTable();
+      });
+    }
     var includeAnalyzed = document.getElementById('pg-include-analyzed');
     if (includeAnalyzed) {
       includeAnalyzed.addEventListener('click', function () {
@@ -4994,11 +2733,8 @@ window.QymPlayground = (function () {
     }
   }
 
-  function _selectTarget(itemId, metricName) {
-    _selectedTarget = {
-      item_id: itemId,
-      metric_name: metricName || null,
-    };
+  function _selectItem(itemId) {
+    _selectedItemId = itemId;
     _highlightSelectedRow();
     _scheduleAutoPreview();
     var testBtn = document.getElementById('pg-test-btn');
@@ -5008,38 +2744,28 @@ window.QymPlayground = (function () {
   function _highlightSelectedRow() {
     if (!_overlay) return;
     _overlay.querySelectorAll('.pg-item-card').forEach(function (card) {
-      var sameItem = _selectedTarget && String(card.dataset.itemId) === String(_selectedTarget.item_id);
-      var sameMetric = _selectedTarget && String(card.dataset.metricName || '') === String(_selectedTarget.metric_name || '');
-      var selected = !!(sameItem && sameMetric);
-      card.classList.toggle('pg-item-selected', selected);
-      card.setAttribute('aria-selected', selected ? 'true' : 'false');
+      card.classList.toggle('pg-item-selected', card.dataset.itemId === _selectedItemId);
     });
   }
 
   function _onFilterChange() {
     _matchedPage = 0;
     var matched = _getMatchedItems();
-    _resolveSelectedTarget(matched);
-    _refreshMatchedTable(false, matched);
+    _selectedItemId = matched.length > 0 ? matched[0].item_id : null;
+    _refreshMatchedTable();
     _updateFooterCount();
     // Update badge on Filter section
     var filterBadge = document.getElementById('pg-filter-badge');
-    if (filterBadge) filterBadge.textContent = String(_getMatchedItemCount(matched));
+    if (filterBadge) filterBadge.textContent = String(_getMatchedTargetCount(matched));
     _scheduleAutoPreview();
   }
 
-  function _refreshMatchedTable(scrollToTop, matched) {
+  function _refreshMatchedTable() {
     var section = document.getElementById('pg-matched-section');
-    var currentMatched = matched || _getMatchedItems();
     if (section) {
       section.innerHTML = _buildMatchedItemsTable();
       _wireRowSelection();
-      _wireMatchedItems();
-      _renderTargetPagination(currentMatched);
-      if (scrollToTop) {
-        var scrollTarget = section.closest('.analysis-target-card') || section;
-        scrollTarget.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }
+      _wireShowMore();
     }
   }
 
@@ -5047,23 +2773,18 @@ window.QymPlayground = (function () {
     _syncActionAvailability();
   }
 
-  function _getTargetLimit() {
+  function _getTargetLimit(matchedCount) {
     var limitEl = document.getElementById('pg-target-limit');
-    if (!limitEl || !String(limitEl.value || '').trim()) return null;
+    if (!limitEl || !String(limitEl.value || '').trim()) return matchedCount;
     var requested = parseInt(limitEl.value, 10);
     if (!Number.isFinite(requested) || requested < 1) return 0;
-    return requested;
+    return Math.min(requested, matchedCount);
   }
 
   function _syncActionAvailability() {
     var matched = _getMatchedItems();
     var runAllBtn = document.getElementById('pg-runall-btn');
     var testBtn = document.getElementById('pg-test-btn');
-    var cancelBtn = document.getElementById('pg-cancel-btn');
-    var itemCount = _getMatchedItemCount(matched);
-    var requestedLimit = _getTargetLimit();
-    var analysisItemCount = requestedLimit == null ? itemCount : Math.min(requestedLimit, itemCount);
-    var selectedTarget = _resolveSelectedTarget(matched);
     var selectedMetrics = _getSelectedMetrics();
     var metricsReady = selectedMetrics === null || selectedMetrics.length > 0;
     var ready = !!(
@@ -5073,20 +2794,11 @@ window.QymPlayground = (function () {
       metricsReady
     );
     if (runAllBtn) {
-      runAllBtn.textContent = _formatAnalyzeItemCount(analysisItemCount);
-      runAllBtn.disabled = !ready || analysisItemCount === 0 || _running;
-      var footer = runAllBtn.closest('.playground-footer');
-      if (footer) {
-        footer.dataset.noTargets = analysisItemCount === 0 ? 'true' : 'false';
-        footer.hidden = analysisItemCount === 0;
-      }
+      var targetCount = _getTargetLimit(_getMatchedTargetCount(matched));
+      runAllBtn.textContent = 'Analyze ' + targetCount + (targetCount === 1 ? ' target' : ' targets');
+      runAllBtn.disabled = !ready || targetCount === 0 || _running;
     }
-    if (testBtn) testBtn.disabled = !ready || !selectedTarget || analysisItemCount === 0 || _running;
-    if (cancelBtn) {
-      cancelBtn.hidden = !_analysisJobId;
-      cancelBtn.disabled = !_analysisJobId || _analysisCancelRequested;
-      cancelBtn.textContent = _analysisCancelRequested ? 'Cancelling…' : 'Cancel analysis';
-    }
+    if (testBtn) testBtn.disabled = !ready || _running;
   }
 
   function _onAdditionalInstructionsChange() {
@@ -5141,13 +2853,13 @@ window.QymPlayground = (function () {
     var toggleBtn = document.getElementById('pg-preview-toggle');
     var loading = document.getElementById('pg-preview-loading');
     var indicator = document.getElementById('pg-preview-indicator');
-    var budget = document.getElementById('pg-prompt-budget');
 
     try {
-      var matched = _getMatchedItems();
-      var target = _resolveSelectedTarget(matched);
-      var itemId = target && target.item_id;
-      var metricName = target && target.metric_name;
+      var itemId = _selectedItemId;
+      if (!itemId) {
+        var matched = _getMatchedItems();
+        if (matched.length > 0) itemId = matched[0].item_id;
+      }
 
       if (!itemId) {
         if (content) content.textContent = 'No items match current filters.';
@@ -5172,7 +2884,7 @@ window.QymPlayground = (function () {
       fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ item_id: itemId, metric: metricName || null, config: cfg, connection_id: _connectionId }),
+        body: JSON.stringify({ item_id: itemId, metric: _opts.getMetric ? _opts.getMetric() : null, config: cfg, connection_id: _connectionId }),
       })
       .then(function (r) {
         if (!r.ok) {
@@ -5187,18 +2899,11 @@ window.QymPlayground = (function () {
       })
       .then(function (data) {
         if (!data) return;
-        if (budget && data.prompt_characters != null) {
-          var promptCharacters = Number(data.prompt_characters || 0);
-          var promptLimit = Number(data.prompt_limit || 0);
-          budget.textContent = 'Final prompt: ' + promptCharacters.toLocaleString() + ' / ' + promptLimit.toLocaleString() + ' characters' +
-            (data.prompt_at_limit ? ' · safety shortening applied before the request' : ' · within limit');
-          budget.classList.toggle('pg-budget-over', !!data.prompt_at_limit);
-        }
         if (data.messages && data.messages.length > 0) {
           var html = data.messages.map(function (m) {
             return '<div class="pg-preview-msg">' +
               '<div class="pg-preview-role pg-preview-role-' + _escAttr(m.role) + '">' + _esc(m.role.toUpperCase()) + '</div>' +
-              '<div class="pg-preview-body" dir="auto">' + _highlightPreview(_esc(m.content)) + '</div>' +
+              '<div class="pg-preview-body">' + _highlightPreview(_esc(m.content)) + '</div>' +
             '</div>';
           }).join('');
           if (content) {
@@ -5231,16 +2936,19 @@ window.QymPlayground = (function () {
     }
   }
 
-  // ── Test (selected target) ──
+  // ── Test (selected item) ──
 
   function _runTest() {
     if (_running) return;
 
-    var matched = _getMatchedItems();
-    var testTarget = _resolveSelectedTarget(matched);
-    if (!testTarget) {
-      if (_opts.showToast) _opts.showToast('warning', 'No Items', 'No items match current filters');
-      return;
+    var testItemId = _selectedItemId;
+    if (!testItemId) {
+      var matched = _getMatchedItems();
+      if (matched.length === 0) {
+        if (_opts.showToast) _opts.showToast('warning', 'No Items', 'No items match current filters');
+        return;
+      }
+      testItemId = matched[0].item_id;
     }
 
     _running = true;
@@ -5260,7 +2968,7 @@ window.QymPlayground = (function () {
     fetch(base('api/runs/' + runId + '/analyze-test'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ item_ids: [testTarget.item_id], metric: testTarget.metric_name || null, config: cfg, connection_id: _connectionId }),
+      body: JSON.stringify({ item_ids: [testItemId], metric: _opts.getMetric ? _opts.getMetric() : null, config: cfg, connection_id: _connectionId }),
     })
     .then(function (r) {
       if (!r.ok) return r.json().then(function (d) { throw new Error(d.detail || 'Test failed'); });
@@ -5294,8 +3002,7 @@ window.QymPlayground = (function () {
     }
 
     container.innerHTML = _testResults.map(function (r) {
-      var categories = _rootCauseCategories(r);
-      var color = _rootCauseColor(categories[0] || r.root_cause);
+      var color = _rootCauseColor(r.root_cause);
       var confPct = Math.round((r.confidence || 0) * 100);
       var errorHtml = r.error ? '<div class="pg-result-error">' + _esc(r.error) + '</div>' : '';
 
@@ -5345,12 +3052,11 @@ window.QymPlayground = (function () {
           '<span class="pg-result-item-id">' + _esc(r.item_id.slice(0, 24)) + (r.metric_name ? ' · ' + _esc(r.metric_name) : '') + '</span>' +
         '</div>' +
         (r.root_cause_detail ? '<div class="pg-result-rc" style="color:var(--text-primary, #eee);">' + _esc(r.root_cause_detail) + '</div>' : '') +
-        '<div class="pg-result-rc" style="color:' + color + ';' + (r.root_cause_detail ? 'font-size:var(--font-base);opacity:0.8;margin-top:2px;' : '') + '">' + _esc(categories.join(', ')) + '</div>' +
+        '<div class="pg-result-rc" style="color:' + color + ';' + (r.root_cause_detail ? 'font-size:var(--font-base);opacity:0.8;margin-top:2px;' : '') + '">' + _esc(r.root_cause) + '</div>' +
         '<div class="pg-confidence-row">' +
           '<div class="pg-confidence-bar"><div class="pg-confidence-fill" style="width:' + confPct + '%;background:' + color + ';"></div></div>' +
           '<span class="pg-confidence-val">' + (r.confidence != null ? r.confidence.toFixed(2) : '?') + '</span>' +
         '</div>' +
-        (r.root_cause_reason ? '<details class="pg-result-note pg-result-reason"><summary>Why this category</summary><div class="pg-result-reason-copy">' + _esc(r.root_cause_reason) + '</div></details>' : '') +
         '<div class="pg-result-note">' + _esc(r.root_cause_note || '') + '</div>' +
         errorHtml +
         fieldsBadgesHtml +
@@ -5361,30 +3067,194 @@ window.QymPlayground = (function () {
 
   // ── Run All ──
 
-  function _confirmHumanOverwrite(targets) {
-    if (!window.QymShell || typeof window.QymShell.openConfirmDialog !== 'function') {
-      if (_opts.showToast) {
-        _opts.showToast('error', 'Confirmation unavailable', 'Human labels were not overwritten. Reload the page and try again.');
-      }
-      return Promise.resolve(false);
+  function _runAll() {
+    if (_running) return;
+    _running = true;
+
+    var runId = _getRunId();
+    if (!runId) { _running = false; return; }
+    var base = _opts.apiUrl || function (p) { return '/' + p; };
+    var cfg = _buildConfigPayload();
+
+    var maxScoreEl = document.getElementById('pg-max-score');
+    var skipEl = document.getElementById('pg-skip-analyzed');
+    var humanOverwriteEl = document.getElementById('pg-allow-human-overwrite');
+
+    var body = {
+      metric: _opts.getMetric ? _opts.getMetric() : null,
+      item_filter: 'failed',
+      max_score: maxScoreEl ? (parseFloat(maxScoreEl.value) / 100) || undefined : undefined,
+      only_unanalyzed: skipEl ? skipEl.checked : true,
+      allow_human_overwrite: humanOverwriteEl ? humanOverwriteEl.checked : false,
+      threshold: _opts.getThreshold ? _opts.getThreshold() : 0.8,
+      config: cfg,
+      connection_id: _connectionId,
+    };
+    var requestedLimit = _getTargetLimit(_getMatchedTargetCount(_getMatchedItems()));
+    body.limit = requestedLimit || undefined;
+    if (_opts.getMetrics) {
+      body.metric = null;
+      body.metrics = _getSelectedMetrics();
     }
-    var metricNames = [];
-    targets.forEach(function (target) {
-      if (metricNames.indexOf(target.metric_name) === -1) metricNames.push(target.metric_name);
-    });
-    return window.QymShell.openConfirmDialog({
-      mount: _overlay || document.body,
-      title: 'Overwrite human diagnoses?',
-      description: [
-        'This will replace ' + targets.length + ' human metric ' + (targets.length === 1 ? 'diagnosis' : 'diagnoses') + ' with new AI results.',
-        'Metrics affected: ' + (metricNames.length ? metricNames.join(', ') : 'selected metrics') + '.',
-      ],
-      note: 'Continue only if you intentionally want to replace reviewer corrections.',
-      cancelLabel: 'Keep human labels',
-      confirmLabel: 'Re-analyze human labels',
-      confirmClass: 'shell-btn-danger',
-    }).then(function (result) {
-      return !!(result && result.confirmed);
+
+    var btn = document.getElementById('pg-runall-btn');
+    if (btn) { btn.disabled = true; btn.textContent = '\u23F3 Analyzing\u2026'; }
+
+    var progress = document.getElementById('pg-runall-progress');
+    var fill = document.getElementById('pg-runall-progress-fill');
+    var progressText = document.getElementById('pg-runall-progress-text');
+    var subtext = document.getElementById('pg-runall-progress-subtext');
+    if (progress) progress.style.display = 'block';
+    
+    if (fill) {
+      fill.style.transition = 'none';
+      fill.style.width = '0%';
+      fill.style.background = '';
+      // Force reflow
+      void fill.offsetWidth;
+      fill.style.transition = 'width 0.25s ease-out';
+    }
+    
+    if (progressText) progressText.textContent = 'Preparing analysis\u2026';
+    if (subtext) subtext.textContent = 'Starting LLM analysis...';
+
+    function updateProgress(evt) {
+      var total = Number(evt.total || 0);
+      var completed = Number(evt.completed || 0);
+      var errors = Number(evt.errors || 0);
+      var pct = total > 0 ? Math.round((completed / total) * 100) : 0;
+      if (fill) fill.style.width = pct + '%';
+      if (evt.type === 'aggregating') {
+        if (btn) btn.textContent = '\u23F3 Aggregating\u2026';
+        if (progressText) progressText.textContent = 'Aggregating root causes\u2026';
+        if (subtext) {
+          subtext.textContent = 'Analysis complete. Consolidating related categories, details, and solutions.' +
+            (errors > 0 ? ' Errors: ' + errors : '');
+        }
+        return;
+      }
+      if (progressText) {
+        progressText.textContent = total > 0
+          ? 'Analyzing metric failures: ' + completed + '/' + total + ' (' + pct + '%)'
+          : 'No matching items to analyze';
+      }
+      if (subtext) {
+        if (evt.type === 'started') {
+          subtext.textContent = total > 0
+            ? 'Running up to ' + (evt.concurrency || 20) + ' LLM calls concurrently.'
+            : 'All matching items are already analyzed or filtered out.';
+        } else {
+          var itemText = evt.item_id ? 'Last: ' + String(evt.item_id).slice(0, 32) + (evt.metric_name ? ' · ' + evt.metric_name : '') : 'Waiting for results...';
+          subtext.textContent = itemText + (errors > 0 ? ' | Errors: ' + errors : '');
+        }
+      }
+    }
+
+    function finishRunAll(data) {
+      var analyzed = Number(data.total_analyzed || 0);
+      var aggregated = Number(data.aggregated || 0);
+      var completionText = analyzed > 0
+        ? 'Analyzed <strong>' + analyzed + '</strong> metric failures successfully'
+        : 'Existing root-cause analysis checked successfully';
+      if (aggregated > 0) {
+        completionText += '<div>Consolidated <strong>' + aggregated + '</strong> category/detail/solution labels</div>';
+      }
+      if (fill) {
+        fill.style.transition = 'width 0.3s ease-out';
+        fill.style.width = '100%';
+      }
+      if (progressText) progressText.textContent = 'Analysis Complete!';
+      if (subtext) subtext.textContent = 'Finalizing results...';
+
+      var resultsEl = document.getElementById('pg-runall-results');
+      if (resultsEl) {
+        resultsEl.innerHTML = '<div class="pg-runall-done">' +
+          '<div class="pg-runall-done-icon">\u2728</div>' +
+          '<div class="pg-runall-done-text">' + completionText +
+          (data.errors > 0 ? '<div class="pg-runall-done-error">\u26A0\uFE0F ' + data.errors + ' metric analyses failed</div>' : '') +
+          '</div></div>';
+      }
+
+      if (_opts.showToast) {
+        var toastText = analyzed + ' metric failures analyzed';
+        if (aggregated > 0) toastText += ' · ' + aggregated + ' labels consolidated';
+        _opts.showToast('success', 'Analysis Complete', toastText);
+      }
+      if (_opts.onAnalysisComplete) _opts.onAnalysisComplete(data);
+
+      setTimeout(function () {
+        if (progress) progress.style.display = 'none';
+      }, 3000);
+    }
+
+    function readProgressStream(response) {
+      if (!response.body || !window.TextDecoder) {
+        throw new Error('Streaming progress is not supported by this browser.');
+      }
+      var reader = response.body.getReader();
+      var decoder = new TextDecoder();
+      var buffer = '';
+      var finalData = null;
+
+      function consume(text) {
+        buffer += text;
+        var lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+        lines.forEach(function (line) {
+          if (!line.trim()) return;
+          var evt = JSON.parse(line);
+          if (evt.type === 'started' || evt.type === 'progress' || evt.type === 'aggregating') {
+            updateProgress(evt);
+          } else if (evt.type === 'done') {
+            finalData = evt;
+          } else if (evt.type === 'error') {
+            throw new Error(evt.message || 'Analysis failed');
+          }
+        });
+      }
+
+      function pump() {
+        return reader.read().then(function (result) {
+          if (result.done) {
+            if (buffer.trim()) consume('\n');
+            if (!finalData) throw new Error('Analysis ended without a completion event.');
+            return finalData;
+          }
+          consume(decoder.decode(result.value, { stream: true }));
+          return pump();
+        });
+      }
+
+      return pump();
+    }
+
+    fetch(base('api/runs/' + runId + '/analyze-stream'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    .then(function (r) {
+      if (!r.ok) return r.json().then(function (d) { throw new Error(d.detail || 'Analysis failed'); });
+      return readProgressStream(r);
+    })
+    .then(finishRunAll)
+    .catch(function (err) {
+      console.error('Run All error:', err);
+      if (progressText) progressText.textContent = 'Failed';
+      if (subtext) subtext.textContent = err.message || 'An error occurred during analysis.';
+      if (fill) {
+        fill.style.transition = 'width 0.3s ease-out';
+        fill.style.width = '0%';
+        fill.style.background = 'var(--error)';
+      }
+      if (_opts.showToast) _opts.showToast('error', 'Analysis Failed', err.message);
+      setTimeout(function () {
+        if (progress) progress.style.display = 'none';
+      }, 4000);
+    })
+    .finally(function () {
+      _running = false;
+      _updateFooterCount();
     });
   }
 
@@ -5393,13 +3263,6 @@ window.QymPlayground = (function () {
     init: init,
     open: open,
     close: close,
-    getConfig: function () { return _config; },
-    refreshRuleView: function () {
-      if (_overlay) _renderAnalysisRulesEditor();
-    },
-    filterCategories: function (query) {
-      if (_overlay) _filterCategoryNavigation(query);
-    },
     refreshFilters: function () {
       if (_overlay) _onFilterChange();
     },

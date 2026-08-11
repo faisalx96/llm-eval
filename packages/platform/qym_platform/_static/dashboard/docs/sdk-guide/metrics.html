@@ -169,23 +169,28 @@ def grounded_in_context(output, expected=None):
 <table>
 <thead><tr><th>Field</th><th>Default</th><th>Effect</th></tr></thead>
 <tbody>
-<tr><td><code>metric_timeout</code></td><td><code>60.0</code> (seconds)</td><td>Hard wall-clock cap per metric call. A metric that exceeds it is cancelled and recorded as <code>score=0.0</code> with <code>label="timeout"</code> and <code>metadata.error = "metric timeout after 60.0s"</code>. Set to <code>None</code> to disable.</td></tr>
+<tr><td><code>metric_timeout</code></td><td><code>60.0</code> (seconds)</td><td>Wall-clock cap per metric attempt. Set to <code>None</code> to disable the cap and timeout retries.</td></tr>
+<tr><td><code>metric_max_retries</code></td><td><code>2</code></td><td>Retries after a timeout (three total attempts by default). After the final timeout qym records <code>{"score": 0, "error": "metric timeout after 60.0s (3 attempts)"}</code>.</td></tr>
 <tr><td><code>max_metric_concurrency</code></td><td><code>1</code></td><td>How many metrics run concurrently per item. Default <code>1</code> evaluates an item's metrics serially. Raise it when metrics are independent and slow (e.g. multiple LLM judges).</td></tr>
 </tbody>
 </table>
 
-<p>A timed-out metric records an <code>error</code> key, so per the rule above it is excluded from the metric mean and counts against <code>success_rate</code>. Bump <code>metric_timeout</code> for legitimately slow custom metrics rather than letting them be cancelled.</p>
+<p>A timed-out metric records an <code>error</code> key after its retries are exhausted, so per the rule above it is excluded from the metric mean and lowers metric <code>success_rate</code>. It has no special timeout label. Raise the budget for legitimately slow checks, or lower the retry count when fast failure matters more.</p>
 
 <pre data-lang="python">from qym import Evaluator
 from qym.core.config import EvaluatorConfig
 
-config = EvaluatorConfig(metric_timeout=180.0, max_metric_concurrency=4)
+config = EvaluatorConfig(
+    metric_timeout=180.0,
+    metric_max_retries=1,
+    max_metric_concurrency=4,
+)
 Evaluator(task=my_task, dataset=ds, metrics=["correctness"], config=config).run()</pre>
 
 <h2>Built-in metric catalog</h2>
 <p>Exactly <strong>seven</strong> metrics ship without any extras. These are registered in <code>qym/metrics/__init__.py</code> as <code>builtin_metrics</code>; the names below are the registry keys you pass as strings.</p>
 
-<div class="docs-callout warn"><svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><p><span class="docs-callout-title">The registry name is <code>contains</code>, not <code>contains_expected</code>.</span> The underlying function is named <code>contains_expected</code>, but it is registered under the key <code>contains</code>. Use <code>metrics=['contains']</code>. Likewise, the built-in <code>faithfulness</code> is a code token-overlap heuristic &mdash; the LLM-graded version is the separate judge <code>faithfulness_llm</code> (requires the <code>[judges]</code> extra).</p></div>
+<div class="docs-callout warn"><svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><p><span class="docs-callout-title">The registry name is <code>contains</code>, not <code>contains_expected</code>.</span> The underlying function is named <code>contains_expected</code>, but it is registered under the key <code>contains</code>. Use <code>metrics=['contains']</code>. Likewise, the built-in <code>faithfulness</code> is a code token-overlap heuristic &mdash; the LLM-graded version is the separate judge <code>faithfulness_llm</code> (requires <code>openai</code> when called).</p></div>
 
 <table>
 <thead><tr><th>Registry name</th><th>Reads</th><th>Returns</th><th>What it does</th></tr></thead>
@@ -227,16 +232,15 @@ Evaluator(task=my_task, dataset=ds, metrics=["correctness"], config=config).run(
 <p>This is a dependency-free heuristic, not a model-graded check. For semantic faithfulness, use the <code>faithfulness_llm</code> judge.</p>
 
 <h3>Inspecting the registry at runtime</h3>
-<p><code>list_available_metrics()</code> prints every registered metric (including judges, if installed). An unknown name raises a <code>ValueError</code> with the exact message (verified in <code>qym/metrics/registry.py</code>):</p>
-<pre data-lang="text">Metric 'X' not found. Available metrics: contains, correctness, exact_match, faithfulness, fuzzy_match, response_time, token_count</pre>
-<p>The listed names are the union of custom-registered metrics and built-ins, sorted. With the <code>[judges]</code> extra installed, the seven judge names appear in that list too.</p>
+<p><code>list_available_metrics()</code> prints every registered metric, including the built-in judge names. An unknown name raises a <code>ValueError</code> whose list is the sorted union of custom and built-in names:</p>
+<pre data-lang="text">Metric 'X' not found. Available metrics: conciseness, contains, correctness, correctness_llm, exact_match, faithfulness, faithfulness_llm, fuzzy_match, hallucination, relevance, response_time, token_count, tool_calling, toxicity</pre>
 
-<h2>Judge metrics require the [judges] extra</h2>
-<p>Seven LLM-graded metrics &mdash; <code>relevance</code>, <code>faithfulness_llm</code>, <code>correctness_llm</code>, <code>conciseness</code>, <code>hallucination</code>, <code>toxicity</code>, <code>tool_calling</code> &mdash; are added to the registry only when the optional <code>openai</code> dependency is present (<code>pip install qym[judges]</code>). Without it, those names are simply absent and resolving one raises the "not found" error above.</p>
+<h2>Judge metrics require the openai client at runtime</h2>
+<p>Seven LLM-graded metrics &mdash; <code>relevance</code>, <code>faithfulness_llm</code>, <code>correctness_llm</code>, <code>conciseness</code>, <code>hallucination</code>, <code>toxicity</code>, <code>tool_calling</code> &mdash; are always registered. Install their optional runtime client with <code>pip install openai</code>; without it, calling a judge raises <code>ImportError</code>.</p>
 <p>Judges need configuration: <code>QYM_JUDGE_MODEL</code> and an API key (<code>QYM_JUDGE_API_KEY</code>, falling back to <code>OPENAI_API_KEY</code>). There is no default model &mdash; <code>JudgeConfig.validate()</code> raises a <code>RuntimeError</code> listing the missing variables. Full setup, the built-in judge inputs, and <code>create_judge</code> / <code>create_pairwise_judge</code> live on the dedicated page: <a href="#sdk-guide/judges">LLM-as-judge &amp; pairwise judging</a>.</p>
 
 <h2>Built-in vs. recipe</h2>
-<p>qym's older Metric Bank documents many useful metric <em>ideas</em> &mdash; semantic similarity, PII detection, schema compliance, BLEU, tool accuracy, and so on. Those are <strong>recipes you write yourself</strong>, not built-ins. Only the seven names in the catalog above resolve as strings out of the box (plus the seven judges with the extra installed). Everything else is a custom metric &mdash; see <a href="#sdk-guide/custom-metrics">Custom metrics</a> for the signature rules, registration, and testing.</p>
+<p>qym's older Metric Bank documents many useful metric <em>ideas</em> &mdash; semantic similarity, PII detection, schema compliance, BLEU, tool accuracy, and so on. Those are <strong>recipes you write yourself</strong>, not built-ins. The seven code metrics and seven registered judges resolve as strings out of the box. Everything else is a custom metric &mdash; see <a href="#sdk-guide/custom-metrics">Custom metrics</a> for the signature rules, registration, and testing.</p>
 
 <h2>Where scores land</h2>
 <p>Per-metric statistics (<code>mean</code>, <code>std</code>, <code>min</code>, <code>max</code>, <code>success_rate</code>) come from <code>EvaluationResult.get_metric_stats(name)</code>. In saved artifacts, each metric contributes a numeric <code>&lt;metric&gt;_score</code> column, with any metadata flattened into <code>&lt;metric&gt;__meta__&lt;key&gt;</code> columns. For the full artifact layout and column naming, see <a href="#sdk-guide/results">Results, artifacts &amp; tracing</a>.</p>

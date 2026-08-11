@@ -5,10 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>قيِّم • Deleted Runs</title>
   <link rel="icon" type="image/png" href="./static/qym_icon.png">
-  <link rel="stylesheet" href="./static/dashboard.css">
+  <link rel="stylesheet" href="./static/dashboard.css?v=runs-analysis-c1-20260804-16">
   <link rel="stylesheet" href="./static/shell.css">
   <script src="./static/auth.js"></script>
-  <script src="./static/shell.js"></script>
+  <script src="./static/shell.js?v=ui-consistency-20260730-15"></script>
   <style>
     .trash-container {
       padding: var(--space-lg) var(--space-xl);
@@ -208,20 +208,22 @@
       }
     }
   </style>
+  <link rel="stylesheet" href="./static/ui_components.css?v=ui-consistency-20260803-60">
+  <script defer src="./static/ui_components.js?v=ui-consistency-20260803-28"></script>
 </head>
 <body>
   <main class="trash-container">
     <div class="section">
       <div class="section-title">Overview</div>
-      <div class="trash-summary">
-        <div class="summary-card">
-          <div class="summary-label">Visible Rows</div>
-          <div class="summary-value" id="trash-stat-visible">0</div>
+      <div class="trash-summary qym-stat-strip">
+        <div class="summary-card qym-stat-strip__item">
+          <div class="summary-label qym-stat-strip__label">Visible Rows</div>
+          <div class="summary-value qym-stat-strip__value" id="trash-stat-visible">0</div>
           <div class="summary-note">Latest deleted runs available for recovery.</div>
         </div>
-        <div class="summary-card">
-          <div class="summary-label">Access Level</div>
-          <div class="summary-value" id="trash-stat-role">—</div>
+        <div class="summary-card qym-stat-strip__item">
+          <div class="summary-label qym-stat-strip__label">Access Level</div>
+          <div class="summary-value qym-stat-strip__value" id="trash-stat-role">—</div>
           <div class="summary-note">Only admins can restore runs.</div>
         </div>
       </div>
@@ -313,7 +315,7 @@
             <div class="toast-title">${escapeHtml(title)}</div>
             <div class="toast-message">${escapeHtml(message)}</div>
           </div>
-          <button class="toast-close" type="button" aria-label="Close notification">×</button>
+          <button class="toast-close qym-icon-action" type="button" aria-label="Close notification">×</button>
         `;
         toast.querySelector('.toast-close')?.addEventListener('click', () => toast.remove());
         container.appendChild(toast);
@@ -412,7 +414,7 @@
                       <td><span class="trash-chip" title="${escapeHtml(run.task || '')}">${escapeHtml(run.task || '—')}</span></td>
                       <td><span class="trash-chip" title="${escapeHtml(run.model || '')}">${renderModelLabel(run.model || '—', hasReasoningTraceStats(run.trace_stats))}</span></td>
                       <td><span class="trash-chip" title="${escapeHtml(run.dataset || '')}">${escapeHtml(run.dataset || '—')}</span></td>
-                      <td><span class="status-badge status-${escapeHtml(run.status || 'PENDING')}">${escapeHtml(run.status || '—')}</span></td>
+                      <td><span class="status-badge qym-badge status-${escapeHtml(run.status || 'PENDING')}">${escapeHtml(run.status || '—')}</span></td>
                       <td>
                         <div class="trash-meta">${escapeHtml(created.primary)}</div>
                         <div class="trash-meta-sub">${escapeHtml(created.secondary)}</div>

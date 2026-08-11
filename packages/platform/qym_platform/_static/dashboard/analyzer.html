@@ -5,14 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>قيِّم • Auto-analysis</title>
   <link rel="icon" type="image/png" href="/static/qym_icon.png">
-  <link rel="stylesheet" href="/static/dashboard.css?v=initial-rules-view-refresh-20260811">
+  <link rel="stylesheet" href="/static/dashboard.css?v=runs-analysis-c1-20260804-16">
   <link rel="stylesheet" href="/static/shell.css">
   <script src="/static/auth.js"></script>
   <script src="/static/shell.js?v=accessibility-responsive-20260806"></script>
   <script src="/static/metrics.js"></script>
   <script src="/static/qym_table.js"></script>
-  <script src="/static/ui_components.js?v=diagnosis-catalog-layout-20260810" defer></script>
-  <script src="/static/playground.js?v=initial-rules-view-refresh-20260811"></script>
+  <script src="/static/playground.js?v=runs-analysis-c1-20260804-16"></script>
   <style>
     /* Typography and color roles follow docs/DESIGN_LANGUAGE.md. */
     .analysis-page {
@@ -3619,7 +3618,8 @@
       }
     }
   </style>
-  <link rel="stylesheet" href="/static/ui_components.css?v=production-target-limit-fit-20260809">
+  <link rel="stylesheet" href="/static/ui_components.css?v=ui-consistency-20260803-60">
+  <script defer src="/static/ui_components.js?v=ui-consistency-20260803-28"></script>
 </head>
 <body>
   <div class="analysis-page" role="region" aria-labelledby="analysis-title">
@@ -3638,7 +3638,7 @@
           aria-selected="true" aria-controls="analysis-run-view" data-analysis-view="run">Analyze run</button>
         <button class="analysis-tab qym-tabs__tab" id="analysis-diagnosis-tab" type="button" role="tab"
           aria-selected="false" aria-controls="analysis-diagnosis-view" data-analysis-view="categories"
-          tabindex="-1">Diagnosis categories</button>
+          aria-disabled="true" disabled tabindex="-1" title="Select a run to configure diagnosis categories">Diagnosis categories</button>
         <button class="analysis-tab qym-tabs__tab" id="analysis-rules-tab" type="button" role="tab"
           aria-selected="false" aria-controls="analysis-rules-view" data-analysis-view="rules" tabindex="-1">Production rules</button>
         <button class="analysis-tab qym-tabs__tab" id="analysis-documents-tab" type="button" role="tab"
@@ -5237,6 +5237,9 @@
         diagnosisPanel.setAttribute('role', 'tabpanel');
         diagnosisPanel.setAttribute('aria-labelledby', 'analysis-diagnosis-tab');
         diagnosisPanel.hidden = true;
+        const diagnosisHeader = document.createElement('header');
+        diagnosisHeader.className = 'analysis-diagnosis-header';
+        diagnosisHeader.innerHTML = '<p>Manage the labels available to the analyzer and inspect the approved examples behind each category.</p>';
         const diagnosisBody = document.createElement('div');
         diagnosisBody.className = 'analysis-diagnosis-workspace analysis-inline-section';
         const diagnosisToolbar = document.createElement('div');
@@ -5262,7 +5265,7 @@
           diagnosisActionRow.insertBefore(categoryAddForm, categorySaveAction);
         }
         if (categoryEditorToolbar) categoryEditorToolbar.remove();
-        diagnosisPanel.append(diagnosisBody);
+        diagnosisPanel.append(diagnosisHeader, diagnosisBody);
         projectPanel.after(diagnosisPanel);
         const syncDiagnosisSummary = () => {
           const groups = Array.from(diagnosisBody.querySelectorAll('.pg-category-group'));
@@ -5584,7 +5587,7 @@
           },
           getRows: projectScoped ? () => [] : analyzerRows,
           getMetric: projectScoped ? () => null : () => state.metric || null,
-          getMetrics: projectScoped ? () => [] : () => state.selectedMetrics.slice(),
+          getMetrics: () => state.selectedMetrics.slice(),
           getThreshold: projectScoped ? () => 0.8 : metricThreshold,
           onAnalysisComplete: projectScoped ? null : applyAnalysisResults,
           reviewsUrl: projectSlug ? projectUrl('reviews') : '',
@@ -5607,8 +5610,29 @@
           if (!projectSlug) {
             throw new Error('Open Auto-analysis from a project or choose a run first.');
           }
-          document.getElementById('analysis-go-runs').href = projectSlug ? projectUrl() : rootPath + '/';
-          state.contextRunId = '';
+          document.getElementById('analysis-go-runs').href = projectUrl();
+          const runsResponse = await fetch(apiUrl(
+            'api/runs?limit=1&project_slug=' + encodeURIComponent(projectSlug)
+          ));
+          if (!runsResponse.ok) {
+            throw new Error('Could not load project analysis settings (HTTP ' + runsResponse.status + ').');
+          }
+          const runsPayload = await runsResponse.json();
+          const projectRuns = [];
+          Object.values((runsPayload && runsPayload.tasks) || {}).forEach(models => {
+            Object.values(models || {}).forEach(runs => {
+              (runs || []).forEach(run => projectRuns.push(run));
+            });
+          });
+          const contextRun = projectRuns[0];
+          if (!contextRun) {
+            state.contextRunId = '';
+            document.getElementById('analysis-loading').hidden = true;
+            document.getElementById('analysis-tabs').hidden = false;
+            document.getElementById('analysis-landing').hidden = false;
+            return;
+          }
+          state.contextRunId = contextRun.file_path || contextRun.run_id || '';
           document.getElementById('analysis-loading').hidden = true;
           document.getElementById('analyzer-host').hidden = false;
           await initializePlayground(true);

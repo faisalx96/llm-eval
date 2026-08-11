@@ -163,7 +163,7 @@ def confidence(output, expected):
 
 <div class="docs-callout tip">
   <svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-  <p><span class="docs-callout-title">Metrics have a wall-clock budget.</span> Each metric call is capped by <code>metric_timeout</code> (default <strong>60.0s</strong>). A metric that hangs past the budget is recorded with score <code>0.0</code> and label <code>"timeout"</code> instead of holding the whole item hostage. Tune it in <a href="#sdk-guide/config">Configs &amp; options</a>.</p>
+  <p><span class="docs-callout-title">Metrics have a wall-clock budget.</span> Each metric attempt is capped by <code>metric_timeout</code> (default <strong>60.0s</strong>) and retried up to <code>metric_max_retries</code> times (default <strong>2</strong>). Exhausted timeouts become ordinary metric errors: visible in item detail, excluded from the mean, and counted against metric success rate. Tune both fields in <a href="#sdk-guide/config">Configs &amp; options</a>.</p>
 </div>
 
 <h2>Putting the hops together</h2>

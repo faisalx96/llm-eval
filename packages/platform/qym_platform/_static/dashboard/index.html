@@ -5,14 +5,18 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>قيِّم • Runs</title>
   <link rel="icon" type="image/png" href="/static/qym_icon.png">
-  <link rel="stylesheet" href="/static/dashboard.css?v=auto-analysis-workspace-20260729-final">
+  <link rel="stylesheet" href="/static/dashboard.css?v=repeat-header-color-20260810-36">
   <link rel="stylesheet" href="/static/shell.css">
   <script src="/static/auth.js"></script>
-  <script src="/static/shell.js"></script>
+  <script src="/static/shell.js?v=ui-consistency-20260730-15"></script>
+  <link rel="stylesheet" href="/static/ui_components.css?v=ui-consistency-20260803-60">
+  <script defer src="/static/ui_components.js?v=ui-consistency-20260803-28"></script>
 </head>
 <body>
   <!-- Command Bar -->
   <div class="command-bar">
+    <button type="button" class="qym-inline-action qym-inline-action--neutral" id="select-mode-btn"
+            aria-pressed="false" aria-controls="runs-table-scroll">Select</button>
     <div class="display-tools" id="display-tools">
       <span class="display-tools-label">Display</span>
       <div class="multi-select-wrapper" id="metric-visibility-wrapper">
@@ -20,10 +24,10 @@
         <div class="multi-select-dropdown" id="metric-visibility-dropdown"></div>
       </div>
     </div>
-    <div class="quick-filters">
-      <button class="filter-btn active" data-filter="all">All</button>
-      <button class="filter-btn" data-filter="today">Today</button>
-      <button class="filter-btn" data-filter="week">7d</button>
+    <div class="quick-filters qym-segmented" role="group" aria-label="Time range">
+      <button class="filter-btn qym-segmented__option active" data-filter="all" aria-pressed="true">All</button>
+      <button class="filter-btn qym-segmented__option" data-filter="today" aria-pressed="false">Today</button>
+      <button class="filter-btn qym-segmented__option" data-filter="week" aria-pressed="false">7d</button>
     </div>
     <div class="command-bar-filter-row">
       <div class="filter-dropdowns">
@@ -51,26 +55,9 @@
           <button class="multi-select-btn" id="filter-user-btn">All Users</button>
           <div class="multi-select-dropdown" id="filter-user-dropdown"></div>
         </div>
-        <button class="clear-filters-btn" id="clear-all-filters" aria-hidden="true" title="Clear all active filters"><span class="clear-filters-x">&times;</span> Clear <span class="filter-count-badge" id="active-filter-count">0</span></button>
+        <button class="clear-filters-btn" id="clear-all-filters" aria-hidden="true" title="Clear all active filters"><svg class="clear-filters-x" viewBox="0 0 12 12" aria-hidden="true" focusable="false"><path d="M3 3l6 6M9 3 3 9"/></svg><span class="clear-filters-label">Clear</span><span class="filter-count-badge" id="active-filter-count">0</span></button>
       </div>
     </div>
-  </div>
-
-  <!-- Comparison Panel (hidden by default) -->
-  <div class="compare-panel" id="compare-panel" style="display: none;">
-    <div class="compare-header">
-      <span>⊕ SELECTED <span id="compare-count">0</span> RUNS</span>
-      <div class="compare-actions">
-        <button id="compare-view" class="action-btn">Compare</button>
-        <button id="cohort-view" class="action-btn">Cohort</button>
-        <button id="langfuse-btn" class="action-btn" style="display:none;">View in Langfuse</button>
-        <button id="publish-selected" class="action-btn primary">Submit</button>
-        <button id="delete-selected" class="action-btn danger">Delete</button>
-        <button id="compare-clear" class="action-btn secondary">Clear</button>
-      </div>
-    </div>
-    <div class="compare-subtitle" id="compare-subtitle"></div>
-    <div class="compare-chips" id="compare-chips"></div>
   </div>
 
   <main class="runs-page-main">
@@ -91,34 +78,43 @@
 
     <!-- Table View -->
     <div id="table-view" class="table-container" style="display:none;">
-      <div class="table-scroll">
+      <div class="table-scroll" id="runs-table-scroll">
         <table class="runs-table">
           <thead>
             <tr id="table-header-row">
-              <th class="col-select">
-                <label class="custom-checkbox">
-                  <input type="checkbox" id="select-all" title="Select all"/>
-                  <span class="checkmark"></span>
-                </label>
+              <th class="col-run sortable" data-sort="run">
+                <span class="run-header-content">
+                  <label class="custom-checkbox run-select-control">
+                    <input type="checkbox" id="select-all" aria-label="Select all visible runs" title="Select all visible runs"/>
+                    <span class="checkmark"></span>
+                  </label>
+                  <span class="run-header-label">RUN NAME</span>
+                </span>
               </th>
               <th class="col-status sortable" data-sort="status">STATUS</th>
-              <th class="col-run sortable" data-sort="run">RUN</th>
               <th class="col-task sortable" data-sort="task">TASK</th>
               <th class="col-model sortable" data-sort="model">MODEL</th>
-              <th class="col-analysis">AUTO-ANALYSIS</th>
               <th class="col-dataset sortable" data-sort="dataset">DATASET</th>
+              <th class="col-owner sortable" data-sort="owner">OWNER</th>
+              <th class="col-time sortable" data-sort="time">DATE</th>
+              <th class="col-analysis">ANALYSIS</th>
               <th class="col-version sortable" data-sort="version">VERSION</th>
               <!-- Dynamic metric columns inserted here by JS -->
               <th class="col-latency sortable" data-sort="latency">⚡ AVG LATENCY</th>
               <th class="col-latency-median sortable" data-sort="median-latency">⚡ MEDIAN LATENCY</th>
-              <th class="col-owner sortable" data-sort="owner">OWNER</th>
-              <th class="col-time sortable" data-sort="time">DATE</th>
               <th class="col-duration sortable" data-sort="duration">DURATION</th>
               <th class="col-actions">ACTIONS</th>
             </tr>
           </thead>
           <tbody id="runs-tbody"></tbody>
         </table>
+      </div>
+      <div class="qym-scroll-mirror" data-qym-scroll-mirror-for="runs-table-scroll"
+           role="scrollbar" aria-label="Scroll Runs table horizontally"
+           aria-orientation="horizontal" aria-valuemin="0" tabindex="0">
+        <div class="qym-scroll-mirror__track">
+          <div class="qym-scroll-mirror__thumb"></div>
+        </div>
       </div>
     </div>
   </main>
@@ -127,18 +123,19 @@
   <footer class="status-bar">
     <div class="status-left">
       <span id="status-filter">0 runs</span>
-      <span class="sep">·</span>
-      <span id="status-selected">0 selected</span>
+      <span class="sep" id="selection-status-separator" style="display:none;">·</span>
+      <div class="selection-actions" id="compare-panel" style="display:none;" role="group" aria-label="Selected run actions" aria-describedby="selection-guidance">
+        <span class="selection-count" id="compare-count">0 selected</span>
+        <button id="compare-view" class="selection-action qym-inline-action">Compare</button>
+        <button id="cohort-view" class="selection-action qym-inline-action">Cohort</button>
+        <button id="publish-selected" class="selection-action qym-inline-action submit">Submit</button>
+        <button id="delete-selected" class="selection-action qym-inline-action danger">Delete</button>
+        <button id="compare-clear" class="selection-action qym-inline-action">Clear</button>
+        <span class="selection-guidance" id="selection-guidance" aria-live="polite"></span>
+      </div>
     </div>
     <div class="status-center">
-      <div class="table-pagination" id="table-pagination">
-        <div class="table-pagination-info" id="table-pagination-info">Showing 0-0 of 0 runs</div>
-        <div class="table-pagination-controls">
-          <button class="table-page-btn" id="table-page-prev" data-table-page="prev" type="button">Previous</button>
-          <span class="table-pagination-page" id="table-pagination-page">Page 1 of 1</span>
-          <button class="table-page-btn" id="table-page-next" data-table-page="next" type="button">Next</button>
-        </div>
-      </div>
+      <div class="table-pagination qym-pagination" id="table-pagination" aria-label="Runs pagination"></div>
     </div>
     <div class="status-right">
       <span>Last Updated: <span id="last-updated" style="font-family:var(--font-mono)">—</span></span>
@@ -151,11 +148,11 @@
   <div class="modal" id="delete-modal" style="display:none;">
     <div class="modal-content modal-small">
       <div class="modal-header">
-        <h2>Delete Run</h2>
-        <button class="modal-close" onclick="document.getElementById('delete-modal').style.display='none'">×</button>
+        <h2 id="delete-modal-title">Delete run</h2>
+        <button class="modal-close qym-icon-action" aria-label="Close" onclick="document.getElementById('delete-modal').style.display='none'">×</button>
       </div>
       <div class="modal-body">
-        <p>Are you sure you want to delete this run?</p>
+        <p id="delete-modal-description">Are you sure you want to delete this run?</p>
         <p class="delete-run-name" id="delete-run-name"></p>
         <p class="warning-text">This action cannot be undone.</p>
       </div>
@@ -171,7 +168,7 @@
     <div class="modal-content modal-small">
       <div class="modal-header">
         <h2 id="workflow-modal-title">Approve Run</h2>
-        <button class="modal-close" onclick="document.getElementById('workflow-modal').style.display='none'">×</button>
+        <button class="modal-close qym-icon-action" aria-label="Close" onclick="document.getElementById('workflow-modal').style.display='none'">×</button>
       </div>
       <div class="modal-body">
         <p id="workflow-modal-description">Add an optional comment for this action.</p>
@@ -195,7 +192,7 @@
     <div class="modal-content">
       <div class="modal-header">
         <h2>Keyboard Shortcuts</h2>
-        <button class="modal-close" onclick="document.getElementById('help-modal').style.display='none'">×</button>
+        <button class="modal-close qym-icon-action" aria-label="Close" onclick="document.getElementById('help-modal').style.display='none'">×</button>
       </div>
       <div class="modal-body">
         <div class="shortcut-group">
@@ -210,7 +207,7 @@
           <h4>Selection & Comparison</h4>
           <div class="shortcut"><span class="kbd">x</span> Toggle select row</div>
           <div class="shortcut"><span class="kbd">c</span> Compare selected</div>
-          <div class="shortcut"><span class="kbd">Esc</span> Clear selection</div>
+          <div class="shortcut"><span class="kbd">Esc</span> Exit selection</div>
         </div>
       </div>
     </div>
@@ -219,6 +216,6 @@
   <script>window.__QYM_INITIAL_VIEW__ = 'table';</script>
   <script src="/static/metrics.js"></script>
   <script src="/static/qym_table.js"></script>
-  <script src="/static/dashboard.js?v=auto-analysis-workspace-20260729-final"></script>
+  <script src="/static/dashboard.js?v=repeat-compare-pass-selection-20260810-36"></script>
 </body>
 </html>

@@ -5,10 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>قيِّم • Charts</title>
   <link rel="icon" type="image/png" href="/static/qym_icon.png">
-  <link rel="stylesheet" href="/static/dashboard.css">
+  <link rel="stylesheet" href="/static/dashboard.css?v=runs-analysis-c1-20260804-16">
   <link rel="stylesheet" href="/static/shell.css">
   <script src="/static/auth.js"></script>
-  <script src="/static/shell.js"></script>
+  <script src="/static/shell.js?v=ui-consistency-20260730-15"></script>
+  <link rel="stylesheet" href="/static/ui_components.css?v=ui-consistency-20260803-60">
+  <script defer src="/static/ui_components.js?v=ui-consistency-20260803-28"></script>
 </head>
 <body>
   <!-- Command Bar -->
@@ -20,10 +22,10 @@
         <div class="multi-select-dropdown" id="metric-visibility-dropdown"></div>
       </div>
     </div>
-    <div class="quick-filters">
-      <button class="filter-btn active" data-filter="all">All</button>
-      <button class="filter-btn" data-filter="today">Today</button>
-      <button class="filter-btn" data-filter="week">7d</button>
+    <div class="quick-filters qym-segmented" role="group" aria-label="Time range">
+      <button class="filter-btn qym-segmented__option active" data-filter="all" aria-pressed="true">All</button>
+      <button class="filter-btn qym-segmented__option" data-filter="today" aria-pressed="false">Today</button>
+      <button class="filter-btn qym-segmented__option" data-filter="week" aria-pressed="false">7d</button>
     </div>
     <div class="command-bar-filter-row">
       <div class="filter-dropdowns">
@@ -51,7 +53,7 @@
           <button class="multi-select-btn" id="filter-user-btn">All Users</button>
           <div class="multi-select-dropdown" id="filter-user-dropdown"></div>
         </div>
-        <button class="clear-filters-btn" id="clear-all-filters" aria-hidden="true" title="Clear all active filters"><span class="clear-filters-x">&times;</span> Clear <span class="filter-count-badge" id="active-filter-count">0</span></button>
+        <button class="clear-filters-btn" id="clear-all-filters" aria-hidden="true" title="Clear all active filters"><svg class="clear-filters-x" viewBox="0 0 12 12" aria-hidden="true" focusable="false"><path d="M3 3l6 6M9 3 3 9"/></svg><span class="clear-filters-label">Clear</span><span class="filter-count-badge" id="active-filter-count">0</span></button>
       </div>
     </div>
   </div>
@@ -91,6 +93,6 @@
 
   <script>window.__QYM_INITIAL_VIEW__ = 'charts';</script>
   <script src="/static/metrics.js"></script>
-  <script src="/static/dashboard.js"></script>
+  <script src="/static/dashboard.js?v=pass-live-progress-20260810-25"></script>
 </body>
 </html>

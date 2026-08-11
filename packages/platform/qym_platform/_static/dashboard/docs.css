@@ -49,21 +49,8 @@ html,
 }
 .docs-search input {
   width: 100%;
-  background: var(--bg-base);
-  border: 1px solid var(--border-default);
-  border-radius: 6px;
-  color: var(--text-primary);
-  font-family: var(--font-sans);
-  font-size: 12px;
-  padding: 7px 10px 7px 28px;
-  outline: none;
 }
-.docs-search input:focus { border-color: var(--accent-primary); }
 .docs-search input::placeholder { color: var(--text-muted); }
-.docs-search svg {
-  position: absolute; left: 8px; top: 50%; transform: translateY(-50%);
-  width: 14px; height: 14px; color: var(--text-dim); pointer-events: none;
-}
 
 .docs-nav-section { margin-bottom: 6px; }
 .docs-nav-section-title {
@@ -168,16 +155,7 @@ html,
 }
 /* reset only inner <code> — resetting the <pre> here would kill its padding */
 .docs-codeblock code { background: none; border: none; padding: 0; }
-/* Icon-only ghost button — same treatment as copy buttons elsewhere in the app
-   (.tv-copy-btn in the trace viewer, COPY_ICON in run/compare pages). */
-.docs-copy-btn {
-  display: inline-flex; align-items: center; justify-content: center;
-  background: none; border: none; border-radius: 5px;
-  color: var(--text-dim); opacity: 0.6;
-  padding: 4px; cursor: pointer; transition: opacity 0.15s ease, color 0.15s ease;
-}
-.docs-copy-btn:hover { opacity: 1; color: var(--accent-primary); background: var(--bg-hover); }
-.docs-copy-btn.copied { opacity: 1; color: var(--accent-primary); }
+/* Icon dimensions only; the shared icon-action primitive owns every visual state. */
 .docs-copy-btn svg { width: 14px; height: 14px; }
 
 /* ── Syntax highlighting (highlight.js classes, mapped to the dark palette) ── */

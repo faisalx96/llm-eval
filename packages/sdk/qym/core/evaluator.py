@@ -545,6 +545,7 @@ class Evaluator:
         self.max_metric_concurrency = self.config.max_metric_concurrency
         self.timeout = self.config.timeout
         self.metric_timeout = self.config.metric_timeout
+        self.metric_max_retries = self.config.metric_max_retries
         self.max_retries = self.config.max_retries
         self.samples = self.config.samples
         # Passes execute strictly sequentially, so a single instance-level
@@ -2240,6 +2241,7 @@ class Evaluator:
                 {
                     "item_id": str(item_id),
                     "index": int(index),
+                    "pass_number": self._current_pass,
                     "attempt_number": int(attempt_number),
                     "trace_id": spans.trace_id,
                     "trace_url": spans.trace_url,
@@ -2413,11 +2415,10 @@ class Evaluator:
     ) -> Tuple[str, Any]:
         """Run a single metric, emit score event, and notify platform.
 
-        The metric call is wrapped in ``asyncio.wait_for`` with a wall-clock budget
-        of ``self.metric_timeout`` (default 120s). A metric that hangs beyond the
-        budget is cancelled and recorded as ``score=0`` with ``label="timeout"`` so
-        one misbehaving metric (e.g. an LLM judge that never returns) cannot hold
-        the whole item hostage in ``asyncio.gather``.
+        Each metric attempt is wrapped in ``asyncio.wait_for`` with the
+        ``self.metric_timeout`` budget (default 60s). Timeouts retry according to
+        ``self.metric_max_retries``; an exhausted timeout follows the ordinary
+        metric-error path (score 0 plus an error string).
         """
         metric_started_at_ms = int(time.time() * 1000)
         metric_started_monotonic = time.monotonic()
@@ -2507,28 +2508,33 @@ class Evaluator:
                 )
 
         try:
-            # Apply wall-clock cap on the metric call itself.
+            # Apply wall-clock cap on the metric call itself. A timeout
+            # retries up to metric_max_retries; when the last attempt also
+            # times out, the TimeoutError falls through to the ordinary
+            # metric-error handler below (score 0 + error traceback), so the
+            # UI surfaces it like any other metric error.
             usage_scope_token = None
             if self.metric_timeout is not None:
                 try:
                     usage_scope_token = self._otel.bind_usage_scope("metric")
-                    score = await asyncio.wait_for(
-                        _run_metric_inner(), timeout=self.metric_timeout
-                    )
-                except asyncio.TimeoutError:
-                    metric_status = "timeout"
-                    logger.warning(
-                        "Metric %s timed out after %.1fs — recording sentinel score",
-                        m_name,
-                        self.metric_timeout,
-                    )
-                    score = {
-                        "score": 0.0,
-                        "label": "timeout",
-                        "metadata": {
-                            "error": f"metric timeout after {self.metric_timeout}s",
-                        },
-                    }
+                    attempts = self.metric_max_retries + 1
+                    for attempt in range(1, attempts + 1):
+                        try:
+                            score = await asyncio.wait_for(
+                                _run_metric_inner(), timeout=self.metric_timeout
+                            )
+                            break
+                        except asyncio.TimeoutError:
+                            if attempt >= attempts:
+                                metric_status = "timeout"
+                                raise
+                            logger.warning(
+                                "Metric %s timed out after %.1fs (attempt %d/%d) — retrying",
+                                m_name,
+                                self.metric_timeout,
+                                attempt,
+                                attempts,
+                            )
                 finally:
                     self._otel.reset_usage_scope(usage_scope_token)
             else:
@@ -2593,12 +2599,26 @@ class Evaluator:
             )
             return m_name, score
         except Exception as e:
-            metric_status = "error"
+            if metric_status != "timeout":
+                metric_status = "error"
             if isinstance(e, JudgeInputError):
                 console.print(e.rich_message())
+            elif isinstance(e, asyncio.TimeoutError):
+                logger.error(
+                    "Metric %s timed out after %.1fs on all %d attempts",
+                    m_name,
+                    self.metric_timeout,
+                    self.metric_max_retries + 1,
+                )
             else:
                 logger.error(f"Metric {m_name} failed: {e}")
-            score = {"score": 0, "error": traceback.format_exc()}
+            error_text = (
+                f"metric timeout after {self.metric_timeout}s "
+                f"({self.metric_max_retries + 1} attempts)"
+                if isinstance(e, asyncio.TimeoutError)
+                else traceback.format_exc()
+            )
+            score = {"score": 0, "error": error_text}
             self._notify_observer(
                 "on_metric_result",
                 item_index=index,
@@ -2672,6 +2692,11 @@ class Evaluator:
                     "trace_url": attempt.spans.trace_url,
                     "latency_ms": attempt.latency_ms,
                     "task_started_at_ms": attempt.task_started_at_ms,
+                    # Carry the successful task output on the durable attempt
+                    # event itself.  Repeat-run UIs read per-pass outputs from
+                    # RunItemAttempt, so they must not depend on a later
+                    # item_completed event arriving in the same request.
+                    "output": attempt.output if attempt.success else None,
                     "error": attempt.error,
                     "is_last_attempt": is_last_attempt,
                 },
@@ -2856,6 +2881,12 @@ class Evaluator:
             active_spans,
             tracker,
         )
+        # Persist the final attempt before item_completed.  Older platforms
+        # attach a repeat pass's output to the already-existing final-attempt
+        # row when they process item_completed.
+        self._emit_item_attempt_finished(
+            index, item, success_attempt, is_last_attempt=True
+        )
         # Emit item_completed to the platform stream (fire-and-forget queue put)
         self._emit_item_completed(
             index,
@@ -2869,10 +2900,6 @@ class Evaluator:
             retry_count,
             success_attempt.task_started_at_ms,
             item_started_at_ms,
-        )
-        # Per-attempt finished event
-        self._emit_item_attempt_finished(
-            index, item, success_attempt, is_last_attempt=True
         )
 
     async def _evaluate_item(self, index: int, item: Any, tracker: "ProgressObserver"):

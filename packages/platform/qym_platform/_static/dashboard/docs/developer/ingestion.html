@@ -75,7 +75,7 @@ Content-Type: application/json</pre>
     <tr><td><code>dataset_version_id</code></td><td>string</td><td>No</td><td>Pin to a specific dataset version. Takes precedence over <code>dataset_alias</code>.</td></tr>
     <tr><td><code>dataset_alias</code></td><td>string</td><td>No</td><td>Resolve a dataset version by alias. Defaults to <code>production</code> when a dataset is found but no version is pinned.</td></tr>
     <tr><td><code>run_metadata</code></td><td>object</td><td>No</td><td>Arbitrary JSON metadata for the run. Defaults to <code>{}</code>.</td></tr>
-    <tr><td><code>run_config</code></td><td>object</td><td>No</td><td>Arbitrary JSON config snapshot for the run. Defaults to <code>{}</code>.</td></tr>
+    <tr><td><code>run_config</code></td><td>object</td><td>No</td><td>Config snapshot. For repeat runs, set <code>samples=k</code>; optional <code>report_k</code> controls the reported subset estimator. Defaults to <code>{}</code>.</td></tr>
   </tbody>
 </table>
 
@@ -86,15 +86,19 @@ Content-Type: application/json</pre>
   "model": "gpt-4o-mini",
   "metrics": ["exact_match"],
   "run_metadata": {"team": "search"},
-  "run_config": {"max_concurrency": 10}
+  "run_config": {"max_concurrency": 10, "samples": 3, "report_k": 2}
 }</pre>
 
-<p>The response is the run id and its dashboard URL:</p>
+<p>The response includes the run id, dashboard URL, and protocol capability flags:</p>
 
 <pre data-lang="json">{
   "run_id": "2c2a0c9d-1c66-4e7f-9c03-2f04c9d1a0a3",
-  "live_url": "https://qym.example.com/projects/search-team/runs/2c2a0c9d-1c66-4e7f-9c03-2f04c9d1a0a3"
+  "live_url": "https://qym.example.com/projects/search-team/runs/2c2a0c9d-1c66-4e7f-9c03-2f04c9d1a0a3",
+  "supports_pass_events": true,
+  "supports_metric_specs": true
 }</pre>
+
+<p><code>supports_pass_events</code> tells a client it may send pass-aware fields and <code>pass_completed</code>. <code>supports_metric_specs</code> confirms the typed metric schema is accepted. Check these flags when a custom client may talk to an older platform.</p>
 
 <p>The run is created immediately in <code>RUNNING</code> status. The shape of <code>live_url</code> depends on the project:</p>
 
@@ -162,7 +166,7 @@ Content-Type: application/x-ndjson</pre>
     <tr><td><code>event_id</code></td><td>UUID string</td><td>Globally unique. This is the idempotency key.</td></tr>
     <tr><td><code>sequence</code></td><td>integer</td><td>&ge; 1, strictly increasing per run.</td></tr>
     <tr><td><code>sent_at</code></td><td>RFC 3339 timestamp</td><td>Client send time. Informational; used to advance the run's last-event clock.</td></tr>
-    <tr><td><code>type</code></td><td>string enum</td><td>One of the 11 event types below.</td></tr>
+    <tr><td><code>type</code></td><td>string enum</td><td>One of the 12 event types below.</td></tr>
     <tr><td><code>run_id</code></td><td>UUID string</td><td>Must match the <code>{run_id}</code> in the URL, or the event is dropped.</td></tr>
     <tr><td><code>payload</code></td><td>object</td><td>Type-specific. Schema is selected by <code>type</code>.</td></tr>
   </tbody>
@@ -172,7 +176,7 @@ Content-Type: application/x-ndjson</pre>
 
 <h2>Event types</h2>
 
-<p>There are 11 event types. A typical streamed run uses a subset &mdash; <code>run_started</code>, per-item lifecycle events, <code>metric_scored</code>, and <code>run_completed</code>. The rest cover retries, traces, heartbeats, and mid-flight metadata.</p>
+<p>There are 12 event types. A typical streamed run uses a subset &mdash; <code>run_started</code>, per-item lifecycle events, <code>metric_scored</code>, optional <code>pass_completed</code>, and <code>run_completed</code>. The rest cover retries, traces, heartbeats, and mid-flight metadata.</p>
 
 <table>
   <thead>
@@ -180,12 +184,13 @@ Content-Type: application/x-ndjson</pre>
   </thead>
   <tbody>
     <tr><td><code>run_started</code></td><td>Once, at run start.</td><td><code>task</code>, <code>dataset</code>, <code>metrics</code>, <code>started_at</code>; optional <code>metric_specs</code>, <code>model</code>, <code>external_run_id</code>, <code>total_items</code>, <code>run_metadata</code>, <code>run_config</code>, <code>dataset_id</code>/<code>dataset_version_id</code>/<code>dataset_alias</code>.</td></tr>
-    <tr><td><code>item_started</code></td><td>When processing of a dataset item begins.</td><td><code>item_id</code>, <code>index</code> (&ge; 0), <code>input</code>; optional <code>expected</code>, <code>item_metadata</code>, <code>dataset_item_pk</code>.</td></tr>
-    <tr><td><code>item_attempt_started</code></td><td>At the start of each attempt (for retried items).</td><td><code>item_id</code>, <code>attempt_number</code> (&ge; 1); optional <code>index</code>, <code>trace_id</code>, <code>trace_url</code>, <code>task_started_at_ms</code>.</td></tr>
-    <tr><td><code>item_attempt_finished</code></td><td>At the end of each attempt.</td><td><code>item_id</code>, <code>attempt_number</code>, <code>status</code> (<code>completed</code> or <code>failed</code>); optional <code>latency_ms</code>, <code>error</code>, <code>trace_id</code>/<code>trace_url</code>, <code>is_last_attempt</code>.</td></tr>
-    <tr><td><code>metric_scored</code></td><td>Once per metric per item.</td><td><code>item_id</code>, <code>metric_name</code>; optional <code>score_numeric</code>, typed <code>score_value</code>, <code>score_raw</code>, <code>meta</code>, <code>label</code>, <code>explanation</code>.</td></tr>
-    <tr><td><code>item_completed</code></td><td>When an item finishes successfully.</td><td><code>item_id</code>, <code>output</code>, <code>latency_ms</code>; optional <code>index</code>, <code>item_metadata</code>, <code>task_metadata</code>, <code>trace_id</code>/<code>trace_url</code>, <code>task_started_at_ms</code>, <code>retry_count</code>.</td></tr>
-    <tr><td><code>item_failed</code></td><td>When an item fails terminally.</td><td><code>item_id</code>, <code>error</code>; optional <code>index</code>, <code>latency_ms</code>, <code>trace_id</code>/<code>trace_url</code>, <code>task_started_at_ms</code>, <code>retry_count</code>.</td></tr>
+    <tr><td><code>item_started</code></td><td>When processing of a dataset item begins.</td><td><code>item_id</code>, <code>index</code> (&ge; 0), <code>input</code>; optional <code>pass_number</code> (default 1), <code>expected</code>, <code>item_metadata</code>, <code>dataset_item_pk</code>.</td></tr>
+    <tr><td><code>item_attempt_started</code></td><td>At the start of each attempt (for retried items).</td><td><code>item_id</code>, <code>attempt_number</code> (&ge; 1); optional <code>pass_number</code> (default 1), <code>index</code>, <code>trace_id</code>, <code>trace_url</code>, <code>task_started_at_ms</code>.</td></tr>
+    <tr><td><code>item_attempt_finished</code></td><td>At the end of each attempt.</td><td><code>item_id</code>, <code>attempt_number</code>, <code>status</code> (<code>completed</code> or <code>failed</code>); optional <code>pass_number</code> (default 1), successful <code>output</code>, <code>latency_ms</code>, <code>error</code>, <code>trace_id</code>/<code>trace_url</code>, <code>is_last_attempt</code>.</td></tr>
+    <tr><td><code>metric_scored</code></td><td>Once per metric per item and pass.</td><td><code>item_id</code>, <code>metric_name</code>; optional <code>pass_number</code> (default 1), <code>score_numeric</code>, typed <code>score_value</code>, <code>score_raw</code>, <code>meta</code>, <code>label</code>, <code>explanation</code>. Repeat runs persist label, metadata, and explanation per pass.</td></tr>
+    <tr><td><code>item_completed</code></td><td>When an item execution finishes successfully.</td><td><code>item_id</code>, <code>output</code>, <code>latency_ms</code>; optional <code>pass_number</code> (default 1), <code>is_final_pass</code> (default true), <code>index</code>, <code>item_metadata</code>, <code>task_metadata</code>, <code>trace_id</code>/<code>trace_url</code>, <code>task_started_at_ms</code>, <code>retry_count</code>.</td></tr>
+    <tr><td><code>item_failed</code></td><td>When one item execution fails terminally.</td><td><code>item_id</code>, <code>error</code>; optional <code>pass_number</code> (default 1), <code>index</code>, <code>latency_ms</code>, <code>trace_id</code>/<code>trace_url</code>, <code>task_started_at_ms</code>, <code>retry_count</code>.</td></tr>
+    <tr><td><code>pass_completed</code></td><td>After every item in one repeat pass has reached a terminal state.</td><td><code>pass_number</code>, total <code>samples</code>, and optional aggregate <code>metrics</code>. This is the durability barrier for live pass status.</td></tr>
     <tr><td><code>run_completed</code></td><td>Once, at the very end.</td><td><code>ended_at</code>, <code>final_status</code> (<code>COMPLETED</code> / <code>FAILED</code> / <code>STOPPED</code>); optional <code>summary</code>.</td></tr>
     <tr><td><code>run_heartbeat</code></td><td>Periodically during long runs.</td><td><code>heartbeat_at</code>.</td></tr>
     <tr><td><code>metadata_update</code></td><td>To merge metadata mid-flight.</td><td><code>extra</code> (merged into run metadata); plus optional <code>langfuse_url</code>, <code>langfuse_dataset_id</code>, <code>langfuse_run_id</code>.</td></tr>
@@ -203,9 +208,25 @@ item_attempt_started     (optional — only if you model attempts/retries)
 item_attempt_finished    (optional)
 metric_scored            (one per metric)
 item_completed
+pass_completed           (repeat runs: once after each complete pass)
 run_completed</pre>
 
 <p>For an item that fails, emit <code>item_failed</code> in place of <code>item_completed</code>. For long-running work, interleave <code>run_heartbeat</code> events. Emit <code>span_completed</code> events whenever a trace span closes if you want native trace data in the dashboard.</p>
+
+<h3>Repeat-run protocol</h3>
+
+<p>A repeat evaluation is one run with <code>run_config.samples=k</code>, not <code>k</code> independent runs. Process passes sequentially. Put the same 1-based <code>pass_number</code> on every item, attempt, score, and completion event in that pass, then emit one <code>pass_completed</code> barrier. Set <code>is_final_pass=true</code> only on the final pass's successful item completions.</p>
+
+<p>The platform keeps each pass's final attempt, output, numeric score, label, metadata, error, and judge explanation. The ordinary item score remains a running mean across observed passes for backward-compatible summaries; <code>GET /api/runs/{run_id}/passes</code> and <code>/group-metrics</code> expose the lossless pass view and repeat estimators.</p>
+
+<pre data-lang="text">run_started            run_config.samples = 3
+  pass 1 item/score events (pass_number = 1)
+pass_completed         pass_number = 1, samples = 3
+  pass 2 item/score events (pass_number = 2)
+pass_completed         pass_number = 2, samples = 3
+  pass 3 item/score events (pass_number = 3, is_final_pass = true)
+pass_completed         pass_number = 3, samples = 3
+run_completed</pre>
 
 <h3>Resilient ingestion</h3>
 
@@ -253,7 +274,7 @@ run_completed</pre>
 
 <pre data-lang="json">{"schema_version":1,"event_id":"...","sequence":42,"sent_at":"2026-06-21T12:01:00Z","type":"run_heartbeat","run_id":"2c2a0c9d-1c66-4e7f-9c03-2f04c9d1a0a3","payload":{"heartbeat_at":"2026-06-21T12:01:00Z"}}</pre>
 
-<p>A heartbeat keeps the run in <code>RUNNING</code> and advances its last-event clock, which the platform's stale-run recovery uses to decide whether a run that never finalized has gone silent.</p>
+<p>A heartbeat keeps the run in <code>RUNNING</code> and advances its last-event clock. When a live run is later read after <code>QYM_RUN_STALE_TIMEOUT_SECONDS</code> without an event, the platform lazily marks it <code>STOPPED</code> with reason <code>lease_timeout</code>. A later valid event marks it <code>RUNNING</code> again.</p>
 
 <h2>Finalizing the run</h2>
 
@@ -272,7 +293,7 @@ run_completed</pre>
 
 <p>Any <code>final_status</code> value outside this set is stored as <code>FAILED</code>. On a successful finalize, the platform also computes and persists trace statistics from any <code>span_completed</code> events received for the run. You can attach last-minute run metadata by putting a <code>run_metadata</code> object inside the <code>summary</code> payload &mdash; it is merged into the run's metadata.</p>
 
-<div class="docs-callout warn"><svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><p><span class="docs-callout-title">No finalize means a stuck run.</span> If you never send <code>run_completed</code>, the run stays <code>RUNNING</code> until the platform's stale-run recovery intervenes. Always finalize, even on failure paths &mdash; send <code>run_completed</code> with <code>FAILED</code>.</p></div>
+<div class="docs-callout warn"><svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><p><span class="docs-callout-title">No finalize means an abandoned run.</span> If you never send <code>run_completed</code>, the run remains live until a read detects the expired lease and marks it <code>STOPPED</code>. Always finalize, even on failure paths &mdash; send <code>run_completed</code> with <code>FAILED</code>.</p></div>
 
 <h2>Uploading a finished run</h2>
 

@@ -5,10 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>قيِّم • Reviews</title>
   <link rel="icon" type="image/png" href="/static/qym_icon.png">
-  <link rel="stylesheet" href="/static/dashboard.css">
+  <link rel="stylesheet" href="/static/dashboard.css?v=runs-analysis-c1-20260804-16">
   <link rel="stylesheet" href="/static/shell.css">
   <script src="/static/auth.js"></script>
-  <script src="/static/shell.js"></script>
+  <script src="/static/shell.js?v=ui-consistency-20260730-15"></script>
   <style>
     /* Typography/color rules: docs/DESIGN_LANGUAGE.md — tokens only (var(--font-*), var(--text-*)). */
     /* ═══════════════════════════════════════════════════
@@ -149,12 +149,6 @@
       flex: 1;
       max-width: 320px;
       min-width: 180px;
-    }
-
-    .reviews-search .search-ico {
-      color: var(--text-dim);
-      font-size: 14px;
-      flex-shrink: 0;
     }
 
     .reviews-search input {
@@ -1070,21 +1064,7 @@
     /* ── Expand toggle ───────────────────────────── */
 
     .expand-btn {
-      background: none;
-      border: none;
-      color: var(--text-dim);
-      cursor: pointer;
-      padding: 2px 6px;
       font-size: var(--font-base);
-      border-radius: 3px;
-      transition: all 0.15s;
-      display: flex;
-      align-items: center;
-      gap: 3px;
-    }
-    .expand-btn:hover {
-      color: var(--text-primary);
-      background: var(--bg-hover);
     }
     .expand-btn .arrow {
       transition: transform 0.2s;
@@ -1110,30 +1090,6 @@
       align-items: center;
       gap: 4px;
       flex-wrap: wrap;
-    }
-
-    .filter-chip {
-      font-size: var(--font-sm);
-      padding: 3px 8px;
-      border-radius: 4px;
-      border: 1px solid var(--border-default);
-      background: var(--bg-elevated);
-      color: var(--text-muted);
-      cursor: pointer;
-      transition: all 0.15s;
-      white-space: nowrap;
-      font-family: var(--font-sans);
-    }
-
-    .filter-chip:hover {
-      border-color: var(--border-strong);
-      color: var(--text-secondary);
-    }
-
-    .filter-chip.active {
-      border-color: var(--accent-primary);
-      color: var(--accent-primary);
-      background: rgba(0, 212, 170, 0.08);
     }
 
     .filter-group-label {
@@ -1219,6 +1175,8 @@
       text-align: right;
     }
   </style>
+  <link rel="stylesheet" href="/static/ui_components.css?v=ui-consistency-20260803-60">
+  <script defer src="/static/ui_components.js?v=ui-consistency-20260803-28"></script>
 </head>
 <body>
   <div class="reviews-layout">
@@ -1233,22 +1191,22 @@
     </header>
 
     <!-- Stats Strip -->
-    <div class="reviews-stats">
-      <div class="stat-card stat-total active" data-filter="">
-        <span class="stat-num" id="stat-total">-</span>
-        <span class="stat-lbl">Total</span>
+    <div class="reviews-stats qym-stat-strip">
+      <div class="stat-card qym-stat-strip__item stat-total active" data-filter="">
+        <span class="stat-lbl qym-stat-strip__label">Total</span>
+        <span class="stat-num qym-stat-strip__value" id="stat-total">-</span>
       </div>
-      <div class="stat-card stat-pending" data-filter="pending">
-        <span class="stat-num" id="stat-pending">-</span>
-        <span class="stat-lbl">Pending</span>
+      <div class="stat-card qym-stat-strip__item stat-pending" data-filter="pending">
+        <span class="stat-lbl qym-stat-strip__label">Pending</span>
+        <span class="stat-num qym-stat-strip__value" id="stat-pending">-</span>
       </div>
-      <div class="stat-card stat-approved" data-filter="approved">
-        <span class="stat-num" id="stat-approved">-</span>
-        <span class="stat-lbl">Approved</span>
+      <div class="stat-card qym-stat-strip__item stat-approved" data-filter="approved">
+        <span class="stat-lbl qym-stat-strip__label">Approved</span>
+        <span class="stat-num qym-stat-strip__value" id="stat-approved">-</span>
       </div>
-      <div class="stat-card stat-rejected" data-filter="rejected">
-        <span class="stat-num" id="stat-rejected">-</span>
-        <span class="stat-lbl">Rejected</span>
+      <div class="stat-card qym-stat-strip__item stat-rejected" data-filter="rejected">
+        <span class="stat-lbl qym-stat-strip__label">Rejected</span>
+        <span class="stat-num qym-stat-strip__value" id="stat-rejected">-</span>
       </div>
     </div>
 
@@ -1264,8 +1222,7 @@
 
       <div class="toolbar-sep"></div>
 
-      <div class="reviews-search">
-        <span class="search-ico">&#x2315;</span>
+      <div class="reviews-search qym-search-wrap">
         <input type="text" id="search-input" placeholder="Search task, item, root cause..." />
       </div>
 
@@ -1293,10 +1250,12 @@
 
       <div class="filter-chips">
         <span class="filter-group-label">Source</span>
-        <button class="filter-chip active" data-source="">All</button>
-        <button class="filter-chip" data-source="ai_only">AI Only</button>
-        <button class="filter-chip" data-source="human_only">Human Only</button>
-        <button class="filter-chip" data-source="corrected">AI+Human Corrected</button>
+        <div class="qym-segmented reviews-source-segmented" role="group" aria-label="Source">
+          <button type="button" class="qym-segmented__option active" data-source="" aria-pressed="true">All</button>
+          <button type="button" class="qym-segmented__option" data-source="ai_only" aria-pressed="false">AI Only</button>
+          <button type="button" class="qym-segmented__option" data-source="human_only" aria-pressed="false">Human Only</button>
+          <button type="button" class="qym-segmented__option" data-source="corrected" aria-pressed="false">AI+Human Corrected</button>
+        </div>
       </div>
 
       <div class="toolbar-sep"></div>
@@ -1323,11 +1282,11 @@
         <button class="btn-sm btn-reject" id="bulk-reject">Reject</button>
         <button class="btn-sm btn-reset" id="bulk-reset">Reset</button>
         <button class="btn-sm btn-reject" id="bulk-delete" title="Remove from the review queue and mark rejected">Delete</button>
-        <button class="btn-ghost" id="bulk-deselect" title="Deselect all">&times;</button>
+        <button class="btn-ghost qym-icon-action" id="bulk-deselect" title="Deselect all" aria-label="Deselect all">&times;</button>
       </div>
 
       <div class="toolbar-right">
-        <button class="btn-clear-filters" id="clear-filters" title="Clear all filters">&times; Clear filters</button>
+        <button class="btn-clear-filters" id="clear-filters" title="Clear all filters"><svg class="clear-filters-x" viewBox="0 0 12 12" aria-hidden="true" focusable="false"><path d="M3 3l6 6M9 3 3 9"/></svg><span class="clear-filters-label">Clear filters</span></button>
         <span style="font-size: var(--font-sm); color: var(--text-muted);" id="result-count"></span>
       </div>
     </div>
@@ -1356,7 +1315,7 @@
     <div class="reviews-modal-content">
       <div class="reviews-modal-header">
         <h3 id="modal-title">Approve Correction</h3>
-        <button class="modal-close" id="modal-close">&times;</button>
+        <button class="modal-close qym-icon-action" id="modal-close" aria-label="Close">&times;</button>
       </div>
       <div class="reviews-modal-body">
         <p id="modal-desc">This correction will be available as evidence when generating project analysis rules.</p>
@@ -1629,7 +1588,7 @@
           ${message ? `<div class="toast-message">${escapeHtml(message)}</div>` : ''}
         </div>
         ${actions.length ? `<div class="toast-actions">${actions.map((action, idx) => `<button type="button" class="toast-action ${action.className || ''}" data-toast-action="${idx}">${escapeHtml(action.label || 'OK')}</button>`).join('')}</div>` : ''}
-        <button class="toast-close">&times;</button>
+        <button class="toast-close qym-icon-action" type="button" aria-label="Close notification">&times;</button>
       `;
       container.appendChild(toast);
       const closeToast = () => {
@@ -1929,15 +1888,43 @@
       const selected = getFilterState(key);
       const mergedValues = [...new Set([...(values || []), ...((selected && selected.length) ? selected : [])])];
       const counts = state.facetCounts && state.facetCounts[key] ? state.facetCounts[key] : {};
+      const searchValue = dropdown.querySelector('[data-ms-search]')?.value || '';
+      const restoreMultiselectFocus = (kind, value) => {
+        window.setTimeout(() => {
+          const nextDropdown = el(`${key}-ms-dropdown`);
+          if (!nextDropdown) return;
+          if (kind === 'action') {
+            nextDropdown.querySelector(`.ms-action-btn[data-action="${value}"]`)?.focus({ preventScroll: true });
+            return;
+          }
+          const nextOption = Array.from(nextDropdown.querySelectorAll('.multi-select-option')).find(candidate =>
+            candidate.dataset.value === value
+          );
+          nextOption?.querySelector(kind === 'only' ? '.ms-only-btn' : 'input[type="checkbox"]')?.focus({ preventScroll: true });
+        }, 0);
+      };
 
-      let html = '<div class="ms-actions"><button class="ms-action-btn" data-action="all" data-filter="' + key + '">Select All</button><button class="ms-action-btn" data-action="none" data-filter="' + key + '">Clear</button></div>';
-      html += mergedValues.map(value =>
-        '<label class="multi-select-option" data-value="' + escapeHtml(value) + '"><input type="checkbox" data-filter="' + key + '" data-val="' + escapeHtml(value) + '" /><span>' + escapeHtml(value) + '</span><span class="option-count">' + (counts[value] || 0) + '</span></label>'
-      ).join('');
+      let html = '<div class="model-search-box qym-dropdown__search"><input type="search" class="model-search-input qym-control qym-search" data-ms-search placeholder="Search ' + escapeHtml(getFilterLabel(key).toLowerCase()) + '..." value="' + escapeHtml(searchValue) + '" /></div>';
+      html += '<div class="ms-actions qym-dropdown__actions"><button class="ms-action-btn qym-dropdown__action" data-action="all" data-filter="' + key + '">Select All</button><button class="ms-action-btn qym-dropdown__action" data-action="none" data-filter="' + key + '">Clear</button></div>';
+      html += mergedValues.map(value => {
+        const hidden = searchValue && !value.toLowerCase().includes(searchValue.toLowerCase()) ? ' style="display:none"' : '';
+        return '<div class="multi-select-option qym-dropdown__option" data-value="' + escapeHtml(value) + '"' + hidden + '><label class="ms-option-main"><input type="checkbox" data-filter="' + key + '" data-val="' + escapeHtml(value) + '" /><span>' + escapeHtml(value) + '</span><span class="option-count">' + (counts[value] || 0) + '</span></label><button type="button" class="ms-only-btn qym-dropdown__only" aria-label="Show only ' + escapeHtml(value) + '" title="Show only this option">Only</button></div>';
+      }).join('');
       dropdown.innerHTML = html;
+
+      const searchInput = dropdown.querySelector('[data-ms-search]');
+      if (searchInput) {
+        searchInput.addEventListener('input', () => {
+          const query = searchInput.value.trim().toLowerCase();
+          dropdown.querySelectorAll('.multi-select-option').forEach(option => {
+            option.style.display = !query || (option.dataset.value || '').toLowerCase().includes(query) ? '' : 'none';
+          });
+        });
+      }
 
       dropdown.querySelectorAll('.multi-select-option input[type="checkbox"]').forEach(cb => {
         cb.addEventListener('change', () => {
+          const selectedValue = cb.dataset.val;
           let filterValues = getFilterState(key);
           if (filterValues === null) {
             filterValues = [...mergedValues];
@@ -1950,16 +1937,31 @@
             if (idx >= 0) filterValues.splice(idx, 1);
           }
           syncMultiselectUI(key);
-          fetchCorrections();
+          fetchCorrections().then(() => restoreMultiselectFocus('checkbox', selectedValue));
+        });
+      });
+
+      dropdown.querySelectorAll('.ms-only-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const option = btn.closest('.multi-select-option');
+          if (!option) return;
+          const selectedValue = option.dataset.value;
+          setFilterState(key, [selectedValue]);
+          syncMultiselectUI(key);
+          fetchCorrections().then(() => restoreMultiselectFocus('only', selectedValue));
         });
       });
 
       dropdown.querySelectorAll('.ms-action-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
+          e.preventDefault();
           e.stopPropagation();
-          setFilterState(key, btn.dataset.action === 'all' ? null : []);
+          const action = btn.dataset.action;
+          setFilterState(key, action === 'all' ? null : []);
           syncMultiselectUI(key);
-          fetchCorrections();
+          fetchCorrections().then(() => restoreMultiselectFocus('action', action));
         });
       });
 
@@ -2044,22 +2046,22 @@
             <div class="card-meta">
               <span class="card-id">#${c.id}</span>
               <span class="card-item-id" title="${escapeHtml(c.item_id)}">${escapeHtml(truncate(c.item_id, 24))}</span>
-              <span class="card-status-badge ${st}"><span class="dot"></span> ${st}</span>
+              <span class="card-status-badge qym-badge ${st}"><span class="dot"></span> ${st}</span>
               ${c.ai_confidence != null ? `<span class="card-confidence" title="AI confidence">${(c.ai_confidence * 100).toFixed(0)}%</span>` : ''}
             </div>
             <span class="card-provenance">${corrector ? `by ${escapeHtml(corrector)}` : ''} ${c.created_at ? formatDate(c.created_at) : ''}</span>
             <div class="card-actions">
               ${st === 'pending' ? `
-                <button class="btn-sm btn-approve" data-approve="${c.id}" title="Approve">&#10003;</button>
-                <button class="btn-sm btn-reject" data-reject="${c.id}" title="Reject">&#10007;</button>
+                <button class="btn-sm btn-approve qym-icon-action" data-approve="${c.id}" title="Approve" aria-label="Approve">&#10003;</button>
+                <button class="btn-sm btn-reject qym-icon-action" data-reject="${c.id}" title="Reject" aria-label="Reject">&#10007;</button>
               ` : st === 'approved' ? `
-                <button class="btn-sm btn-reset" data-reset="${c.id}" title="Reset to pending">&#8634;</button>
+                <button class="btn-sm btn-reset qym-icon-action" data-reset="${c.id}" title="Reset to pending" aria-label="Reset to pending">&#8634;</button>
               ` : st === 'rejected' ? `
-                <button class="btn-sm btn-reset" data-reset="${c.id}" title="Reset to pending">&#8634;</button>
+                <button class="btn-sm btn-reset qym-icon-action" data-reset="${c.id}" title="Reset to pending" aria-label="Reset to pending">&#8634;</button>
               ` : ''}
-              <button class="btn-ghost" data-edit="${c.id}" title="Edit correction">&#9998;</button>
+              <button class="btn-ghost qym-icon-action" data-edit="${c.id}" title="Edit correction" aria-label="Edit correction">&#9998;</button>
               <button class="btn-sm btn-reject" data-delete="${c.id}" title="Remove from the review queue and mark rejected">Delete</button>
-              <button class="expand-btn" data-expand="${c.id}" title="Show metadata">
+              <button class="expand-btn qym-icon-action" data-expand="${c.id}" title="Show metadata" aria-label="Show metadata">
                 <span class="arrow">&#x25B6;</span>
               </button>
             </div>
@@ -2077,7 +2079,7 @@
             <!-- AI Column -->
             <div class="diff-col">
               <div class="diff-col-header">
-                <span class="diff-source-tag ai">AI</span>
+                <span class="diff-source-tag qym-tag ai">AI</span>
                 ${c.ai_confidence != null ? `<span class="diff-confidence">${(c.ai_confidence * 100).toFixed(0)}% conf</span>` : ''}
               </div>
               <div class="diff-field">
@@ -2097,7 +2099,7 @@
             <!-- Human Column -->
             <div class="diff-col">
               <div class="diff-col-header">
-                <span class="diff-source-tag human">Human</span>
+                <span class="diff-source-tag qym-tag human">Human</span>
               </div>
               ${isEditing ? renderEditForm(c) : `
                 <div class="diff-field">
@@ -2239,11 +2241,11 @@
       return `
         <div class="edit-field">
           <label>Root Cause Category</label>
-          <input type="text" data-edit-field="human_root_causes" value="${escapeHtml(reviewRootCauseCategories(c, 'human').join(', '))}" placeholder="Category 1, Category 2, Category 3" />
+          <input class="qym-control qym-input" type="text" data-edit-field="human_root_causes" value="${escapeHtml(reviewRootCauseCategories(c, 'human').join(', '))}" placeholder="Category 1, Category 2, Category 3" />
         </div>
         <div class="edit-field">
           <label>Root Cause Detail</label>
-          <input type="text" data-edit-field="human_root_cause_detail" value="${escapeHtml(c.human_root_cause_detail)}" />
+          <input class="qym-control qym-input" type="text" data-edit-field="human_root_cause_detail" value="${escapeHtml(c.human_root_cause_detail)}" />
         </div>
         <div class="edit-field">
           <label>Feedback</label>
@@ -2431,8 +2433,12 @@
 
     $$('[data-source]').forEach(chip => {
       chip.addEventListener('click', () => {
-        $$('[data-source]').forEach(c => c.classList.remove('active'));
+        $$('[data-source]').forEach(c => {
+          c.classList.remove('active');
+          c.setAttribute('aria-pressed', 'false');
+        });
         chip.classList.add('active');
+        chip.setAttribute('aria-pressed', 'true');
         state.sourceFilter = chip.dataset.source;
         fetchCorrections();
       });
@@ -2496,8 +2502,12 @@
       el('search-input').value = '';
       $$('.stat-card').forEach(c => c.classList.remove('active'));
       document.querySelector('.stat-card.stat-total').classList.add('active');
-      $$('[data-source]').forEach(c => c.classList.remove('active'));
+      $$('[data-source]').forEach(c => {
+        c.classList.remove('active');
+        c.setAttribute('aria-pressed', 'false');
+      });
       document.querySelector('[data-source=""]').classList.add('active');
+      document.querySelector('[data-source=""]').setAttribute('aria-pressed', 'true');
       confMinSlider.value = 0;
       confMaxSlider.value = 100;
       confMinVal.textContent = '0%';

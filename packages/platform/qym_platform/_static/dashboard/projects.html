@@ -5,27 +5,19 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>قيِّم • Projects</title>
   <link rel="icon" type="image/png" href="/static/qym_icon.png">
-  <link rel="stylesheet" href="/static/dashboard.css">
+  <link rel="stylesheet" href="/static/dashboard.css?v=runs-analysis-c1-20260804-16">
   <link rel="stylesheet" href="/static/shell.css">
   <script src="/static/auth.js"></script>
-  <script src="/static/shell.js"></script>
+  <script src="/static/shell.js?v=ui-consistency-20260730-15"></script>
   <style>
     .projects-page { }
     .projects-header { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-md); margin-bottom: var(--space-lg); }
     .projects-header h1 { font-size: var(--font-title); font-weight: 600; margin: 0; letter-spacing: -0.3px; }
     .projects-header p { font-size: var(--font-sm); color: var(--text-muted); margin-top: 6px; }
 
-    .projects-search { margin-bottom: var(--space-lg); }
-    .projects-search input {
-      width: 100%; max-width: 400px;
-      font-family: var(--font-sans); font-size: var(--font-base);
-      background: var(--bg-surface); border: 1px solid var(--border-default);
-      border-radius: 6px; padding: var(--space-sm) var(--space-md);
-      color: var(--text-primary); outline: none;
-      transition: border-color 0.15s, box-shadow 0.15s;
-    }
+    .projects-search { width: 100%; max-width: 400px; margin-bottom: var(--space-lg); }
+    .projects-search input { width: 100%; }
     .projects-search input::placeholder { color: var(--text-dim); }
-    .projects-search input:focus { border-color: var(--accent-primary); box-shadow: 0 0 0 2px rgba(0,212,170,0.15); }
 
     .project-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: var(--space-md); }
 
@@ -41,11 +33,6 @@
 
     .project-card-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
 
-    .role-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: var(--font-sm); font-weight: 600; font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.3px; }
-    .role-badge.manager { background: rgba(0,212,170,0.12); color: var(--accent-primary); }
-    .role-badge.member { background: var(--bg-active); color: var(--text-muted); }
-    .role-badge.admin { background: rgba(0,212,170,0.12); color: var(--accent-primary); }
-
     .project-card-name { font-size: var(--font-lg); font-weight: 650; color: var(--text-primary); }
     .project-card-slug { font-size: var(--font-sm); font-family: var(--font-mono); color: var(--text-muted); margin-top: 3px; }
 
@@ -58,6 +45,8 @@
     .empty-state h2 { font-size: var(--font-lg); margin-bottom: var(--space-sm); color: var(--text-primary); }
 
   </style>
+  <link rel="stylesheet" href="/static/ui_components.css?v=ui-consistency-20260803-60">
+  <script defer src="/static/ui_components.js?v=ui-consistency-20260803-28"></script>
 </head>
 <body>
   <main class="projects-page">
@@ -72,8 +61,8 @@
       </button>
     </div>
 
-    <div class="projects-search">
-      <input type="text" placeholder="Search projects by name…" id="project-search" />
+    <div class="projects-search qym-search-wrap">
+      <input class="qym-control qym-search" type="text" placeholder="Search projects by name…" id="project-search" />
     </div>
 
     <div class="project-grid" id="project-grid">
@@ -147,7 +136,7 @@
           return `<a class="project-card" href="${(window.__QYM_ROOT_PATH__ || '').replace(/\/$/, '')}/projects/${encodeURIComponent(p.slug)}">
             <div class="project-card-top">
               ${window.QymShell && QymShell.identiconHTML ? QymShell.identiconHTML(p.slug, { cell: 10, gap: 3 }) : ''}
-              <span class="role-badge ${roleClass}">${esc(p.role || 'MEMBER')}</span>
+              <span class="role-badge qym-tag qym-tag--role ${roleClass}">${esc(role)}</span>
             </div>
             <div>
               <div class="project-card-name">${esc(p.name)}</div>

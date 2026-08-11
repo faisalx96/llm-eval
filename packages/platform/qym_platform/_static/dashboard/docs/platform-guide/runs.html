@@ -1,0 +1,76 @@
+<p class="docs-eyebrow">PLATFORM GUIDE</p>
+<h1>Runs, selection &amp; cohorts</h1>
+<p class="docs-lead">The Runs page is the project ledger: filter it to a comparable slice, open a run for evidence, or select whole runs and individual repeat passes for comparison.</p>
+
+<h2>Read and narrow the table</h2>
+<p>Use the toolbar to filter by task, dataset and version, model, status, or owner. <strong>Columns</strong> controls visible metrics and system fields. Click a column heading to sort; click the run name to open its detail page.</p>
+
+<p>Each row shows workflow status, run identity, task, model, dataset, code version, metric means, latency, owner, date, duration, and available actions. Running repeat evaluations also show current pass progress.</p>
+
+<h2>Expand a repeat row</h2>
+<p>A repeat evaluation is one row marked with its pass count (<code>&times;k</code> / <code>k passes</code>). It represents one run in which every dataset item was executed k times. Open its chevron to reveal:</p>
+<ul>
+  <li>one member row per completed or active pass, with that pass's metric means, latency, errors, item count, date, and duration;</li>
+  <li>queued pass ranges while a live run is still progressing;</li>
+  <li>best-across-pass highlights where a unique best metric or latency exists; and</li>
+  <li>a <strong>Group metrics</strong> strip with metric and pass-threshold controls.</li>
+</ul>
+
+<p>Click a completed pass row to open the run through a pass lens. That view uses the selected pass's output, score, latency, status, and trace rather than the run's reduced values.</p>
+
+<div class="docs-callout tip">
+  <svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+  <p><span class="docs-callout-title">The parent row is reduced; member rows are executions.</span> For a repeat run, each item metric on the parent is the mean across stored passes. Expand it when variance matters.</p>
+</div>
+
+<h2>Select mode</h2>
+<p>Check rows, use the table's select-all checkbox for the current page, or focus a row and press <code>x</code>. The status bar then offers the actions allowed for that selection:</p>
+<table>
+  <thead><tr><th>Action</th><th>Rule</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Compare</strong></td><td>Select at least two references.</td></tr>
+    <tr><td><strong>Cohort</strong></td><td>Lock the current selection as Cohort A, then build an execution-balanced Cohort B.</td></tr>
+    <tr><td><strong>Submit</strong></td><td>Every selected run must be yours and in COMPLETED, FAILED, or REJECTED.</td></tr>
+    <tr><td><strong>Delete</strong></td><td>Every selected run must be deletable by you: owner, project manager, or platform admin.</td></tr>
+    <tr><td><strong>Clear</strong></td><td>Leave selection or cancel cohort mode. <code>Esc</code> does the same.</td></tr>
+  </tbody>
+</table>
+
+<h3>Select an individual pass</h3>
+<p>Expand a repeat row and check a completed pass to create a <strong>pass reference</strong>. It addresses one execution rather than the whole run and can join a normal comparison or a cohort. The parent checkbox follows the visible scope: collapsed, it selects the repeat run; expanded, it selects all available passes. Selecting the whole run removes its selected pass references, and selecting a pass removes its whole-run reference.</p>
+
+<h2>How cohort accounting works</h2>
+<p>Cohorts compare equal numbers of executions, not equal numbers of rows:</p>
+<table>
+  <thead><tr><th>Selected reference</th><th>Execution units</th></tr></thead>
+  <tbody>
+    <tr><td>Classic run</td><td><code>1</code></td></tr>
+    <tr><td>Whole repeat run with <code>samples=k</code></td><td><code>k</code></td></tr>
+    <tr><td>One completed pass from a repeat run</td><td><code>1</code></td></tr>
+  </tbody>
+</table>
+
+<ol>
+  <li>Select the references for Cohort A and click <strong>Cohort</strong>.</li>
+  <li>Select Cohort B until its execution counter equals Cohort A.</li>
+  <li>Click <strong>Open Cohort</strong>.</li>
+</ol>
+
+<p>The two sides must be disjoint. A whole repeat run cannot face one of its own passes because that execution is already included. Two different passes from the same repeat run may sit on opposite sides.</p>
+
+<div class="docs-callout warn">
+  <svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+  <p><span class="docs-callout-title">Do not balance cohorts by row count.</span> One <code>&times;8</code> repeat row contributes eight executions. Match it with eight classic runs, eight individual pass references, or another mix totaling eight.</p>
+</div>
+
+<h2>Keyboard shortcuts</h2>
+<table>
+  <thead><tr><th>Key</th><th>Action</th></tr></thead>
+  <tbody>
+    <tr><td><code>j</code> / <code>k</code></td><td>Move row focus down / up.</td></tr>
+    <tr><td><code>Enter</code></td><td>Open the focused run.</td></tr>
+    <tr><td><code>x</code></td><td>Toggle the focused row's selection.</td></tr>
+    <tr><td><code>c</code></td><td>Open a ready comparison or cohort.</td></tr>
+    <tr><td><code>Esc</code></td><td>Clear selection or cancel cohort mode.</td></tr>
+  </tbody>
+</table>

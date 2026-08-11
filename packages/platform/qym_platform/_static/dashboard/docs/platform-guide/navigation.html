@@ -1,0 +1,50 @@
+<p class="docs-eyebrow">PLATFORM GUIDE</p>
+<h1>Navigation &amp; roles</h1>
+<p class="docs-lead">The platform is organized around projects. Pick a project first; its dashboard, runs, datasets, reviews, and settings then stay inside that project boundary.</p>
+
+<h2>Find your way around</h2>
+<table>
+  <thead><tr><th>Destination</th><th>Use it for</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Projects</strong></td><td>Open an accessible project or create one when your role permits it.</td></tr>
+    <tr><td><strong>Dashboard</strong></td><td>Read the project's evaluation summary and recent activity.</td></tr>
+    <tr><td><strong>Charts</strong></td><td>Track metric and latency trends by task, dataset, version, run, and model.</td></tr>
+    <tr><td><strong>Runs</strong></td><td>Filter, inspect, compare, submit, approve, or delete evaluation runs.</td></tr>
+    <tr><td><strong>Models</strong></td><td>Compare model-level quality, reliability, latency, retries, and trace statistics.</td></tr>
+    <tr><td><strong>Reviews</strong></td><td>Curate root-cause corrections used by AI-assisted analysis.</td></tr>
+    <tr><td><strong>Datasets</strong></td><td>Version test data, publish releases, assign aliases, and trace item history.</td></tr>
+    <tr><td><strong>Project Settings</strong></td><td>Manage project details, members, keys, LLM connections, and project lifecycle.</td></tr>
+    <tr><td><strong>Docs</strong></td><td>Read SDK, platform, CLI, and API guidance without leaving the app.</td></tr>
+  </tbody>
+</table>
+
+<p>Use the project switcher in the shell to move between projects. Filters, URLs, runs, datasets, keys, and review records remain project-scoped.</p>
+
+<h2>Roles at a glance</h2>
+<table>
+  <thead><tr><th>Role</th><th>What it adds</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Project member</strong></td><td>Can use the project's dashboards, runs, datasets, reviews, API keys, and LLM connections. Members may modify review data and create keys; a key creator may revoke their own key.</td></tr>
+    <tr><td><strong>Project manager</strong></td><td>Adds member and role management, run approval decisions, broader run deletion, key revocation, and project lifecycle controls.</td></tr>
+    <tr><td><strong>Platform admin</strong></td><td>Can access every project, manage platform users and projects, and view or restore deleted runs.</td></tr>
+  </tbody>
+</table>
+
+<div class="docs-callout warn">
+  <svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+  <p><span class="docs-callout-title">Project role and platform role are separate.</span> A platform MEMBER can be a project MANAGER. A platform ADMIN has manager-equivalent access everywhere.</p>
+</div>
+
+<h2>Run ownership and approval</h2>
+<ul>
+  <li>A run owner can submit a completed, failed, or rejected run and can delete their own run.</li>
+  <li>A project manager or platform admin can approve or reject a submitted run, reverse that decision, and delete project runs.</li>
+  <li>Deletion is recoverable: runs move to Deleted Runs. Only platform admins can view that area and restore them.</li>
+</ul>
+
+<h2>Choose the next page</h2>
+<ul>
+  <li><a href="#platform-guide/runs">Runs, selection &amp; cohorts</a> explains the runs table, repeat rows, comparisons, and cohort accounting.</li>
+  <li><a href="#platform-guide/run-detail">Run detail &amp; item analysis</a> covers charts, pass views, item columns, and filters.</li>
+  <li><a href="#platform-guide/projects-data-review">Projects, data &amp; review</a> covers settings, keys, datasets, and corrections.</li>
+</ul>

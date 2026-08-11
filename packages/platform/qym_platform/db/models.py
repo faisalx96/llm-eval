@@ -757,6 +757,10 @@ class RunItemPassScore(Base):
     pass_number: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
     score_numeric: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     label: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    # Per-pass judge output (explanation, criteria, judge model, …) — the
+    # same shape RunItemScore.meta holds for the reduced score.
+    meta: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON, nullable=True)
+    explanation: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     __table_args__ = (
         UniqueConstraint(

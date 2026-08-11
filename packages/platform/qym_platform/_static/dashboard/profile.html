@@ -5,10 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>قيِّم • Profile</title>
   <link rel="icon" type="image/png" href="/static/qym_icon.png">
-  <link rel="stylesheet" href="/static/dashboard.css">
+  <link rel="stylesheet" href="/static/dashboard.css?v=runs-analysis-c1-20260804-16">
   <link rel="stylesheet" href="/static/shell.css">
   <script src="/static/auth.js"></script>
-  <script src="/static/shell.js"></script>
+  <script src="/static/shell.js?v=ui-consistency-20260730-15"></script>
   <style>
     .page {
     }
@@ -169,6 +169,8 @@
       }
     }
   </style>
+  <link rel="stylesheet" href="/static/ui_components.css?v=ui-consistency-20260803-60">
+  <script defer src="/static/ui_components.js?v=ui-consistency-20260803-28"></script>
 </head>
 <body>
   <main class="page">
@@ -262,7 +264,7 @@
               <span>${escapeHtml(project.slug)}</span>
             </div>
             <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-              <span class="role-pill">${escapeHtml(project.role || 'MEMBER')}</span>
+              <span class="role-pill qym-tag qym-tag--role ${escapeHtml(String(project.role || 'member').toLowerCase())}">${escapeHtml(project.role || 'MEMBER')}</span>
               <a class="btn btn-secondary" href="${projectUrl(project.slug)}">Open</a>
               <a class="btn btn-secondary" href="${projectUrl(project.slug, 'settings')}">Settings</a>
             </div>

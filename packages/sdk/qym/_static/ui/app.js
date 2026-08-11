@@ -656,40 +656,16 @@
     wireCopy('copy-expected', () => stripMarkup(row.expected_full || row.expected || ''));
     wireCopy('copy-trace', () => {
       const tid = row.trace_id || '';
-      let turl = row.trace_url || '';
-      if (!turl && tid) {
-        const host = (state.langfuseHost || 'https://cloud.langfuse.com').replace(/\/$/, '');
-        const pid = state.langfuseProjectId || '';
-        if (pid) turl = `${host}/project/${pid}/traces/${tid}`;
-      }
-      return turl || tid || '';
+      return tid;
     });
     // Trace info
     const $trace = el('drawer-trace');
-    const $btnLF = el('drawer-open-langfuse');
     const tid = row.trace_id || '';
-    let turl = row.trace_url || '';
-    if (!turl && tid) {
-      const host = (state.langfuseHost || 'https://cloud.langfuse.com').replace(/\/$/, '');
-      const pid = state.langfuseProjectId || '';
-      if (pid) turl = `${host}/project/${pid}/traces/${tid}`;
-    }
+    const turl = row.trace_url || '';
     if ($trace){
-      if (turl) {
-        $trace.innerHTML = `<a href="${turl}" target="_blank" rel="noopener">${tid || '(open trace)'}</a>`;
-      } else if (tid) {
-        $trace.textContent = tid;
-      } else {
-        $trace.innerHTML = '<span class="muted">N/A</span>';
-      }
-    }
-    if ($btnLF){
-      if (turl) { $btnLF.href = turl; $btnLF.style.display = 'inline-block'; }
-      else if (state.langfuseHost && state.langfuseProjectId) {
-        const host = String(state.langfuseHost).replace(/\/$/, '');
-        $btnLF.href = `${host}/project/${state.langfuseProjectId}/traces`;
-        $btnLF.style.display = 'inline-block';
-      } else { $btnLF.style.display = 'none'; }
+      if (tid) $trace.textContent = tid;
+      else if (turl) $trace.textContent = 'Trace available';
+      else $trace.innerHTML = '<span class="muted">N/A</span>';
     }
     // Time
     const $time = el('drawer-time');
@@ -956,7 +932,7 @@
     fetch('api/run').then(r=>r.json()).then(run => {
       state.run = run;
       state.metricNames = run.metric_names || [];
-      state.langfuseHost = run.langfuse_host || 'https://cloud.langfuse.com';
+      state.langfuseHost = run.langfuse_host || '';
       state.langfuseProjectId = run.langfuse_project_id || '';
       // Setup run start for timer
       try {

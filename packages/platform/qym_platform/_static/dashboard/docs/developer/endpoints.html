@@ -26,6 +26,8 @@
     <tr><td><code>GET /api/runs/recent</code></td><td>Cross-project recent runs plus per-project sections. Admin only.</td><td><code>all_projects=true</code> (required), <code>global_limit</code>, <code>global_offset</code>, <code>per_project_limit</code>, <code>include_projects</code></td></tr>
     <tr><td><code>GET /api/runs/{run_id}</code></td><td>Full run detail: run header, per-item rows (input / output / expected / metric values / metric meta / trace ids), and snapshot stats. Returns <code>{"error": "Run not found"}</code> or <code>{"error": "Access denied"}</code> in the body rather than an HTTP error.</td><td>&mdash;</td></tr>
     <tr><td><code>GET /api/runs/{run_id}/export-html</code></td><td>Download the run as a self-contained HTML file (CSS/JS inlined). Returns <code>404 Run not found</code> / <code>403 Access denied</code>.</td><td>&mdash;</td></tr>
+    <tr><td><code>GET /api/runs/{run_id}/passes</code></td><td>Repeat-run pass slices with pass status, per-metric means, scored/error counts, latency, duration, and trace summaries.</td><td>&mdash;</td></tr>
+    <tr><td><code>GET /api/runs/{run_id}/group-metrics</code></td><td>Repeat analysis from stored pass scores: group statistics, accuracy-vs-k band, distribution, and bootstrap-method metadata. Honors the run's <code>report_k</code>.</td><td><code>metric</code>, <code>threshold</code> (default <code>0.8</code>)</td></tr>
     <tr><td><code>GET /api/models/runs</code></td><td>Lightweight per-run snapshots for the Models view. Requires <code>files</code> or returns <code>400 No files specified</code>.</td><td><code>files</code> (repeatable; comma-separated run ids accepted)</td></tr>
     <tr><td><code>GET /api/compare</code></td><td>Multiple run snapshots for side-by-side comparison. Requires <code>files</code>.</td><td><code>files</code> (run ids)</td></tr>
     <tr><td><code>GET /api/runs/trash</code></td><td>Soft-deleted runs. Admin only (<code>403 Admin only</code>).</td><td>&mdash;</td></tr>
@@ -61,14 +63,15 @@ curl -s "https://qym.example.com/api/runs/run_abc123" \
 </table>
 
 <h3>Versions &amp; aliases</h3>
-<p>A dataset is a container of immutable, published <strong>versions</strong>. A <strong>version ref</strong> resolves in this order: exact version name (e.g. <code>v3</code>), then an alias name, then &mdash; for the special ref <code>production</code> &mdash; the latest published version. The default version ref when none is given is <code>production</code>. New versions are created in <code>DRAFT</code> status; only draft versions can have their items edited, and aliases can only point at <code>PUBLISHED</code> versions.</p>
+<p>A dataset is a container of immutable, published <strong>versions</strong>. The platform assigns a stable sequential identifier such as <code>v3</code>; <code>version_name</code> is optional display text and does not replace that identifier. A <strong>version ref</strong> resolves by <code>vN</code> or alias; the special ref <code>production</code> falls back to the latest published version when no explicit production alias exists. New versions are <code>DRAFT</code>; only drafts can have items edited, and aliases can only point at <code>PUBLISHED</code> versions.</p>
 
 <table>
   <thead><tr><th>Method &amp; path</th><th>Purpose</th></tr></thead>
   <tbody>
     <tr><td><code>GET /v1/datasets/{dataset_ref}/versions</code></td><td>List all versions, newest first.</td></tr>
-    <tr><td><code>POST /v1/datasets/{dataset_ref}/versions</code></td><td>Create a draft version. Optionally derive from another via <code>from_version</code> or <code>from_alias</code> (copies items). If <code>version</code> is omitted the next <code>v{n}</code> name is assigned.</td></tr>
+    <tr><td><code>POST /v1/datasets/{dataset_ref}/versions</code></td><td>Create a draft version. Optionally derive from another via <code>from_version</code> or <code>from_alias</code> (copies items). The next free <code>vN</code> identifier is assigned unless an available explicit <code>vN</code> is requested; free text becomes the display name.</td></tr>
     <tr><td><code>GET /v1/datasets/{dataset_ref}/versions/{version_ref}</code></td><td>Get one version's metadata (status, item count, content hash, aliases, run count).</td></tr>
+    <tr><td><code>PATCH /v1/datasets/{dataset_ref}/versions/{version_ref}</code></td><td>Update display <code>name</code> and <code>description</code>. The assigned <code>vN</code> identifier is immutable.</td></tr>
     <tr><td><code>POST /v1/datasets/{dataset_ref}/versions/{version_ref}:publish</code></td><td>Publish a draft. Rejects an empty version with <code>400 Cannot publish an empty dataset version</code> and duplicate item ids with <code>409 Duplicate item_id: &lt;id&gt;</code>. Optional body <code>set_alias</code> points an alias at it on publish.</td></tr>
     <tr><td><code>POST /v1/datasets/{dataset_ref}/aliases/{alias_name}</code></td><td>Point an alias at a published version. Body: <code>version</code>. Returns <code>409 Aliases can only point to published versions</code> otherwise.</td></tr>
     <tr><td><code>GET /v1/datasets/{dataset_ref}/lineage</code></td><td>Versions plus the change log (created / published / alias_set / uploaded events).</td></tr>
@@ -89,6 +92,8 @@ curl -s "https://qym.example.com/api/runs/run_abc123" \
     <tr><td><code>DELETE /v1/datasets/{dataset_ref}/versions/{version_ref}/items/{item_id}</code></td><td>Delete one item.</td></tr>
     <tr><td><code>POST /v1/datasets/{dataset_ref}/versions/{version_ref}/items:bulk</code></td><td>Batch <code>upserts[]</code> and <code>deletes[]</code> in one call. Returns a <code>summary</code> with <code>created / updated / deleted</code> counts.</td></tr>
     <tr><td><code>GET /v1/datasets/{dataset_ref}/versions/{version_ref}/items/{item_id}/runs</code></td><td>Runs that exercised this specific item.</td></tr>
+    <tr><td><code>GET /v1/datasets/{dataset_ref}/versions/{version_ref}/items/{item_id}/neighbors</code></td><td>Previous/next item within the current search, label, and sort context.</td></tr>
+    <tr><td><code>GET /v1/datasets/{dataset_ref}/versions/{version_ref}/items/{item_id}/lineage</code></td><td>The item's state and revisions across its version ancestry.</td></tr>
     <tr><td><code>GET /api/datasets/{dataset_ref}/versions/{version_ref}/items/{item_id}/revisions</code></td><td>Per-item edit history (note: this one is under <code>/api</code>).</td></tr>
   </tbody>
 </table>
@@ -101,7 +106,7 @@ curl -s "https://qym.example.com/api/runs/run_abc123" \
     <tr><td><code>GET /v1/datasets/{dataset_ref}/versions/{version_ref}:download</code></td><td>Download a version as JSONL (<code>application/x-ndjson</code>), one object per line with <code>item_id / input / expected_output / metadata / labels</code>.</td></tr>
   </tbody>
 </table>
-<p>Upload form fields (all <code>Form</code> values): <code>name</code> (required), <code>file</code> (required), <code>project_slug</code>, <code>version</code> (default <code>v1</code>), <code>description</code>, <code>tags</code>, <code>labels</code>, <code>publish</code> (default false), <code>set_alias</code>. CSV column mapping uses either the single-column <code>input_col</code> (default <code>input</code>) / <code>expected_col</code> (default <code>expected_output</code>), or the multi-column <code>input_cols</code> / <code>expected_cols</code> (comma-separated; an empty <code>expected_cols</code> genuinely means "no expected output"), plus <code>id_col</code>, <code>metadata_cols</code>, and <code>label_cols</code>. A missing referenced column returns <code>400 Missing column: &lt;col&gt;</code>; CSV with no input column returns <code>400 At least one input column is required</code>.</p>
+<p>Upload form fields (all <code>Form</code> values): <code>name</code> (required), <code>file</code> (required), <code>project_slug</code>, optional <code>version</code> / <code>version_name</code>, <code>description</code>, <code>tags</code>, <code>labels</code>, <code>publish</code> (default false), <code>set_alias</code>. When <code>version</code> is empty, the next <code>vN</code> is assigned. CSV column mapping uses either the single-column <code>input_col</code> (default <code>input</code>) / <code>expected_col</code> (default <code>expected_output</code>), or the multi-column <code>input_cols</code> / <code>expected_cols</code> (comma-separated; an empty <code>expected_cols</code> genuinely means "no expected output"), plus <code>id_col</code>, <code>metadata_cols</code>, and <code>label_cols</code>. A missing referenced column returns <code>400 Missing column: &lt;col&gt;</code>; CSV with no input column returns <code>400 At least one input column is required</code>.</p>
 
 <div class="docs-callout tip"><svg class="docs-callout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg><p><span class="docs-callout-title">Cell parsing rule.</span> In CSV cells, only values whose first non-whitespace character is <code>{</code> or <code>[</code> are parsed as JSON; everything else stays a string. JSONL lines must each be a JSON object &mdash; a non-object line returns <code>400 JSONL line &lt;n&gt; must be an object</code> and invalid JSON returns <code>400 Invalid JSONL at line &lt;n&gt;: ...</code>. This matches the SDK's local <a href="#get-started/datasets">dataset</a> parsing.</p></div>
 
@@ -117,7 +122,7 @@ curl -s -X POST "https://qym.example.com/v1/datasets:upload" \
   -F "file=@qa.csv"</pre>
 
 <h2>Projects, members &amp; API keys</h2>
-<p>Project, member, and key management endpoints are under <code>/v1/projects</code> and require a <strong>UI session</strong> (<code>require_ui_principal</code>) &mdash; they are not callable with a Bearer key. Member and key mutations additionally require manager (or admin) rights.</p>
+<p>Project, member, and key management endpoints are under <code>/v1/projects</code> and require a <strong>UI session</strong> (<code>require_ui_principal</code>) &mdash; they are not callable with a Bearer key. Member mutations require manager/admin rights. Any project member can list or create project keys; revocation is limited to the key owner, a project manager, or an admin.</p>
 
 <table>
   <thead><tr><th>Method &amp; path</th><th>Purpose</th></tr></thead>
@@ -158,10 +163,9 @@ curl -s -X POST "https://qym.example.com/v1/datasets:upload" \
   <li><code>POST /v1/admin/projects</code> &mdash; create a project as admin.</li>
   <li><code>PATCH /v1/admin/projects/{project_id}</code> &mdash; rename / re-slug / toggle <code>is_active</code>.</li>
   <li><code>DELETE /v1/admin/projects/{project_id}</code> &mdash; archive if the project has runs (<code>is_active=false</code>), otherwise hard-delete.</li>
-  <li><code>GET /v1/admin/users</code>, <code>PATCH /v1/admin/users/{user_id}</code> &mdash; user administration.</li>
-  <li><code>GET /v1/admin/settings</code>, <code>PUT /v1/admin/settings</code> &mdash; platform settings.</li>
-  <li>Org tree / teams / units under <code>/v1/admin/org/...</code>.</li>
+  <li><code>GET /v1/admin/users</code>, <code>POST /v1/admin/users</code>, <code>PUT /v1/admin/users/{user_id}</code>, and <code>DELETE /v1/admin/users/{user_id}</code> &mdash; user administration.</li>
 </ul>
+<p>Organization-tree and mutable platform-settings APIs are not part of the current surface.</p>
 
 <h2>Run review workflow</h2>
 <p>Review actions are under <code>/v1/runs/{run_id}/...</code> and require a <strong>UI session</strong> &mdash; they cannot be driven with a Bearer key. The workflow advances a run's <code>status</code> through the states described in <a href="#developer/endpoints">Run status values</a> below.</p>
@@ -254,14 +258,14 @@ curl -s -X POST "https://qym.example.com/v1/datasets:upload" \
 <table>
   <thead><tr><th>Method &amp; path</th><th>Purpose</th></tr></thead>
   <tbody>
-    <tr><td><code>POST /v1/product-evals</code></td><td>Submit a product eval. Returns <code>202</code> with the job payload (including <code>eval_id</code>, <code>status</code>, per-attempt <code>runs[]</code>). Body: <code>preset</code> (default <code>insightor</code>), <code>dataset</code>, <code>run_name</code>, <code>task_name</code>, <code>model</code>, runtime inputs (<code>insightor_url</code>, <code>refresh_token</code>, <code>agent_version</code>, <code>image_version</code>, <code>kb_version</code>), <code>metadata</code>. A <code>config</code> field is rejected with <code>400 config is not accepted on this endpoint...</code>; any other unknown field &rarr; <code>400 Unsupported field(s): ...</code>; a full queue &rarr; <code>429 queue_full</code> with <code>Retry-After: 30</code>.</td></tr>
-    <tr><td><code>GET /v1/product-evals/{identifier}</code></td><td>Fetch status by <code>eval_id</code> (prefixed <code>eval_</code>) <strong>or</strong> by qym run id. Optional <code>include_items=true</code> returns per-item rows for a run. Unknown id &rarr; <code>404 not_found</code>.</td></tr>
+    <tr><td><code>POST /v1/product-evals</code></td><td>Submit an asynchronous product eval. Returns <code>202</code> with <code>eval_id</code> and job state. Body: <code>preset</code> (default <code>insightor</code>), <code>dataset</code>, <code>run_name</code>, <code>task_name</code>, <code>model</code>, <code>run_count</code> (1&ndash;100), runtime inputs (<code>insightor_url</code>, <code>refresh_token</code>, <code>agent_version</code>, <code>image_version</code>, <code>kb_version</code>), and <code>metadata</code>. A <code>config</code> field is rejected with <code>400</code>; any other unknown field &rarr; <code>400 Unsupported field(s): ...</code>; no worker capacity &rarr; <code>429 queue_full</code> with <code>Retry-After: 30</code>.</td></tr>
+    <tr><td><code>GET /v1/product-evals/{identifier}</code></td><td>Fetch status by <code>eval_id</code> (prefixed <code>eval_</code>) <strong>or</strong> aggregate data by physical qym run id. Optional <code>include_items=true</code> applies only to a physical run id. Unknown id &rarr; <code>404 not_found</code>.</td></tr>
     <tr><td><code>POST /v1/product-evals/{identifier}/stop</code></td><td>Stop by <code>eval_id</code> or run id. Returns the job/run payload with <code>stopped_qym_runs</code>.</td></tr>
-    <tr><td><code>GET /v1/product-evals/jobs/{job_id}</code></td><td>Fetch a live job by its job id.</td></tr>
-    <tr><td><code>POST /v1/product-evals/jobs/{job_id}/stop</code></td><td>Stop a live job by job id.</td></tr>
+    <tr><td><code>GET /v1/product-evals/jobs/{job_id}</code></td><td>Compatibility polling from process-local job state; unavailable after restart.</td></tr>
+    <tr><td><code>POST /v1/product-evals/jobs/{job_id}/stop</code></td><td>Compatibility stop against process-local job state.</td></tr>
   </tbody>
 </table>
-<p>An <code>identifier</code> starting with <code>eval_</code> is treated as an eval id; otherwise it is treated as a run id (dual support). When an eval has <code>COMPLETED</code>, the payload includes a compact <code>group_analysis</code> block (Pass@K / Avg@K / consistency / reliability over the attempts) and a <code>qym_compare_url</code> when there are two or more runs.</p>
+<p><code>run_count=k</code> means one physical qym run with <code>samples=k</code>, not k dashboard runs. The response's <code>runs[]</code> field is a legacy attempt-shaped compatibility view and can include placeholder rows; use top-level <code>status</code> for completion and collect distinct non-null run ids/URLs. New evaluations normally have one physical run and a null <code>qym_compare_url</code>. A completed sampled eval may include compact <code>group_analysis</code>; the run's Samples analysis is the durable, detailed pass view. There is no synchronous submit-and-wait route.</p>
 
 <pre data-lang="bash"># Submit a product eval and read its id
 curl -s -X POST "https://qym.example.com/v1/product-evals" \

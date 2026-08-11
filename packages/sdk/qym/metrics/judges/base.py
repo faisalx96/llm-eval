@@ -197,7 +197,7 @@ async def llm_judge(
     except ImportError:
         raise ImportError(
             "The 'openai' package is required for LLM judge metrics. "
-            "Install it with: pip install qym[judges]"
+            "Install it with: pip install openai"
         )
 
     cfg = config or get_default_judge_config()

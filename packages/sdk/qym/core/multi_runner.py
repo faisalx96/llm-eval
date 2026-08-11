@@ -212,7 +212,10 @@ class MultiModelRunner:
                     "metrics": [
                         metric
                         if isinstance(metric, str)
-                        else getattr(metric, "__name__", str(metric))
+                        else (
+                            getattr(metric, "name", None)
+                            or getattr(metric, "__name__", str(metric))
+                        )
                         for metric in spec.metrics
                     ],
                     "total_items": total_items,

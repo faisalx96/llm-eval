@@ -1,6 +1,10 @@
-from typing import Any, Callable, Dict, List, Optional, Union, Sequence
-from pydantic import BaseModel, Field, field_validator, ConfigDict
 from datetime import datetime
+from typing import Any, Callable, Dict, List, Optional, Sequence, Union
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from ..metrics.spec import Metric
+
 
 class EvaluatorConfig(BaseModel):
     """Configuration for a single evaluation run."""
@@ -11,14 +15,15 @@ class EvaluatorConfig(BaseModel):
     max_concurrency: int = Field(default=10, ge=1)
     max_metric_concurrency: int = Field(default=1, ge=1)
     timeout: Optional[float] = Field(default=300, gt=0)
-    # Hard wall-clock cap per metric call. A metric that hangs beyond this budget
-    # is cancelled with asyncio.wait_for and recorded as score=0 with a "timeout"
-    # label — so one misbehaving metric (e.g. an LLM judge that never returns)
-    # cannot hold an entire item hostage. 60s comfortably covers a healthy LLM
-    # judge (~5-30s typical, ~60s long-reasoning tail) while still catching a
-    # hung upstream within ~1 minute per item. Override for slow custom metrics;
-    # set to None to disable.
+    # Hard wall-clock cap per metric attempt. Timed-out attempts retry according
+    # to metric_max_retries; an exhausted timeout is recorded through the normal
+    # metric-error path (score 0 + error), so it is visible but excluded from the
+    # metric mean. Set to None to disable the cap and timeout retries.
     metric_timeout: Optional[float] = Field(default=60.0, gt=0)
+    # Retries for a metric call that hits metric_timeout. After the last
+    # attempt the timeout is recorded through the ordinary metric-error path
+    # (score 0 + error traceback), so the UI shows it like any other error.
+    metric_max_retries: int = Field(default=2, ge=0)
     max_retries: int = Field(default=2, ge=0)
     # Repeat runs: evaluate every dataset item `samples` times (k sequential
     # passes over the dataset) inside ONE logical run. Per-pass scores are
@@ -83,14 +88,14 @@ class EvaluatorConfig(BaseModel):
         return v
 
 class RunSpec(BaseModel):
-    """Specification for a multi-model run."""
+    """Specification for one entry in a parallel run."""
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     name: str
     display_name: Optional[str] = None
     task: Any
     dataset: Union[str, Any]
-    metrics: List[Union[str, Callable]]
+    metrics: List[Union[str, Callable, Metric]]
     config: EvaluatorConfig = Field(default_factory=EvaluatorConfig)
     metadata: Dict[str, Any] = Field(default_factory=dict)
     input_mapping: Dict[str, str] = Field(default_factory=dict)
@@ -102,7 +107,7 @@ class RunSpec(BaseModel):
 
     @field_validator("metrics", mode="before")
     @classmethod
-    def validate_metrics(cls, v: Any) -> List[Union[str, Callable]]:
+    def validate_metrics(cls, v: Any) -> List[Union[str, Callable, Metric]]:
         if isinstance(v, str):
             return [m.strip() for m in v.split(",") if m.strip()]
         if isinstance(v, (list, tuple)):
