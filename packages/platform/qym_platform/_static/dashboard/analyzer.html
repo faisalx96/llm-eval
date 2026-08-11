@@ -5,14 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>قيِّم • Auto-analysis</title>
   <link rel="icon" type="image/png" href="/static/qym_icon.png">
-  <link rel="stylesheet" href="/static/dashboard.css?v=analysis-example-text-20260811">
+  <link rel="stylesheet" href="/static/dashboard.css?v=initial-rules-view-refresh-20260811">
   <link rel="stylesheet" href="/static/shell.css">
   <script src="/static/auth.js"></script>
   <script src="/static/shell.js?v=accessibility-responsive-20260806"></script>
   <script src="/static/metrics.js"></script>
   <script src="/static/qym_table.js"></script>
   <script src="/static/ui_components.js?v=diagnosis-catalog-layout-20260810" defer></script>
-  <script src="/static/playground.js?v=analysis-example-text-20260811"></script>
+  <script src="/static/playground.js?v=initial-rules-view-refresh-20260811"></script>
   <style>
     /* Typography and color roles follow docs/DESIGN_LANGUAGE.md. */
     .analysis-page {
@@ -5210,6 +5210,9 @@
         if (contextFeedback) projectFooter.append(contextFeedback);
         rulesWorkspaceCard.append(projectFooter);
         projectPanel.append(rulesPanel, documentsPanel);
+        if (window.QymPlayground && typeof window.QymPlayground.refreshRuleView === 'function') {
+          window.QymPlayground.refreshRuleView();
+        }
 
         const sectionFor = id => {
           const anchor = document.getElementById(id);

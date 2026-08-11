@@ -5394,6 +5394,9 @@ window.QymPlayground = (function () {
     open: open,
     close: close,
     getConfig: function () { return _config; },
+    refreshRuleView: function () {
+      if (_overlay) _renderAnalysisRulesEditor();
+    },
     filterCategories: function (query) {
       if (_overlay) _filterCategoryNavigation(query);
     },

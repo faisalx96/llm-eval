@@ -72,6 +72,53 @@ def _analysis_config(*, llm: bool = True) -> dict[str, Any]:
     }
 
 
+def _analysis_rule_versions(*, populated: bool = False) -> dict[str, Any]:
+    if not populated:
+        return {
+            "versions": [],
+            "production_version_id": None,
+            "can_delete": True,
+            "can_activate": True,
+            "can_restore": False,
+        }
+    return {
+        "versions": [
+            {
+                "id": "version-3",
+                "version": 3,
+                "status": "published",
+                "is_active": True,
+                "is_deleted": False,
+                "created_at": "2026-08-10T08:00:00+00:00",
+                "updated_at": "2026-08-11T08:30:00+00:00",
+                "created_by": {"display_name": "Release Gate"},
+                "rules": [
+                    {
+                        "id": "rule-1",
+                        "title": "Check evidence",
+                        "instruction": "Use the available evidence.",
+                        "inferred_from": "Approved example",
+                        "explanation": "The evidence distinguishes the likely cause.",
+                    },
+                    {
+                        "id": "rule-2",
+                        "title": "Check completeness",
+                        "instruction": "Verify that the response is complete.",
+                        "inferred_from": "Project document",
+                        "explanation": "Completeness is required for a reliable diagnosis.",
+                    },
+                ],
+                "parent_version_id": None,
+                "merge_parent_ids": [],
+            },
+        ],
+        "production_version_id": "version-3",
+        "can_delete": True,
+        "can_activate": True,
+        "can_restore": False,
+    }
+
+
 def _dashboard_payload(*, populated: bool = False) -> dict[str, Any]:
     categories = ([
         {"category": "Reasoning Error", "count": 500},
@@ -255,7 +302,7 @@ class _AnalyzerHandler(BaseHTTPRequestHandler):
             self._json({"documents": []})
             return
         if path.endswith("/analysis-rule-versions"):
-            self._json({"versions": [], "production_version_id": None, "can_delete": True, "can_activate": True, "can_restore": False})
+            self._json(_analysis_rule_versions(populated=self.server.mode == "rules_initial"))
             return
         if path.endswith("/root-cause-dashboard/compare"):
             query = parse_qs(parsed.query)
@@ -380,6 +427,25 @@ def test_project_route_keeps_analyze_run_tab(analyzer_page: tuple[object, _Analy
     assert tabs.evaluate_all("tabs => tabs.map(tab => tab.dataset.analysisView)") == ["dashboard", "run", "categories", "rules", "documents"]
     assert page.locator("#analysis-run-tab").is_visible()
     assert page.locator("#analysis-dashboard").is_visible()
+
+
+def test_project_rules_render_selected_version_on_initial_load(analyzer_page: tuple[object, _AnalyzerServer]) -> None:
+    page, server = analyzer_page
+    server.mode = "rules_initial"
+    page.goto(_url(server, "/projects/demo/analysis?scope=rules"))
+    _wait_ready(page)
+
+    page.locator("#analysis-rules-view").wait_for(state="visible")
+    assert page.locator("#pg-rule-editor-title").inner_text() == "Rules in v3"
+    assert "2 rules" in page.locator("#pg-rule-count").inner_text()
+    assert "Created at" in page.locator("#pg-rule-version-meta").inner_text()
+    assert "Updated at" in page.locator("#pg-rule-version-meta").inner_text()
+    assert "Release Gate" in page.locator("#pg-rule-version-meta").inner_text()
+    assert page.locator("#pg-context-status").inner_text() == "Opened v3 (read-only)."
+    assert page.locator("#pg-rule-list .pg-rule-item").count() == 2
+    assert "The evidence distinguishes the likely cause." in (
+        page.locator("#pg-rule-list").text_content() or ""
+    )
 
 
 def test_run_route_targets_direction_copy_and_sticky_command(analyzer_page: tuple[object, _AnalyzerServer]) -> None:

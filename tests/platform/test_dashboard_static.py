@@ -988,6 +988,7 @@ def test_auto_analysis_is_a_first_class_project_page() -> None:
     assert "not included in the analyzer prompt" in playground
     assert 'id="pg-rule-count"' in playground
     assert "function _formatRuleCount()" in playground
+    assert "refreshRuleView" in playground
     assert "no rule count limit" in playground
     assert "_MAX_ANALYSIS_RULES" not in playground
     assert "_analysisRules.push({ title: '', instruction: '' });" in playground
@@ -1390,6 +1391,8 @@ def test_auto_analysis_page_uses_first_class_run_rules_and_document_tabs() -> No
     assert "setAnalyzerView(link.dataset.contextView, { focus: true })" in analyzer
     assert "organizeAnalyzerWorkspace()" in analyzer
     assert "organizeWhenReady()" in analyzer
+    assert "window.QymPlayground.refreshRuleView()" in analyzer
+    assert analyzer.index("window.QymPlayground.refreshRuleView()") < analyzer.index("        if (!runId) {")
     assert "new MutationObserver" in analyzer
     assert "['overview', 'Overview']" not in analyzer
     assert "documentsPanel.append" in analyzer
