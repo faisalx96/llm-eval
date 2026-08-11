@@ -1839,6 +1839,7 @@ def _analysis_result_payload(result: AnalysisResult) -> Dict[str, Any]:
         "confidence": result.confidence,
         "solution": result.solution,
         "solution_note": result.solution_note,
+        "warning": result.warning,
         "error": result.error,
         "analyzer_model": result.analyzer_model,
         "prompt_hash": result.prompt_hash,
@@ -1862,6 +1863,24 @@ def _category_counts(results: List[AnalysisResult]) -> Dict[str, int]:
         for category in categories:
             counts[category] = counts.get(category, 0) + 1
     return counts
+
+
+def _sync_item_analysis_warning(meta: dict[str, Any]) -> dict[str, Any]:
+    """Keep the item-level warning aligned with saved metric analyses."""
+    warnings: list[str] = []
+    metric_analyses = meta.get("metric_analyses")
+    if isinstance(metric_analyses, dict):
+        for analysis in metric_analyses.values():
+            if not isinstance(analysis, dict):
+                continue
+            warning = str(analysis.get("warning") or "").strip()
+            if warning and warning not in warnings:
+                warnings.append(warning)
+    if warnings:
+        meta["analysis_warning"] = "; ".join(warnings)
+    else:
+        meta.pop("analysis_warning", None)
+    return meta
 
 
 @dataclass
@@ -2371,6 +2390,7 @@ def _save_analysis_results(
                 "root_cause_detail": result.root_cause_detail,
                 "root_cause_reason": result.root_cause_reason,
                 "root_cause_note": result.root_cause_note,
+                "warning": result.warning or "",
                 "category_taxonomy": merge_category_taxonomies(
                     previous_metric_taxonomy,
                     getattr(result, "category_taxonomy", None),
@@ -2400,6 +2420,16 @@ def _save_analysis_results(
             if merged_taxonomy:
                 meta["category_taxonomy"] = merged_taxonomy
         meta["metric_analyses"] = metric_analyses
+        _sync_item_analysis_warning(meta)
+        for result in successful:
+            warning = str(result.warning or "").strip()
+            if not warning:
+                continue
+            existing_warning = str(meta.get("analysis_warning") or "").strip()
+            if warning not in existing_warning:
+                meta["analysis_warning"] = (
+                    f"{existing_warning}; {warning}" if existing_warning else warning
+                )
         if item_errors:
             meta["analysis_error"] = "; ".join(item_errors)
         else:
@@ -3454,6 +3484,7 @@ async def analyze_run_items_stream(
                     ),
                     "root_cause_detail": result.root_cause_detail,
                     "root_cause_reason": result.root_cause_reason,
+                    "warning": result.warning,
                     "error": result.error,
                 }
             )
@@ -4015,7 +4046,7 @@ def _analysis_example_row(
 
 
 def _analysis_example_facets(
-    corrections: list[ReviewCorrection],
+    corrections_by_dimension: Dict[str, List[ReviewCorrection]],
     *,
     runs_by_id: Dict[str, Run],
     users_by_id: Dict[str, User],
@@ -4023,28 +4054,41 @@ def _analysis_example_facets(
     def unique(values: Any) -> list[str]:
         return sorted({str(value).strip() for value in values if str(value).strip()})
 
+    def corrections_for(dimension: str) -> List[ReviewCorrection]:
+        return corrections_by_dimension.get(dimension, [])
+
+    user_corrections = corrections_for("user_id")
+    user_ids = {
+        user_id
+        for correction in user_corrections
+        for user_id in (
+            correction.corrected_by_user_id,
+            correction.reviewed_by_user_id,
+        )
+        if user_id
+    }
     return {
-        "tasks": unique(correction.task for correction in corrections),
+        "tasks": unique(correction.task for correction in corrections_for("task")),
         "datasets": unique(
             runs_by_id.get(correction.run_id).dataset
             if runs_by_id.get(correction.run_id)
             else ""
-            for correction in corrections
+            for correction in corrections_for("dataset")
         ),
         "models": unique(
             _strip_model_provider(runs_by_id.get(correction.run_id).model or "")
             if runs_by_id.get(correction.run_id)
             else ""
-            for correction in corrections
+            for correction in corrections_for("model")
         ),
         "run_names": unique(
             _run_display_name(runs_by_id.get(correction.run_id))
-            for correction in corrections
+            for correction in corrections_for("run_name")
         ),
         "users": [
             _serialize_user(users_by_id[user_id])
-            for user_id in sorted(users_by_id)
-            if _serialize_user(users_by_id[user_id])
+            for user_id in sorted(user_ids)
+            if user_id in users_by_id and _serialize_user(users_by_id[user_id])
         ],
     }
 
@@ -4079,11 +4123,6 @@ def _list_analysis_examples(
 
     selected_values = list(dict.fromkeys(int(value) for value in (selected_ids or [])))
     base_query = _analysis_example_query(db, scope)
-    # Keep selector options stable while the result set narrows. Facets must
-    # describe the complete approved-example scope, not the current filter
-    # intersection; otherwise selecting one model removes the other models
-    # from the selector and makes multi-select impossible.
-    facet_corrections = base_query.all()
     filtered_query = _analysis_example_filter_query(
         base_query,
         task=task,
@@ -4096,6 +4135,42 @@ def _list_analysis_examples(
         conf_max=conf_max,
         search=search,
     )
+    # Each dimension is faceted against every other active filter, but not its
+    # own selection. This keeps the active value available and lets the other
+    # selectors narrow to meaningful options without making a selector filter
+    # itself.
+    facet_filters = {
+        "task": task,
+        "dataset": dataset,
+        "model": model,
+        "run_name": run_name,
+        "user_id": user_id,
+    }
+    facet_corrections_by_dimension: Dict[str, List[ReviewCorrection]] = {}
+    for dimension in facet_filters:
+        dimension_filters = {
+            key: values if key != dimension else None
+            for key, values in facet_filters.items()
+        }
+        facet_query = _analysis_example_filter_query(
+            base_query,
+            task=dimension_filters["task"],
+            dataset=dimension_filters["dataset"],
+            model=dimension_filters["model"],
+            run_name=dimension_filters["run_name"],
+            user_id=dimension_filters["user_id"],
+            source=source,
+            conf_min=conf_min,
+            conf_max=conf_max,
+            search=search,
+        )
+        facet_corrections_by_dimension[dimension] = facet_query.all()
+
+    facet_corrections = [
+        correction
+        for corrections in facet_corrections_by_dimension.values()
+        for correction in corrections
+    ]
     if selected_only:
         # SQLAlchemy renders an empty IN list as a false predicate, so an
         # empty selection is a valid, deterministic "View selected" state.
@@ -4136,7 +4211,7 @@ def _list_analysis_examples(
         for correction in page_rows
     ]
     facets = _analysis_example_facets(
-        facet_corrections,
+        facet_corrections_by_dimension,
         runs_by_id=runs_by_id,
         users_by_id=users_by_id,
     )
@@ -5357,6 +5432,7 @@ async def analyze_test(
             "root_cause_detail": result.root_cause_detail,
             "root_cause_reason": result.root_cause_reason,
             "root_cause_note": result.root_cause_note,
+            "warning": result.warning,
             "confidence": result.confidence,
             "solution": result.solution,
             "solution_note": result.solution_note,
@@ -6620,7 +6696,7 @@ def _sync_legacy_summary_after_metric_deletion(
         meta.get("root_cause_source") == "human"
         or legacy_metric_name != deleted_metric_name
     ):
-        return meta
+        return _sync_item_analysis_warning(meta)
 
     run_metric_names = [str(metric_name) for metric_name in (run.metrics or [])]
     run_metric_name_set = set(run_metric_names)
@@ -6644,7 +6720,7 @@ def _sync_legacy_summary_after_metric_deletion(
             break
 
     if replacement is None:
-        return build_item_metadata(meta, {})
+        return _sync_item_analysis_warning(build_item_metadata(meta, {}))
 
     replacement_metric_name, analysis = replacement
     source = str(analysis.get("source") or "").strip()
@@ -6670,7 +6746,7 @@ def _sync_legacy_summary_after_metric_deletion(
         },
     )
     synced["root_cause_metric_name"] = replacement_metric_name
-    return synced
+    return _sync_item_analysis_warning(synced)
 
 
 def _delete_active_candidate(
@@ -7098,8 +7174,7 @@ def update_correction(
         analysis = dict(metric_analyses.get(c.metric_name) or {})
         if "root_causes" in patch:
             root_causes = normalize_root_causes(
-                patch.get("root_causes"),
-                max_categories=DEFAULT_MAX_ROOT_CAUSE_CATEGORIES,
+                patch.get("root_causes")
             )
             if root_causes:
                 analysis["root_causes"] = root_causes
@@ -7166,6 +7241,7 @@ def update_correction(
             meta["metric_analyses"] = metric_analyses
         else:
             meta.pop("metric_analyses", None)
+        _sync_item_analysis_warning(meta)
         item.item_metadata = meta
         target = replace_metric_review_candidate(
             db,

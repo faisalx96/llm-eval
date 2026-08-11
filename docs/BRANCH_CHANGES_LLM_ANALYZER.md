@@ -8,10 +8,12 @@ contains the shorter end-user workflow.
 ## Scope
 
 The branch turns root-cause analysis into a project-scoped workflow. Analysis can
-now use project context, selected reference documents, versioned analysis rules,
-and a project-owned LLM connection. A run may be analyzed for several metrics at
-once, with an independent diagnosis and review candidate for each item/metric
-pair.
+use enabled reference documents, versioned production rules, a versioned
+diagnosis-category catalog, editable project system prompts, native trace
+evidence, and a project-owned LLM connection. A run may be analyzed for several
+metrics at once, with an independent diagnosis and review candidate for each
+item/metric pair. The same first-class page also provides a project diagnosis
+dashboard and run comparison.
 
 ## User-facing workflow
 
@@ -21,17 +23,46 @@ The platform exposes a first-class Auto-analysis page at:
 - `/projects/<project-slug>/runs/<run-id>/analyzer` for a project-scoped run; and
 - `/run/<run-id>/analyzer` for the legacy run route.
 
-The page is split into two scopes:
+The page exposes five tabs:
 
-1. **Project context** — edit the business description, manage analysis rules,
-   generate rules from project material, and manage the shared document library.
-2. **Run analysis** — choose a run and one or more metrics, filter matched items,
-   preview the rendered prompt, test up to three items without saving, and run the
-   analysis with progress reporting.
+| Tab | Scope | Implemented surface |
+| --- | --- | --- |
+| **Dashboard** | Project | Saved-diagnosis filters, summary statistics, category distribution, direction-aware score context, run/category view, occurrence map, and run comparison. |
+| **Analyze run** | Run | Metric selection, context switches, request instructions, nested input mapping, failed-target filtering, exact item/metric selection, prompt preview, one-target test, and background analysis. A project-only route shows a run-selection state. |
+| **Diagnosis categories** | Project | Category search/add/remove, taxonomy guidance, reusable details, approved-example coverage, and full-snapshot save. |
+| **Production rules** | Project | Rule search/editing, draft/publish/production lifecycle, lineage drawer, compare/merge, generation, delete/restore, and provenance. |
+| **Documents** | Project | Shared upload library, project-enabled state, prompt-budget counters, and confirmed removal. |
 
-Project managers can edit context and rules. Run owners and project managers can
-spend the configured LLM connection on analysis. Project members can view the
-analysis workspace when they can view the run.
+Persistent system prompts are intentionally outside this page. Project managers
+and admins edit the analyzer, aggregator, and rules-writer prompts under **Project
+Settings → AI system prompts**. The Auto-analysis page contains only request-level
+instructions and field mapping.
+
+Project managers can edit category catalogs, rules, documents, connections, and
+system prompts. Run owners and project managers can spend the configured LLM
+connection on analysis. Project members can view the analysis workspace when they
+can view the run.
+
+### Diagnosis dashboard
+
+`Dashboard` opens by default on the project route. It filters saved diagnoses by
+date range, run, task, dataset, model, metric, category, detail, source, and review
+status. Searchable multiselect filters retain explicit empty selections instead of
+silently reverting to “all.” The summary strip reports diagnosis occurrences,
+affected run/item pairs, categories, the most repeated category, and failure
+coverage.
+
+The page renders a category distribution, direction-aware run score context, a
+stacked run/category view, and an occurrence grid. The occurrence grid requests
+500 records per page until the complete filtered result has been loaded; every
+dot is focusable/selectable and drives an inspector with the run, item, category,
+detail, metric, score, source, note, and run link.
+
+Users can select two to eight runs. The comparison endpoint returns a baseline,
+direction-aware improvement state, score compatibility, category/metric matrices,
+run summaries, and change data. The UI can group by category, run, or metric and
+switch between occurrence count, share, and average score while preserving its
+controls across filtered rerenders.
 
 ## Analyzer behavior
 
@@ -81,11 +112,35 @@ item-level summary is retained for older dashboard consumers and identifies the
 metric that supplied it. The run payload also exposes metric-scoped review
 candidate IDs and statuses.
 
+The dedicated page starts analysis through a persisted background job. It polls
+the job, resumes an active job after navigation, exposes cancellation, and applies
+completed results back to the local run snapshot before refreshing target counts
+and action availability. `analyze-test` accepts up to three item IDs at the API
+boundary, while the current page intentionally sends the one selected item/metric
+target.
+
 After a batch, category, detail, and legacy solution labels are canonicalized across
 the batch. Deterministic case/whitespace/inflection variants are collapsed locally;
 the analyzer makes one joint LLM mapping pass only when semantic consolidation is
 needed. A low-reduction detail result gets one bounded quality retry. Invalid or
 timed-out aggregation never discards the raw item diagnoses.
+
+### Diagnosis-category catalog
+
+Project diagnosis categories are stored as immutable full-snapshot versions. A
+legacy project without a saved snapshot is exposed as synthetic read-only `v0`.
+Every saved snapshot contains stable category entries, taxonomy guidance, detail
+maps, active/archived state, `max_root_cause_categories`, a content hash, and
+lineage/restore provenance. Manager saves use an expected revision, normalized
+no-op detection, and an HTTP 409 conflict response containing the current
+catalog. Restoring a historic snapshot creates a new version instead of mutating
+history.
+
+Analysis requests may pin `category_catalog_version_id` (or the compatible
+numeric `config.category_catalog_version`). Otherwise the active project snapshot
+is resolved. The resolved numeric version and ID are stored on every metric
+analysis. The current category tab edits and saves the active snapshot; catalog
+history, restore, and request pinning are API-only surfaces for now.
 
 ### Project rules
 
@@ -108,6 +163,12 @@ draft carries the selected rules forward and adds only the new rules.
 The rule editor preserves stable rule IDs so edits can be compared. Identical
 edits reuse the current draft, while an explicit “create version” action creates a
 new snapshot even when the content is unchanged.
+
+Drafts can merge another live version. The merge preview separates non-conflicting
+changes from rule-identity conflicts, allows per-conflict resolution, and records
+all merge parents in the version graph. Opening the Rules tab renders the resolved
+selected version immediately, including its rules and provenance, rather than
+waiting for a later interaction to refresh the editor.
 
 ### Reference documents
 
@@ -132,6 +193,11 @@ Text, Markdown, CSV, JSON, YAML, log, and RST files are decoded as text; DOCX
 paragraphs are extracted from the document XML; HTML script/style content is
 discarded; and scanned PDFs require OCR before upload. Filenames are reduced to a
 safe basename and extracted text is normalized before storage.
+
+Documents have a project-level enabled state. The Documents tab controls that
+state; the Analyze run tab exposes one request-level switch that includes or
+excludes the enabled set. This replaces the older documentation model in which
+each run selected documents independently.
 
 PDF extraction runs in a bounded child process: at most 100 pages, 4 MiB of
 decompressed content, 5 seconds, and 256 MiB of worker address space. DOCX XML is
@@ -158,6 +224,16 @@ OpenAI-compatible calls retry narrowly when a provider rejects `max_tokens` in
 favor of `max_completion_tokens`, or rejects `response_format`; unrelated provider
 errors are not retried as compatibility fallbacks.
 
+## Project analysis prompts
+
+The project settings page manages three independent system prompts:
+`llm_analyzer_system_prompt`, `aggregator_system_prompt`, and
+`rules_writer_system_prompt`. Read/write endpoints require a project manager or
+admin, normalize empty/oversized values, and return built-in defaults so each
+prompt can be reset independently. Migration `0041_analysis_prompts`
+stores the project overrides. Request-specific instructions remain in the run
+workspace and do not overwrite these persistent system prompts.
+
 ## Rule release lifecycle
 
 Every new project starts with one editable `v1` analysis-rule version. A project
@@ -165,9 +241,10 @@ manager can:
 
 1. edit the current draft or create a draft from a prior version;
 2. compare rule identities and instructions between versions;
-3. publish a non-empty draft, which makes it immutable and records a content hash;
-4. point an alias such as `production` at a published version; and
-5. activate a published version for future analyzer requests.
+3. preview and apply a merge from another live version, resolving conflicts;
+4. publish a non-empty draft, which makes it immutable and records a content hash;
+5. point an alias such as `production` at a published version; and
+6. activate a published version for future analyzer requests.
 
 Published versions cannot be edited. Run owners/project managers may delete a live
 version subject to the “at least one live version” guard; descendants are detached
@@ -192,6 +269,7 @@ can still maintain its rule library.
 | `POST` | `/api/runs/{run_id}/analysis-rule-versions/{ref}:publish` | Publish a draft and optionally set an alias. |
 | `POST` | `/api/runs/{run_id}/analysis-rule-aliases/{alias}` | Point an alias at a published version. |
 | `GET` | `/api/runs/{run_id}/analysis-rule-versions/{ref}:compare?base={ref}` | Return added, removed, changed, and unchanged rules. |
+| `POST` | `/api/runs/{run_id}/analysis-rule-versions/{target}:merge` | Preview or apply a source-version merge into a draft, with explicit conflict resolutions. |
 | `POST` | `/api/runs/{run_id}/analysis-rule-versions/{id}/activate` | Move `production` to a published version. |
 | `DELETE` | `/api/runs/{run_id}/analysis-rule-versions/{id}` | Delete a live version subject to dependency guards. |
 | `POST` | `/api/runs/{run_id}/analysis-rule-versions/{id}/restore` | Admin-only restore of a deleted version. |
@@ -206,17 +284,39 @@ analysis endpoints are:
 | --- | --- | --- |
 | `POST` | `/api/runs/{run_id}/analyze` | Run analysis and persist results. Supports filters, metric selection, an item `limit`, concurrency `1..20`, and `connection_id`. |
 | `POST` | `/api/runs/{run_id}/analyze-stream` | Same operation with newline-delimited progress events. |
+| `POST` | `/api/runs/{run_id}/analysis-jobs` | Start the persisted background job used by the page. |
+| `GET` | `/api/runs/{run_id}/analysis-jobs/active` | Return the active resumable job for the run, if any. |
+| `GET` | `/api/runs/{run_id}/analysis-jobs/{job_id}` | Poll job phase, progress, results, and failure information. |
+| `POST` | `/api/runs/{run_id}/analysis-jobs/{job_id}/cancel` | Request cancellation of an active job. |
 | `POST` | `/api/runs/{run_id}/analyze-preview` | Render the exact messages for one item without an LLM call. |
 | `POST` | `/api/runs/{run_id}/analyze-test` | Analyze one to three items without saving; returns results and messages. |
 | `GET` | `/api/runs/{run_id}/analysis-config` | Return project context, connection choices, catalogs, counts, and active rule version. |
-| `GET` | `/api/runs/{run_id}/analysis-documents` | List project documents with run-specific selection state. |
-| `POST` | `/api/runs/{run_id}/analysis-documents` | Extract, store, and select an uploaded document. |
+| `GET` | `/api/runs/{run_id}/analysis-documents` | List the run project's documents and project-level enabled state. |
+| `POST` | `/api/runs/{run_id}/analysis-documents` | Extract, store, and enable an uploaded project document. |
 | `GET` | `/api/runs/{run_id}/analysis-examples` | Page and filter approved examples for explicit rule-writer selection. |
-| `PATCH` | `/api/runs/{run_id}/analysis-documents/{id}` | Select or deselect a project document for the run. |
+| `PATCH` | `/api/runs/{run_id}/analysis-documents/{id}` | Enable or disable a document for project analyzer prompts. |
 | `DELETE` | `/api/runs/{run_id}/analysis-documents/{id}` | Remove a document from the project library. |
 | `PATCH` | `/api/runs/{run_id}/analysis-context` | Save the working rule draft/version. |
 | `POST` | `/api/runs/{run_id}/analysis-rules/infer` | Generate a draft ruleset from selected sources. |
 | `GET` | `/api/runs/{run_id}/corrections` | Read approved correction records available as rule-writer evidence. |
+
+Project dashboard and category-catalog endpoints are:
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/api/projects/{project_slug}/root-cause-dashboard` | Return filtered summary, facets, grouped distributions, score context, and trends. |
+| `GET` | `/api/projects/{project_slug}/root-cause-dashboard/occurrences` | Page matching occurrence-level diagnoses for the dot map. |
+| `GET` | `/api/projects/{project_slug}/root-cause-dashboard/compare` | Compare two to eight selected runs with a baseline and optional score metric. |
+| `GET` | `/api/projects/{project_slug}/analysis-category-catalog` | Read the active or requested immutable category snapshot. |
+| `GET` | `/api/projects/{project_slug}/analysis-category-catalog/versions` | List catalog history, including synthetic legacy `v0`. |
+| `PUT` | `/api/projects/{project_slug}/analysis-category-catalog` | Manager-only full-snapshot save with optimistic conflict detection. |
+| `POST` | `/api/projects/{project_slug}/analysis-category-catalog/versions/{id}:restore` | Restore a historic snapshot as a new active version. |
+
+Project-scoped document, example, context, rule-version, lineage, publish,
+compare, merge, alias, activate, delete, restore, and permanent-delete endpoints
+mirror the run-prefixed rule/document APIs under `/api/projects/{project_slug}`.
+Persistent system prompts use `GET /v1/projects/{project_id}/analysis-prompts`
+and `PUT /v1/projects/{project_id}/analysis-prompts`.
 
 The project connection endpoints are under
 `/v1/projects/{project_id}/llm-connections`: list, create, update, delete, set
@@ -250,7 +350,7 @@ project-scoped inference uses all active approved corrections in the project.
 
 Run `alembic -c packages/platform/qym_platform/migrations/alembic.ini upgrade head`
 before starting a deployment. The branch adds the following revisions and merges
-them into one upgrade head (`0034_draft_rule_activation`):
+them into one upgrade head (`0041_analysis_prompts`):
 
 | Revision | Change |
 | --- | --- |
@@ -263,6 +363,13 @@ them into one upgrade head (`0034_draft_rule_activation`):
 | `0032_rule_release_lifecycle` | Add draft/published/archived metadata, lineage, content hashes, and aliases. |
 | `0033_merge_migration_heads` | Merge the analyzer branch with the run metric-analysis migration branch. |
 | `0034_draft_rule_activation` | Allow unpublished drafts to have no activation timestamp. |
+| `0035_rule_merge_lineage` | Add merge-parent edges and merge-base provenance for rule-version lineage. |
+| `0036_document_enabled` | Replace per-run document selection with project-level analyzer inclusion. |
+| `0037_remove_project_desc` | Remove the obsolete project description from analyzer context. |
+| `0038_multi_root_cause_categories` | Persist multiple root-cause categories per analysis/review candidate. |
+| `0039_category_taxonomy` | Store category taxonomy guidance with review candidates. |
+| `0040_category_catalog` | Add immutable project category-catalog snapshots, lineage, restore provenance, and active-version uniqueness. |
+| `0041_analysis_prompts` | Add editable project-scoped analyzer, aggregator, and rules-writer system prompts. |
 
 ## SDK, CLI, examples, and build changes
 
@@ -283,7 +390,25 @@ them into one upgrade head (`0034_draft_rule_activation`):
 The branch adds or extends tests for document extraction and archive limits, PDF
 resource failures, LLM endpoint validation and DNS pinning, OpenAI compatibility
 fallbacks, metric-scoped permissions and review history, rule lifecycle and
-migrations, project access, CLI summaries, dashboard routes, metric-aware
+migrations, project access, category-catalog conflicts and restore, custom system
+prompts, CLI summaries, root-cause dashboard/compare APIs, metric-aware
 breakdowns, prompt redaction/context projection, reasoning-model parsing, and
-semantic aggregation. UI changes continue to use the design-language enforcement
-test described in `AGENTS.md`.
+semantic aggregation.
+
+The deterministic browser release gate serves the production analyzer assets and
+exercises the five-tab project/run routes, exact target selection, direction copy,
+retry/no-connection/zero-target states, keyboard tabs, narrow and RTL layout,
+dashboard filter serialization, paged occurrence loading, run comparison, console
+errors, and automated serious/critical accessibility checks. The separate
+[Auto-analysis release audit](internal/Auto%20Analyze%20Audit.md) records the
+manual visual and production-scale gates and the verified remediation of all 14
+design-language contradictions. `test_design_language.py` and the analyzer-specific
+static contract both guard the repaired component, token, scope, and page-renderer
+choices.
+
+The final Auto-analysis layout refinement aligns the page hero and tab strip to
+the same centered edges as the configuration cards, removes the repetitive
+`Project setting` tags and the redundant Production-rules information marker,
+and moves **Max categories per item** into the Analyze run **Targets** controls.
+That value is sent with the run request, while category-catalog saves preserve
+the loaded project default.

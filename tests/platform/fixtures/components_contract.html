@@ -78,8 +78,11 @@
 
     <section class="fixture-section" aria-labelledby="scroll-heading">
       <h2 id="scroll-heading">Scroll mirror</h2>
-      <div id="scroll-target"><span id="scroll-content">This wide content lets the shared scrollbar mirror synchronize deterministically.</span></div>
-      <div class="qym-scroll-mirror" id="scroll-mirror" data-qym-scroll-mirror-for="scroll-target"></div>
+      <div id="scroll-target" tabindex="0" aria-label="Scrollable component content"><span id="scroll-content">This wide content lets the shared scrollbar mirror synchronize deterministically.</span></div>
+      <div class="qym-scroll-mirror" id="scroll-mirror" data-qym-scroll-mirror-for="scroll-target"
+           role="slider" tabindex="0" aria-label="Horizontal scroll position" aria-valuemin="0">
+        <div class="qym-scroll-mirror__track"><div class="qym-scroll-mirror__thumb"></div></div>
+      </div>
     </section>
 
     <section class="fixture-section" aria-labelledby="states-heading">
@@ -111,7 +114,7 @@
     window.renderFixturePagination = function (page, pageSize) {
       window.QymUIComponents.renderPagination(document.getElementById('pagination'), {
         total: 95,
-        page: page || 0,
+        page: page || 1,
         pageSize: pageSize || 20,
         pageSizeOptions: [20, 50],
         scrollHost: 'pagination-scroll-host',
@@ -124,6 +127,24 @@
       });
     };
     window.addEventListener('DOMContentLoaded', function () {
+      document.querySelectorAll('.qym-tabs[role="tablist"]').forEach(function (tablist) {
+        tablist.addEventListener('click', function (event) {
+          var tab = event.target.closest('[role="tab"]');
+          if (!tab || tab.disabled) return;
+          tablist.querySelectorAll('[role="tab"]').forEach(function (candidate) {
+            candidate.setAttribute('aria-selected', candidate === tab ? 'true' : 'false');
+          });
+        });
+      });
+      document.querySelectorAll('.qym-segmented').forEach(function (segmented) {
+        segmented.addEventListener('click', function (event) {
+          var option = event.target.closest('.qym-segmented__option');
+          if (!option) return;
+          segmented.querySelectorAll('.qym-segmented__option').forEach(function (candidate) {
+            candidate.setAttribute('aria-pressed', candidate === option ? 'true' : 'false');
+          });
+        });
+      });
       window.renderFixturePagination();
     });
   </script>

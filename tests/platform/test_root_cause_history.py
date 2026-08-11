@@ -2425,6 +2425,43 @@ def test_analysis_results_are_saved_by_metric_with_legacy_item_summary(
     }
 
 
+def test_untaxonomized_ai_category_is_saved_with_item_warning(
+    db_session: Session,
+) -> None:
+    actor, _, run, item = _seed_run(db_session)
+    warning = (
+        "Warning: AI selected category 'Novel Failure' without complete taxonomy. "
+        "The diagnosis was accepted for this item; add taxonomy guidance before "
+        "relying on this label in future analyses."
+    )
+    result = AnalysisResult(
+        item_id=item.item_id,
+        metric_name="accuracy",
+        root_cause="Novel Failure",
+        root_cause_note="The output shows a project-specific failure.",
+        confidence=0.6,
+        warning=warning,
+    )
+
+    payloads, errors = _save_analysis_results(
+        db_session,
+        run,
+        [(item, "accuracy")],
+        [result],
+        Principal(user=actor, auth_type="none"),
+    )
+    db_session.refresh(item)
+
+    assert errors == 0
+    assert payloads[0]["error"] is None
+    assert payloads[0]["warning"] == warning
+    assert item.item_metadata["analysis_warning"] == warning
+    assert item.item_metadata["metric_analyses"]["accuracy"]["root_cause"] == (
+        "Novel Failure"
+    )
+    assert item.item_metadata["metric_analyses"]["accuracy"]["warning"] == warning
+
+
 def test_approve_metric_analysis_materializes_legacy_metric_candidate(
     db_session: Session,
 ) -> None:
@@ -2901,17 +2938,14 @@ def test_analysis_rules_are_normalized_and_included_in_prompt() -> None:
     assert "business requirements" in RULE_WRITER_SYSTEM_PROMPT
     assert "decision logic" in RULE_WRITER_SYSTEM_PROMPT
     assert "downstream LLM analyzer" in RULE_WRITER_SYSTEM_PROMPT
-    assert "DIAGNOSTIC CLASSIFICATION CONTRACT" in RULE_WRITER_SYSTEM_PROMPT
-    assert "classify the root cause" in RULE_WRITER_SYSTEM_PROMPT
-    assert "conditional classification destinations" in RULE_WRITER_SYSTEM_PROMPT
-    assert (
-        "Which root-cause category best explains this metric result"
-        in RULE_WRITER_SYSTEM_PROMPT
-    )
-    assert "Make the analyzer the grammatical subject" in RULE_WRITER_SYSTEM_PROMPT
-    assert "Do not write a judge rubric" in RULE_WRITER_SYSTEM_PROMPT
-    assert "Do not instruct the evaluated agent/model" in RULE_WRITER_SYSTEM_PROMPT
-    assert "Do not provide remediation" in RULE_WRITER_SYSTEM_PROMPT
+    complete_writer_prompt = llm_analyzer_service._writer_system_instructions(None)
+    assert "DIAGNOSTIC CLASSIFICATION CONTRACT" in complete_writer_prompt
+    assert "classify the root cause" in complete_writer_prompt
+    assert "conditional root-cause category" in complete_writer_prompt
+    assert "make the analyzer the grammatical subject" in complete_writer_prompt
+    assert "Do not write scoring criteria" in complete_writer_prompt
+    assert "operating instructions for the evaluated agent/model" in complete_writer_prompt
+    assert "remediation and prevention advice" in complete_writer_prompt
 
     more_than_twenty = normalize_analysis_rules(
         [
@@ -2960,8 +2994,9 @@ def test_rule_inference_metadata_is_validated_persisted_and_not_injected() -> No
     assert "Check whether the response connects its conclusion" in system_content
     assert source not in system_content
     assert explanation not in system_content
-    assert '"inferred_from"' in RULE_WRITER_SYSTEM_PROMPT
-    assert '"explanation"' in RULE_WRITER_SYSTEM_PROMPT
+    complete_writer_prompt = llm_analyzer_service._writer_system_instructions(None)
+    assert '"inferred_from"' in complete_writer_prompt
+    assert '"explanation"' in complete_writer_prompt
 
 
 def test_rule_writer_returns_inference_metadata(
@@ -3014,6 +3049,74 @@ def test_rule_writer_returns_inference_metadata(
     ]
 
 
+def test_rule_writer_rejects_generated_rules_without_audit_metadata(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    completion = SimpleNamespace(
+        choices=[
+            SimpleNamespace(
+                message=SimpleNamespace(
+                    content=(
+                        '{"rules":[{"title":"Evidence",'
+                        '"instruction":"Check the evidence."}]}'
+                    )
+                )
+            )
+        ]
+    )
+    monkeypatch.setattr(
+        llm_analyzer_service,
+        "create_chat_completion_compat",
+        AsyncMock(return_value=completion),
+    )
+
+    with pytest.raises(ValueError, match="did not contain usable rules"):
+        asyncio.run(
+            llm_analyzer_service.infer_analysis_rules(
+                SimpleNamespace(),
+                "test-model",
+                reference_documents=[
+                    {"name": "policy.md", "content": "Use the supplied evidence."}
+                ],
+                corrections=[],
+            )
+        )
+
+
+def test_rule_writer_accepts_an_explicit_empty_rule_list(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    completion = SimpleNamespace(
+        choices=[SimpleNamespace(message=SimpleNamespace(content='{"rules":[]}'))]
+    )
+    monkeypatch.setattr(
+        llm_analyzer_service,
+        "create_chat_completion_compat",
+        AsyncMock(return_value=completion),
+    )
+    existing_rules = [
+        {
+            "id": "rule-existing",
+            "title": "Evidence",
+            "instruction": "Check the supplied evidence.",
+        }
+    ]
+
+    rules = asyncio.run(
+        llm_analyzer_service.infer_analysis_rules(
+            SimpleNamespace(),
+            "test-model",
+            existing_rules=existing_rules,
+            reference_documents=[
+                {"name": "policy.md", "content": "No distinct new insight."}
+            ],
+            corrections=[],
+        )
+    )
+
+    assert rules == existing_rules
+
+
 def test_custom_rule_writer_prompt_keeps_classification_contract() -> None:
     messages = llm_analyzer_service._writer_messages(
         existing_rules=[],
@@ -3026,9 +3129,35 @@ def test_custom_rule_writer_prompt_keeps_classification_contract() -> None:
     )
 
     system_prompt = messages[0]["content"]
+    assert system_prompt.startswith("Extract useful project rules.")
     assert "DIAGNOSTIC CLASSIFICATION CONTRACT" in system_prompt
+    assert system_prompt.count("DIAGNOSTIC CLASSIFICATION CONTRACT") == 1
+    assert "SOURCE HANDLING CONTRACT" in system_prompt
+    assert "RULE WRITING CONTRACT" in system_prompt
     assert "classify the root cause" in system_prompt
     assert "inferred_from" in system_prompt
+    legacy_prompt = (
+        llm_analyzer_service.RULE_WRITER_SYSTEM_PROMPT
+        + "\n\n"
+        + llm_analyzer_service.RULE_WRITER_FIXED_CONTRACT
+    )
+    assert (
+        llm_analyzer_service.normalize_rule_writer_system_prompt(legacy_prompt)
+        == llm_analyzer_service.RULE_WRITER_SYSTEM_PROMPT
+    )
+    legacy_messages = llm_analyzer_service._writer_messages(
+        existing_rules=[],
+        reference_documents=[
+            {"name": "policy.md", "content": "The response must cite evidence."}
+        ],
+        correction_payload=[],
+        system_prompt=legacy_prompt,
+        update=False,
+    )
+    assert (
+        legacy_messages[0]["content"].count("DIAGNOSTIC CLASSIFICATION CONTRACT")
+        == 1
+    )
 
 
 def test_all_approved_examples_are_returned_without_cap(
@@ -3106,7 +3235,9 @@ def test_rule_writer_prompt_includes_every_approved_example(
                 message=SimpleNamespace(
                     content=(
                         '{"rules":[{"title":"Evidence","instruction":'
-                        '"Check every conclusion against the supplied evidence."}]}'
+                        '"Check every conclusion against the supplied evidence.",'
+                        '"inferred_from":"Approved examples.",'
+                        '"explanation":"The examples show an evidence gap."}]}'
                     )
                 )
             )
@@ -3183,7 +3314,9 @@ def test_rule_writer_processes_large_example_bank_after_documents_in_patches(
                 message=SimpleNamespace(
                     content=(
                         '{"rules":[{"title":"Evidence","instruction":'
-                        '"Check the supplied evidence."}]}'
+                        '"Check the supplied evidence.",'
+                        '"inferred_from":"Supplied project data.",'
+                        '"explanation":"The source establishes an evidence requirement."}]}'
                     )
                 )
             )
@@ -3247,26 +3380,116 @@ def test_rule_writer_processes_large_example_bank_after_documents_in_patches(
     ) == len(corrections)
 
 
+def test_rule_writer_carries_generated_rules_into_later_patches(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(llm_analyzer_service, "MAX_RULE_WRITER_DOCUMENT_CHARS", 12)
+    completions = [
+        SimpleNamespace(
+            choices=[
+                SimpleNamespace(
+                    message=SimpleNamespace(
+                        content=json.dumps(
+                            {
+                                "rules": [
+                                    {
+                                        "title": "First patch rule",
+                                        "instruction": "Use the first source signal.",
+                                        "inferred_from": "First document part.",
+                                        "explanation": "It establishes the first signal.",
+                                    }
+                                ]
+                            }
+                        )
+                    )
+                )
+            ]
+        ),
+        SimpleNamespace(
+            choices=[
+                SimpleNamespace(
+                    message=SimpleNamespace(
+                        content=json.dumps(
+                            {
+                                "rules": [
+                                    {
+                                        "title": "Second patch rule",
+                                        "instruction": "Use the second source signal.",
+                                        "inferred_from": "Second document part.",
+                                        "explanation": "It establishes a distinct signal.",
+                                    }
+                                ]
+                            }
+                        )
+                    )
+                )
+            ]
+        ),
+    ]
+    create_completion = AsyncMock(side_effect=completions)
+    monkeypatch.setattr(
+        llm_analyzer_service,
+        "create_chat_completion_compat",
+        create_completion,
+    )
+    stats: dict[str, Any] = {}
+
+    rules = asyncio.run(
+        llm_analyzer_service.infer_analysis_rules(
+            SimpleNamespace(),
+            "test-model",
+            reference_documents=[
+                {"name": "policy.md", "content": "first-part--second-part"}
+            ],
+            corrections=[],
+            stats=stats,
+        )
+    )
+
+    assert [rule["title"] for rule in rules] == [
+        "First patch rule",
+        "Second patch rule",
+    ]
+    second_user_prompt = create_completion.await_args_list[1].kwargs["messages"][1][
+        "content"
+    ]
+    second_payload = json.loads(second_user_prompt[second_user_prompt.index("{") :])
+    assert [rule["title"] for rule in second_payload["existing_rules"]] == [
+        "First patch rule"
+    ]
+    assert stats["patching_used"] is True
+
+
 @pytest.mark.parametrize(
     "content",
     [
         (
             "Here is the ruleset:\n```json\n"
-            '{"rules":[{"title":"Evidence","instruction":"Check the evidence."}]}\n'
+            '{"rules":[{"title":"Evidence","instruction":"Check the evidence.",'
+            '"inferred_from":"Evidence policy.",'
+            '"explanation":"It identifies unsupported conclusions."}]}\n'
             "```"
         ),
-        '[{"title":"Evidence","instruction":"Check the evidence."}]',
+        (
+            '[{"title":"Evidence","instruction":"Check the evidence.",'
+            '"inferred_from":"Evidence policy.",'
+            '"explanation":"It identifies unsupported conclusions."}]'
+        ),
         (
             "```python\n"
             "{'analysis_rules': [{'title': 'Evidence', "
-            "'instruction': 'Check the evidence.'}]}\n```"
+            "'instruction': 'Check the evidence.', "
+            "'inferred_from': 'Evidence policy.', "
+            "'explanation': 'It identifies unsupported conclusions.'}]}\n```"
         ),
         [
             {
                 "type": "text",
                 "text": (
                     '{"rules":[{"title":"Evidence",'
-                    '"instruction":"Check the evidence."}]}'
+                    '"instruction":"Check the evidence.",'
+                    '"inferred_from":"Evidence policy.",'
+                    '"explanation":"It identifies unsupported conclusions."}]}'
                 ),
             }
         ],
@@ -3297,7 +3520,12 @@ def test_rule_writer_accepts_compatible_provider_output_shapes(
     )
 
     assert rules == [
-        {"title": "Evidence", "instruction": "Check the evidence."}
+        {
+            "title": "Evidence",
+            "instruction": "Check the evidence.",
+            "inferred_from": "Evidence policy.",
+            "explanation": "It identifies unsupported conclusions.",
+        }
     ]
 
 
@@ -3311,7 +3539,9 @@ def test_rule_writer_uses_reasoning_when_content_is_empty(
                     content="",
                     reasoning=(
                         '{"rules":[{"title":"Evidence",'
-                        '"instruction":"Check the evidence."}]}'
+                        '"instruction":"Check the evidence.",'
+                        '"inferred_from":"Evidence policy.",'
+                        '"explanation":"It identifies unsupported conclusions."}]}'
                     ),
                 )
             )
@@ -3351,10 +3581,14 @@ def test_rule_updater_preserves_existing_ids_and_allows_add_edit_delete(
                                     "id": "rule-keep",
                                     "title": "Renamed evidence rule",
                                     "instruction": "Use the updated evidence policy.",
+                                    "inferred_from": "Existing approved policy excerpt.",
+                                    "explanation": "It helps explain unsupported conclusions.",
                                 },
                                 {
                                     "title": "New rule",
                                     "instruction": "Use the new project requirement.",
+                                    "inferred_from": "New project requirement.",
+                                    "explanation": "It supplies a new diagnostic signal.",
                                 },
                             ]
                         }
@@ -3406,6 +3640,8 @@ def test_rule_updater_preserves_existing_ids_and_allows_add_edit_delete(
         {
             "title": "New rule",
             "instruction": "Use the new project requirement.",
+            "inferred_from": "New project requirement.",
+            "explanation": "It supplies a new diagnostic signal.",
         },
     ]
     system_prompt = create_completion.await_args.kwargs["messages"][0]["content"]
@@ -3428,14 +3664,20 @@ def test_rule_generator_appends_only_distinct_rules_and_preserves_existing_rules
                                     "id": "rule-existing",
                                     "title": "Renamed evidence rule",
                                     "instruction": "A revised instruction.",
+                                    "inferred_from": "Existing policy excerpt.",
+                                    "explanation": "Existing audit explanation.",
                                 },
                                 {
                                     "title": "Evidence",
                                     "instruction": "Repeat the existing evidence check.",
+                                    "inferred_from": "Existing policy excerpt.",
+                                    "explanation": "Existing audit explanation.",
                                 },
                                 {
                                     "title": "New diagnostic signal",
                                     "instruction": "Use the new project requirement as a distinct diagnostic signal.",
+                                    "inferred_from": "New project requirement.",
+                                    "explanation": "It adds a distinct classification signal.",
                                 },
                             ]
                         }
@@ -3477,6 +3719,8 @@ def test_rule_generator_appends_only_distinct_rules_and_preserves_existing_rules
         {
             "title": "New diagnostic signal",
             "instruction": "Use the new project requirement as a distinct diagnostic signal.",
+            "inferred_from": "New project requirement.",
+            "explanation": "It adds a distinct classification signal.",
         }
     ]
     system_prompt = create_completion.await_args.kwargs["messages"][0]["content"]
@@ -4847,7 +5091,7 @@ def test_approved_example_picker_is_paged_and_filters_by_user(
     )
     alternate_correction = ReviewCorrection(
         run_id=alternate_run.id,
-        item_id="picker-alternate-item",
+        item_id="picker-item-alternate",
         metric_name="accuracy",
         task=run.task,
         input_snapshot={"question": "Alternate question"},
@@ -4895,8 +5139,29 @@ def test_approved_example_picker_is_paged_and_filters_by_user(
         actor.id,
         manager.id,
     }
-    assert {"gpt-4o", "gpt-4o-mini"}.issubset(payload["facets"]["models"])
+    # Dataset options ignore the active dataset filter, while model options
+    # still respect it because model is a different dimension.
     assert {"dataset-1", "dataset-2"}.issubset(payload["facets"]["datasets"])
+    assert payload["facets"]["models"] == ["gpt-4o"]
+
+    model_self_excluded = _list_analysis_examples(
+        scope_id=run.id,
+        page=1,
+        page_size=10,
+        task=[run.task],
+        dataset=None,
+        model=["gpt-4o"],
+        run_name=None,
+        user_id=None,
+        source=None,
+        conf_min=0,
+        conf_max=100,
+        search=None,
+        selected_ids=None,
+        db=db_session,
+        principal=Principal(user=manager, auth_type="none"),
+    )
+    assert {"gpt-4o", "gpt-4o-mini"}.issubset(model_self_excluded["facets"]["models"])
 
     selected_payload = _list_analysis_examples(
         scope_id=run.id,

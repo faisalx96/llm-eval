@@ -44,6 +44,7 @@ from qym_platform.db.models import (
 )
 from qym_platform.deps import get_db
 from qym_platform.security import api_key_prefix, hash_api_key
+from qym_platform.services.analysis_prompts import DEFAULT_ANALYSIS_PROMPTS
 
 
 @pytest.fixture()
@@ -518,6 +519,8 @@ def test_analysis_prompts_are_restricted_and_persisted(client, session_factory):
         "aggregator": False,
         "rules_writer": False,
     }
+    assert defaults.json()["defaults"] == DEFAULT_ANALYSIS_PROMPTS
+    assert defaults.json()["prompts"] == DEFAULT_ANALYSIS_PROMPTS
 
     denied_read = client.get(
         f"/v1/projects/{project_id}/analysis-prompts", headers=member_headers
@@ -537,6 +540,25 @@ def test_analysis_prompts_are_restricted_and_persisted(client, session_factory):
     assert updated.status_code == 200
     assert updated.json()["prompts"] == payload
 
+    single_update = client.patch(
+        f"/v1/projects/{project_id}/analysis-prompts/aggregator",
+        headers=manager_headers,
+        json={"value": "Only the aggregator changed"},
+    )
+    assert single_update.status_code == 200
+    assert single_update.json()["prompts"] == {
+        "llm_analyzer": payload["llm_analyzer"],
+        "aggregator": "Only the aggregator changed",
+        "rules_writer": payload["rules_writer"],
+    }
+
+    denied_single_update = client.patch(
+        f"/v1/projects/{project_id}/analysis-prompts/aggregator",
+        headers=member_headers,
+        json={"value": "Member cannot edit prompts"},
+    )
+    assert denied_single_update.status_code == 403
+
     denied_write = client.put(
         f"/v1/projects/{project_id}/analysis-prompts",
         headers=member_headers,
@@ -548,7 +570,7 @@ def test_analysis_prompts_are_restricted_and_persisted(client, session_factory):
         f"/v1/projects/{project_id}/analysis-prompts", headers=admin_headers
     )
     assert admin_read.status_code == 200
-    assert admin_read.json()["prompts"] == payload
+    assert admin_read.json()["prompts"] == single_update.json()["prompts"]
 
     with session_factory() as session:
         row = session.get(ProjectAnalysisPromptSettings, project_id)

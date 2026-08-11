@@ -69,7 +69,6 @@ from qym_platform.services.root_cause_changes import (
     replace_metric_review_candidate,
 )
 from qym_platform.services.root_cause_categories import (
-    DEFAULT_MAX_ROOT_CAUSE_CATEGORIES,
     normalize_category_taxonomy,
     normalize_root_causes,
 )
@@ -3834,8 +3833,7 @@ def update_root_cause(
 
         if "root_causes" in patch:
             root_causes = normalize_root_causes(
-                patch.get("root_causes"),
-                max_categories=DEFAULT_MAX_ROOT_CAUSE_CATEGORIES,
+                patch.get("root_causes")
             )
             if root_causes:
                 analysis["root_causes"] = root_causes

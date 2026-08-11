@@ -967,6 +967,86 @@ button:is(.qym-select, .multi-select-btn)[aria-expanded="true"] {
   }
 }
 
+/* Reviews selector contract, reused by Auto-analysis filters and native-select mirrors. */
+.qym-review-selector {
+  position: relative;
+  width: 100%;
+  min-width: 240px;
+}
+
+.qym-review-selector:has(> .multi-select-dropdown.open) {
+  z-index: 120;
+}
+
+.qym-review-selector > .multi-select-btn {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+  min-height: var(--control-height);
+  padding: 0 calc(var(--space-xl) + var(--space-xs)) 0 var(--space-sm);
+}
+
+.qym-review-selector > .multi-select-btn[aria-expanded="true"] {
+  border-color: var(--accent-primary);
+  color: var(--text-primary);
+}
+
+.qym-review-selector > .multi-select-dropdown {
+  top: calc(100% + var(--space-xs));
+  left: 0;
+  width: max(100%, 280px);
+  min-width: 0;
+  margin-top: 0;
+}
+
+.qym-review-selector--dropup > .multi-select-dropdown {
+  top: auto;
+  bottom: calc(100% + var(--space-xs));
+}
+
+.qym-review-selector .model-search-input {
+  pointer-events: auto;
+}
+
+.qym-review-selector .multi-select-option[hidden] {
+  display: none;
+}
+
+.qym-review-select__option {
+  width: 100%;
+  justify-content: space-between;
+  border: 0;
+  text-align: left;
+}
+
+.qym-review-select__option[aria-selected="true"] {
+  background: color-mix(in srgb, var(--accent-primary) 10%, var(--bg-surface));
+  color: var(--text-primary);
+}
+
+.qym-review-select__option:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.qym-review-select__option-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.qym-review-select__check {
+  flex: 0 0 auto;
+  color: transparent;
+  font-weight: 700;
+}
+
+.qym-review-select__option[aria-selected="true"] .qym-review-select__check {
+  color: var(--accent-primary);
+}
+
 /* 3. Section navigation — approved option A: underline. */
 :is(
   .qym-tabs,
@@ -3480,7 +3560,8 @@ button:is(.qym-select, .multi-select-btn)[aria-expanded="true"] {
 }
 /* Auto-analysis compatibility adapters.
  * Keep these narrow: upstream primitives above remain the canonical base. */
-.qym-dropdown {
+.qym-dropdown:has(> .qym-dropdown__trigger) {
+  display: block;
   position: relative;
 }
 
@@ -3671,7 +3752,7 @@ button:is(.qym-select, .multi-select-btn)[aria-expanded="true"] {
   text-align: center;
 }
 
-.pg-example-picker-dimension-filters .qym-dropdown__trigger {
+.pg-example-picker-dimension-filters .multi-select-btn {
   width: 100%;
   min-width: 0;
   overflow: hidden;
@@ -3689,7 +3770,7 @@ button:is(.qym-select, .multi-select-btn)[aria-expanded="true"] {
   margin: 0;
 }
 
-.pg-example-picker-dialog .qym-dropdown__menu {
+.pg-example-picker-dialog .multi-select-dropdown {
   width: max(100%, var(--dropdown-width));
 }
 

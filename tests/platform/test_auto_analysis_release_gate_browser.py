@@ -15,7 +15,7 @@ import threading
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any, Iterator, Optional
 from urllib.parse import parse_qs, urlparse
 
 import pytest
@@ -243,6 +243,100 @@ def _occurrence_page(*, offset: int, limit: int, total: int = 650) -> dict[str, 
     }
 
 
+_EXAMPLE_PICKER_ROWS = [
+    {
+        "id": 1,
+        "item_id": "approved-a",
+        "task": "Task A",
+        "dataset": "Dataset A",
+        "model": "model-a",
+        "run_name": "Run A",
+        "user_id": "user-a",
+        "user": {"id": "user-a", "display_name": "Alice"},
+        "confidence": 0.8,
+        "source": "Corrected",
+        "root_causes": ["Reasoning Error"],
+        "detail": "Evidence gap",
+        "source_characters": 100,
+    },
+    {
+        "id": 2,
+        "item_id": "approved-b",
+        "task": "Task B",
+        "dataset": "Dataset B",
+        "model": "model-b",
+        "run_name": "Run B",
+        "user_id": "user-b",
+        "user": {"id": "user-b", "display_name": "Bob"},
+        "confidence": 0.9,
+        "source": "AI",
+        "root_causes": ["Incomplete Answer"],
+        "detail": "Missing evidence",
+        "source_characters": 120,
+    },
+]
+
+
+def _analysis_examples_payload(body: dict[str, Any]) -> dict[str, Any]:
+    dimensions = {
+        "task": "tasks",
+        "dataset": "datasets",
+        "model": "models",
+        "run_name": "run_names",
+    }
+
+    def matches(row: dict[str, Any], skip: Optional[str] = None) -> bool:
+        for key in dimensions:
+            if key == skip:
+                continue
+            values = [str(value) for value in (body.get(key) or [])]
+            if values and str(row[key]) not in values:
+                return False
+        user_values = [str(value) for value in (body.get("user_id") or [])]
+        if skip != "user_id" and user_values and row["user_id"] not in user_values:
+            return False
+        return True
+
+    matching = [row for row in _EXAMPLE_PICKER_ROWS if matches(row)]
+    selected_ids = {int(value) for value in (body.get("selected_ids") or [])}
+    if body.get("selected_only"):
+        matching = [row for row in matching if row["id"] in selected_ids]
+    page = max(1, int(body.get("page") or 1))
+    page_size = max(1, int(body.get("page_size") or 20))
+
+    facets: dict[str, Any] = {}
+    for dimension, facet_key in dimensions.items():
+        facets[facet_key] = sorted({str(row[dimension]) for row in _EXAMPLE_PICKER_ROWS if matches(row, dimension)})
+    facets["users"] = [
+        row["user"]
+        for row in _EXAMPLE_PICKER_ROWS
+        if matches(row, "user_id")
+    ]
+    first = (page - 1) * page_size
+    rows = matching[first : first + page_size]
+    examples = [
+        {
+            **row,
+            "corrected_by": row["user"],
+            "reviewed_by": None,
+        }
+        for row in rows
+    ]
+    return {
+        "examples": examples,
+        "total": len(matching),
+        "page": page,
+        "page_size": page_size,
+        "page_count": (len(matching) + page_size - 1) // page_size if matching else 0,
+        "matching_ids": [row["id"] for row in matching],
+        "selected_ids": sorted(selected_ids.intersection(row["id"] for row in _EXAMPLE_PICKER_ROWS)),
+        "selected_count": len(selected_ids.intersection(row["id"] for row in _EXAMPLE_PICKER_ROWS)),
+        "selected_characters": sum(row["source_characters"] for row in _EXAMPLE_PICKER_ROWS if row["id"] in selected_ids),
+        "facets": facets,
+        "limits": {"approved_examples_prompt_characters": 256000, "writer_prompt_characters": 256000},
+    }
+
+
 class _AnalyzerHandler(BaseHTTPRequestHandler):
     server: "_AnalyzerServer"
 
@@ -332,6 +426,31 @@ class _AnalyzerHandler(BaseHTTPRequestHandler):
         # preferable to a failed resource request that obscures page errors.
         self._json({})
 
+    def do_POST(self) -> None:  # noqa: N802
+        content_length = int(self.headers.get("Content-Length") or 0)
+        body: dict[str, Any] = {}
+        if content_length:
+            try:
+                body = json.loads(self.rfile.read(content_length))
+            except (TypeError, ValueError):
+                body = {}
+        path = urlparse(self.path).path
+        if path.endswith("/analysis-examples"):
+            self.server.example_queries.append(body)
+            self._json(_analysis_examples_payload(body))
+            return
+        if path.endswith("/analyze-preview"):
+            self._json(
+                {
+                    "messages": [
+                        {"role": "system", "content": "Analyze the selected metric."},
+                        {"role": "user", "content": "Release-gate preview item."},
+                    ]
+                }
+            )
+            return
+        self._json({})
+
 
 class _AnalyzerServer(ThreadingHTTPServer):
     mode: str = "ok"
@@ -339,12 +458,14 @@ class _AnalyzerServer(ThreadingHTTPServer):
     dashboard_queries: list[dict[str, list[str]]]
     occurrence_queries: list[dict[str, list[str]]]
     compare_queries: list[dict[str, list[str]]]
+    example_queries: list[dict[str, Any]]
 
     def __init__(self, *args: object, **kwargs: object) -> None:
         super().__init__(*args, **kwargs)
         self.dashboard_queries = []
         self.occurrence_queries = []
         self.compare_queries = []
+        self.example_queries = []
 
 
 @pytest.fixture(scope="module")
@@ -384,6 +505,7 @@ def analyzer_page(chromium_browser: object, analyzer_server: _AnalyzerServer) ->
     analyzer_server.dashboard_queries = []
     analyzer_server.occurrence_queries = []
     analyzer_server.compare_queries = []
+    analyzer_server.example_queries = []
     context = chromium_browser.new_context(viewport={"width": 1440, "height": 1000}, reduced_motion="reduce")
     page = context.new_page()
     errors: list[str] = []
@@ -427,6 +549,11 @@ def test_project_route_keeps_analyze_run_tab(analyzer_page: tuple[object, _Analy
     assert tabs.evaluate_all("tabs => tabs.map(tab => tab.dataset.analysisView)") == ["dashboard", "run", "categories", "rules", "documents"]
     assert page.locator("#analysis-run-tab").is_visible()
     assert page.locator("#analysis-dashboard").is_visible()
+    dashboard_selectors = page.locator("#analysis-dashboard-filters .qym-review-selector")
+    assert dashboard_selectors.count() == 9
+    assert dashboard_selectors.evaluate_all(
+        "wrappers => wrappers.every(wrapper => wrapper.getBoundingClientRect().width >= 240 && wrapper.querySelector('.multi-select-btn').getBoundingClientRect().width === wrapper.getBoundingClientRect().width)"
+    )
 
 
 def test_project_rules_render_selected_version_on_initial_load(analyzer_page: tuple[object, _AnalyzerServer]) -> None:
@@ -446,20 +573,104 @@ def test_project_rules_render_selected_version_on_initial_load(analyzer_page: tu
     assert "The evidence distinguishes the likely cause." in (
         page.locator("#pg-rule-list").text_content() or ""
     )
+    rule_search = page.locator("#pg-rule-search")
+    assert rule_search.is_visible()
+    add_examples = page.locator("#pg-add-examples")
+    assert add_examples.is_visible()
+    assert add_examples.get_attribute("class") == "pg-example-source-control"
+    assert add_examples.evaluate(
+        "el => { const style = getComputedStyle(el); return style.borderWidth === '0px' && style.borderRadius === '0px' && style.padding === '0px' && style.backgroundColor === 'rgba(0, 0, 0, 0)'; }"
+    )
+    rule_search.fill("completeness")
+    page.wait_for_function(
+        "() => document.querySelectorAll('#pg-rule-list .pg-rule-item').length === 1"
+    )
+    assert "Check completeness" in page.locator("#pg-rule-list").inner_text()
+    page.locator("#pg-add-examples").click()
+    page.locator("[data-example-filter-panel-trigger]").click()
+    rule_selectors = page.locator(".pg-example-picker-dimension-filters .qym-review-selector")
+    assert rule_selectors.count() == 5
+    assert rule_selectors.evaluate_all(
+        "wrappers => wrappers.every(wrapper => wrapper.getBoundingClientRect().width >= 240)"
+    )
+    page.wait_for_function(
+        "() => document.querySelectorAll('select[data-example-filter-select] option').length >= 10"
+    )
+    assert page.locator(".pg-example-picker-dimension-filters input[type='checkbox']").count() == 0
+    assert "Multi-select supported" not in page.locator(".pg-example-picker-filter-panel-menu").inner_text()
+
+    task_filter = page.locator("[data-example-filter='task']")
+    task_filter.locator(".multi-select-btn").click()
+    assert task_filter.locator(".multi-select-option[data-value]:not([data-value=''])").count() == 2
+    task_filter.locator(".multi-select-option[data-value='Task A']").click()
+    page.wait_for_function(
+        "() => document.querySelector('[data-example-filter-key=task]')?.value === 'Task A'"
+    )
+    page.wait_for_function(
+        "() => document.querySelectorAll('.pg-example-picker-row').length === 1"
+    )
+    assert server.example_queries[-1]["task"] == ["Task A"]
+
+    # The active task filter keeps both task options available to its own
+    # selector, while the dataset selector is narrowed by that task filter.
+    task_filter.locator(".multi-select-btn").click()
+    assert task_filter.locator(".multi-select-option[data-value]:not([data-value=''])").count() == 2
+    dataset_filter = page.locator("[data-example-filter='dataset']")
+    assert dataset_filter.locator(".multi-select-option[data-value]:not([data-value=''])").count() == 1
 
 
-def test_run_route_targets_direction_copy_and_sticky_command(analyzer_page: tuple[object, _AnalyzerServer]) -> None:
+def test_project_diagnosis_catalog_restores_local_tools(analyzer_page: tuple[object, _AnalyzerServer]) -> None:
+    page, server = analyzer_page
+    page.goto(_url(server, "/projects/demo/analysis?scope=categories"))
+    _wait_ready(page)
+
+    page.locator("#analysis-diagnosis-view").wait_for(state="visible")
+    diagnosis_tab = page.locator("#analysis-diagnosis-tab")
+    assert diagnosis_tab.is_enabled()
+    assert page.locator("#analysis-category-count").inner_text() == "1"
+    category = page.locator("#analysis-diagnosis-view .pg-category-nav-item", has_text="Reasoning Error")
+    assert category.is_visible()
+    assert page.locator("#analysis-diagnosis-view [data-taxonomy-field='description']").count() == 1
+    assert page.locator("#analysis-diagnosis-view [data-taxonomy-field='when_to_use']").count() == 1
+    page.locator("[data-category-tab='details']").click()
+    detail_selector = page.locator(".pg-detail-review-selector")
+    assert detail_selector.is_visible()
+    assert detail_selector.evaluate("wrapper => wrapper.getBoundingClientRect().width >= 240")
+    detail_selector.locator(".multi-select-btn").click()
+    detail_selector.locator(".multi-select-option[data-value='without_examples']").click()
+    assert page.locator("[data-detail-filter]").input_value() == "without_examples"
+
+    category_search = page.locator("#analysis-category-search")
+    category_search.fill("not present")
+    page.wait_for_function(
+        "() => document.querySelectorAll('#analysis-diagnosis-view .pg-category-nav-item:not([hidden])').length === 0"
+    )
+    category_search.fill("")
+    page.wait_for_function(
+        "() => document.querySelectorAll('#analysis-diagnosis-view .pg-category-nav-item:not([hidden])').length === 1"
+    )
+
+
+def test_run_route_targets_direction_copy_and_command(analyzer_page: tuple[object, _AnalyzerServer]) -> None:
     page, server = analyzer_page
     page.goto(_url(server, "/projects/demo/runs/run-1/analyzer"))
     _wait_ready(page)
     assert page.locator("#analysis-tabs [role=tab]:visible").count() == 5
-    page.wait_for_selector("#analyzer-host .pg-item-row")
-    assert "quality" in page.locator("#analyzer-host .pg-item-row").first.inner_text()
+    page.wait_for_selector("#analyzer-host .pg-item-card")
+    assert "quality" in page.locator("#analyzer-host .pg-item-card").first.inner_text()
     assert page.locator("#pg-max-score-direction-note").inner_text().lower() == "(applies only to higher-is-better metrics)"
     footer = page.locator("#analyzer-host .playground-footer.analysis-run-footer")
     footer.wait_for(state="visible")
-    assert footer.evaluate("el => getComputedStyle(el).position") == "sticky"
+    assert footer.evaluate("el => getComputedStyle(el).position") == "relative"
     assert page.locator("#pg-runall-btn").inner_text() == "Analyze 1 item"
+    connection_trigger = page.locator(".pg-connection-selector .multi-select-btn")
+    connection_trigger.click()
+    connection_menu = page.locator(".pg-connection-selector .multi-select-dropdown")
+    assert connection_menu.is_visible()
+    assert connection_menu.locator("[role=option][aria-selected=true]").count() == 1
+    page.keyboard.press("Escape")
+    assert connection_menu.is_hidden()
+    assert connection_trigger.evaluate("el => document.activeElement === el")
 
 
 @pytest.mark.parametrize("mode, expected", [("missing", "HTTP 404"), ("forbidden", "HTTP 403"), ("no_llm", "No LLM connection"), ("zero_targets", "All matching targets already have analysis")])
@@ -510,11 +721,11 @@ def test_dashboard_filter_emits_selected_category_query(analyzer_page: tuple[obj
     page.goto(_url(server, "/projects/demo/analysis"))
     _wait_ready(page)
     category_filter = page.locator('[data-dashboard-filter="category"]')
-    category_filter.locator("button.qym-dropdown__trigger").wait_for(state="visible")
-    category_filter.locator("button.qym-dropdown__trigger").click()
+    category_filter.locator("button.multi-select-btn").wait_for(state="visible")
+    category_filter.locator("button.multi-select-btn").click()
     category_filter.locator("label", has_text="Retrieval Error").click()
     page.wait_for_function(
-        """() => document.querySelector('[data-dashboard-filter=\"category\"] button.qym-dropdown__trigger')?.textContent.includes('1 selected')"""
+        """() => document.querySelector('[data-dashboard-filter=\"category\"] button.multi-select-btn')?.textContent.includes('1 selected')"""
     )
     assert any(query.get("category") == ["Reasoning Error"] for query in server.dashboard_queries)
 
@@ -562,7 +773,7 @@ def test_dashboard_run_filter_does_not_change_compare_targets(analyzer_page: tup
     page.get_by_role("heading", name="Run comparison · quality").wait_for()
 
     run_filter = page.locator('[data-dashboard-filter="run_id"]')
-    run_filter.locator(".qym-dropdown__trigger").click()
+    run_filter.locator(".multi-select-btn").click()
     run_filter.locator('input[value="run-1"]').uncheck()
     page.wait_for_function(
         """() => {
@@ -587,11 +798,11 @@ def test_dashboard_run_filter_allows_empty_scope(analyzer_page: tuple[object, _A
     dashboard_request_count = len(server.dashboard_queries)
 
     run_filter = page.locator('[data-dashboard-filter="run_id"]')
-    run_filter.locator(".qym-dropdown__trigger").click()
+    run_filter.locator(".multi-select-btn").click()
     run_filter.get_by_role("button", name="Clear", exact=True).click()
 
     page.get_by_text("No runs match the current controls.", exact=True).first.wait_for()
-    assert run_filter.locator(".qym-dropdown__trigger").inner_text() == "No Runs"
+    assert run_filter.locator(".multi-select-btn").inner_text() == "No Runs"
     assert page.locator("#analysis-dashboard-filter-count").inner_text() == "1"
     assert len(server.dashboard_queries) == dashboard_request_count
 
@@ -610,22 +821,23 @@ def test_dashboard_heatmap_hover_shows_category_occurrence_count(analyzer_page: 
     assert tooltip.locator(".analysis-dashboard-stacked-tooltip-count").inner_text() == "500 occurrences"
 
 
-def test_dashboard_occurrences_are_server_paginated_from_a_heatmap_cell(analyzer_page: tuple[object, _AnalyzerServer]) -> None:
+def test_dashboard_occurrence_map_loads_in_bounded_server_pages(analyzer_page: tuple[object, _AnalyzerServer]) -> None:
     page, server = analyzer_page
     server.mode = "dashboard_scale"
     page.goto(_url(server, "/projects/demo/analysis"))
     _wait_ready(page)
-    summary = page.locator("#analysis-dashboard-occurrences")
-    summary.get_by_text("650 diagnoses in this scope.").wait_for()
-    # A project dashboard must not fetch or render every diagnosis up front.
-    assert server.occurrence_queries == []
-    page.locator('[data-occurrence-run="run-1"][data-occurrence-category="Reasoning Error"]').click()
-    page.locator("#analysis-occurrence-table").get_by_text("Diagnosis 0").wait_for()
+    page.locator("#analysis-dashboard-occurrence-count").get_by_text("650 occurrences").wait_for()
+    dots = page.locator("#analysis-dashboard-occurrences [data-dashboard-occurrence-index]")
+    dots.first.wait_for()
+    assert dots.count() == 650
     assert any(
-        query.get("run_id") == ["run-1"]
-        and query.get("category") == ["Reasoning Error"]
-        and query.get("limit") == ["50"]
+        query.get("limit") == ["500"]
         and query.get("offset") == ["0"]
+        for query in server.occurrence_queries
+    )
+    assert any(
+        query.get("limit") == ["500"]
+        and query.get("offset") == ["500"]
         for query in server.occurrence_queries
     )
 

@@ -323,7 +323,12 @@
       window.QymUIComponents.renderPagination(pager, {
         total,
         pageSize,
-        page: currentPage,
+        page: currentPage + 1,
+        onPageChange: nextPage => {
+          loadEvidence(state.evidence.relationshipId, nextPage - 1).catch(error => {
+            el('candidate-evidence-list').innerHTML = emptyMarkup('Evidence unavailable', error.message || 'Could not load relationship occurrences.');
+          });
+        },
       });
     } else {
       pager.innerHTML = [
@@ -394,7 +399,11 @@
     el('candidate-evidence-pagination').addEventListener('click', event => {
       const button = event.target.closest('[data-qym-page]');
       if (!button || button.disabled) return;
-      loadEvidence(state.evidence.relationshipId, Number(button.dataset.qymPage)).catch(error => {
+      const targetPage = Number(button.dataset.qymPage);
+      // The shared pager owns its semantic first/prev/next/last controls. The
+      // numeric fallback below is kept for pages rendered without that bundle.
+      if (!Number.isFinite(targetPage)) return;
+      loadEvidence(state.evidence.relationshipId, targetPage).catch(error => {
         el('candidate-evidence-list').innerHTML = emptyMarkup('Evidence unavailable', error.message || 'Could not load relationship occurrences.');
       });
     });

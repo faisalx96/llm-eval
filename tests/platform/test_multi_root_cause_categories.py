@@ -98,7 +98,7 @@ def test_reasoning_path_cannot_bypass_the_category_cap() -> None:
     assert result.error == "too_many_root_causes"
 
 
-def test_human_and_metadata_paths_store_the_plural_categories() -> None:
+def test_human_and_metadata_paths_store_unlimited_plural_categories() -> None:
     before = {"root_cause": "Reasoning Error", "root_causes": ["Reasoning Error"]}
     after = apply_human_patch(
         before,
@@ -116,6 +116,7 @@ def test_human_and_metadata_paths_store_the_plural_categories() -> None:
         "Reasoning Error",
         "Hallucination",
         "Incomplete Answer",
+        "Wrong Format",
     ]
 
     state = build_ai_state(

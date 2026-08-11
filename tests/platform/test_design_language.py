@@ -311,10 +311,12 @@ class TestSharedComponents:
         assert "font-size: var(--font-md)" in auth_input
 
         connection = _rule_body(dashboard_css, ".pg-connection")
-        assert "height: 42px" in connection
-        connection_select = _rule_body(dashboard_css, ".pg-connection-select")
-        for declaration in ("height: 100%", "border: 0", "background: transparent"):
-            assert declaration in connection_select
+        assert "width: min(360px, 100%)" in connection
+        assert "min-width: 320px" in connection
+        connection_selector = _rule_body(dashboard_css, ".pg-connection-selector")
+        assert "min-width: 320px" in connection_selector
+        review_selector = _rule_body(ui_css, ".qym-review-selector")
+        assert "min-width: 240px" in review_selector
 
         companions = ui_css.split(
             "/* Compact rows keep their action companions level with the 24px field. */",
@@ -372,8 +374,9 @@ class TestSharedComponents:
         source = UI_BEHAVIOR.read_text(encoding="utf-8")
         for contract in (
             "marker.setAttribute('aria-describedby', tooltip.id);",
-            "button.setAttribute('aria-haspopup', 'dialog');",
+            "isSingleSelect ? 'listbox' : 'dialog'",
             "button.setAttribute('aria-expanded'",
+            "enhanceSelect: enhanceSelect",
             "directTabs(tablist)",
             "'ArrowLeft', 'ArrowRight', 'Home', 'End'",
             "new MutationObserver",

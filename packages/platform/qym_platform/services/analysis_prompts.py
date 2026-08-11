@@ -12,6 +12,7 @@ from qym_platform.services.analysis_aggregation import AGGREGATION_SYSTEM_PROMPT
 from qym_platform.services.llm_analyzer import (
     DEFAULT_SYSTEM_PROMPT,
     RULE_WRITER_SYSTEM_PROMPT,
+    normalize_rule_writer_system_prompt,
 )
 
 
@@ -36,8 +37,9 @@ def get_effective_analysis_prompts(
         or DEFAULT_ANALYSIS_PROMPTS["llm_analyzer"],
         "aggregator": row.aggregator_system_prompt
         or DEFAULT_ANALYSIS_PROMPTS["aggregator"],
-        "rules_writer": row.rules_writer_system_prompt
-        or DEFAULT_ANALYSIS_PROMPTS["rules_writer"],
+        "rules_writer": normalize_rule_writer_system_prompt(
+            row.rules_writer_system_prompt
+        ),
     }
 
 

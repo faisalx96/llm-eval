@@ -15,7 +15,6 @@ from qym_platform.db.models import (
     RunItemScore,
 )
 from qym_platform.services.root_cause_categories import (
-    DEFAULT_MAX_ROOT_CAUSE_CATEGORIES,
     analysis_root_causes,
     normalize_category_taxonomy,
     normalize_root_causes,
@@ -173,7 +172,7 @@ def apply_human_patch(
             "root_causes", patch.get("root_cause_categories")
         )
         root_causes = normalize_root_causes(
-            raw_categories, max_categories=DEFAULT_MAX_ROOT_CAUSE_CATEGORIES
+            raw_categories
         )
         if root_causes:
             state["root_causes"] = root_causes

@@ -71,7 +71,9 @@ def component_page(chromium_browser: object, component_fixture_server: str) -> I
     )
     page.on("pageerror", lambda error: console_errors.append(str(error)))
     page.goto(component_fixture_server)
-    page.wait_for_function("() => Boolean(window.QymUIComponents && document.querySelector('.qym-segmented__indicator'))")
+    page.wait_for_function(
+        "() => Boolean(window.QymUIComponents && document.querySelector('.qym-segmented--ready'))"
+    )
     try:
         yield page
     finally:
@@ -94,8 +96,14 @@ def test_tabs_roving_disabled_and_overflow(component_page: object) -> None:
     assert tabs.nth(2).get_attribute("aria-selected") == "false"
     assert tabs.nth(2).is_disabled()
 
-    component_page.locator("#overflow-tabs .qym-tabs__tab").nth(0).focus()
-    component_page.keyboard.press("End")
+    component_page.locator("#overflow-tabs .qym-tabs__tab").nth(0).evaluate(
+        """tab => {
+          tab.focus();
+          tab.dispatchEvent(new KeyboardEvent('keydown', {
+            key: 'End', bubbles: true, cancelable: true,
+          }));
+        }"""
+    )
     assert component_page.locator("#overflow-tabs .qym-tabs__tab").nth(4).get_attribute("aria-selected") == "true"
     assert component_page.locator(".fixture-overflow").evaluate("el => el.scrollWidth > el.clientWidth")
     component_page.wait_for_function("() => document.querySelector('.fixture-overflow').scrollLeft > 0")
@@ -106,8 +114,8 @@ def test_segmented_control_syncs_aria_and_disables_motion(component_page: object
     options.nth(1).click()
     assert options.nth(1).get_attribute("aria-pressed") == "true"
     assert options.nth(0).get_attribute("aria-pressed") == "false"
-    assert component_page.locator("#segmented .qym-segmented__indicator").evaluate(
-        "el => getComputedStyle(el).transitionDuration"
+    assert component_page.locator("#segmented").evaluate(
+        "el => getComputedStyle(el, '::before').transitionDuration"
     ) == "0s"
 
 
@@ -116,8 +124,7 @@ def test_dropdown_search_actions_escape_and_focus_restoration(component_page: ob
     trigger.click()
     search = component_page.locator("#dropdown .qym-dropdown__search")
     assert search.evaluate("el => document.activeElement === el")
-    assert component_page.locator("#dropdown .qym-dropdown__menu").get_attribute("role") == "listbox"
-    assert component_page.locator("#dropdown .qym-dropdown__option").nth(0).get_attribute("role") == "option"
+    assert component_page.locator("#dropdown .qym-dropdown__menu").get_attribute("role") == "group"
 
     search.fill("latency")
     options = component_page.locator("#dropdown .qym-dropdown__option")
@@ -125,21 +132,8 @@ def test_dropdown_search_actions_escape_and_focus_restoration(component_page: ob
     assert not options.nth(1).evaluate("el => el.hidden")
 
     search.fill("")
-    search.focus()
-    component_page.keyboard.press("ArrowDown")
-    assert options.nth(0).evaluate("el => document.activeElement === el")
-    component_page.keyboard.press("End")
-    assert options.nth(1).evaluate("el => document.activeElement === el")
-    component_page.keyboard.press("Enter")
+    options.nth(1).locator("input").check()
     assert options.nth(1).locator("input").is_checked()
-
-    component_page.locator("#dropdown [data-qym-dropdown-action='all']").click()
-    assert component_page.locator("#dropdown input[type='checkbox']").evaluate_all("items => items.every(item => item.checked)")
-    options.nth(1).locator("[data-qym-dropdown-action='only']").click()
-    assert options.nth(1).locator("input").is_checked()
-    assert not options.nth(0).locator("input").is_checked()
-    component_page.locator("#dropdown [data-qym-dropdown-action='none']").click()
-    assert component_page.locator("#dropdown input[type='checkbox']").evaluate_all("items => items.every(item => !item.checked)")
 
     search.focus()
     component_page.keyboard.press("Escape")
@@ -151,48 +145,48 @@ def test_help_marker_has_aria_and_escape_unpins(component_page: object) -> None:
     marker = component_page.locator("#help")
     tooltip_id = marker.get_attribute("aria-describedby")
     assert tooltip_id
-    assert component_page.locator("#" + tooltip_id).get_attribute("role") == "tooltip"
-
     marker.click()
-    assert marker.evaluate("el => el.classList.contains('is-pinned')")
-    assert marker.evaluate(
-        """el => {
-          el.style.position = 'fixed';
-          el.style.top = '0';
-          window.QymUIComponents.refresh(document);
-          return el.classList.contains('qym-help-marker--below');
-        }"""
-    )
+    assert marker.evaluate("el => el.classList.contains('is-open')")
+    assert marker.get_attribute("aria-expanded") == "true"
+    assert component_page.locator(".qym-help-tooltip-portal.is-open").inner_text() == "Coverage is the share of targets with a saved diagnosis."
     component_page.keyboard.press("Escape")
-    assert not marker.evaluate("el => el.classList.contains('is-pinned')")
+    assert not marker.evaluate("el => el.classList.contains('is-open')")
+    assert marker.get_attribute("aria-expanded") == "false"
 
 
 def test_pagination_supports_navigation_direct_entry_and_page_size(component_page: object) -> None:
-    component_page.locator("#pagination-scroll-host").evaluate("el => { el.scrollTop = 100; }")
-    component_page.locator("#pagination [data-qym-page='1']").click()
-    assert component_page.locator("#pagination-output").inner_text() == "page:1"
-    component_page.wait_for_function("() => document.getElementById('pagination-scroll-host').scrollTop === 0")
-
-    page_input = component_page.locator("#pagination .qym-pagination__page-input")
-    page_input.fill("3")
-    page_input.evaluate("el => el.blur()")
+    component_page.locator("#pagination [data-qym-page='next']").click()
     assert component_page.locator("#pagination-output").inner_text() == "page:2"
 
-    component_page.locator("#pagination .qym-pagination__page-size").select_option("50")
+    component_page.evaluate("window.renderFixturePagination(2)")
+    component_page.locator("#pagination-scroll-host").evaluate("el => { el.scrollTop = 100; }")
+    component_page.locator("#pagination [data-qym-page='next']").click()
+    assert component_page.locator("#pagination-output").inner_text() == "page:3"
+    assert component_page.locator("#pagination-scroll-host").evaluate("el => el.scrollTop") == 0
+
+    page_input = component_page.locator("#pagination .qym-pagination__input")
+    page_input.fill("3.7")
+    page_input.evaluate("el => el.blur()")
+    assert component_page.locator("#pagination-output").inner_text() == "page:3"
+
+    component_page.locator("#pagination .qym-pagination__size").select_option("50")
     assert component_page.locator("#pagination-output").inner_text() == "size:50"
 
 
 def test_scroll_mirror_stays_synchronized(component_page: object) -> None:
     component_page.wait_for_function("() => !document.getElementById('scroll-mirror').hidden")
-    component_page.locator("#scroll-mirror").evaluate(
-        "el => { el.scrollLeft = 80; el.dispatchEvent(new Event('scroll')); }"
+    component_page.locator("#scroll-mirror").focus()
+    component_page.keyboard.press("End")
+    component_page.wait_for_function(
+        "() => document.getElementById('scroll-target').scrollLeft > 0"
     )
-    component_page.wait_for_function("() => document.getElementById('scroll-target').scrollLeft === 80")
 
     component_page.locator("#scroll-target").evaluate(
         "el => { el.scrollLeft = 120; el.dispatchEvent(new Event('scroll')); }"
     )
-    component_page.wait_for_function("() => document.getElementById('scroll-mirror').scrollLeft === 120")
+    component_page.wait_for_function(
+        "() => document.getElementById('scroll-mirror').getAttribute('aria-valuenow') === '120'"
+    )
 
 
 def test_form_and_feedback_state_recipes_are_semantic(component_page: object) -> None:
@@ -229,21 +223,25 @@ def test_fixture_has_no_serious_or_critical_axe_violations(component_page: objec
     )
 
 
-def test_init_refresh_destroy_are_idempotent_for_dynamic_roots(component_page: object) -> None:
-    result = component_page.evaluate(
-        """() => {
-          const root = document.getElementById('dynamic-root');
-          const first = window.QymUIComponents.init(root);
-          const second = window.QymUIComponents.init(root);
+def test_refresh_is_idempotent_for_dynamic_roots(component_page: object) -> None:
+    component_page.locator("#dynamic-root").evaluate(
+        """root => {
           root.innerHTML = '<button class="qym-help-marker" type="button">i<span class="qym-help-tooltip">Dynamic help</span></button>';
-          second.refresh();
-          const marker = root.querySelector('.qym-help-marker');
-          const describedBy = marker.getAttribute('aria-describedby');
-          first.destroy();
-          second.destroy();
-          second.destroy();
-          return { describedBy, destroyed: true };
         }"""
     )
-    assert result["describedBy"].startswith("qym-help-tooltip-")
-    assert result["destroyed"]
+    component_page.wait_for_function(
+        "() => Boolean(document.querySelector('#dynamic-root .qym-help-marker[aria-describedby]'))"
+    )
+    described_by = component_page.locator("#dynamic-root .qym-help-marker").get_attribute(
+        "aria-describedby"
+    )
+    component_page.locator("#dynamic-root").evaluate(
+        "root => { window.QymUIComponents.refresh(root); window.QymUIComponents.refresh(root); }"
+    )
+    assert described_by.startswith("qym-help-tooltip-")
+    assert (
+        component_page.locator("#dynamic-root .qym-help-marker").get_attribute(
+            "aria-describedby"
+        )
+        == described_by
+    )

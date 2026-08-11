@@ -42,6 +42,7 @@ from qym_platform.secrets import (
 from qym_platform.security import api_key_prefix, hash_api_key
 from qym_platform.settings import PlatformSettings
 from qym_platform.services.analysis_prompts import (
+    DEFAULT_ANALYSIS_PROMPTS,
     PROMPT_MAX_CHARS,
     serialize_analysis_prompt_settings,
 )
@@ -342,6 +343,19 @@ class AnalysisPromptSettingsRequest(BaseModel):
     rules_writer: str = Field(..., min_length=1, max_length=PROMPT_MAX_CHARS)
 
 
+class AnalysisPromptUpdateRequest(BaseModel):
+    """A single prompt update used by the prompt editor."""
+
+    value: str = Field(..., min_length=1, max_length=PROMPT_MAX_CHARS)
+
+
+ANALYSIS_PROMPT_FIELDS = {
+    "llm_analyzer": ("llm_analyzer_system_prompt", "LLM analyzer"),
+    "aggregator": ("aggregator_system_prompt", "Aggregator"),
+    "rules_writer": ("rules_writer_system_prompt", "Rules writer"),
+}
+
+
 def _normalise_analysis_prompt(value: str, label: str) -> str:
     prompt = str(value or "").strip()
     if not prompt:
@@ -627,6 +641,45 @@ def update_analysis_prompts(
     else:
         for field, value in values.items():
             setattr(row, field, value)
+        row.updated_by_user_id = principal.user.id
+    db.commit()
+    db.refresh(row)
+    return serialize_analysis_prompt_settings(db, project_id)
+
+
+@router.patch("/v1/projects/{project_id}/analysis-prompts/{prompt_key}")
+def update_analysis_prompt(
+    project_id: str,
+    prompt_key: str,
+    req: AnalysisPromptUpdateRequest,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_ui_principal),
+) -> Dict[str, Any]:
+    """Persist one project analysis prompt without touching the other fields."""
+    _require_project_manager(db, principal, project_id)
+    field_and_label = ANALYSIS_PROMPT_FIELDS.get(prompt_key)
+    if field_and_label is None:
+        raise HTTPException(status_code=404, detail="Unknown analysis prompt")
+    field, label = field_and_label
+    value = _normalise_analysis_prompt(req.value, label)
+
+    row = db.get(ProjectAnalysisPromptSettings, project_id)
+    if row is None:
+        values = {
+            key: DEFAULT_ANALYSIS_PROMPTS[key]
+            for key in ANALYSIS_PROMPT_FIELDS
+        }
+        values[prompt_key] = value
+        row = ProjectAnalysisPromptSettings(
+            project_id=project_id,
+            updated_by_user_id=principal.user.id,
+            llm_analyzer_system_prompt=values["llm_analyzer"],
+            aggregator_system_prompt=values["aggregator"],
+            rules_writer_system_prompt=values["rules_writer"],
+        )
+        db.add(row)
+    else:
+        setattr(row, field, value)
         row.updated_by_user_id = principal.user.id
     db.commit()
     db.refresh(row)

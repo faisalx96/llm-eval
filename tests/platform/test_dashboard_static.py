@@ -1643,6 +1643,7 @@ def test_dropdown_and_disclosure_chevrons_share_interaction_states() -> None:
     components = (DASHBOARD_DIR / "ui_components.css").read_text(encoding="utf-8")
     dashboard = (DASHBOARD_DIR / "dashboard.css").read_text(encoding="utf-8")
     behavior = (DASHBOARD_DIR / "ui_components.js").read_text(encoding="utf-8")
+    playground = (DASHBOARD_DIR / "playground.js").read_text(encoding="utf-8")
 
     # Native and custom selects share one generated chevron. Native selects
     # use :open; custom dropdowns expose the same state through aria-expanded.
@@ -1669,11 +1670,19 @@ def test_dropdown_and_disclosure_chevrons_share_interaction_states() -> None:
     assert "--qym-select-chevron-image: var(--qym-chevron-down-accent);" in components
     assert "--qym-select-chevron-image: var(--qym-chevron-up-accent);" in components
     assert "background-size: 14px 14px;" in components
-    connection_select = _rule(dashboard, ".pg-connection-select {")
-    connection_open = _rule(dashboard, ".pg-connection-select:open {")
-    assert "--qym-select-chevron-image: var(--qym-chevron-down-muted);" in connection_select
-    assert "background-image: var(--qym-select-chevron-image);" in connection_select
-    assert "--qym-select-chevron-image: var(--qym-chevron-up-accent);" in connection_open
+    # Auto-analysis reuses the Reviews selector contract. The native select is
+    # retained only as the value/event mirror and is hidden by the shared
+    # enhancer after the Reviews control has been mounted.
+    connection = _rule(dashboard, ".pg-connection {")
+    connection_selector = _rule(dashboard, ".pg-connection-selector {")
+    assert "width: min(360px, 100%);" in connection
+    assert "min-width: 320px;" in connection_selector
+    assert 'id="pg-connection" class="pg-connection-select"' in playground
+    assert "QymUIComponents.enhanceSelect(connEl" in playground
+    assert "className: 'pg-connection-selector'" in playground
+    assert "placement: 'top'" in playground
+    assert "pg-connection-trigger" not in playground
+    assert "pg-connection-menu" not in playground
 
     # SVG/text disclosure chevrons share the quiet/hover signal. Item-row
     # chevrons rotate while open but remain neutral until hover/focus.
@@ -1854,6 +1863,12 @@ def test_clear_filter_control_has_aligned_label_and_soft_count_pill() -> None:
 
     for page in DASHBOARD_DIR.glob("*.html"):
         source = page.read_text(encoding="utf-8")
+        if page.name == "analyzer.html":
+            assert "dashboard.css?v=auto-analysis-selectors-20260811-1" in source
+            assert "playground.js?v=auto-analysis-selectors-20260811-1" in source
+            assert "ui_components.css?v=auto-analysis-selectors-20260811-1" in source
+            assert "ui_components.js?v=auto-analysis-selectors-20260811-1" in source
+            continue
         if "ui_components.css?v=" in source:
             assert "ui_components.css?v=ui-consistency-20260803-60" in source
         if "ui_components.js?v=" in source:
@@ -2712,7 +2727,7 @@ def test_auto_analysis_is_a_first_class_project_page() -> None:
     assert "else if (rest === 'analysis') page = 'analysis';" in shell
     assert 'id="analysis-run-select"' not in analyzer
     assert "api/runs?limit=200&project_slug=" not in analyzer
-    assert "api/runs?limit=1&project_slug=" in analyzer
+    assert "api/runs?limit=1&project_slug=" not in analyzer
     assert "Select a run to start analysis" in analyzer
     assert "Select a run from Runs" in analyzer
     assert "Production rules and Documents remain available" in analyzer
@@ -2723,16 +2738,35 @@ def test_auto_analysis_is_a_first_class_project_page() -> None:
     assert 'id="pg-project-description"' not in playground
     assert 'class="pg-context-panel"' in playground
     assert 'id="pg-rule-list"' in playground
+    assert 'pg-rule-metadata' in playground
+    assert 'Inferred from' in playground
+    assert 'Why this rule helps the analyzer' in playground
+    assert "function _analysisRuleForAnalyzer(rule)" in playground
+    assert "not included in the analyzer prompt" in playground
     assert 'id="pg-rule-count"' in playground
     assert "function _formatRuleCount()" in playground
+    assert "refreshRuleView" in playground
     assert "no rule count limit" in playground
     assert "_MAX_ANALYSIS_RULES" not in playground
     assert "_analysisRules.push({ title: '', instruction: '' });" in playground
     assert 'id="pg-infer-rules"' in playground
-    assert 'id="pg-update-rules"' in playground
+    assert 'id="pg-update-rules"' not in playground
+    assert 'id="pg-save-context"' not in playground
     assert 'id="pg-infer-use-description"' not in playground
     assert 'id="pg-infer-use-documents"' in playground
-    assert 'id="pg-infer-use-examples"' in playground
+    assert 'id="pg-infer-use-examples"' not in playground
+    assert 'id="pg-add-examples"' in playground
+    assert 'Add documents' in playground
+    assert 'Add examples' in playground
+    assert 'previous_ai_category_taxonomy' not in playground
+    assert 'approved_category_taxonomy' not in playground
+    assert 'data-example-prompt-field' in playground
+    assert 'data-example-fields-toggle' in playground
+    assert 'filtersOpen: false' in playground
+    assert "!event.target.closest('.pg-example-picker-fields')" in playground
+    assert 'Choose prompt fields' in playground
+    assert 'function _fieldToggleMarkup' in playground
+    assert 'include_fields: _approvedExampleFieldMap()' in playground
     assert "include_project_description" not in playground
     assert "include_documents: inferenceSources.include_documents" in playground
     assert "include_examples: inferenceSources.include_examples" in playground
@@ -2742,18 +2776,27 @@ def test_auto_analysis_is_a_first_class_project_page() -> None:
     assert 'pg-rule-compare-stats' in playground
     assert 'pg-rule-compare-group' in playground
     assert 'pg-rule-compare-picker' in playground
-    assert '<details class="pg-rule-inference-options">' in playground
-    assert 'pg-rule-inference-content' in playground
-    assert 'pg-infer-source-summary' in playground
-    assert '2 of 2 sources enabled' in playground
+    assert 'class="pg-rule-source-actions"' in playground
+    assert '<details class="pg-rule-inference-options">' not in playground
+    assert 'pg-rule-inference-content' not in playground
+    assert 'pg-infer-source-summary' not in playground
+    assert 'pg-infer-example-selection-summary' not in playground
+    assert 'pg-infer-example-budget' not in playground
+    assert 'Rules cannot be generated yet' in playground
+    assert 'This project has neither an' in playground
+    assert 'enabled project document nor an approved ' in playground
+    assert 'pg-infer-source-empty' in playground
+    assert 'function _inferenceSourceState()' in playground
     assert "function _syncInferenceSourceSummary()" in playground
+    assert "function _syncInferenceSourceAvailability()" in playground
+    assert "NO_INFERENCE_SOURCES" in analysis_api
     assert 'pg-context-action-group' in playground
     assert 'pg-context-action-divider' in playground
     assert 'pg-context-feedback' in playground
     assert "function _renderRuleViewStatus()" in playground
     assert "function _showContextFeedback(message, isError)" in playground
     assert '3500' in playground
-    assert "Create a draft to edit rules" in playground
+    assert "Create a draft before editing these rules." in playground
     assert "Create a draft to add rules" in playground
     assert "panel.classList.add('pg-rule-compare-picker')" in playground
     assert "panel.classList.remove('pg-rule-compare-picker')" in playground
@@ -2774,12 +2817,10 @@ def test_auto_analysis_is_a_first_class_project_page() -> None:
     assert "document.body.appendChild(panel)" in playground
     assert "function _closeRuleCompareDialog(panel)" in playground
     assert "function _wireRuleVersionSearch(panel, selectSelector, searchSelector, emptySelector)" in playground
-    assert "data-rule-' + key + '-search" in playground
-    assert "data-rule-' + key + ' value=" in playground
-    assert 'class="pg-rule-version-option' in playground
-    assert 'role="option"' in playground
-    assert "pg-rule-version-option-selected" in playground
-    assert "No matching versions." in playground
+    assert "<select data-rule-' + key" in playground
+    assert "QymUIComponents.enhanceSelect(select" in playground
+    assert "className: 'pg-rule-version-review-selector'" in playground
+    assert "search: true" in playground
     assert "function _publishRuleVersion(versionId)" in playground
     assert "function _openRuleMerge(targetId)" in playground
     assert "function _openRuleCompare(versionId)" in playground
@@ -2793,11 +2834,21 @@ def test_auto_analysis_is_a_first_class_project_page() -> None:
     assert "_icon('upload')" in playground
     assert 'M5 14v6h14v-6' in playground
     assert "_icon('rocket')" in playground
-    assert "_icon('checkFilled')" in playground
-    assert 'pg-rule-version-lifecycle-label' in playground
-    assert '>Publish</span>' in playground
-    assert '>Promote</span>' in playground
-    assert '>Live</span>' in playground
+    assert 'data-download-rule-version' in playground
+    assert 'function _downloadRuleVersion(versionId)' in playground
+    assert 'data-rule-drag-handle' not in playground
+    assert 'pg-rule-filters' in playground
+    assert 'pg-rule-category' not in playground
+    assert 'pg-rule-category-filter' not in playground
+    assert 'data-rule-menu-toggle' not in playground
+    assert 'data-duplicate-rule' not in playground
+    assert 'data-edit-rule' not in playground
+    assert 'pg-rule-menu' not in playground
+    assert 'pg-rule-remove' in playground
+    assert 'data-delete-rule' in playground
+    assert 'function _confirmAnalysisRuleDeletion(index)' in playground
+    assert 'Delete this rule?' in playground
+    assert "This can\\'t be undone." in playground
     assert "_icon('merge')" in playground
     assert "M6 4v4c0 4 2 6 6 6h6" in playground
     assert "candidate.is_active;" in playground
@@ -2819,10 +2870,23 @@ def test_auto_analysis_is_a_first_class_project_page() -> None:
     assert 'position: fixed' in analyzer
     assert 'place-items: center' in analyzer
     assert 'grid-template-columns: minmax(0, 1fr)' in analyzer
-    assert 'analysis-info-popover' in analyzer
-    assert 'analysis-rule-view-state' in analyzer
+    assert 'analysis-rules-workspace-tabs' not in analyzer
+    assert 'data-rules-workspace-tab="rules"' not in analyzer
+    assert 'data-rules-workspace-tab="history"' not in analyzer
+    assert "setRulesWorkspaceView('rules')" not in analyzer
+    assert 'analysis-version-history-button' in analyzer
+    assert 'openVersionHistory' in analyzer
+    assert 'renderRuleGraph' in analyzer
+    assert 'analysis-rule-graph' in analyzer
+    assert "rulesHelp" not in analyzer
+    assert "How version actions work" not in analyzer
+    assert 'analysis-info-popover' not in analyzer
+    assert "viewState.className = 'qym-badge qym-badge--neutral'" in analyzer
     assert 'analysis-rule-version-meta' in analyzer
-    assert 'analysis-version-node-key' in analyzer
+    assert 'analysis-version-heading-description' in analyzer
+    assert '--analysis-history-graph-rail: clamp(calc(var(--space-xl) * 4), 30%, calc(var(--space-xl) * 8));' in analyzer
+    assert "row.classList.contains('pg-rule-version-selected')" in analyzer
+    assert "halo.setAttribute('stroke', 'var(--accent-primary)')" in analyzer
     assert "_renderRuleVersionMeta(selected)" in playground
     assert "label: 'Created at'" in playground
     assert "label: 'Updated at'" in playground
@@ -2831,25 +2895,30 @@ def test_auto_analysis_is_a_first_class_project_page() -> None:
     assert "window.confirm(" not in playground
     assert "window.prompt(" not in playground
     assert "window.alert(" not in playground
-    assert "to production" in playground
+    assert "Promote" in playground
     assert "_openRuleVersion(versionRow.dataset.ruleVersionId)" in playground
     assert "data-toggle-rule" in playground
     assert "_editingRuleIndex === toggleIndex ? null : toggleIndex" in playground
     assert "function _readAnalysisRuleDraftsFromEditor()" in playground
     assert "_analysisRules = _readAnalysisRuleDraftsFromEditor();" in playground
     assert "function _validateAnalysisRuleDrafts()" in playground
-    assert "Complete the title and instruction for every rule before saving." in playground
+    assert "Complete the title and instruction for every rule before changes can be saved." in playground
     assert "Removing rule from the current version" in playground
     assert "_saveAnalysisContext().catch(function () {" in playground
     assert "cfg.project_description" not in playground
     assert "cfg.analysis_rules = rules" in playground
+    assert "cfg.analysis_rules = rules.map(_analysisRuleForAnalyzer)" in playground
     assert 'id="pg-document-input"' in playground
     assert "cfg.include_project_documents = documentsToggle.checked" in playground
-    assert "'/analysis-documents'" in playground
+    assert "analysis-documents" in playground
     assert "Project documents" in playground
     assert "_updateReferenceDocumentSelection" in playground
     assert 'class="pg-document-select"' in playground
     assert "_deleteReferenceDocument" in playground
+    assert "function _confirmReferenceDocumentDeletion(referenceDocument)" in playground
+    assert "Keep document" in playground
+    assert "confirmLabel: 'Delete document'" in playground
+    assert "confirmClass: 'shell-btn-danger'" in playground
     assert '@router.get("/api/runs/{run_id:path}/analysis-documents")' in analysis_api
     assert '@router.patch("/api/runs/{run_id:path}/analysis-documents/{document_id}")' in analysis_api
     assert '@router.delete("/api/runs/{run_id:path}/analysis-documents/{document_id}")' in analysis_api
@@ -2861,6 +2930,14 @@ def test_auto_analysis_is_a_first_class_project_page() -> None:
     assert '@router.post("/api/runs/{run_id:path}/analysis-documents")' in analysis_api
     assert '@router.patch("/api/runs/{run_id:path}/analysis-context")' in analysis_api
     assert '@router.post("/api/runs/{run_id:path}/analysis-rules/infer")' in analysis_api
+    assert '@router.get("/api/projects/{project_slug}/analysis-config")' in analysis_api
+    assert '@router.get("/api/projects/{project_slug}/analysis-documents")' in analysis_api
+    assert '@router.patch("/api/projects/{project_slug}/analysis-context")' in analysis_api
+    assert '@router.post("/api/projects/{project_slug}/analysis-rules/infer")' in analysis_api
+    assert 'projectScoped: !!projectScoped' in analyzer
+    assert 'await initializePlayground(true)' in analyzer
+    assert 'id="analysis-error-retry"' in analyzer
+    assert 'role="alert"' in analyzer
     assert '"/api/runs/{run_id:path}/analysis-rule-versions/{version_ref}:publish"' in analysis_api
     assert '"/api/runs/{run_id:path}/analysis-rule-versions/{version_ref}:compare"' in analysis_api
     assert '"/api/runs/{run_id:path}/analysis-rule-aliases/{alias_name}"' in analysis_api
@@ -2875,23 +2952,64 @@ def test_auto_analysis_is_a_first_class_project_page() -> None:
     assert 'data-metric-rcdetail-item=' in run
     assert 'data-metric-feedback-item=' in run
     assert 'data-metric-sol-item=' in run
+    assert 'AI analysis did not produce a usable diagnosis.' in run
+    assert 'role="alert"' in run
+    assert 'Could not save diagnosis' in run
+    assert 'if (rootCauseCategories(analysis).length) delete analysis.error;' in run
     assert "saveMetricAnalysisPatch" in run
     assert "metric_name: metricName" in run
     assert "if (!hasStoredAnalysis && !metricFailed) return '';" in run
+    assert "const hasCategories = analysisCategories.length > 0;" in run
     assert "(analysis.root_cause || '+ Category')" in run
     assert "'>Edit</button>'" not in run
     assert 'id="analysis-metric-list"' in analyzer
-    assert "getMetrics: () => state.selectedMetrics.slice()" in analyzer
+    assert "getMetrics: projectScoped ? () => [] : () => state.selectedMetrics.slice()" in analyzer
     assert "body.metrics = _getSelectedMetrics()" in playground
+    assert "var _selectedTarget = null;" in playground
+    assert 'data-metric-name="' in playground
+    assert "function _resolveSelectedTarget(matchedItems)" in playground
+    assert "_selectTarget(card.dataset.itemId, card.dataset.metricName || null)" in playground
+    assert "metric: metricName || null" in playground
+    assert "metric: testTarget.metric_name || null" in playground
+    assert "item_ids: [testItemId], metric: _opts.getMetric ? _opts.getMetric() : null" not in playground
+    assert "function _isHumanMetricAnalysis(md, metricName)" in playground
+    assert "function _getHumanOverwriteTargets(matchedItems)" in playground
+    assert "function _confirmHumanOverwrite(targets)" in playground
+    assert "Keep human labels" in playground
+    assert "if (_opts.dedicatedPage) return;" in playground
+    assert "e.target.closest('[role=\"dialog\"][aria-modal=\"true\"]')" in playground
+    assert "event.stopPropagation();" in playground
+    assert "let inputMappingOpener = null;" in analyzer
+    assert "let inputMappingEscapeHandler = null;" in analyzer
+    assert "document.removeEventListener('keydown', inputMappingEscapeHandler)" in analyzer
+    assert "if (opener && document.contains(opener)) opener.focus();" in analyzer
     assert "getMetric: function () { return null; }" in compare
     assert "row.item_metadata.metric_analyses[result.metric_name]" in compare
+    assert "def _is_human_metric_analysis(" in analysis_api
+    assert "allow_human_overwrite: bool = False" in analysis_api
+    assert "allow_human_overwrite=request.allow_human_overwrite" in analysis_api
     assert '"type": "aggregating"' in analysis_api
-    assert "evt.type === 'aggregating'" in playground
-    assert "Aggregating root causes\\u2026" in playground
-    assert "labels consolidated" in playground
+    assert "state.phase === 'aggregating'" in playground
+    assert "Aggregating root causes…" in playground
+    assert "function _analysisCategoryCount(data)" in playground
+    assert "Created <strong>" in playground
+    assert "var categoryLabel = categoryCount === 1 ? 'category' : 'categories';" in playground
+    assert "const categoryLabel = categoryCount === 1 ? 'category' : 'categories';" in analyzer
+    assert "getRunUrl" in analyzer
+    assert "pg-runall-open-run" in playground
+    assert 'class="qym-inline-action qym-inline-action--neutral pg-runall-open-run"' in playground
+    assert ">View run</a>" in playground
+    assert 'class="qym-icon-action analysis-context-link pg-runall-open-run"' not in playground
+    assert "labels consolidated" not in playground
+    assert "if (_opts.onAnalysisComplete) _opts.onAnalysisComplete(data);" in playground
+    assert "_onFilterChange();" in playground
     assert 'id="pg-target-limit"' in playground
-    assert 'id="pg-target-limit-decrease"' not in playground
-    assert 'id="pg-target-limit-increase"' not in playground
+    assert 'class="pg-target-limit-control"' in playground
+    assert 'data-target-limit-step="increase"' in playground
+    assert 'data-target-limit-step="decrease"' in playground
+    assert "_icon('chevronUp')" in playground
+    assert "_icon('chevronDown')" in playground
+    assert "targetLimit.dispatchEvent(new Event('input'" in playground
     assert 'maxlength="4"' in playground
     assert 'placeholder="All"' in playground
     assert "Empty = all" not in playground
@@ -2900,12 +3018,17 @@ def test_auto_analysis_is_a_first_class_project_page() -> None:
     assert ".analysis-page .pg-score-slider::-webkit-slider-runnable-track" in analyzer
     assert "grid-template-columns: 260px max-content max-content;" in analyzer
     assert "width: 96px;" in analyzer
-    assert 'id="pg-connection"' in playground
-    assert 'class="pg-connection-select"' in playground
+    assert 'id="pg-connection" class="pg-connection-select"' in playground
+    assert "className: 'pg-connection-selector'" in playground
     assert "body.limit = requestedLimit" in playground
+    assert "var requestedLimit = _getTargetLimit();" in playground
+    assert "analysisItemCount = requestedLimit == null ? itemCount : Math.min(requestedLimit, itemCount)" in playground
     assert "'pg-use-project-description'" not in analyzer
     assert "'pg-use-project-rules'" in analyzer
     assert "'pg-use-project-documents'" in analyzer
+    assert "'pg-use-trace'" in analyzer
+    assert "['pg-use-project-rules', 'pg-use-project-documents', 'pg-use-trace']" in playground
+    assert "fields.trace = traceToggle.checked" in playground
     assert 'id="analysis-mapping-open"' in analyzer
     assert ">Input mapping</button>" in analyzer
     assert "Advanced run configuration" not in analyzer
@@ -2941,6 +3064,15 @@ def test_auto_analysis_page_uses_first_class_run_rules_and_document_tabs() -> No
     assert "Choose another run" not in analyzer
     assert ">Select all</button>" in analyzer
     assert ">Clear</button>" in analyzer
+    assert ">Apply</button>" not in analyzer
+    assert "updateFilterTrigger(wrapper, key, label);" in analyzer
+    assert "state.dashboard.openFilterKey = key;" in analyzer
+    assert "reopenDashboardFilter(host);" in analyzer
+    assert "filterFacets: null" in analyzer
+    assert "run_id: 'runs'" in analyzer
+    assert "review_status: 'review_statuses'" in analyzer
+    assert "No options match the current scope." in analyzer
+    assert ").filter(definition => definition[2].length)" not in analyzer
     assert 'class="analysis-run-context" aria-label="Run information"' in analyzer
     assert 'analysis-run-context-label">Run ID' not in analyzer
     assert "Production rules" in analyzer
@@ -2948,18 +3080,41 @@ def test_auto_analysis_page_uses_first_class_run_rules_and_document_tabs() -> No
     assert 'role="tablist"' in analyzer
     assert 'id="analysis-rules-tab"' in analyzer
     assert 'id="analysis-documents-tab"' in analyzer
+    assert 'id="analysis-dashboard-tab"' in analyzer
+    assert 'data-analysis-view="dashboard"' in analyzer
+    assert 'id="analysis-dashboard-view"' in analyzer
+    assert 'src="/static/qym_table.js"' in analyzer
+    assert "analysis-dashboard-toolbar" not in analyzer
+    assert "analysis-dashboard-compare-toolbar" in analyzer
+    assert 'data-dashboard-compare-group="' in analyzer
+    assert 'data-dashboard-compare-measure="' in analyzer
+    assert "analysis-dashboard-compare-score-metric" in analyzer
+    assert 'data-dashboard-measure="failure"' not in analyzer
+    assert 'data-dashboard-outcome=' not in analyzer
+    assert "root-cause-dashboard/compare" in analyzer
+    assert "root-cause-dashboard/occurrences" in analyzer
+    assert "comparison_status" in analyzer
+    assert "score_compatibility" in analyzer or "Comparison unavailable" in analyzer
     assert 'id="analysis-run-tab"' in analyzer
     assert 'id="analysis-diagnosis-tab"' in analyzer
     assert 'aria-controls="analysis-diagnosis-view"' in analyzer
-    assert 'aria-disabled="true" disabled' in analyzer
+    assert 'data-analysis-view="categories"' in analyzer
+    assert 'aria-disabled="true" disabled' not in analyzer
     assert "setAnalyzerView(state.currentView" in analyzer
+    assert "landing.hidden = nextView !== 'run' || Boolean(runId);" in analyzer
     assert "nextParams.set('scope', nextView)" in analyzer
     assert "Project documents" in analyzer
     assert 'data-context-view="\' + item[3] + \'"' in analyzer
     assert "analysisViewUrl(item[3])" in analyzer
     assert "setAnalyzerView(link.dataset.contextView, { focus: true })" in analyzer
-    assert "organizeAnalyzerWorkspace()" in analyzer
-    assert "organizeWhenReady()" in analyzer
+    assert "composePage: composeAnalyzerWorkspace" in analyzer
+    assert "function composeAnalyzerWorkspace(parts)" in analyzer
+    assert "organizeAnalyzerWorkspace" not in analyzer
+    assert "organizeWhenReady" not in analyzer
+    assert "playground-page-root" in playground
+    assert "playground-page-content" in playground
+    assert "window.QymPlayground.refreshRuleView()" in analyzer
+    assert analyzer.index("window.QymPlayground.refreshRuleView()") < analyzer.index("        if (!runId) {")
     assert "new MutationObserver" in analyzer
     assert "['overview', 'Overview']" not in analyzer
     assert "documentsPanel.append" in analyzer
@@ -2967,8 +3122,11 @@ def test_auto_analysis_page_uses_first_class_run_rules_and_document_tabs() -> No
     assert "buildInputMappingDialog(mapping)" in analyzer
     assert "buildAdvancedDialog" not in analyzer
     assert "diagnosisTab.disabled = false" in analyzer
-    assert "diagnosisBody.append(catalog)" in analyzer
-    assert "diagnosisPanel.append(diagnosisHeader, diagnosisBody)" in analyzer
+    assert "diagnosisBody.append(diagnosisToolbar)" in analyzer
+    assert "diagnosisPanel.append(diagnosisBody)" in analyzer
+    assert "analysis-diagnosis-main-toolbar" in analyzer
+    assert "<h2>Diagnosis categories</h2>" not in analyzer
+    assert "border-bottom: 1px solid var(--border-strong);" not in analyzer
     assert "diagnosisCard" not in analyzer
     assert 'id="analysis-category-count"' in analyzer
     assert 'id="analysis-example-count"' in analyzer
@@ -2978,27 +3136,151 @@ def test_auto_analysis_page_uses_first_class_run_rules_and_document_tabs() -> No
     assert "No approved examples in this category yet." in playground
     assert "Remove category from this analysis" in playground
     assert "pg-category-example-data" in playground
+    assert 'data-taxonomy-field="description"' in playground
+    assert 'data-taxonomy-field="when_to_use"' in playground
+    assert "cfg.category_taxonomy = taxonomyMap" in playground
+    assert "function _categoryTaxonomyFor" in playground
+    assert ".pg-category-taxonomy" in styles
     assert "instructionsBody.append(instructions)" in analyzer
     assert analyzer.index("runPanel.append(instructionsCard)") < analyzer.index("runPanel.append(targetCard)")
     assert "max-height: 420px" not in analyzer
     assert "max-height: 520px" in analyzer
     assert "max-height: 640px" not in analyzer
-    assert "grid-template-columns: minmax(220px, 260px) minmax(0, 1fr);" in analyzer
+    assert "_RULES_PAGE_SIZE = 10" in playground
+    assert "_PAGE_SIZE = 10" in playground
+    assert 'id="pg-rule-pagination"' in playground
+    assert 'id="pg-target-pagination"' in playground
+    assert "Analysis target pagination" in playground
+    assert "pg-target-limit-row" in playground
+    assert "data-qym-page" in playground
+    assert "analysis-rule-toolbar-actions" in analyzer
+    assert "toolbarActions.append(ruleVersionActions)" in analyzer
+    assert "rulePaginationFooter.append(rulePagination)" in analyzer
+    assert "ruleColumn.append(rulePagination)" not in analyzer
+    assert "analysis-rule-pagination-footer" in analyzer
+    assert "id=\"pg-rule-version-actions\"" in playground
+    assert "function _renderRuleVersionActions()" in playground
+    assert "id=\"pg-publish-rule-version\"" in playground
+    assert "id=\"pg-promote-rule-version\"" in playground
+    assert "pg-example-source-control" in playground
+    assert 'class="pg-example-source-control"' in playground
+    assert "qym-inline-action pg-example-source-control" not in playground
+    assert ">Add examples</button>" in playground
+    example_source_control = _rule(styles, ".pg-example-source-control {")
+    assert "padding: 0;" in example_source_control
+    assert "border: 0;" in example_source_control
+    assert "border-radius: 0;" in example_source_control
+    assert "background: transparent;" in example_source_control
+    assert "qym-help-marker pg-example-source-help" not in playground
+    assert "data-example-filter-select" in playground
+    assert "enhanceSelects(dialog, 'select[data-example-filter-select]'" in playground
+    assert "Each selector accepts one value." in playground
+    assert "Multi-select supported" not in playground
+    assert "data-example-filter-action" not in playground
+    assert "data-example-filter-only" not in playground
+    assert "pg-example-picker-scroll" in playground
+    example_picker_scroll = _rule(styles, ".pg-example-picker-scroll {")
+    assert "flex: 1 1 auto;" in example_picker_scroll
+    assert "overflow: auto;" in example_picker_scroll
+    assert "grid-template-columns: minmax(0, 1fr) auto;" in analyzer
+    assert "analysis-diagnosis-action-row" in analyzer
+    assert 'id="analysis-category-search"' in analyzer
+    assert 'placeholder="Search categories"' in analyzer
+    assert ">Save changes</button>" in analyzer
+    assert "analysis-diagnosis-summary-line" in analyzer
+    assert "pg-category-workspace" in playground
+    assert "pg-category-sidebar" in playground
+    assert 'id="pg-category-nav"' in playground
+    assert 'id="pg-category-sidebar-title">Categories</h3>' in playground
+    assert 'id="pg-category-more"' not in playground
+    assert "_CATEGORY_NAV_VISIBLE_LIMIT" not in playground
+    assert "filterCategories" in playground
+    assert 'id="pg-category-settings-trigger"' not in playground
+    assert 'pg-category-settings-popover' not in playground
+    assert 'id="pg-max-root-cause-categories"' in playground
+    assert 'data-category-limit-field' in playground
+    assert 'class="qym-help-marker"' in playground
+    assert 'class="qym-help-tooltip" role="tooltip"' in playground
+    assert "Limits how many diagnosis categories the analyzer can return" in playground
+    assert 'min="1"' in playground
+    assert 'inputmode="numeric"' in playground
+    assert "function _normalizeCategoryLimitInput" in playground
+    assert "cfg.max_root_cause_categories = _normalizeCategoryLimitInput(maxCategoriesEl);" in playground
+    assert "MAXIMUM ROOT-CAUSE CATEGORIES" in playground
+    assert 'pg-hl-category">$1$2</span>' in playground
+    assert "diagnosisPanel.querySelector('#pg-max-root-cause-categories')" not in analyzer
+    assert "diagnosisBody.querySelector('[data-category-limit-field]')" in analyzer
+    assert "categoryLimitField?.querySelector('#pg-max-root-cause-categories')" not in analyzer
+    assert "projectMaxCategories" in analyzer
+    assert "placeCategoryLimitField" not in analyzer
+    assert "analysis-diagnosis-category-limit" not in analyzer
+    assert "diagnosisActionRow.insertBefore(categoryLimitField, categorySaveAction)" not in analyzer
+    assert "targetLimitRow.append(categoryLimitField)" not in analyzer
+    assert "targetToolActions.insertBefore(categoryLimitField, mappingButton)" in analyzer
+    assert "analysis-run-category-limit" in analyzer
+    assert "Unsaved changes" in analyzer
+    assert "analysis-target-pagination" in analyzer
+    assert "targetPaginationFooter.append(targetPagination)" in analyzer
+    assert "categorySettings.classList.add('analysis-diagnosis-toolbar-settings')" not in analyzer
+    assert "color: var(--accent-primary);" in analyzer
+    assert "height: calc(100vh - (var(--space-xl) * 5));" in analyzer
+    assert "border: 1px solid var(--border-default);" in analyzer
+    assert "background: var(--bg-surface);" in analyzer
+    assert "flex: 1 1 auto;" in analyzer
+    assert "overflow-y: auto;" in analyzer
+    assert "border-left: 1px solid var(--border-subtle);" in analyzer
+    assert "pg-category-status-dot" in playground
+    assert "pg-category-editor-toolbar" in playground
+    assert "pg-category-tabs-row" in playground
+    assert "qym-icon-action--danger" in playground
+    assert "_icon('trash')" in playground
+    assert "function _confirmCategoryRemoval" in playground
+    assert "Keep category" in playground
+    assert "confirmLabel: 'Remove category'" in playground
+    assert "pg-category-tabs qym-tabs" in playground
+    assert 'role="tab"' in playground
+    assert "data-detail-search" in playground
+    assert "data-detail-filter" in playground
+    assert "pg-detail-example-count" in playground
+    assert "function _selectCategory" in playground
+    assert "function _filterCategoryDetails" in playground
+    assert "_CATEGORY_PAGE_SIZE = 10" in playground
+    assert 'data-category-pagination="details"' in playground
+    assert 'data-category-pagination="examples"' in playground
+    assert "function _filterCategoryExamples" in playground
+    assert "function _renderCategoryPagination" in playground
+    assert "pageSize: _CATEGORY_PAGE_SIZE" in playground
+    assert "variant: 'run'" not in playground
+    assert "onPageChange: function (nextPage)" in playground
+    assert ".pg-rule-version-lifecycle" not in styles
+    assert "qym-icon-action pg-rule-version-menu-toggle" in playground
+    assert "pg-rule-version-menu-open" in playground
+    assert ".pg-rule-version-menu" in styles
+    assert ".analysis-version-history-popup-content .pg-rule-version-menu-open" in analyzer
+    assert ".analysis-version-history-popup-content .pg-rule-version-copy" in analyzer
+    assert "min-height: calc(var(--space-xl) + var(--space-md));" in analyzer
+    assert ".pg-target-limit-control" in styles
+    assert "min-height: 36px;" in styles
     footer_style = analyzer.split(".analysis-project-footer {", 1)[1].split("}", 1)[0]
     assert "position: fixed" not in footer_style
     assert "border-top: 1px solid var(--border-subtle);" in footer_style
-    assert ".analysis-page .playground-page-overlay" in analyzer
+    assert ".analysis-page .playground-page-root" in analyzer
     assert "projectPanel.append(rulesPanel, documentsPanel)" in analyzer
+    assert "Generate diagnostic rules" not in analyzer
+    assert "rulesSourceCard" not in analyzer
+    assert "manualActionGroup.insertBefore(inference" in analyzer
     assert "rulesWorkspaceCard.append(projectFooter)" in analyzer
     assert "documentsPanel.append(uploadCard, libraryCard)" in analyzer
     assert "runPanel.append(targetCard)" in analyzer
     assert "newRuleTitle.scrollIntoView" in playground
     assert 'class="pg-hl-category" style="color:' not in playground
     assert "pg-hl-rule-title" in playground
+    assert "EVALUATION ITEM DATA:|SUPPLIED ANALYSIS DATA" in playground
     assert ".pg-hl-rule-title { color: var(--accent-secondary);" in styles
+    assert ".pg-hl-json-key { color: var(--accent-secondary);" in styles
 
-    # The shared Compare modal keeps using the untouched controller markup;
-    # the dedicated page applies its organization only after page-mode render.
+    # The shared Compare modal keeps its controller markup; Auto-analysis uses
+    # the explicit dedicated-page renderer and composition callback.
     assert "analysis-scope-card" not in playground
     assert "analysis-document-scope-note" not in playground
 
@@ -3013,6 +3295,31 @@ def test_root_cause_breakdowns_support_metric_scoping() -> None:
         assert "getRowRootCauseAnalyses(row, state.rootCauseMetric)" in source
         assert "analysis.root_cause_detail" in source
         assert "renderSankeyDiagram" in source
+
+
+def test_run_manual_diagnosis_uses_project_backed_modal_picker() -> None:
+    run = (DASHBOARD_DIR / "run.html").read_text(encoding="utf-8")
+    analyzer = ANALYZER_HTML.read_text(encoding="utf-8")
+
+    assert "analysis-category-catalog" in run
+    assert "loadProjectCategoryCatalog" in run
+    assert "addProjectDiagnosisCategory" in run
+    assert "data-picker-taxonomy=\"description\"" in run
+    assert "data-picker-taxonomy=\"when_to_use\"" in run
+    assert "category_taxonomy: nextTaxonomy" in run
+    assert "Human selections are not limited" in run
+    assert "Select up to " not in run
+    assert ".slice(0, categoryLimit)" not in run
+    assert "showRootCauseCategoryPicker" in run
+    assert "showRootCauseDropdown" not in run
+    assert "Save categories" not in run
+    assert "rdi-category-picker" in run
+    assert "aria-selected" in run
+    assert "selectedCategories.splice(index, 1)" in run
+    assert "event.target === picker" in run
+    assert "silent: true" in run
+    assert "rdi-analysis-warning" in run
+    assert "row.item_metadata.analysis_warning" not in analyzer
 
 
 def test_shell_and_run_detail_normalize_trailing_slashes_before_route_parsing() -> None:

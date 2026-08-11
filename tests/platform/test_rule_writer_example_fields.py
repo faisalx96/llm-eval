@@ -13,7 +13,11 @@ def test_rule_writer_example_fields_are_filtered(monkeypatch) -> None:
         choices=[
             SimpleNamespace(
                 message=SimpleNamespace(
-                    content='{"rules":[{"title":"Evidence","instruction":"Use evidence."}]}'
+                    content=(
+                        '{"rules":[{"title":"Evidence","instruction":"Use evidence.",'
+                        '"inferred_from":"Approved example.",'
+                        '"explanation":"It demonstrates the evidence requirement."}]}'
+                    )
                 )
             )
         ]

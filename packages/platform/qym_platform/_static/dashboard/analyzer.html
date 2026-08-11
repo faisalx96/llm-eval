@@ -5,23 +5,34 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>قيِّم • Auto-analysis</title>
   <link rel="icon" type="image/png" href="/static/qym_icon.png">
-  <link rel="stylesheet" href="/static/dashboard.css?v=runs-analysis-c1-20260804-16">
+  <link rel="stylesheet" href="/static/dashboard.css?v=auto-analysis-selectors-20260811-6">
   <link rel="stylesheet" href="/static/shell.css">
   <script src="/static/auth.js"></script>
   <script src="/static/shell.js?v=accessibility-responsive-20260806"></script>
   <script src="/static/metrics.js"></script>
   <script src="/static/qym_table.js"></script>
-  <script src="/static/playground.js?v=runs-analysis-c1-20260804-16"></script>
+  <script src="/static/playground.js?v=auto-analysis-selectors-20260811-5"></script>
   <style>
     /* Typography and color roles follow docs/DESIGN_LANGUAGE.md. */
     .analysis-page {
-      --analysis-page-width: 1120px;
       width: 100%;
       min-width: 0;
-      max-width: var(--analysis-page-width);
-      margin: 0 auto;
       padding: var(--space-xl) var(--space-lg);
       box-sizing: border-box;
+    }
+    #analysis-run-view,
+    #analysis-project-view,
+    #analysis-diagnosis-view,
+    .analysis-landing {
+      width: min(100%, var(--page-constrained-width));
+      margin-right: auto;
+      margin-left: auto;
+    }
+    .analysis-hero,
+    .analysis-tabs {
+      width: min(100%, var(--page-constrained-width));
+      margin-right: auto;
+      margin-left: auto;
     }
     .analysis-hero {
       margin-bottom: var(--space-lg);
@@ -35,9 +46,12 @@
     .analysis-description {
       max-width: 760px;
       margin: var(--space-xs) 0 0;
+      overflow: hidden;
       color: var(--text-muted);
       font-size: var(--font-base);
       line-height: 1.55;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
     .analysis-meta {
       display: flex;
@@ -45,9 +59,13 @@
       gap: var(--space-sm);
       margin-top: var(--space-sm);
       color: var(--text-muted);
-      font-size: var(--font-sm);
+      font-size: var(--font-base);
     }
     .analysis-meta-value {
+      color: var(--text-secondary);
+      font-family: var(--font-sans);
+    }
+    .analysis-meta-data {
       color: var(--text-secondary);
       font-family: var(--font-mono);
     }
@@ -63,7 +81,7 @@
     .analysis-landing {
       padding: var(--space-xl);
       border: 1px solid var(--border-default);
-      border-radius: 8px;
+      border-radius: var(--radius-md);
       background: var(--bg-surface);
       color: var(--text-secondary);
       text-align: center;
@@ -88,28 +106,7 @@
     .analysis-primary-link,
     .analysis-secondary-link,
     .analysis-mapping-open {
-      display: inline-flex;
-      min-height: 36px;
-      align-items: center;
-      justify-content: center;
-      padding: 0 var(--space-md);
-      border: 1px solid var(--border-default);
-      border-radius: 6px;
-      font-family: var(--font-sans);
-      font-size: var(--font-sm);
-      font-weight: 600;
       text-decoration: none;
-      cursor: pointer;
-    }
-    .analysis-primary-link {
-      border-color: var(--accent-primary);
-      background: var(--accent-primary);
-      color: var(--bg-void);
-    }
-    .analysis-secondary-link,
-    .analysis-mapping-open {
-      background: var(--bg-elevated);
-      color: var(--text-secondary);
     }
     .analysis-error {
       color: var(--error);
@@ -138,7 +135,7 @@
       margin-bottom: var(--space-md);
       padding: var(--space-sm) var(--space-md);
       border: 1px solid var(--border-default);
-      border-radius: 8px;
+      border-radius: var(--radius-md);
       background: var(--bg-surface);
       color: var(--text-secondary);
       font-size: var(--font-sm);
@@ -184,7 +181,7 @@
     .analysis-results-card {
       overflow: hidden;
       border: 1px solid var(--border-default);
-      border-radius: 8px;
+      border-radius: var(--radius-md);
       background: var(--bg-surface);
     }
     .analysis-project-shell {
@@ -225,7 +222,7 @@
     }
     .analysis-run-context-label {
       color: var(--text-muted);
-      font-size: var(--font-xs);
+      font-size: var(--font-sm);
       font-weight: 650;
       letter-spacing: 0.05em;
       text-transform: uppercase;
@@ -245,7 +242,7 @@
       display: block;
       margin-bottom: var(--space-xs);
       color: var(--text-muted);
-      font-size: var(--font-xs);
+      font-size: var(--font-sm);
       font-weight: 650;
       letter-spacing: 0.05em;
       text-transform: uppercase;
@@ -263,23 +260,6 @@
       display: flex;
       gap: var(--space-sm);
     }
-    .analysis-metric-action {
-      min-height: 30px;
-      padding: 0 var(--space-sm);
-      border: 1px solid var(--border-default);
-      border-radius: 6px;
-      background: var(--bg-elevated);
-      color: var(--text-secondary);
-      font-family: var(--font-sans);
-      font-size: var(--font-sm);
-      font-weight: 600;
-      cursor: pointer;
-    }
-    .analysis-metric-action:hover {
-      border-color: var(--accent-primary);
-      background: var(--bg-hover);
-      color: var(--accent-primary);
-    }
     .analysis-metric-list {
       display: flex;
       gap: var(--space-sm);
@@ -295,14 +275,7 @@
       flex: 0 0 auto;
       align-items: center;
       gap: var(--space-sm);
-      min-height: 34px;
-      padding: 0 var(--space-md);
-      border: 1px solid var(--border-default);
-      border-radius: 999px;
-      background: var(--bg-elevated);
-      color: var(--text-secondary);
-      font-size: var(--font-sm);
-      cursor: pointer;
+      justify-content: flex-start;
     }
     .analysis-metric-option:has(input:checked) {
       border-color: var(--accent-primary);
@@ -315,7 +288,7 @@
     .analysis-metric-summary {
       margin-top: var(--space-xs);
       color: var(--text-muted);
-      font-size: var(--font-xs);
+      font-size: var(--font-sm);
     }
     .analysis-context-toggles {
       display: grid;
@@ -331,7 +304,7 @@
       gap: var(--space-sm);
       padding: var(--space-md);
       border: 1px solid var(--border-subtle);
-      border-radius: 8px;
+      border-radius: var(--radius-md);
       background: var(--bg-elevated);
     }
     .analysis-context-toggle-control {
@@ -358,28 +331,12 @@
     }
     .analysis-context-toggle-copy span {
       color: var(--text-muted);
-      font-size: var(--font-xs);
+      font-size: var(--font-sm);
       line-height: 1.4;
     }
     .analysis-context-link {
-      display: inline-grid;
-      width: calc(var(--space-lg) + var(--space-sm));
-      height: calc(var(--space-lg) + var(--space-sm));
       flex: 0 0 auto;
-      place-items: center;
-      border: 1px solid transparent;
-      border-radius: 6px;
-      color: var(--text-muted);
       text-decoration: none;
-    }
-    .analysis-context-link:hover {
-      border-color: var(--border-subtle);
-      background: var(--bg-hover);
-      color: var(--accent-primary);
-    }
-    .analysis-context-link:focus-visible {
-      outline: 2px solid var(--accent-primary);
-      outline-offset: 2px;
     }
     .analysis-context-link .pg-action-icon {
       width: var(--space-md);
@@ -578,7 +535,7 @@
       width: var(--space-sm);
       height: var(--space-sm);
       flex: 0 0 var(--space-sm);
-      border-radius: 999px;
+      border-radius: var(--radius-pill);
       background: var(--warning);
     }
     #analysis-diagnosis-view .pg-category-status-dot--validated {
@@ -696,21 +653,9 @@
       white-space: nowrap;
     }
     #analysis-diagnosis-view .pg-category-remove {
-      display: inline-grid;
-      width: var(--control-height);
-      height: var(--control-height);
-      min-height: var(--control-height);
-      padding: 0;
-      place-items: center;
-      border: 1px solid transparent;
-      border-radius: var(--control-radius);
-      background: transparent;
       color: var(--error);
-      cursor: pointer;
     }
     #analysis-diagnosis-view .pg-category-remove:hover {
-      border-color: var(--error-dim);
-      background: var(--error-dim);
       color: var(--error);
     }
     #analysis-diagnosis-view .pg-category-remove .pg-action-icon {
@@ -963,7 +908,7 @@
       padding: var(--space-sm);
       overflow: auto;
       border: 1px solid var(--border-subtle);
-      border-radius: 6px;
+      border-radius: var(--control-radius);
       background: var(--bg-void);
       color: var(--text-secondary);
       font-family: var(--font-mono);
@@ -987,6 +932,14 @@
       color: var(--text-muted);
       font-size: var(--font-sm);
     }
+    .analysis-target-tool-actions {
+      display: flex;
+      min-width: 0;
+      align-items: center;
+      justify-content: flex-end;
+      flex-wrap: wrap;
+      gap: var(--space-md);
+    }
     .analysis-target-pagination {
       display: flex;
       justify-content: flex-end;
@@ -1003,42 +956,6 @@
     }
     .analysis-project-heading {
       position: relative;
-    }
-    .analysis-info-button {
-      display: inline-grid;
-      width: 22px;
-      height: 22px;
-      place-items: center;
-      padding: 0;
-      border: 1px solid var(--border-default);
-      border-radius: 50%;
-      background: var(--bg-elevated);
-      color: var(--text-muted);
-      cursor: pointer;
-    }
-    .analysis-info-button:hover,
-    .analysis-info-button[aria-expanded="true"] {
-      border-color: var(--accent-primary);
-      color: var(--accent-primary);
-    }
-    .analysis-info-button .pg-action-icon {
-      width: 13px;
-      height: 13px;
-    }
-    .analysis-info-popover {
-      position: absolute;
-      z-index: 3;
-      top: calc(100% + var(--space-xs));
-      left: 0;
-      width: min(420px, 100%);
-      padding: var(--space-sm) var(--space-md);
-      border: 1px solid var(--border-default);
-      border-radius: 8px;
-      background: var(--bg-surface);
-      color: var(--text-secondary);
-      font-size: var(--font-sm);
-      line-height: 1.5;
-      box-shadow: 0 12px 28px color-mix(in srgb, var(--bg-void) 65%, transparent);
     }
     .analysis-rules-layout {
       display: grid;
@@ -1178,7 +1095,7 @@
     .analysis-project-shell .pg-rule-item-number {
       color: var(--text-muted);
       font-family: var(--font-mono);
-      font-size: var(--font-xs);
+      font-size: var(--font-sm);
       text-align: center;
     }
     .analysis-project-shell .pg-rule-item-summary {
@@ -1203,7 +1120,7 @@
       -webkit-box-orient: vertical;
       -webkit-line-clamp: 2;
       color: var(--text-muted);
-      font-size: var(--font-xs);
+      font-size: var(--font-sm);
       line-height: 1.4;
       white-space: normal;
     }
@@ -1304,7 +1221,7 @@
     }
     .analysis-rule-toolbar .pg-rule-count {
       color: var(--text-muted);
-      font-size: var(--font-xs);
+      font-size: var(--font-sm);
     }
     .analysis-rule-version-meta {
       display: inline-flex;
@@ -1326,26 +1243,6 @@
       font-family: var(--font-mono);
       font-variant-numeric: tabular-nums;
     }
-    .analysis-rule-view-state {
-      display: inline-flex;
-      align-items: center;
-      padding: calc(var(--space-xs) / 2) var(--space-sm);
-      border: 1px solid var(--border-default);
-      border-radius: 999px;
-      font-size: var(--font-xs);
-      font-weight: 650;
-      white-space: nowrap;
-    }
-    .analysis-rule-view-state-readonly {
-      border-color: var(--warning-dim);
-      background: color-mix(in srgb, var(--warning) 12%, var(--bg-elevated));
-      color: var(--warning);
-    }
-    .analysis-rule-view-state-editable {
-      border-color: var(--success-dim);
-      background: color-mix(in srgb, var(--success) 12%, var(--bg-elevated));
-      color: var(--success);
-    }
     .analysis-project-shell .pg-rule-source-actions {
       flex-wrap: wrap;
     }
@@ -1360,7 +1257,7 @@
     .analysis-project-shell .pg-document-item {
       min-width: 0;
       border: 1px solid var(--border-subtle);
-      border-radius: 8px;
+      border-radius: var(--radius-md);
       background: var(--bg-elevated);
     }
     .analysis-project-footer {
@@ -1420,7 +1317,10 @@
       height: var(--control-height);
       min-height: var(--control-height);
       flex: 0 0 auto;
-      padding: 0 var(--space-xs);
+      padding: 0;
+      border: 0;
+      border-radius: 0;
+      background: transparent;
     }
     .analysis-project-footer #pg-create-rule-version {
       border-color: var(--accent-tertiary);
@@ -1471,9 +1371,9 @@
       overflow-y: auto;
       padding: var(--space-md);
       border: 1px solid var(--border-strong);
-      border-radius: 8px;
+      border-radius: var(--radius-md);
       background: var(--bg-surface);
-      box-shadow: 0 18px 60px color-mix(in srgb, var(--bg-void) 55%, transparent);
+      box-shadow: 0 var(--space-lg) calc(var(--space-xl) * 2) color-mix(in srgb, var(--bg-void) 55%, transparent);
     }
     .analysis-project-shell .pg-rule-compare-picker .pg-rule-operation-help {
       max-width: 34rem;
@@ -1492,7 +1392,7 @@
     .analysis-project-shell .pg-rule-merge-conflict {
       padding: var(--space-md);
       border: 1px solid var(--border-subtle);
-      border-radius: 8px;
+      border-radius: var(--radius-md);
       background: var(--bg-elevated);
     }
     .analysis-project-shell .pg-rule-merge-conflict + .pg-rule-merge-conflict {
@@ -1514,12 +1414,12 @@
     .analysis-project-shell .pg-rule-merge-sides > div {
       padding: var(--space-sm);
       border: 1px solid var(--border-subtle);
-      border-radius: 6px;
+      border-radius: var(--control-radius);
     }
     .analysis-project-shell .pg-rule-merge-sides span,
     .analysis-project-shell .pg-rule-merge-choice {
       color: var(--text-muted);
-      font-size: var(--font-xs);
+      font-size: var(--font-sm);
     }
     .analysis-project-shell .pg-rule-merge-sides p {
       margin: var(--space-xs) 0 0;
@@ -1538,49 +1438,18 @@
     .analysis-project-shell .pg-rule-merge-actions {
       margin-top: var(--space-md);
     }
-    .analysis-page .playground-header {
-      display: none;
-    }
-    .analysis-page .playground-page-overlay .playground-modal {
-      min-height: 0;
-      overflow: visible;
-      border: 0;
-      border-radius: 0;
-      background: transparent;
-    }
-    .analysis-page .playground-page-overlay .playground-scroll {
-      max-width: none;
-      margin: 0;
-      padding: 0;
-      overflow: visible;
-    }
-    .analysis-page .playground-page-overlay .pg-workspace {
+    .analysis-page .playground-page-root,
+    .analysis-page .playground-page-content,
+    .analysis-page .playground-page-sections {
       display: block;
-    }
-    .analysis-page .playground-page-overlay .pg-context-panel,
-    .analysis-page .playground-page-overlay .pg-analysis-main {
-      position: static;
       width: 100%;
       min-width: 0;
-      max-height: none;
-      padding: 0;
-      overflow: visible;
-      box-sizing: border-box;
-      border: 0;
-      background: transparent;
-    }
-    .analysis-page .playground-page-overlay .pg-section {
       margin: 0;
-      border-color: var(--border-subtle);
-      border-radius: 8px;
-      background: var(--bg-elevated);
-      box-shadow: none;
+      padding: 0;
     }
-    .analysis-page .playground-page-overlay .pg-section-summary {
-      padding: var(--space-md);
-    }
-    .analysis-page .playground-page-overlay .pg-section-body {
-      padding: 0 var(--space-md) var(--space-md);
+    .analysis-page .playground-page-root .pg-workspace {
+      display: block;
+      width: 100%;
     }
     .analysis-run-footer {
       position: relative;
@@ -1591,7 +1460,7 @@
       margin-top: var(--space-lg);
       padding: var(--space-md);
       border: 1px solid var(--border-default);
-      border-radius: 8px;
+      border-radius: var(--radius-md);
       background: var(--bg-surface);
       box-shadow: none;
     }
@@ -1609,11 +1478,9 @@
     }
     .analysis-action-copy span {
       color: var(--text-muted);
-      font-size: var(--font-xs);
+      font-size: var(--font-sm);
     }
     .analysis-run-footer .pg-footer-btn {
-      min-height: 38px;
-      border-radius: 6px;
       box-shadow: none;
       transform: none;
     }
@@ -1629,7 +1496,7 @@
     }
     .analysis-preview-card {
       border: 1px solid var(--border-default);
-      border-radius: 10px;
+      border-radius: var(--radius-md);
       background: var(--bg-surface);
     }
     .analysis-preview-card > .analysis-section-header {
@@ -1661,14 +1528,14 @@
     }
     .analysis-mapping-dialog {
       display: grid;
-      width: min(1040px, 80vw);
-      height: min(820px, 80vh);
+      width: min(calc(var(--page-constrained-width) - (var(--space-lg) * 4)), 80vw);
+      height: 80vh;
       grid-template-rows: auto minmax(0, 1fr) auto;
       overflow: hidden;
       border: 1px solid var(--border-default);
-      border-radius: 10px;
+      border-radius: var(--radius-md);
       background: var(--bg-surface);
-      box-shadow: 0 24px 80px color-mix(in srgb, var(--bg-void) 75%, transparent);
+      box-shadow: 0 var(--space-lg) calc(var(--space-xl) * 2) color-mix(in srgb, var(--bg-void) 75%, transparent);
     }
     .analysis-wizard-header,
     .analysis-wizard-footer {
@@ -1686,21 +1553,12 @@
     .analysis-wizard-title {
       margin: 0;
       color: var(--text-primary);
-      font-size: var(--font-lg);
-      font-weight: 600;
+      font-size: var(--font-xl);
+      font-weight: 650;
     }
     .analysis-wizard-progress {
       color: var(--text-muted);
       font-size: var(--font-sm);
-    }
-    .analysis-wizard-close {
-      width: 32px;
-      height: 32px;
-      border: 1px solid var(--border-default);
-      border-radius: 6px;
-      background: var(--bg-elevated);
-      color: var(--text-secondary);
-      cursor: pointer;
     }
     .analysis-wizard-body {
       min-height: 0;
@@ -1723,23 +1581,6 @@
       gap: var(--space-sm);
       margin-left: auto;
     }
-    .analysis-wizard-button {
-      min-height: 36px;
-      padding: 0 var(--space-md);
-      border: 1px solid var(--border-default);
-      border-radius: 6px;
-      background: var(--bg-elevated);
-      color: var(--text-secondary);
-      font-family: var(--font-sans);
-      font-size: var(--font-sm);
-      font-weight: 600;
-      cursor: pointer;
-    }
-    .analysis-wizard-next {
-      border-color: var(--accent-primary);
-      background: var(--accent-primary);
-      color: var(--bg-void);
-    }
     .analysis-page .pg-filter-row {
       grid-template-columns: 260px max-content max-content;
       align-items: start;
@@ -1754,7 +1595,7 @@
     }
     .analysis-page .pg-filter-limit {
       width: auto;
-      min-height: 34px;
+      min-height: var(--control-height);
       align-self: end;
       flex-direction: row;
       align-items: center;
@@ -1776,7 +1617,7 @@
       width: 100%;
     }
     .analysis-page .pg-slider-control {
-      min-height: 34px;
+      min-height: var(--control-height);
       align-items: center;
       gap: var(--space-sm);
     }
@@ -1785,7 +1626,7 @@
     }
     .analysis-page .pg-score-slider::-webkit-slider-runnable-track {
       height: 6px;
-      border-radius: 999px;
+      border-radius: var(--radius-pill);
       background: var(--border-default);
     }
     .analysis-page .pg-score-slider::-webkit-slider-thumb {
@@ -1795,7 +1636,7 @@
       background: var(--border-default);
     }
     .analysis-page .pg-filter-options {
-      min-height: 34px;
+      min-height: var(--control-height);
       flex-wrap: nowrap;
       gap: var(--space-md);
     }
@@ -1803,12 +1644,6 @@
       max-height: none;
       overflow: visible;
       padding-right: 0;
-    }
-    .analysis-page .pg-item-metric,
-    .analysis-page .pg-item-target-count {
-      color: var(--text-muted);
-      font-family: var(--font-mono);
-      font-size: var(--font-xs);
     }
     .analysis-page .pg-zero-target-actions {
       display: flex;
@@ -1821,23 +1656,6 @@
       color: var(--accent-primary);
       font-size: var(--font-sm);
       text-decoration: none;
-    }
-    .analysis-page .pg-zero-target-actions button {
-      min-height: 34px;
-      padding: 0 var(--space-md);
-      border: 1px solid var(--border-default);
-      border-radius: 6px;
-      background: var(--bg-elevated);
-      color: var(--text-secondary);
-      font-family: var(--font-sans);
-      font-size: var(--font-sm);
-      font-weight: 600;
-      cursor: pointer;
-    }
-    .analysis-page .pg-zero-target-actions button:hover {
-      border-color: var(--accent-primary);
-      background: var(--bg-hover);
-      color: var(--text-primary);
     }
     .analysis-dashboard {
       display: grid;
@@ -1860,7 +1678,7 @@
       gap: var(--space-sm);
       padding: var(--space-md);
       border: 1px solid var(--border-default);
-      border-radius: 8px;
+      border-radius: var(--radius-md);
       background: var(--bg-surface);
     }
     .analysis-dashboard-commandbar {
@@ -1879,6 +1697,10 @@
     }
     .analysis-dashboard-filter-row {
       flex: 1 1 600px;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      align-items: start;
+      gap: var(--space-sm);
     }
     .analysis-dashboard-quick-filters {
       flex: 0 0 auto;
@@ -1893,24 +1715,19 @@
       text-transform: uppercase;
     }
     .analysis-dashboard-filter {
-      flex: 0 1 auto;
+      min-width: 0;
     }
-    .analysis-dashboard-filter > .qym-dropdown__trigger {
-      min-width: calc(var(--dropdown-width) / 2);
-      max-width: var(--dropdown-width);
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
+    .analysis-dashboard-filter > .multi-select-btn {
+      width: 100%;
     }
-    .analysis-dashboard-filter .qym-dropdown__menu {
-      width: min(360px, calc(100vw - (2 * var(--space-lg))));
-      padding-top: var(--space-xs);
+    .analysis-dashboard-filter .multi-select-dropdown {
+      width: max(100%, min(360px, calc(100vw - (2 * var(--space-lg)))));
     }
-    .analysis-dashboard-filter .qym-dropdown__option:has(input:checked) {
+    .analysis-dashboard-filter .multi-select-option:has(input:checked) {
       background: color-mix(in srgb, var(--accent-primary) 10%, var(--bg-surface));
       color: var(--text-primary);
     }
-    .analysis-dashboard-filter .qym-dropdown__option-label input {
+    .analysis-dashboard-filter .ms-option-main input {
       width: var(--space-md);
       height: var(--space-md);
       margin: 0;
@@ -1935,7 +1752,7 @@
     .analysis-dashboard-card {
       min-width: 0;
       border: 1px solid var(--border-default);
-      border-radius: 8px;
+      border-radius: var(--radius-md);
       background: var(--bg-surface);
     }
     .analysis-dashboard-context-card {
@@ -2348,7 +2165,7 @@
     .analysis-dashboard-bar-track {
       height: var(--space-sm);
       overflow: hidden;
-      border-radius: 999px;
+      border-radius: var(--radius-pill);
       background: var(--bg-elevated);
     }
     .analysis-dashboard-bar-fill {
@@ -2440,7 +2257,7 @@
     .analysis-dashboard-distribution-track {
       height: var(--space-sm);
       overflow: hidden;
-      border-radius: 999px;
+      border-radius: var(--radius-pill);
       background: var(--bg-elevated);
     }
     .analysis-dashboard-distribution-fill {
@@ -2515,14 +2332,14 @@
       height: var(--space-lg);
       overflow: hidden;
       border: 1px solid var(--border-default);
-      border-radius: 5px;
+      border-radius: var(--control-radius);
       background: var(--bg-elevated);
     }
     .analysis-dashboard-stacked-segment,
     .analysis-dashboard-compare-segment {
-      min-width: 2px;
+      min-width: calc(var(--space-xs) / 2);
       height: 100%;
-      transition: opacity 0.15s;
+      transition: opacity var(--transition-fast);
     }
     .analysis-dashboard-stacked-segment {
       cursor: help;
@@ -2588,7 +2405,7 @@
       flex: 0 0 auto;
       width: var(--space-sm);
       height: var(--space-sm);
-      border-radius: 2px;
+      border-radius: calc(var(--space-xs) / 2);
     }
     .analysis-dashboard-compare-visual {
       display: grid;
@@ -3106,6 +2923,10 @@
         align-items: stretch;
         flex-direction: column;
       }
+      .analysis-target-tool-actions {
+        width: 100%;
+        justify-content: flex-start;
+      }
       .analysis-run-footer {
         position: relative;
       }
@@ -3618,8 +3439,8 @@
       }
     }
   </style>
-  <link rel="stylesheet" href="/static/ui_components.css?v=ui-consistency-20260803-60">
-  <script defer src="/static/ui_components.js?v=ui-consistency-20260803-28"></script>
+  <link rel="stylesheet" href="/static/ui_components.css?v=auto-analysis-selectors-20260811-1">
+  <script defer src="/static/ui_components.js?v=auto-analysis-selectors-20260811-1"></script>
 </head>
 <body>
   <div class="analysis-page" role="region" aria-labelledby="analysis-title">
@@ -3627,7 +3448,7 @@
       <h1 class="analysis-title" id="analysis-title">Auto-analysis</h1>
       <p class="analysis-description">Diagnose failed metric targets with a focused run workspace and reusable project guidance.</p>
       <div class="analysis-meta">
-        <span>Project <span class="analysis-meta-value" id="analysis-project-meta">loading</span></span>
+        <span>Project <span class="analysis-meta-data" id="analysis-project-meta">loading</span></span>
         <span aria-hidden="true">·</span>
         <span>Workspace <span class="analysis-meta-value">metric failure diagnosis</span></span>
       </div>
@@ -3638,7 +3459,7 @@
           aria-selected="true" aria-controls="analysis-run-view" data-analysis-view="run">Analyze run</button>
         <button class="analysis-tab qym-tabs__tab" id="analysis-diagnosis-tab" type="button" role="tab"
           aria-selected="false" aria-controls="analysis-diagnosis-view" data-analysis-view="categories"
-          aria-disabled="true" disabled tabindex="-1" title="Select a run to configure diagnosis categories">Diagnosis categories</button>
+          tabindex="-1">Diagnosis categories</button>
         <button class="analysis-tab qym-tabs__tab" id="analysis-rules-tab" type="button" role="tab"
           aria-selected="false" aria-controls="analysis-rules-view" data-analysis-view="rules" tabindex="-1">Production rules</button>
         <button class="analysis-tab qym-tabs__tab" id="analysis-documents-tab" type="button" role="tab"
@@ -3652,14 +3473,14 @@
       <h2 id="analysis-error-title">Unable to load auto-analysis</h2>
       <p id="analysis-error-message"></p>
       <div class="analysis-error-actions">
-        <button class="analysis-primary-link" id="analysis-error-retry" type="button">Retry</button>
-        <a class="analysis-secondary-link" id="analysis-error-runs" href="/">Open Runs</a>
+        <button class="analysis-primary-link qym-inline-action qym-inline-action--accent" id="analysis-error-retry" type="button">Retry</button>
+        <a class="analysis-secondary-link qym-inline-action qym-inline-action--neutral" id="analysis-error-runs" href="/">Open Runs</a>
       </div>
     </div>
     <section class="analysis-landing" id="analysis-landing" hidden>
       <h2>Select a run to start analysis</h2>
       <p>The Analyze run workspace requires an explicit run. Go to the Runs page and choose Auto-analysis for the run you want to diagnose. Diagnosis categories are available at project level; Production rules and Documents remain available in the project tabs above.</p>
-      <a class="analysis-primary-link" id="analysis-go-runs" href="#">Select a run from Runs</a>
+      <a class="analysis-primary-link qym-inline-action qym-inline-action--accent" id="analysis-go-runs" href="#">Select a run from Runs</a>
     </section>
     <section class="analysis-dashboard analysis-view-panel" id="analysis-dashboard-view" role="tabpanel"
       aria-labelledby="analysis-dashboard-tab" hidden>
@@ -3738,6 +3559,7 @@
           payload: null,
           filters: {},
           filterFacets: null,
+          filterQueries: {},
           openFilterKey: '',
           selectedRuns: [],
           compareGroup: 'category',
@@ -3917,7 +3739,7 @@
       function renderMetricSelector() {
         const list = document.getElementById('analysis-metric-list');
         list.innerHTML = state.metrics.map(metric =>
-          '<label class="analysis-metric-option">' +
+          '<label class="analysis-metric-option qym-chip">' +
             '<input type="checkbox" value="' + escapeAttr(metric) + '"' + (state.selectedMetrics.includes(metric) ? ' checked' : '') + ' />' +
             '<span>' + escapeHtml(metric) + '</span>' +
           '</label>'
@@ -4027,16 +3849,16 @@
           const label = key === 'run_id' ? String(item?.run_name || item?.label || value) : dashboardLabel(typeof item === 'string' ? item : item?.value);
           const hasCount = typeof item !== 'string' && item?.count != null;
           const count = liveCounts.has(value) ? liveCounts.get(value) : 0;
-          return { value, label: hasCount || liveCounts.has(value) ? label + ' · ' + formatDashboardNumber(count) : label };
+          return { value, label, count: hasCount || liveCounts.has(value) ? count : null };
         });
       }
 
       function reopenDashboardFilter(host) {
         if (!state.dashboard.openFilterKey) return;
-        const wrapper = Array.from(host.querySelectorAll('.qym-dropdown')).find(item => item.dataset.dashboardFilter === state.dashboard.openFilterKey);
+        const wrapper = Array.from(host.querySelectorAll('.analysis-dashboard-filter')).find(item => item.dataset.dashboardFilter === state.dashboard.openFilterKey);
         if (!wrapper) return;
-        wrapper.classList.add('is-open');
-        wrapper.querySelector('.qym-dropdown__trigger')?.setAttribute('aria-expanded', 'true');
+        wrapper.querySelector('.multi-select-dropdown')?.classList.add('open');
+        wrapper.querySelector('.multi-select-btn')?.setAttribute('aria-expanded', 'true');
       }
 
       function renderDashboardFilterControls(payload) {
@@ -4051,31 +3873,54 @@
           const activeSelection = new Set(state.dashboard.filters[key] || []);
           const selected = hasSelection ? activeSelection : new Set(options.map(option => option.value));
           const buttonLabel = dashboardFilterButtonLabel(key, label);
+          const searchValue = state.dashboard.filterQueries[key] || '';
           const optionsHtml = options.map(option =>
-            '<div class="qym-dropdown__option" data-qym-dropdown-search-text="' + escapeAttr(option.label) + '">' +
-              '<label class="qym-dropdown__option-label"><input type="checkbox" value="' + escapeAttr(option.value) + '"' +
-                (selected.has(option.value) ? ' checked' : '') + ' /><span class="qym-dropdown__option-text">' + escapeHtml(option.label) + '</span></label></div>'
+            '<div class="multi-select-option qym-dropdown__option" data-value="' + escapeAttr(option.value) + '" data-qym-dropdown-search-text="' + escapeAttr(option.label) + '">' +
+              '<label class="ms-option-main"><input type="checkbox" value="' + escapeAttr(option.value) + '"' +
+                (selected.has(option.value) ? ' checked' : '') + ' /><span>' + escapeHtml(option.label) + '</span>' +
+                (option.count == null ? '' : '<span class="option-count">' + escapeHtml(formatDashboardNumber(option.count)) + '</span>') + '</label>' +
+              '<button type="button" class="ms-only-btn qym-dropdown__only" data-dashboard-filter-only="' + escapeAttr(option.value) + '" aria-label="Show only ' + escapeAttr(option.label) + '" title="Show only this option">Only</button></div>'
           ).join('');
           const menuId = 'analysis-dashboard-filter-' + key;
-          return '<div class="analysis-dashboard-filter qym-dropdown" data-dashboard-filter="' + escapeAttr(key) + '">' +
-            '<button type="button" class="qym-control qym-select qym-dropdown__trigger" aria-expanded="false" aria-haspopup="true" aria-controls="' + escapeAttr(menuId) + '">' + escapeHtml(buttonLabel) + '</button>' +
-            '<div class="qym-dropdown__menu" id="' + escapeAttr(menuId) + '" role="group" aria-label="' + escapeAttr(label + ' filter options') + '">' +
-              '<input class="qym-control qym-search qym-dropdown__search" type="search" aria-label="Search ' + escapeAttr(label) + '" placeholder="Search ' + escapeAttr(label) + '" />' +
-              '<div class="qym-dropdown__actions"><button type="button" class="qym-inline-action qym-inline-action--neutral" data-dashboard-filter-action="all">Select all</button><button type="button" class="qym-inline-action qym-inline-action--neutral" data-dashboard-filter-action="none">Clear</button></div>' +
+          return '<div class="analysis-dashboard-filter multi-select-wrapper qym-review-selector" data-dashboard-filter="' + escapeAttr(key) + '">' +
+            '<button type="button" class="multi-select-btn' + (hasSelection ? ' has-selection' : '') + '" aria-expanded="false" aria-controls="' + escapeAttr(menuId) + '">' + escapeHtml(buttonLabel) + '</button>' +
+            '<div class="multi-select-dropdown" id="' + escapeAttr(menuId) + '" aria-label="' + escapeAttr(label + ' filter options') + '">' +
+              '<div class="model-search-box qym-dropdown__search"><input class="model-search-input qym-control qym-search" type="search" data-ms-search aria-label="Search ' + escapeAttr(label) + '" placeholder="Search ' + escapeAttr(label) + '" value="' + escapeAttr(searchValue) + '" /></div>' +
+              '<div class="ms-actions qym-dropdown__actions"><button type="button" class="ms-action-btn qym-dropdown__action" data-dashboard-filter-action="all">Select all</button><button type="button" class="ms-action-btn qym-dropdown__action" data-dashboard-filter-action="none">Clear</button></div>' +
               (optionsHtml || '<div class="analysis-dashboard-filter-empty">No options match the current scope.</div>') + '</div></div>';
         }).join('');
         function updateFilterTrigger(wrapper, key, label) {
-          const trigger = wrapper.querySelector('.qym-dropdown__trigger');
+          const trigger = wrapper.querySelector('.multi-select-btn');
           if (!trigger) return;
           trigger.textContent = dashboardFilterButtonLabel(key, label);
+          trigger.classList.toggle('has-selection', dashboardFilterHasSelection(key));
         }
-        host.querySelectorAll('.qym-dropdown').forEach(wrapper => {
+        host.querySelectorAll('.analysis-dashboard-filter').forEach(wrapper => {
           const key = wrapper.dataset.dashboardFilter;
           const label = definitions.find(definition => definition[0] === key)?.[1] || key;
+          wrapper.querySelector('.multi-select-btn')?.addEventListener('click', () => {
+            state.dashboard.openFilterKey = wrapper.querySelector('.multi-select-dropdown')?.classList.contains('open') ? '' : key;
+          });
+          wrapper.querySelector('[data-ms-search]')?.addEventListener('input', event => {
+            state.dashboard.filterQueries[key] = event.target.value;
+          });
           wrapper.querySelectorAll('input[type="checkbox"]').forEach(input => {
             input.addEventListener('change', () => {
               state.dashboard.filters[key] = Array.from(wrapper.querySelectorAll('input:checked')).map(node => node.value);
               state.dashboard.openFilterKey = key;
+              updateFilterTrigger(wrapper, key, label);
+              const count = document.getElementById('analysis-dashboard-filter-count');
+              if (count) count.textContent = String(dashboardFilterCount());
+              loadDashboard().catch(error => showDashboardError(error));
+            });
+          });
+          wrapper.querySelectorAll('[data-dashboard-filter-only]').forEach(action => {
+            action.addEventListener('click', event => {
+              event.preventDefault();
+              event.stopPropagation();
+              state.dashboard.filters[key] = [action.dataset.dashboardFilterOnly];
+              state.dashboard.openFilterKey = key;
+              wrapper.querySelectorAll('input[type="checkbox"]').forEach(input => { input.checked = input.value === action.dataset.dashboardFilterOnly; });
               updateFilterTrigger(wrapper, key, label);
               const count = document.getElementById('analysis-dashboard-filter-count');
               if (count) count.textContent = String(dashboardFilterCount());
@@ -4621,12 +4466,12 @@
           ['category', 'run', 'metric'].map(value => '<button class="qym-segmented__option" type="button" data-dashboard-compare-group="' + value + '" aria-pressed="' + (state.dashboard.compareGroup === value ? 'true' : 'false') + '">' + escapeHtml(value.charAt(0).toLocaleUpperCase() + value.slice(1)) + '</button>').join('') + '</div></div>' +
           '<div class="analysis-dashboard-control-group" role="group" aria-label="Comparison measure"><span class="analysis-dashboard-control-label">Measure</span><div class="qym-segmented" data-qym-segmented-key="dashboard-compare-measure">' +
           [['count', 'Occurrences'], ['share', 'Share'], ['score', 'Average score']].map(option => '<button class="qym-segmented__option" type="button" data-dashboard-compare-measure="' + option[0] + '" aria-pressed="' + (state.dashboard.compareMeasure === option[0] ? 'true' : 'false') + '">' + option[1] + '</button>').join('') + '</div></div>' +
-          '<label class="analysis-dashboard-control-group"><span class="analysis-dashboard-control-label" for="analysis-dashboard-compare-score-metric">Score metric</span><select id="analysis-dashboard-compare-score-metric" class="qym-control qym-select" aria-label="Comparison score metric"' + (compareMetricNames.length ? '' : ' disabled') + '>' + metricOptions + '</select></label></div>';
+          '<div class="analysis-dashboard-control-group"><span class="analysis-dashboard-control-label" id="analysis-dashboard-compare-score-metric-label">Score metric</span><select id="analysis-dashboard-compare-score-metric" class="qym-control qym-select" aria-labelledby="analysis-dashboard-compare-score-metric-label" aria-label="Comparison score metric"' + (compareMetricNames.length ? '' : ' disabled') + '>' + metricOptions + '</select></div></div>';
         host.hidden = false;
         host.removeAttribute('aria-busy');
         const compatibilityNote = compatibility.comparable ? 'Higher/lower is interpreted using the metric direction.' : ('Comparison unavailable: ' + (compatibility.reason || 'metric semantics differ.'));
         const comparisonCopyHtml = '<h2>Run comparison · ' + escapeHtml(metric) + '</h2><span>' + escapeHtml(compatibilityNote) + '</span>';
-        const comparisonActionsHtml = '<label class="analysis-dashboard-control-group"><span class="analysis-dashboard-control-label" for="analysis-dashboard-baseline">Baseline</span><select id="analysis-dashboard-baseline" class="qym-control qym-select">' + selectedRunIds.map(runId => '<option value="' + escapeAttr(runId) + '"' + (runId === state.dashboard.baselineRunId ? ' selected' : '') + '>' + escapeHtml(runName(runId)) + '</option>').join('') + '</select></label>' + rows.map(row => {
+        const comparisonActionsHtml = '<div class="analysis-dashboard-control-group"><span class="analysis-dashboard-control-label" id="analysis-dashboard-baseline-label">Baseline</span><select id="analysis-dashboard-baseline" class="qym-control qym-select" aria-labelledby="analysis-dashboard-baseline-label" aria-label="Comparison baseline">' + selectedRunIds.map(runId => '<option value="' + escapeAttr(runId) + '"' + (runId === state.dashboard.baselineRunId ? ' selected' : '') + '>' + escapeHtml(runName(runId)) + '</option>').join('') + '</select></div>' + rows.map(row => {
           const status = row.comparison_status || 'tied';
           const deltaValue = row.improvement_delta;
           const delta = deltaValue == null ? '—' : ((deltaValue > 0 ? '+' : '') + formatDashboardNumber(deltaValue, 3));
@@ -4671,6 +4516,12 @@
             state.dashboard.compareScoreMetric = event.target.value || '';
             loadDashboardCompare().catch(error => showDashboardError(error));
           });
+        }
+        if (window.QymUIComponents?.enhanceSelect) {
+          const baselineSelect = host.querySelector('#analysis-dashboard-baseline');
+          const scoreMetricSelect = host.querySelector('#analysis-dashboard-compare-score-metric');
+          if (baselineSelect) window.QymUIComponents.enhanceSelect(baselineSelect, { className: 'analysis-dashboard-compare-selector', label: 'Comparison baseline', search: false });
+          if (scoreMetricSelect) window.QymUIComponents.enhanceSelect(scoreMetricSelect, { className: 'analysis-dashboard-compare-selector', label: 'Comparison score metric', search: false });
         }
       }
 
@@ -4782,10 +4633,14 @@
       }));
       document.getElementById('analysis-dashboard-clear')?.addEventListener('click', () => {
         state.dashboard.filters = {};
+        state.dashboard.filterQueries = {};
         state.dashboard.openFilterKey = '';
         state.dashboard.range = 'all';
         syncDashboardToggle('[data-dashboard-range]', 'dashboardRange', 'all');
         loadDashboard().catch(error => showDashboardError(error));
+      });
+      document.addEventListener('click', event => {
+        if (!event.target.closest('.analysis-dashboard-filter')) state.dashboard.openFilterKey = '';
       });
       document.getElementById('analysis-dashboard-compare')?.addEventListener('click', () => {
         state.dashboard.compareRequested = true;
@@ -4813,10 +4668,10 @@
                 '<li class="analysis-run-context-item"><span class="analysis-run-context-label">Model</span><span class="analysis-run-context-value">' + runSummaryValue(run.model_name) + '</span></li>' +
                 '<li class="analysis-run-context-item"><span class="analysis-run-context-label">Dataset</span><span class="analysis-run-context-value">' + runSummaryValue(run.dataset_name) + '</span></li>' +
               '</ul></div>' +
-            '<a class="analysis-secondary-link" href="' + runUrl(runId) + '">View run</a></div>' +
+            '<a class="analysis-secondary-link qym-inline-action qym-inline-action--neutral" href="' + runUrl(runId) + '">View run</a></div>' +
           '<div class="analysis-metrics"><div class="analysis-metric-heading"><span class="analysis-run-label">Metrics to analyze</span>' +
-            '<span class="analysis-metric-actions"><button class="analysis-metric-action" id="analysis-metrics-all" type="button">Select all</button>' +
-            '<button class="analysis-metric-action" id="analysis-metrics-none" type="button">Clear</button></span></div>' +
+            '<span class="analysis-metric-actions"><button class="analysis-metric-action qym-inline-action qym-inline-action--neutral" id="analysis-metrics-all" type="button">Select all</button>' +
+            '<button class="analysis-metric-action qym-inline-action qym-inline-action--neutral" id="analysis-metrics-none" type="button">Clear</button></span></div>' +
             '<div class="analysis-metric-list" id="analysis-metric-list" role="group" aria-label="Metrics to analyze"></div>' +
             '<div class="analysis-metric-summary" id="analysis-metric-summary"></div></div>';
         return card;
@@ -4831,7 +4686,7 @@
           ['pg-use-trace', 'Trace evidence', 'Execution evidence from model and tool calls', ''],
         ].map(item => {
           const link = item[3]
-            ? '<a class="analysis-context-link" href="' + escapeAttr(analysisViewUrl(item[3])) + '" data-context-view="' + item[3] + '"' +
+            ? '<a class="analysis-context-link qym-icon-action" href="' + escapeAttr(analysisViewUrl(item[3])) + '" data-context-view="' + item[3] + '"' +
               ' aria-label="Open ' + item[1] + ' tab" title="Open ' + item[1] + ' tab">' + iconMarkup('arrow') + '</a>'
             : '';
           return '<div class="analysis-context-toggle"><label class="analysis-context-toggle-control">' +
@@ -4983,10 +4838,10 @@
         backdrop.innerHTML =
           '<section class="analysis-mapping-dialog" role="dialog" aria-modal="true" aria-labelledby="analysis-mapping-title">' +
             '<header class="analysis-wizard-header"><div><h2 class="analysis-wizard-title" id="analysis-mapping-title">Input mapping</h2></div>' +
-              '<button class="analysis-wizard-close" id="analysis-mapping-close" type="button" aria-label="Close input mapping">×</button></header>' +
+              '<button class="analysis-wizard-close qym-icon-action" id="analysis-mapping-close" type="button" aria-label="Close input mapping">×</button></header>' +
             '<div class="analysis-wizard-body"></div>' +
             '<footer class="analysis-wizard-footer"><span class="analysis-wizard-progress">Changes apply to this analysis only.</span>' +
-              '<div class="analysis-wizard-actions"><button class="analysis-wizard-button analysis-wizard-next" id="analysis-mapping-done" type="button">Done</button></div></footer>' +
+              '<div class="analysis-wizard-actions"><button class="qym-inline-action qym-inline-action--accent" id="analysis-mapping-done" type="button">Done</button></div></footer>' +
           '</section>';
         const body = backdrop.querySelector('.analysis-wizard-body');
         if (mapping) {
@@ -5006,14 +4861,14 @@
         });
       }
 
-      function organizeAnalyzerWorkspace() {
-        const overlay = document.querySelector('#analyzer-host .playground-page-overlay');
-        if (!overlay || overlay.dataset.analysisOrganized === 'true') return !!overlay;
-        const projectPanel = overlay.querySelector('.pg-context-panel');
-        const runPanel = overlay.querySelector('.pg-analysis-main');
-        const footer = overlay.querySelector('.playground-footer');
+      function composeAnalyzerWorkspace(parts) {
+        const overlay = parts && parts.root;
+        if (!overlay || overlay.dataset.analysisComposed === 'true') return !!overlay;
+        const projectPanel = parts.projectPanel;
+        const runPanel = parts.runPanel;
+        const footer = parts.footer;
         if (!projectPanel || !runPanel || !footer) return false;
-        overlay.dataset.analysisOrganized = 'true';
+        overlay.dataset.analysisComposed = 'true';
         projectPanel.id = 'analysis-project-view';
         projectPanel.className = 'analysis-project-shell analysis-view-panel';
         runPanel.id = 'analysis-run-view';
@@ -5021,8 +4876,8 @@
         runPanel.setAttribute('role', 'tabpanel');
         runPanel.setAttribute('aria-labelledby', 'analysis-run-tab');
 
-        const inference = document.querySelector('#analyzer-host .pg-rule-source-actions');
-        const inferenceEmpty = document.querySelector('#analyzer-host #pg-infer-source-empty');
+        const inference = parts.content.querySelector('.pg-rule-source-actions');
+        const inferenceEmpty = parts.content.querySelector('#pg-infer-source-empty');
         const inferencePrevious = inference && inference.previousElementSibling;
         const rulesHint = inferencePrevious && inferencePrevious.classList.contains('pg-instructions-hint') ? inferencePrevious : null;
         const ruleList = document.getElementById('pg-rule-list');
@@ -5062,25 +4917,6 @@
         historyButton.setAttribute('aria-expanded', 'false');
         historyButton.setAttribute('aria-controls', 'analysis-rules-workspace-history');
         rulesWorkspaceHeader.append(historyButton);
-        const rulesHeadingTitle = rulesWorkspaceHeader.querySelector('h2');
-        const rulesHelp = document.createElement('button');
-        rulesHelp.className = 'analysis-info-button';
-        rulesHelp.type = 'button';
-        rulesHelp.setAttribute('aria-label', 'How version actions work');
-        rulesHelp.setAttribute('aria-expanded', 'false');
-        rulesHelp.setAttribute('aria-controls', 'analysis-rules-help');
-        rulesHelp.innerHTML = iconMarkup('info');
-        const rulesHelpCopy = document.createElement('div');
-        rulesHelpCopy.className = 'analysis-info-popover';
-        rulesHelpCopy.id = 'analysis-rules-help';
-        rulesHelpCopy.hidden = true;
-        rulesHelpCopy.textContent = 'Click a version to view its rules. Drafts are editable; published versions are read-only. Version history includes lineage and lifecycle actions.';
-        if (rulesHeadingTitle) rulesHeadingTitle.append(' ', rulesHelp);
-        rulesWorkspaceHeader.append(rulesHelpCopy);
-        rulesHelp.addEventListener('click', () => {
-          rulesHelpCopy.hidden = !rulesHelpCopy.hidden;
-          rulesHelp.setAttribute('aria-expanded', rulesHelpCopy.hidden ? 'false' : 'true');
-        });
         const rulesLayout = document.createElement('div');
         rulesLayout.className = 'analysis-rules-layout';
         const versionColumn = document.createElement('section');
@@ -5109,7 +4945,7 @@
         versionMeta.id = 'pg-rule-version-meta';
         toolbarTitle.append(versionMeta);
         const viewState = document.createElement('span');
-        viewState.className = 'analysis-rule-view-state';
+        viewState.className = 'qym-badge qym-badge--neutral';
         viewState.id = 'pg-rule-view-state';
         viewState.setAttribute('role', 'status');
         toolbarTitle.append(viewState);
@@ -5237,9 +5073,6 @@
         diagnosisPanel.setAttribute('role', 'tabpanel');
         diagnosisPanel.setAttribute('aria-labelledby', 'analysis-diagnosis-tab');
         diagnosisPanel.hidden = true;
-        const diagnosisHeader = document.createElement('header');
-        diagnosisHeader.className = 'analysis-diagnosis-header';
-        diagnosisHeader.innerHTML = '<p>Manage the labels available to the analyzer and inspect the approved examples behind each category.</p>';
         const diagnosisBody = document.createElement('div');
         diagnosisBody.className = 'analysis-diagnosis-workspace analysis-inline-section';
         const diagnosisToolbar = document.createElement('div');
@@ -5248,7 +5081,7 @@
           '<div class="analysis-diagnosis-action-row">' +
             '<label class="analysis-diagnosis-search"><span class="pg-visually-hidden">Search categories</span><input class="qym-control qym-input qym-search" id="analysis-category-search" type="search" placeholder="Search categories" aria-label="Search diagnosis categories" autocomplete="off" /></label>' +
             '<button class="qym-inline-action qym-inline-action--accent" id="analysis-save-category-catalog" type="button">Save changes</button>' +
-            '<span class="analysis-diagnosis-save-status" id="analysis-category-save-status" role="status" aria-live="polite"></span>' +
+            '<span class="analysis-diagnosis-save-status qym-badge qym-badge--neutral" id="analysis-category-save-status" role="status" aria-live="polite">Saved</span>' +
           '</div>';
         diagnosisBody.append(diagnosisToolbar);
         if (catalog) {
@@ -5265,7 +5098,7 @@
           diagnosisActionRow.insertBefore(categoryAddForm, categorySaveAction);
         }
         if (categoryEditorToolbar) categoryEditorToolbar.remove();
-        diagnosisPanel.append(diagnosisHeader, diagnosisBody);
+        diagnosisPanel.append(diagnosisBody);
         projectPanel.after(diagnosisPanel);
         const syncDiagnosisSummary = () => {
           const groups = Array.from(diagnosisBody.querySelectorAll('.pg-category-group'));
@@ -5309,10 +5142,30 @@
         const playgroundConfig = window.QymPlayground && window.QymPlayground.getConfig
           ? (window.QymPlayground.getConfig() || {})
           : {};
-        if (categorySaveButton && playgroundConfig.can_manage_category_catalog === false) {
+        const canManageCategoryCatalog = playgroundConfig.can_manage_category_catalog !== false;
+        const projectMaxCategories = Number(playgroundConfig.max_root_cause_categories || 3);
+        if (categorySaveButton && !canManageCategoryCatalog) {
           categorySaveButton.disabled = true;
           categorySaveButton.title = 'Project manager access is required to edit categories';
         }
+        const setCategorySaveState = (tone, label) => {
+          if (!categorySaveStatus) return;
+          categorySaveStatus.className = 'analysis-diagnosis-save-status qym-badge qym-badge--' + tone;
+          categorySaveStatus.textContent = label;
+        };
+        const markCategoryCatalogDirty = () => {
+          if (canManageCategoryCatalog) setCategorySaveState('warning', 'Unsaved changes');
+        };
+        diagnosisBody.addEventListener('input', event => {
+          if (event.target.matches('[data-taxonomy-field], #pg-new-category, .pg-add-detail-input')) {
+            markCategoryCatalogDirty();
+          }
+        });
+        diagnosisBody.addEventListener('click', event => {
+          if (event.target.closest('#pg-add-category-btn, .pg-add-detail-btn, .pg-category-remove, .pg-detail-remove')) {
+            requestAnimationFrame(markCategoryCatalogDirty);
+          }
+        });
         let categoryCatalogRevision = Number(
           (playgroundConfig.category_catalog_version ||
             ((playgroundConfig.category_catalog || {}).version)) || 0
@@ -5335,13 +5188,12 @@
             });
             if (Object.keys(taxonomy).length) categoryTaxonomy[category] = taxonomy;
           });
-          const maxCategories = Number(categoryLimitField?.querySelector('#pg-max-root-cause-categories')?.value || 3);
           return {
             categories,
             category_details_map: categoryDetails,
             category_taxonomy: categoryTaxonomy,
-            max_root_cause_categories: Number.isFinite(maxCategories)
-              ? Math.min(10, Math.max(1, Math.trunc(maxCategories)))
+            max_root_cause_categories: Number.isFinite(projectMaxCategories)
+              ? Math.min(10, Math.max(1, Math.trunc(projectMaxCategories)))
               : 3,
             base_revision: categoryCatalogRevision,
           };
@@ -5349,7 +5201,7 @@
         if (categorySaveButton) categorySaveButton.addEventListener('click', async () => {
           if (!projectSlug || categorySaveButton.disabled) return;
           categorySaveButton.disabled = true;
-          if (categorySaveStatus) categorySaveStatus.textContent = 'Saving…';
+          setCategorySaveState('info', 'Saving…');
           try {
             const response = await fetch(apiUrl('api/projects/' + encodeURIComponent(projectSlug) + '/analysis-category-catalog'), {
               method: 'PUT',
@@ -5363,13 +5215,13 @@
             }
             const catalog = body.catalog || body;
             categoryCatalogRevision = Number(catalog.version || categoryCatalogRevision);
-            if (categorySaveStatus) categorySaveStatus.textContent = body.created === false ? 'No changes' : 'Saved';
+            setCategorySaveState('success', body.created === false ? 'No changes' : 'Saved');
             showStatus('success', 'Categories saved', 'The project catalog is now available to future run analyses.');
           } catch (error) {
-            if (categorySaveStatus) categorySaveStatus.textContent = 'Save failed';
+            setCategorySaveState('danger', 'Save failed');
             showStatus('error', 'Category save failed', error.message || 'Could not save diagnosis categories.');
           } finally {
-            categorySaveButton.disabled = false;
+            categorySaveButton.disabled = !canManageCategoryCatalog;
           }
         });
 
@@ -5435,13 +5287,14 @@
         const tools = document.createElement('div');
         tools.className = 'analysis-target-tools';
         tools.innerHTML = '<p>Set the score, re-analysis options, and an optional target limit here.</p>' +
-          '<button class="analysis-mapping-open" id="analysis-mapping-open" type="button">Input mapping</button>';
-        const targetLimitRow = filter && filter.querySelector('.pg-target-limit-row');
-        const targetPagination = filter && filter.querySelector('#pg-target-pagination');
-        if (categoryLimitField && targetLimitRow) {
+          '<div class="analysis-target-tool-actions"><button class="analysis-mapping-open qym-inline-action qym-inline-action--neutral" id="analysis-mapping-open" type="button">Input mapping</button></div>';
+        const targetToolActions = tools.querySelector('.analysis-target-tool-actions');
+        const mappingButton = tools.querySelector('#analysis-mapping-open');
+        if (categoryLimitField && targetToolActions) {
           categoryLimitField.classList.add('analysis-run-category-limit');
-          targetLimitRow.append(categoryLimitField);
+          targetToolActions.insertBefore(categoryLimitField, mappingButton);
         }
+        const targetPagination = filter && filter.querySelector('#pg-target-pagination');
         targetBody.append(tools);
         if (filter) targetBody.append(filter);
         if (targetPagination) {
@@ -5503,15 +5356,6 @@
         return true;
       }
 
-      function organizeWhenReady() {
-        if (organizeAnalyzerWorkspace()) return;
-        const host = document.getElementById('analyzer-host');
-        const observer = new MutationObserver(() => {
-          if (organizeAnalyzerWorkspace()) observer.disconnect();
-        });
-        observer.observe(host, { childList: true, subtree: true });
-      }
-
       function applyAnalysisResults(data) {
         const rows = state.data && state.data.snapshot ? state.data.snapshot.rows || [] : [];
         const categoryCount = data && data.categories && typeof data.categories === 'object'
@@ -5524,6 +5368,7 @@
           if (!row.item_metadata || typeof row.item_metadata !== 'object') row.item_metadata = {};
           if (!row.item_metadata.metric_analyses || typeof row.item_metadata.metric_analyses !== 'object') row.item_metadata.metric_analyses = {};
           if (result.metric_name) {
+            const warning = String(result.warning || '').trim();
             row.item_metadata.metric_analyses[result.metric_name] = {
               source: 'ai',
               root_cause: result.root_cause,
@@ -5534,6 +5379,7 @@
               confidence: result.confidence,
               solution: result.solution || '',
               solution_note: result.solution_note || '',
+              warning: warning,
               error: result.error || '',
             };
           }
@@ -5578,6 +5424,7 @@
           projectScoped: !!projectScoped,
           projectSlug: projectScoped ? projectSlug : '',
           dedicatedPage: true,
+          composePage: composeAnalyzerWorkspace,
           getRunId: () => state.contextRunId,
           getRunUrl: () => {
             const runLink = document.querySelector('.analysis-run-header > .analysis-secondary-link');
@@ -5587,7 +5434,7 @@
           },
           getRows: projectScoped ? () => [] : analyzerRows,
           getMetric: projectScoped ? () => null : () => state.metric || null,
-          getMetrics: () => state.selectedMetrics.slice(),
+          getMetrics: projectScoped ? () => [] : () => state.selectedMetrics.slice(),
           getThreshold: projectScoped ? () => 0.8 : metricThreshold,
           onAnalysisComplete: projectScoped ? null : applyAnalysisResults,
           reviewsUrl: projectSlug ? projectUrl('reviews') : '',
@@ -5610,33 +5457,11 @@
           if (!projectSlug) {
             throw new Error('Open Auto-analysis from a project or choose a run first.');
           }
-          document.getElementById('analysis-go-runs').href = projectUrl();
-          const runsResponse = await fetch(apiUrl(
-            'api/runs?limit=1&project_slug=' + encodeURIComponent(projectSlug)
-          ));
-          if (!runsResponse.ok) {
-            throw new Error('Could not load project analysis settings (HTTP ' + runsResponse.status + ').');
-          }
-          const runsPayload = await runsResponse.json();
-          const projectRuns = [];
-          Object.values((runsPayload && runsPayload.tasks) || {}).forEach(models => {
-            Object.values(models || {}).forEach(runs => {
-              (runs || []).forEach(run => projectRuns.push(run));
-            });
-          });
-          const contextRun = projectRuns[0];
-          if (!contextRun) {
-            state.contextRunId = '';
-            document.getElementById('analysis-loading').hidden = true;
-            document.getElementById('analysis-tabs').hidden = false;
-            document.getElementById('analysis-landing').hidden = false;
-            return;
-          }
-          state.contextRunId = contextRun.file_path || contextRun.run_id || '';
+          document.getElementById('analysis-go-runs').href = projectSlug ? projectUrl() : rootPath + '/';
+          state.contextRunId = '';
           document.getElementById('analysis-loading').hidden = true;
           document.getElementById('analyzer-host').hidden = false;
           await initializePlayground(true);
-          organizeWhenReady();
           return;
         }
         const response = await fetch(apiUrl('api/runs/' + encodeURIComponent(runId)));
@@ -5655,7 +5480,6 @@
         document.getElementById('analysis-loading').hidden = true;
         document.getElementById('analyzer-host').hidden = false;
         await initializePlayground(false);
-        organizeWhenReady();
       }
 
       document.getElementById('analysis-error-retry').addEventListener('click', () => {

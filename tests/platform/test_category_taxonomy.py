@@ -116,6 +116,7 @@ def test_analysis_prompt_includes_taxonomy_and_new_category_contract() -> None:
     assert "CATEGORY TAXONOMY:" not in system_prompt
     assert '"category_taxonomy"' in system_prompt
     assert "complete entry" in system_prompt
+    assert "item will carry a warning" in system_prompt
     assert '"root_cause_reason"' in system_prompt
     assert "category-selection decision" in system_prompt
     assert "Why does this category apply?" in system_prompt
@@ -155,15 +156,28 @@ def test_parser_accepts_known_category_without_emitting_taxonomy() -> None:
     assert taxonomy_is_complete(result.category_taxonomy["Hallucination"])
 
 
-def test_parser_requires_taxonomy_for_new_category() -> None:
+def test_parser_accepts_new_category_with_taxonomy_warning() -> None:
     missing = parse_llm_response(
         _response("Novel Failure"),
         "item-1",
         allowed_categories=ROOT_CAUSE_CATEGORIES,
         known_taxonomy=DEFAULT_ROOT_CAUSE_TAXONOMY,
     )
-    assert missing.error == "missing_category_taxonomy"
-    assert missing.confidence == 0.0
+    assert missing.error is None
+    assert missing.root_causes == ["Novel Failure"]
+    assert missing.confidence > 0.0
+    assert missing.warning is not None
+    assert "Novel Failure" in missing.warning
+    assert "without complete taxonomy" in missing.warning
+    assert missing.root_cause_note == "The answer is numerically incorrect."
+
+    without_catalog = parse_llm_response(
+        _response("Novel Failure"),
+        "item-1",
+        allowed_categories=["Novel Failure"],
+    )
+    assert without_catalog.error is None
+    assert without_catalog.warning is not None
 
     complete = parse_llm_response(
         _response(
@@ -184,7 +198,7 @@ def test_parser_requires_taxonomy_for_new_category() -> None:
     assert taxonomy_is_complete(complete.category_taxonomy["Novel Failure"])
 
 
-def test_reasoning_fallback_cannot_create_untaxonomized_category() -> None:
+def test_reasoning_fallback_accepts_untaxonomized_category_with_warning() -> None:
     result = _extract_json_from_reasoning(
         "root_cause: Novel Failure\nconfidence: 0.9\nThe answer is wrong.",
         "item-1",
@@ -192,7 +206,9 @@ def test_reasoning_fallback_cannot_create_untaxonomized_category() -> None:
         known_taxonomy=DEFAULT_ROOT_CAUSE_TAXONOMY,
     )
     assert result is not None
-    assert result.error == "missing_category_taxonomy"
+    assert result.error is None
+    assert result.warning is not None
+    assert "Novel Failure" in result.warning
 
 
 def test_category_taxonomy_round_trips_into_item_metadata() -> None:
