@@ -31,6 +31,8 @@ from qym_platform.db.models import (
     Approval,
     ApprovalDecision,
     Project,
+    ProjectAnalysisCategoryCatalogVersion,
+    ProjectAnalysisPromptSettings,
     ProjectAnalysisRuleVersion,
     ProjectMembership,
     ProjectRole,
@@ -43,6 +45,7 @@ from qym_platform.db.models import (
 )
 from qym_platform.deps import get_db
 from qym_platform.security import api_key_prefix, hash_api_key
+from qym_platform.services.analysis_prompts import DEFAULT_ANALYSIS_PROMPTS
 
 
 @pytest.fixture()
@@ -497,3 +500,140 @@ def test_new_project_starts_with_one_live_rule_version(client, session_factory):
         assert len(versions) == 1
         assert versions[0].version == 1
         assert versions[0].name == "v1"
+        catalogs = (
+            session.query(ProjectAnalysisCategoryCatalogVersion)
+            .filter(ProjectAnalysisCategoryCatalogVersion.project_id == project_id)
+            .all()
+        )
+        assert len(catalogs) == 1
+        assert catalogs[0].is_active is True
+        assert catalogs[0].version == 1
+
+
+def test_runless_project_deletion_removes_catalog_lineage_safely(
+    client, session_factory
+):
+    with session_factory() as session:
+        _seed_project_world(session)
+
+    response = client.post(
+        "/v1/projects",
+        headers=_headers("admin@example.com"),
+        json={"name": "Catalog Delete", "slug": "catalog-delete"},
+    )
+    assert response.status_code == 200
+    project_id = response.json()["id"]
+    with session_factory() as session:
+        first = (
+            session.query(ProjectAnalysisCategoryCatalogVersion)
+            .filter(ProjectAnalysisCategoryCatalogVersion.project_id == project_id)
+            .one()
+        )
+        historic = ProjectAnalysisCategoryCatalogVersion(
+            project_id=project_id,
+            version=2,
+            categories=["Legacy"],
+            category_entries=[
+                {"id": "legacy", "label": "Legacy", "status": "archived"}
+            ],
+            category_details_map={},
+            category_taxonomy={},
+            max_root_cause_categories=3,
+            content_hash="legacy",
+            source="manual",
+            parent_version_id=first.id,
+            restored_from_version_id=first.id,
+            is_active=False,
+        )
+        session.add(historic)
+        session.commit()
+
+    deleted = client.delete(
+        f"/v1/admin/projects/{project_id}", headers=_headers("admin@example.com")
+    )
+    assert deleted.status_code == 200
+    with session_factory() as session:
+        assert session.query(Project).filter(Project.id == project_id).count() == 0
+        assert (
+            session.query(ProjectAnalysisCategoryCatalogVersion)
+            .filter(ProjectAnalysisCategoryCatalogVersion.project_id == project_id)
+            .count()
+            == 0
+        )
+
+
+def test_analysis_prompts_are_restricted_and_persisted(client, session_factory):
+    with session_factory() as session:
+        seed = _seed_project_world(session)
+
+    project_id = seed["project_one_id"]
+    manager_headers = _headers("manager@example.com")
+    member_headers = _headers("member@example.com")
+    admin_headers = _headers("admin@example.com")
+
+    defaults = client.get(
+        f"/v1/projects/{project_id}/analysis-prompts", headers=manager_headers
+    )
+    assert defaults.status_code == 200
+    assert defaults.json()["customized"] == {
+        "llm_analyzer": False,
+        "aggregator": False,
+        "rules_writer": False,
+    }
+    assert defaults.json()["defaults"] == DEFAULT_ANALYSIS_PROMPTS
+    assert defaults.json()["prompts"] == DEFAULT_ANALYSIS_PROMPTS
+
+    denied_read = client.get(
+        f"/v1/projects/{project_id}/analysis-prompts", headers=member_headers
+    )
+    assert denied_read.status_code == 403
+
+    payload = {
+        "llm_analyzer": "Custom analyzer prompt",
+        "aggregator": "Custom aggregator prompt",
+        "rules_writer": "Custom rules writer prompt",
+    }
+    updated = client.put(
+        f"/v1/projects/{project_id}/analysis-prompts",
+        headers=manager_headers,
+        json=payload,
+    )
+    assert updated.status_code == 200
+    assert updated.json()["prompts"] == payload
+
+    single_update = client.patch(
+        f"/v1/projects/{project_id}/analysis-prompts/aggregator",
+        headers=manager_headers,
+        json={"value": "Only the aggregator changed"},
+    )
+    assert single_update.status_code == 200
+    assert single_update.json()["prompts"] == {
+        "llm_analyzer": payload["llm_analyzer"],
+        "aggregator": "Only the aggregator changed",
+        "rules_writer": payload["rules_writer"],
+    }
+
+    denied_single_update = client.patch(
+        f"/v1/projects/{project_id}/analysis-prompts/aggregator",
+        headers=member_headers,
+        json={"value": "Member cannot edit prompts"},
+    )
+    assert denied_single_update.status_code == 403
+
+    denied_write = client.put(
+        f"/v1/projects/{project_id}/analysis-prompts",
+        headers=member_headers,
+        json=payload,
+    )
+    assert denied_write.status_code == 403
+
+    admin_read = client.get(
+        f"/v1/projects/{project_id}/analysis-prompts", headers=admin_headers
+    )
+    assert admin_read.status_code == 200
+    assert admin_read.json()["prompts"] == single_update.json()["prompts"]
+
+    with session_factory() as session:
+        row = session.get(ProjectAnalysisPromptSettings, project_id)
+        assert row is not None
+        assert row.updated_by_user_id == "manager-1"

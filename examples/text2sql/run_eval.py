@@ -45,7 +45,7 @@ def main():
             "relevance",
             "toxicity",
             ],
-        model="openai/gpt-4o-mini",
+        model="openai/gpt-5.6-luna-pro",
         config={
             "max_concurrency": 10,
             "run_name": "text2sql-eval",

@@ -1212,7 +1212,8 @@
   }
 
   function restoreCollapseState() {
-    if (localStorage.getItem('qym:sidebar-collapsed') === '1') {
+    var narrowViewport = window.matchMedia && window.matchMedia('(max-width: 760px)').matches;
+    if (localStorage.getItem('qym:sidebar-collapsed') === '1' || narrowViewport) {
       var sidebar = document.getElementById('qym-sidebar');
       if (sidebar) sidebar.classList.add('collapsed');
     }

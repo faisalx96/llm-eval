@@ -10,6 +10,7 @@ import pytest
 from qym_platform.services.analysis_aggregation import (
     AGGREGATION_SYSTEM_PROMPT,
     AnalysisAggregationError,
+    AggregationResponse,
     aggregate_analysis_categories,
 )
 from qym_platform.services.llm_analyzer import AnalysisResult
@@ -41,7 +42,7 @@ def _response(payload: dict[str, object]) -> SimpleNamespace:
         choices=[
             SimpleNamespace(
                 message=SimpleNamespace(
-                    content=json.dumps(payload),
+                    parsed=AggregationResponse.model_validate(payload),
                 )
             )
         ]
@@ -52,39 +53,29 @@ def _client_with_label_mappings(
     *,
     categories: dict[str, str | None] | None = None,
     details: dict[str, str | None] | None = None,
-    solutions: dict[str, str | None] | None = None,
     delay: float = 0,
 ) -> SimpleNamespace:
     configured = {
         "category": categories or {},
         "detail": details or {},
-        "solution": solutions or {},
     }
     plural = {
         "category": "categories",
         "detail": "details",
-        "solution": "solutions",
     }
 
-    async def create(**kwargs: object) -> SimpleNamespace:
+    async def parse(**kwargs: object) -> SimpleNamespace:
         if delay:
             await asyncio.sleep(delay)
         messages = kwargs["messages"]
         assert isinstance(messages, list)
         prompt = json.loads(messages[1]["content"])
         response_payload: dict[str, object] = {}
-        for field_name in prompt["requested_fields"]:
+        for field_name in ("category", "detail"):
             entries = prompt[plural[field_name]]
             id_by_label = {entry["label"]: entry["id"] for entry in entries}
-            source_label_by_id = {
-                entry["id"]: entry["label"]
-                for entry in entries
-                if entry["count"] > 0
-            }
             members_by_target: dict[str, list[str]] = {}
             for entry in entries:
-                if entry["count"] <= 0:
-                    continue
                 target_label = configured[field_name].get(
                     entry["label"], entry["label"]
                 )
@@ -95,13 +86,18 @@ def _client_with_label_mappings(
             for target_label, member_ids in members_by_target.items():
                 is_identity_singleton = (
                     len(member_ids) == 1
-                    and source_label_by_id[member_ids[0]] == target_label
+                    and next(
+                        entry["label"]
+                        for entry in entries
+                        if entry["id"] == member_ids[0]
+                    )
+                    == target_label
                 )
                 if is_identity_singleton:
                     continue
                 cluster: dict[str, object] = {"member_ids": member_ids}
                 target_id = id_by_label.get(target_label)
-                if target_id:
+                if field_name == "category" and target_id:
                     cluster["canonical_id"] = target_id
                 else:
                     cluster["canonical_label"] = target_label
@@ -111,7 +107,7 @@ def _client_with_label_mappings(
 
     return SimpleNamespace(
         chat=SimpleNamespace(
-            completions=SimpleNamespace(create=AsyncMock(side_effect=create))
+            completions=SimpleNamespace(parse=AsyncMock(side_effect=parse))
         )
     )
 
@@ -157,10 +153,6 @@ async def test_aggregation_uses_one_joint_label_only_pass() -> None:
                 "Expected SQL is not SQLite-compatible"
             ),
         },
-        solutions={
-            "Fix SQL dialect": "Make SQL SQLite-compatible",
-            "Make query SQLite compatible": "Make SQL SQLite-compatible",
-        },
     )
 
     categories = await aggregate_analysis_categories(
@@ -171,7 +163,7 @@ async def test_aggregation_uses_one_joint_label_only_pass() -> None:
         known_category_details={
             "Dataset Issue": ["Expected SQL is not SQLite-compatible"]
         },
-        known_solutions=["Make SQL SQLite-compatible"],
+        system_prompt="Custom aggregator system prompt",
     )
 
     assert categories == {"Dataset Issue": 3}
@@ -179,7 +171,11 @@ async def test_aggregation_uses_one_joint_label_only_pass() -> None:
     assert [result.root_cause_detail for result in results] == [
         "Expected SQL is not SQLite-compatible"
     ] * 3
-    assert [result.solution for result in results] == ["Make SQL SQLite-compatible"] * 3
+    assert [result.solution for result in results] == [
+        "Fix SQL dialect",
+        "Make query SQLite compatible",
+        "Fix SQL dialect",
+    ]
     assert [result.root_cause_note for result in results] == [
         "Feedback specific to item one.",
         "Feedback specific to item two.",
@@ -191,18 +187,19 @@ async def test_aggregation_uses_one_joint_label_only_pass() -> None:
         "Retain this separate note.",
     ]
 
-    client.chat.completions.create.assert_awaited_once()
-    call = client.chat.completions.create.await_args
+    client.chat.completions.parse.assert_awaited_once()
+    call = client.chat.completions.parse.await_args
     payload = json.loads(call.kwargs["messages"][1]["content"])
-    assert payload["requested_fields"] == ["category", "detail", "solution"]
-    assert [
-        (entry["label"], entry["count"], entry["preferred"])
-        for entry in payload["categories"]
-    ] == [
-        ("dataset", 2, False),
-        ("other data", 1, False),
-        ("Dataset Issue", 0, True),
+    assert set(payload) == {"categories", "details"}
+    assert call.kwargs["max_tokens"] == 4096
+    assert call.kwargs["response_format"] is AggregationResponse
+    assert call.kwargs["messages"][0]["content"] == "Custom aggregator system prompt"
+    assert [entry["label"] for entry in payload["categories"]] == [
+        "dataset",
+        "other data",
+        "Dataset Issue",
     ]
+    assert all(set(entry) == {"id", "label"} for entry in payload["categories"])
     assert "analysis_results" not in payload
     assert "Feedback specific" not in call.kwargs["messages"][1]["content"]
     assert "item-specific wording" in AGGREGATION_SYSTEM_PROMPT
@@ -232,7 +229,7 @@ async def test_deterministic_variants_do_not_need_an_llm_pass() -> None:
     assert [result.root_cause_detail for result in results] == [
         "Expected SQL uses non-SQLite functions"
     ] * 3
-    client.chat.completions.create.assert_not_awaited()
+    client.chat.completions.parse.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -247,7 +244,40 @@ async def test_singleton_label_fields_skip_redundant_llm_passes() -> None:
         known_categories=["Context Missing"],
     )
 
-    client.chat.completions.create.assert_not_awaited()
+    client.chat.completions.parse.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_prompt_includes_all_category_and_detail_labels_without_solutions() -> None:
+    known_categories = [f"Known category {index}" for index in range(100)]
+    known_details = [f"Known detail {index}" for index in range(100)]
+    results = [
+        _result("Observed category", "Observed detail", solution="Keep this")
+    ]
+    client = _client_with_label_mappings()
+
+    await aggregate_analysis_categories(
+        client,
+        "test-model",
+        results,
+        known_categories=known_categories,
+        known_details=known_details,
+    )
+
+    client.chat.completions.parse.assert_awaited_once()
+    payload = json.loads(
+        client.chat.completions.parse.await_args.kwargs["messages"][1]["content"]
+    )
+    assert {entry["label"] for entry in payload["categories"]} == {
+        *known_categories,
+        "Observed category",
+    }
+    assert {entry["label"] for entry in payload["details"]} == {
+        *known_details,
+        "Observed detail",
+    }
+    assert "solutions" not in payload
+    assert results[0].solution == "Keep this"
 
 
 @pytest.mark.asyncio
@@ -278,7 +308,7 @@ async def test_failed_or_empty_results_do_not_call_the_aggregator() -> None:
     categories = await aggregate_analysis_categories(client, "test-model", results)
 
     assert categories == {}
-    client.chat.completions.create.assert_not_awaited()
+    client.chat.completions.parse.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -289,13 +319,11 @@ async def test_aggregation_timeout_is_reported() -> None:
 
     client = SimpleNamespace(
         chat=SimpleNamespace(
-            completions=SimpleNamespace(create=AsyncMock(side_effect=slow_response))
+            completions=SimpleNamespace(parse=AsyncMock(side_effect=slow_response))
         )
     )
 
-    with pytest.raises(
-        AnalysisAggregationError, match="root_cause_category.*timed out"
-    ):
+    with pytest.raises(AnalysisAggregationError, match="aggregation timed out"):
         await aggregate_analysis_categories(
             client,
             "test-model",
@@ -308,17 +336,15 @@ async def test_aggregation_timeout_is_reported() -> None:
 @pytest.mark.asyncio
 async def test_invalid_joint_mapping_response_is_reported() -> None:
     response = SimpleNamespace(
-        choices=[SimpleNamespace(message=SimpleNamespace(content='{"groups": []}'))]
+        choices=[SimpleNamespace(message=SimpleNamespace(parsed=None, refusal=None))]
     )
     client = SimpleNamespace(
         chat=SimpleNamespace(
-            completions=SimpleNamespace(create=AsyncMock(return_value=response))
+            completions=SimpleNamespace(parse=AsyncMock(return_value=response))
         )
     )
 
-    with pytest.raises(
-        AnalysisAggregationError, match="requested cluster array"
-    ):
+    with pytest.raises(AnalysisAggregationError, match="parsed AggregationResponse"):
         await aggregate_analysis_categories(
             client,
             "test-model",
@@ -336,9 +362,10 @@ async def test_omitted_empty_cluster_field_does_not_discard_useful_merges() -> N
     client = SimpleNamespace(
         chat=SimpleNamespace(
             completions=SimpleNamespace(
-                create=AsyncMock(
+                parse=AsyncMock(
                     return_value=_response(
                         {
+                            "category_clusters": [],
                             "detail_clusters": [
                                 {
                                     "canonical_label": "Missing schema table",
@@ -435,7 +462,7 @@ async def test_screenshot_style_semantic_detail_families_are_consolidated() -> N
         *(["Missing required column"] * 3),
     ]
     assert [result.root_cause_note for result in results] == feedback
-    client.chat.completions.create.assert_awaited_once()
+    client.chat.completions.parse.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -588,46 +615,24 @@ async def test_dashboard_scale_one_offs_collapse_into_recurring_mechanisms() -> 
         ]
         assert len(matching) == len(members)
         assert len({result.root_cause for result in matching}) == 1
-    client.chat.completions.create.assert_awaited_once()
+    client.chat.completions.parse.assert_awaited_once()
 
 
 @pytest.mark.asyncio
-async def test_large_no_op_response_gets_one_quality_retry() -> None:
+async def test_large_no_op_response_stays_one_call() -> None:
     results = [
         _result("Reasoning Error", f"Item-specific failure {index}")
         for index in range(20)
     ]
-    calls = 0
-
-    async def create(**kwargs: object) -> SimpleNamespace:
-        nonlocal calls
-        calls += 1
-        messages = kwargs["messages"]
-        assert isinstance(messages, list)
-        payload = json.loads(messages[1]["content"])
-        detail_ids = [
-            entry["id"]
-            for entry in payload["details"]
-            if entry["count"] > 0
-        ]
-        if calls == 1:
-            return _response({"detail_clusters": []})
-        assert payload["quality_review"]["first_pass_reduction"] == 0
-        return _response(
-            {
-                "detail_clusters": [
-                    {
-                        "canonical_label": f"Recurring mechanism {group_index}",
-                        "member_ids": detail_ids[start : start + 5],
-                    }
-                    for group_index, start in enumerate(range(0, 20, 5))
-                ]
-            }
-        )
-
     client = SimpleNamespace(
         chat=SimpleNamespace(
-            completions=SimpleNamespace(create=AsyncMock(side_effect=create))
+            completions=SimpleNamespace(
+                parse=AsyncMock(
+                    return_value=_response(
+                        {"category_clusters": [], "detail_clusters": []}
+                    )
+                )
+            )
         )
     )
 
@@ -638,13 +643,37 @@ async def test_large_no_op_response_gets_one_quality_retry() -> None:
         known_categories=["Reasoning Error"],
     )
 
-    assert client.chat.completions.create.await_count == 2
-    assert {result.root_cause_detail for result in results} == {
-        "Recurring mechanism 0",
-        "Recurring mechanism 1",
-        "Recurring mechanism 2",
-        "Recurring mechanism 3",
-    }
+    assert client.chat.completions.parse.await_count == 1
+    assert [result.root_cause_detail for result in results] == [
+        f"Item-specific failure {index}" for index in range(20)
+    ]
+
+
+@pytest.mark.asyncio
+async def test_provider_failure_is_reported_without_a_retry() -> None:
+    results = [
+        _result("Reasoning Error", f"Item-specific failure {index}")
+        for index in range(20)
+    ]
+    client = SimpleNamespace(
+        chat=SimpleNamespace(
+            completions=SimpleNamespace(
+                parse=AsyncMock(
+                    side_effect=RuntimeError("transient provider outage")
+                )
+            )
+        )
+    )
+
+    with pytest.raises(AnalysisAggregationError, match="aggregation failed"):
+        await aggregate_analysis_categories(
+            client,
+            "test-model",
+            results,
+            known_categories=["Reasoning Error"],
+        )
+
+    assert client.chat.completions.parse.await_count == 1
 
 
 @pytest.mark.asyncio
@@ -673,7 +702,7 @@ async def test_semantic_details_converge_across_existing_categories() -> None:
     assert [result.root_cause_detail for result in results] == [
         "Missing table in context"
     ] * 3
-    client.chat.completions.create.assert_awaited_once()
+    client.chat.completions.parse.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -682,7 +711,7 @@ async def test_aggregation_rejects_invented_target_ids() -> None:
     client = SimpleNamespace(
         chat=SimpleNamespace(
             completions=SimpleNamespace(
-                create=AsyncMock(
+                parse=AsyncMock(
                     return_value=_response(
                         {
                             "category_clusters": [
@@ -690,7 +719,8 @@ async def test_aggregation_rejects_invented_target_ids() -> None:
                                     "canonical_id": "invented",
                                     "member_ids": ["c0", "c1"],
                                 }
-                            ]
+                            ],
+                            "detail_clusters": [],
                         }
                     )
                 )
@@ -721,7 +751,7 @@ async def test_detail_instances_move_to_their_dominant_curated_category() -> Non
     assert categories == {"Dataset Issue": 24}
     assert [result.root_cause for result in results] == ["Dataset Issue"] * 24
     assert [result.root_cause_detail for result in results] == ["Missing value"] * 24
-    client.chat.completions.create.assert_not_awaited()
+    client.chat.completions.parse.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -740,7 +770,7 @@ async def test_detail_relocation_uses_first_category_to_break_a_tie() -> None:
     )
 
     assert [result.root_cause for result in results] == ["Context Missing"] * 2
-    client.chat.completions.create.assert_not_awaited()
+    client.chat.completions.parse.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -775,5 +805,5 @@ async def test_many_categories_still_use_one_model_round_trip() -> None:
     )
     elapsed = time.perf_counter() - started
 
-    client.chat.completions.create.assert_awaited_once()
+    client.chat.completions.parse.assert_awaited_once()
     assert elapsed < 0.15

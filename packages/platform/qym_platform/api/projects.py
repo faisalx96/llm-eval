@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import re
 import secrets
 from typing import Any, Dict, Iterable, Optional
+from uuid import NAMESPACE_URL, uuid5
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -11,6 +14,8 @@ from qym_platform.datetime_utils import to_api_timestamp, utc_now_naive
 from qym_platform.db.models import (
     ApiKey,
     Project,
+    ProjectAnalysisCategoryCatalogVersion,
+    ProjectAnalysisPromptSettings,
     ProjectAnalysisRuleAlias,
     ProjectAnalysisRuleVersion,
     ProjectLlmConnection,
@@ -40,6 +45,12 @@ from qym_platform.secrets import (
 )
 from qym_platform.security import api_key_prefix, hash_api_key
 from qym_platform.settings import PlatformSettings
+from qym_platform.services.analysis_prompts import (
+    DEFAULT_ANALYSIS_PROMPTS,
+    PROMPT_MAX_CHARS,
+    serialize_analysis_prompt_settings,
+)
+from qym_platform.services.root_cause_categories import DEFAULT_ROOT_CAUSE_TAXONOMY
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -71,6 +82,57 @@ def _add_default_analysis_rule_version(
             name="v1",
             rules=[],
             source="manual",
+            created_by_user_id=actor_user_id,
+        )
+    )
+
+
+def _add_default_analysis_category_catalog(
+    db: Session,
+    *,
+    project_id: str,
+    actor_user_id: str,
+) -> None:
+    """Create the first active catalog without scanning any run items."""
+    categories = list(DEFAULT_ROOT_CAUSE_TAXONOMY)
+    entries = [
+        {
+            "id": str(
+                uuid5(NAMESPACE_URL, f"qym-category:{project_id}:{category.casefold()}")
+            ),
+            "label": category,
+            "status": "active",
+        }
+        for category in categories
+    ]
+    taxonomy = {
+        category: dict(DEFAULT_ROOT_CAUSE_TAXONOMY[category])
+        for category in categories
+    }
+    payload = {
+        "categories": categories,
+        "category_entries": entries,
+        "category_details_map": {},
+        "category_taxonomy": taxonomy,
+        "max_root_cause_categories": 3,
+    }
+    content_hash = hashlib.sha256(
+        json.dumps(
+            payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+        ).encode("utf-8")
+    ).hexdigest()
+    db.add(
+        ProjectAnalysisCategoryCatalogVersion(
+            project_id=project_id,
+            version=1,
+            categories=categories,
+            category_entries=entries,
+            category_details_map={},
+            category_taxonomy=taxonomy,
+            max_root_cause_categories=3,
+            content_hash=content_hash,
+            source="system",
+            is_active=True,
             created_by_user_id=actor_user_id,
         )
     )
@@ -329,6 +391,39 @@ class LlmConnectionRequest(BaseModel):
     llm_api_key: str = Field(default="")
 
 
+class AnalysisPromptSettingsRequest(BaseModel):
+    """Editable system prompts for the three analysis agents."""
+
+    llm_analyzer: str = Field(..., min_length=1, max_length=PROMPT_MAX_CHARS)
+    aggregator: str = Field(..., min_length=1, max_length=PROMPT_MAX_CHARS)
+    rules_writer: str = Field(..., min_length=1, max_length=PROMPT_MAX_CHARS)
+
+
+class AnalysisPromptUpdateRequest(BaseModel):
+    """A single prompt update used by the prompt editor."""
+
+    value: str = Field(..., min_length=1, max_length=PROMPT_MAX_CHARS)
+
+
+ANALYSIS_PROMPT_FIELDS = {
+    "llm_analyzer": ("llm_analyzer_system_prompt", "LLM analyzer"),
+    "aggregator": ("aggregator_system_prompt", "Aggregator"),
+    "rules_writer": ("rules_writer_system_prompt", "Rules writer"),
+}
+
+
+def _normalise_analysis_prompt(value: str, label: str) -> str:
+    prompt = str(value or "").strip()
+    if not prompt:
+        raise HTTPException(status_code=422, detail=f"{label} prompt cannot be empty")
+    if len(prompt) > PROMPT_MAX_CHARS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"{label} prompt must be {PROMPT_MAX_CHARS} characters or fewer",
+        )
+    return prompt
+
+
 def _serialize_connection(conn: ProjectLlmConnection) -> Dict[str, Any]:
     return {
         "id": conn.id,
@@ -560,6 +655,93 @@ async def test_llm_connection(
         raise HTTPException(status_code=400, detail=f"LLM connection failed: {e}")
 
 
+@router.get("/v1/projects/{project_id}/analysis-prompts")
+def get_analysis_prompts(
+    project_id: str,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_ui_principal),
+) -> Dict[str, Any]:
+    """Return project analysis prompts to admins and project managers only."""
+    _require_project_manager(db, principal, project_id)
+    return serialize_analysis_prompt_settings(db, project_id)
+
+
+@router.put("/v1/projects/{project_id}/analysis-prompts")
+def update_analysis_prompts(
+    project_id: str,
+    req: AnalysisPromptSettingsRequest,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_ui_principal),
+) -> Dict[str, Any]:
+    """Persist project analysis prompts for use by subsequent LLM requests."""
+    _require_project_manager(db, principal, project_id)
+    values = {
+        "llm_analyzer_system_prompt": _normalise_analysis_prompt(
+            req.llm_analyzer, "LLM analyzer"
+        ),
+        "aggregator_system_prompt": _normalise_analysis_prompt(
+            req.aggregator, "Aggregator"
+        ),
+        "rules_writer_system_prompt": _normalise_analysis_prompt(
+            req.rules_writer, "Rules writer"
+        ),
+    }
+    row = db.get(ProjectAnalysisPromptSettings, project_id)
+    if row is None:
+        row = ProjectAnalysisPromptSettings(
+            project_id=project_id,
+            updated_by_user_id=principal.user.id,
+            **values,
+        )
+        db.add(row)
+    else:
+        for field, value in values.items():
+            setattr(row, field, value)
+        row.updated_by_user_id = principal.user.id
+    db.commit()
+    db.refresh(row)
+    return serialize_analysis_prompt_settings(db, project_id)
+
+
+@router.patch("/v1/projects/{project_id}/analysis-prompts/{prompt_key}")
+def update_analysis_prompt(
+    project_id: str,
+    prompt_key: str,
+    req: AnalysisPromptUpdateRequest,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_ui_principal),
+) -> Dict[str, Any]:
+    """Persist one project analysis prompt without touching the other fields."""
+    _require_project_manager(db, principal, project_id)
+    field_and_label = ANALYSIS_PROMPT_FIELDS.get(prompt_key)
+    if field_and_label is None:
+        raise HTTPException(status_code=404, detail="Unknown analysis prompt")
+    field, label = field_and_label
+    value = _normalise_analysis_prompt(req.value, label)
+
+    row = db.get(ProjectAnalysisPromptSettings, project_id)
+    if row is None:
+        values = {
+            key: DEFAULT_ANALYSIS_PROMPTS[key]
+            for key in ANALYSIS_PROMPT_FIELDS
+        }
+        values[prompt_key] = value
+        row = ProjectAnalysisPromptSettings(
+            project_id=project_id,
+            updated_by_user_id=principal.user.id,
+            llm_analyzer_system_prompt=values["llm_analyzer"],
+            aggregator_system_prompt=values["aggregator"],
+            rules_writer_system_prompt=values["rules_writer"],
+        )
+        db.add(row)
+    else:
+        setattr(row, field, value)
+        row.updated_by_user_id = principal.user.id
+    db.commit()
+    db.refresh(row)
+    return serialize_analysis_prompt_settings(db, project_id)
+
+
 @router.get("/v1/projects")
 def list_projects(
     db: Session = Depends(get_db),
@@ -609,6 +791,11 @@ def create_project_for_creator(
         )
     )
     _add_default_analysis_rule_version(
+        db,
+        project_id=project.id,
+        actor_user_id=principal.user.id,
+    )
+    _add_default_analysis_category_catalog(
         db,
         project_id=project.id,
         actor_user_id=principal.user.id,
@@ -866,6 +1053,11 @@ def create_project(
         project_id=project.id,
         actor_user_id=principal.user.id,
     )
+    _add_default_analysis_category_catalog(
+        db,
+        project_id=project.id,
+        actor_user_id=principal.user.id,
+    )
     db.commit()
     db.refresh(project)
     return _project_payload(db, project, principal)
@@ -913,11 +1105,30 @@ def archive_project(
         db.commit()
         return {"ok": True, "project_id": project.id, "archived": True}
     db.query(ApiKey).filter(ApiKey.project_id == project.id).delete()
+    # Catalog versions reference one another (parent/restored lineage), so
+    # detach those self-references before deleting the project's rows.
+    db.query(ProjectAnalysisCategoryCatalogVersion).filter(
+        ProjectAnalysisCategoryCatalogVersion.project_id == project.id
+    ).update(
+        {
+            ProjectAnalysisCategoryCatalogVersion.parent_version_id: None,
+            ProjectAnalysisCategoryCatalogVersion.restored_from_version_id: None,
+        },
+        synchronize_session=False,
+    )
+    db.flush()
+    db.query(ProjectAnalysisCategoryCatalogVersion).filter(
+        ProjectAnalysisCategoryCatalogVersion.project_id == project.id
+    ).delete(synchronize_session=False)
+    db.flush()
     db.query(ProjectAnalysisRuleAlias).filter(
         ProjectAnalysisRuleAlias.project_id == project.id
     ).delete()
     db.query(ProjectAnalysisRuleVersion).filter(
         ProjectAnalysisRuleVersion.project_id == project.id
+    ).delete()
+    db.query(ProjectAnalysisPromptSettings).filter(
+        ProjectAnalysisPromptSettings.project_id == project.id
     ).delete()
     db.query(ProjectMembership).filter(
         ProjectMembership.project_id == project.id

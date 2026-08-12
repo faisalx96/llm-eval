@@ -93,8 +93,8 @@ result = Evaluator(
         "sql_context": "schema",
     },
 ).run()</pre>
-<p>The original dict remains the dataset input shown in artifacts and the UI. During the task call, the adapter passes the mapped names; during metric calls, both original names (<code>sql_prompt</code>, <code>sql_context</code>) and mapped names (<code>question</code>, <code>schema</code>) are available.</p>
-<p>Single-column CSVs preserve the scalar value for both the task and a metric's <code>input_data</code> parameter. The declared column name is also exposed as an individual metric parameter and judge placeholder. With <code>input_col="question"</code>, <code>input_data</code> stays scalar while <code>question</code> resolves to the same value. When <code>input_mapping</code> renames that column, the mapped name is exposed without changing <code>input_data</code>.</p>
+<p>The original dict remains the dataset input shown in artifacts and the UI. During task and metric calls, <code>input_data</code> uses the mapped names. Both original names (<code>sql_prompt</code>, <code>sql_context</code>) and mapped names (<code>question</code>, <code>schema</code>) remain available as individual metric arguments.</p>
+<p>Without <code>input_mapping</code>, a single-column CSV preserves the scalar metric input for backward compatibility. With <code>input_col="question"</code>, <code>input_data</code> stays scalar while <code>question</code> resolves to the same value. When <code>input_mapping</code> renames the column, metric <code>input_data</code> becomes a dict under the mapped name; for example, <code>{"question": "What is AI?"}</code>. Original and mapped names remain available as individual metric arguments and judge placeholders.</p>
 
 <h3>JSON-in-cell parsing rule</h3>
 <p>CSV cells are parsed with deliberately minimal magic. The rule (verified in <code>_parse_cell</code>):</p>

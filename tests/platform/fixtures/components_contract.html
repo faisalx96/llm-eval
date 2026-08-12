@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Qym shared component contract fixture</title>
+  <link rel="stylesheet" href="../../../packages/platform/qym_platform/_static/dashboard/dashboard.css">
+  <style>
+    body { padding: var(--space-lg); }
+    .fixture { display: grid; gap: var(--space-xl); max-width: 720px; }
+    .fixture-section { display: grid; gap: var(--space-sm); }
+    .fixture-overflow { max-width: 180px; overflow-x: auto; white-space: nowrap; }
+    #scroll-target { width: 180px; overflow-x: auto; white-space: nowrap; }
+    #scroll-mirror { width: 180px; }
+    #scroll-content { display: inline-block; width: 640px; }
+    #pagination-scroll-host { max-height: 40px; overflow-y: auto; }
+    #pagination-scroll-content { height: 200px; }
+  </style>
+  <link rel="stylesheet" href="../../../packages/platform/qym_platform/_static/dashboard/ui_components.css">
+  <script src="../../../packages/platform/qym_platform/_static/dashboard/ui_components.js" defer></script>
+</head>
+<body>
+  <main class="fixture">
+    <section class="fixture-section" aria-labelledby="tabs-heading">
+      <h1 id="tabs-heading">Tabs</h1>
+      <div class="qym-tabs" id="tabs" role="tablist" aria-label="Contract tabs">
+        <button class="qym-tabs__tab" type="button" role="tab" aria-selected="true">Overview</button>
+        <button class="qym-tabs__tab" type="button" role="tab" aria-selected="false">Details</button>
+        <button class="qym-tabs__tab" type="button" role="tab" aria-selected="false" disabled>Disabled</button>
+      </div>
+      <div class="fixture-overflow" aria-label="Overflowing tabs">
+        <div class="qym-tabs" id="overflow-tabs" role="tablist">
+          <button class="qym-tabs__tab" type="button" role="tab" aria-selected="true">One</button>
+          <button class="qym-tabs__tab" type="button" role="tab" aria-selected="false">Two</button>
+          <button class="qym-tabs__tab" type="button" role="tab" aria-selected="false">Three</button>
+          <button class="qym-tabs__tab" type="button" role="tab" aria-selected="false">Four</button>
+          <button class="qym-tabs__tab" type="button" role="tab" aria-selected="false">Five</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="fixture-section" aria-labelledby="segmented-heading">
+      <h2 id="segmented-heading">Segmented</h2>
+      <div class="qym-segmented" id="segmented" data-qym-segmented-key="fixture-segmented">
+        <button class="qym-segmented__option" type="button" aria-pressed="true">All</button>
+        <button class="qym-segmented__option" type="button" aria-pressed="false">Open</button>
+        <button class="qym-segmented__option" type="button" aria-pressed="false">Closed</button>
+      </div>
+    </section>
+
+    <section class="fixture-section" aria-labelledby="dropdown-heading">
+      <h2 id="dropdown-heading">Dropdown</h2>
+      <div class="qym-dropdown" id="dropdown">
+        <button class="qym-control qym-select qym-dropdown__trigger" type="button" aria-expanded="false" aria-haspopup="true">Choose metrics</button>
+        <div class="qym-dropdown__menu" role="group" aria-label="Metric options">
+          <input class="qym-control qym-search qym-dropdown__search" type="search" aria-label="Search metrics">
+          <div class="qym-dropdown__actions">
+            <button class="qym-inline-action qym-inline-action--neutral" type="button" data-qym-dropdown-action="all">Select all</button>
+            <button class="qym-inline-action qym-inline-action--neutral" type="button" data-qym-dropdown-action="none">Clear</button>
+          </div>
+          <div class="qym-dropdown__option" data-qym-dropdown-search-text="accuracy"><label class="qym-dropdown__option-label"><input type="checkbox" value="accuracy"><span class="qym-dropdown__option-text">Accuracy</span></label><button class="qym-inline-action qym-dropdown__only" type="button" data-qym-dropdown-action="only">Only</button></div>
+          <div class="qym-dropdown__option" data-qym-dropdown-search-text="latency"><label class="qym-dropdown__option-label"><input type="checkbox" value="latency"><span class="qym-dropdown__option-text">Latency</span></label><button class="qym-inline-action qym-dropdown__only" type="button" data-qym-dropdown-action="only">Only</button></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="fixture-section" aria-labelledby="help-heading">
+      <h2 id="help-heading">Help</h2>
+      <button class="qym-help-marker" id="help" type="button" aria-label="What is coverage?">i<span class="qym-help-tooltip">Coverage is the share of targets with a saved diagnosis.</span></button>
+    </section>
+
+    <section class="fixture-section" aria-labelledby="pagination-heading">
+      <h2 id="pagination-heading">Pagination</h2>
+      <div id="pagination-output" aria-live="polite"></div>
+      <div id="pagination-scroll-host" tabindex="0" aria-label="Pagination content"><div id="pagination-scroll-content">Scroll position is restored after changing a page.</div></div>
+      <div id="pagination"></div>
+    </section>
+
+    <section class="fixture-section" aria-labelledby="scroll-heading">
+      <h2 id="scroll-heading">Scroll mirror</h2>
+      <div id="scroll-target" tabindex="0" aria-label="Scrollable component content"><span id="scroll-content">This wide content lets the shared scrollbar mirror synchronize deterministically.</span></div>
+      <div class="qym-scroll-mirror" id="scroll-mirror" data-qym-scroll-mirror-for="scroll-target"
+           role="slider" tabindex="0" aria-label="Horizontal scroll position" aria-valuemin="0">
+        <div class="qym-scroll-mirror__track"><div class="qym-scroll-mirror__thumb"></div></div>
+      </div>
+    </section>
+
+    <section class="fixture-section" aria-labelledby="states-heading">
+      <h2 id="states-heading">Form and feedback states</h2>
+      <label class="qym-checkbox" for="fixture-checkbox">
+        <input id="fixture-checkbox" type="checkbox">
+        <span class="qym-checkbox__copy">Include archived evaluations</span>
+      </label>
+      <label class="qym-switch" for="fixture-switch">
+        <input id="fixture-switch" type="checkbox" role="switch" aria-label="Enable notifications">
+        <span class="qym-switch__track" aria-hidden="true"></span>
+        <span class="qym-checkbox__copy">Enable notifications</span>
+      </label>
+      <div class="qym-alert qym-alert--info" id="fixture-alert" role="status">Import is queued.</div>
+      <div class="qym-empty-state" id="fixture-empty">
+        <strong class="qym-empty-state__title">No saved views</strong>
+        <span class="qym-empty-state__body">Create a view to revisit this filter set.</span>
+      </div>
+      <div class="qym-loading" id="fixture-loading" role="status" aria-live="polite">
+        <span class="qym-loading__spinner" aria-hidden="true"></span>
+        <span>Loading evaluations</span>
+      </div>
+      <div class="qym-saved-state qym-saved-state--saved" id="fixture-saved" role="status">Saved</div>
+    </section>
+
+    <section id="dynamic-root" class="fixture-section" aria-label="Dynamic root"></section>
+  </main>
+  <script>
+    window.renderFixturePagination = function (page, pageSize) {
+      window.QymUIComponents.renderPagination(document.getElementById('pagination'), {
+        total: 95,
+        page: page || 1,
+        pageSize: pageSize || 20,
+        pageSizeOptions: [20, 50],
+        scrollHost: 'pagination-scroll-host',
+        onPageChange: function (nextPage) {
+          document.getElementById('pagination-output').textContent = 'page:' + nextPage;
+        },
+        onPageSizeChange: function (nextSize) {
+          document.getElementById('pagination-output').textContent = 'size:' + nextSize;
+        },
+      });
+    };
+    window.addEventListener('DOMContentLoaded', function () {
+      document.querySelectorAll('.qym-tabs[role="tablist"]').forEach(function (tablist) {
+        tablist.addEventListener('click', function (event) {
+          var tab = event.target.closest('[role="tab"]');
+          if (!tab || tab.disabled) return;
+          tablist.querySelectorAll('[role="tab"]').forEach(function (candidate) {
+            candidate.setAttribute('aria-selected', candidate === tab ? 'true' : 'false');
+          });
+        });
+      });
+      document.querySelectorAll('.qym-segmented').forEach(function (segmented) {
+        segmented.addEventListener('click', function (event) {
+          var option = event.target.closest('.qym-segmented__option');
+          if (!option) return;
+          segmented.querySelectorAll('.qym-segmented__option').forEach(function (candidate) {
+            candidate.setAttribute('aria-pressed', candidate === option ? 'true' : 'false');
+          });
+        });
+      });
+      window.renderFixturePagination();
+    });
+  </script>
+</body>
+</html>

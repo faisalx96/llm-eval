@@ -8,6 +8,7 @@ from html import escape
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+from urllib.parse import parse_qsl, quote, urlencode
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
@@ -64,7 +65,12 @@ from qym_platform.services.repeat_passes import (
 )
 from qym_platform.services.root_cause_changes import (
     apply_root_cause_change,
+    lock_run_item,
     replace_metric_review_candidate,
+)
+from qym_platform.services.root_cause_categories import (
+    normalize_category_taxonomy,
+    normalize_root_causes,
 )
 from qym_platform.settings import PlatformSettings
 
@@ -102,6 +108,23 @@ def _metric_specs_for_runs(
     for row in rows:
         result.setdefault(row.run_id, {})[row.metric_name] = _metric_spec_payload(row)
     return result
+
+
+def _refresh_metric_analysis_error(meta: Dict[str, Any]) -> None:
+    """Keep the item-level analysis error summary aligned with metric edits."""
+    metric_analyses = meta.get("metric_analyses")
+    errors = []
+    if isinstance(metric_analyses, dict):
+        for metric_name, analysis in metric_analyses.items():
+            if not isinstance(analysis, dict):
+                continue
+            error = str(analysis.get("error") or "").strip()
+            if error:
+                errors.append(f"{metric_name}: {error}")
+    if errors:
+        meta["analysis_error"] = "; ".join(errors)
+    else:
+        meta.pop("analysis_error", None)
 
 
 def _median(values: List[Optional[float]]) -> float:
@@ -587,6 +610,182 @@ def _guard_project_page(
         if exc.status_code == 404:
             return _project_not_found_page(request, project_slug)
         raise
+    return None
+
+
+def _analysis_query(
+    request: Request,
+    *,
+    remove: set[str] | None = None,
+    scope: str | None = None,
+) -> str:
+    """Preserve harmless analyzer query state while canonicalizing routes."""
+    remove = remove or set()
+    pairs = parse_qsl(request.url.query, keep_blank_values=True)
+    result: list[tuple[str, str]] = []
+    scope_written = False
+    for key, value in pairs:
+        if key in remove:
+            continue
+        if key == "scope" and scope is not None:
+            if not scope_written:
+                result.append(("scope", scope))
+                scope_written = True
+            continue
+        result.append((key, value))
+    if scope is not None and not scope_written:
+        result.append(("scope", scope))
+    return urlencode(result, doseq=True)
+
+
+def _analysis_project_base(request: Request) -> str:
+    path = request.url.path
+    marker = "/projects/"
+    return path.split(marker, 1)[0] if marker in path else ""
+
+
+def _analysis_project_url(
+    request: Request,
+    project_slug: str,
+    suffix: str = "analysis",
+    query: str = "",
+) -> str:
+    path = (
+        _analysis_project_base(request).rstrip("/")
+        + "/projects/"
+        + quote(str(project_slug), safe="")
+        + ("/" + suffix.lstrip("/") if suffix else "")
+    )
+    return path + ("?" + query if query else "")
+
+
+def _visible_run_for_redirect(
+    db: Session,
+    request: Request,
+    run_id: str,
+) -> Run | None:
+    run = Run.active(db).filter(Run.id == run_id).first()
+    if run is None:
+        return None
+    try:
+        principal = require_ui_principal(
+            request=request,
+            db=db,
+            x_user_email=request.headers.get("X-User-Email"),
+            x_email=request.headers.get("X-Email"),
+            x_admin_bootstrap=request.headers.get("X-Admin-Bootstrap"),
+        )
+    except HTTPException:
+        return None
+    return run if can_view_run(db, principal, run) else None
+
+
+def _canonical_legacy_analyzer_redirect(
+    run_id: str,
+    request: Request,
+    db: Session,
+) -> RedirectResponse | None:
+    run = _visible_run_for_redirect(db, request, run_id)
+    if run is None:
+        return None
+    project = db.get(Project, run.project_id)
+    if project is None:
+        return None
+    query = _analysis_query(request)
+    return RedirectResponse(
+        url=_analysis_project_url(
+            request,
+            project.slug,
+            "runs/" + quote(run.id, safe="") + "/analyzer",
+            query,
+        ),
+        status_code=307,
+    )
+
+
+def _canonical_project_analysis_redirect(
+    project_slug: str,
+    request: Request,
+    db: Session,
+) -> RedirectResponse | None:
+    params = dict(parse_qsl(request.url.query, keep_blank_values=True))
+    requested_run_id = params.get("run", "").strip()
+    if requested_run_id:
+        run = _visible_run_for_redirect(db, request, requested_run_id)
+        if run is None:
+            return None
+        project = db.get(Project, run.project_id)
+        if project is None:
+            return None
+        query = _analysis_query(request, remove={"run", "scope"})
+        return RedirectResponse(
+            url=_analysis_project_url(
+                request,
+                project.slug,
+                "runs/" + quote(run.id, safe="") + "/analyzer",
+                query,
+            ),
+            status_code=307,
+        )
+
+    aliases = {"diagnosis": "categories", "project": "rules", "run": "dashboard"}
+    requested_scope = params.get("scope")
+    canonical_scope = aliases.get(requested_scope or "")
+    if canonical_scope is not None:
+        query = _analysis_query(request, scope=canonical_scope)
+        return RedirectResponse(
+            url=_analysis_project_url(request, project_slug, "analysis", query),
+            status_code=307,
+        )
+    return None
+
+
+def _canonical_project_run_analyzer_redirect(
+    project_slug: str,
+    run_id: str,
+    request: Request,
+    db: Session,
+) -> RedirectResponse | None:
+    run = _visible_run_for_redirect(db, request, run_id)
+    if run is not None:
+        project = db.get(Project, run.project_id)
+        if project is not None and project.slug != project_slug:
+            return RedirectResponse(
+                url=_analysis_project_url(
+                    request,
+                    project.slug,
+                    "runs/" + quote(run.id, safe="") + "/analyzer",
+                    _analysis_query(request),
+                ),
+                status_code=307,
+            )
+    aliases = {"diagnosis": "categories", "project": "rules"}
+    requested_scope = dict(parse_qsl(request.url.query, keep_blank_values=True)).get(
+        "scope"
+    )
+    canonical_scope = aliases.get(requested_scope or "")
+    if canonical_scope is not None:
+        return RedirectResponse(
+            url=_analysis_project_url(
+                request,
+                project_slug,
+                "analysis",
+                _analysis_query(request, remove={"scope"}, scope=canonical_scope),
+            ),
+            status_code=307,
+        )
+    if requested_scope in {"categories", "rules", "documents"}:
+        return RedirectResponse(
+            url=_analysis_project_url(
+                request,
+                project_slug,
+                "analysis",
+                _analysis_query(
+                    request, remove={"scope"}, scope=str(requested_scope)
+                ),
+            ),
+            status_code=307,
+        )
     return None
 
 
@@ -1226,6 +1425,9 @@ def analyzer_ui(run_id: str, request: Request, db: Session = Depends(get_db)) ->
     redirect = _maybe_redirect_to_login(request, db)
     if redirect:
         return redirect
+    canonical = _canonical_legacy_analyzer_redirect(run_id, request, db)
+    if canonical:
+        return canonical
     idx = _platform_static_dashboard_analyzer()
     if not idx.exists():
         raise HTTPException(status_code=404, detail="LLM Analyzer UI not found")
@@ -1242,6 +1444,9 @@ def project_analysis_ui(
     guarded = _guard_project_page(request, db, project_slug)
     if guarded:
         return guarded
+    canonical = _canonical_project_analysis_redirect(project_slug, request, db)
+    if canonical:
+        return canonical
     idx = _platform_static_dashboard_analyzer()
     if not idx.exists():
         raise HTTPException(status_code=404, detail="Auto-analysis UI not found")
@@ -1258,7 +1463,15 @@ def project_analyzer_ui(
     guarded = _guard_project_page(request, db, project_slug)
     if guarded:
         return guarded
-    return analyzer_ui(run_id=run_id, request=request, db=db)
+    canonical = _canonical_project_run_analyzer_redirect(
+        project_slug, run_id, request, db
+    )
+    if canonical:
+        return canonical
+    idx = _platform_static_dashboard_analyzer()
+    if not idx.exists():
+        raise HTTPException(status_code=404, detail="LLM Analyzer UI not found")
+    return _dashboard_html_response(idx, request)
 
 
 @router.get("/run/{run_id:path}", response_model=None)
@@ -3577,9 +3790,12 @@ def update_root_cause(
     )
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
+    item = lock_run_item(db, run=run, item=item)
 
     editable_fields = (
         "root_cause",
+        "root_causes",
+        "category_taxonomy",
         "root_cause_detail",
         "root_cause_note",
         "solution",
@@ -3616,14 +3832,34 @@ def update_root_cause(
         )
         analysis = dict(before_analysis)
 
-        if "root_cause" in patch:
+        if "root_causes" in patch:
+            root_causes = normalize_root_causes(
+                patch.get("root_causes")
+            )
+            if root_causes:
+                analysis["root_causes"] = root_causes
+                analysis["root_cause"] = root_causes[0]
+            else:
+                for field in (
+                    "root_causes",
+                    "root_cause",
+                    "root_cause_detail",
+                    "root_cause_reason",
+                    "root_cause_note",
+                    "confidence",
+                ):
+                    analysis.pop(field, None)
+        elif "root_cause" in patch:
             root_cause = str(patch.get("root_cause") or "").strip()
             if root_cause:
                 analysis["root_cause"] = root_cause
+                analysis["root_causes"] = [root_cause]
             else:
                 for field in (
+                    "root_causes",
                     "root_cause",
                     "root_cause_detail",
+                    "root_cause_reason",
                     "root_cause_note",
                     "confidence",
                 ):
@@ -3640,6 +3876,12 @@ def update_root_cause(
                 analysis["root_cause_note"] = note
             else:
                 analysis.pop("root_cause_note", None)
+        if "category_taxonomy" in patch:
+            taxonomy = normalize_category_taxonomy(patch.get("category_taxonomy"))
+            if taxonomy:
+                analysis["category_taxonomy"] = taxonomy
+            else:
+                analysis.pop("category_taxonomy", None)
         if "solution" in patch:
             solution = str(patch.get("solution") or "").strip()
             if solution:
@@ -3655,14 +3897,20 @@ def update_root_cause(
                 analysis.pop("solution_note", None)
 
         if patch:
-            analysis.pop("error", None)
+            # A failed AI diagnosis remains visibly unresolved while a
+            # reviewer adds context. Supplying a category is the explicit
+            # human recovery action that clears that failure.
+            if normalize_root_causes(
+                analysis.get("root_causes") or analysis.get("root_cause")
+            ):
+                analysis.pop("error", None)
             analysis.pop("confidence", None)
             analysis["source"] = "human"
 
         meaningful_analysis = {
             key: value
             for key, value in analysis.items()
-            if key != "source" and value not in (None, "")
+            if key != "source" and value not in (None, "", [])
         }
         if meaningful_analysis:
             metric_analyses[metric_name] = analysis
@@ -3673,6 +3921,7 @@ def update_root_cause(
             meta["metric_analyses"] = metric_analyses
         else:
             meta.pop("metric_analyses", None)
+        _refresh_metric_analysis_error(meta)
         item.item_metadata = meta
 
         after_analysis = dict(metric_analyses.get(metric_name) or {})
@@ -3687,6 +3936,7 @@ def update_root_cause(
                     principal.user.id if principal.auth_type != "none" else None
                 ),
                 actor_source="human",
+                item_locked=True,
             )
             db.add(
                 AuditLog(
@@ -3721,6 +3971,7 @@ def update_root_cause(
         actor_user_id=principal.user.id if principal.auth_type != "none" else None,
         actor_source="human",
         human_patch=patch,
+        item_locked=True,
     )
 
     db.commit()
@@ -3751,7 +4002,8 @@ def delete_run(
     if not can_delete_run(db, principal, run):
         raise HTTPException(status_code=403, detail="Permission denied")
 
-    # Soft-delete: mark as deleted instead of removing data
+    # Soft-delete only. All evaluation, analysis, and review history remains
+    # available if an administrator restores the run.
     snapshot = run.audit_snapshot()
     run.deleted_at = utc_now_naive()
     run.deleted_by_user_id = principal.user.id
@@ -3762,7 +4014,9 @@ def delete_run(
         entity_type="run",
         entity_id=run.id,
         before=snapshot,
-        after={"deleted_at": run.deleted_at.isoformat()},
+        after={
+            "deleted_at": run.deleted_at.isoformat(),
+        },
     )
     db.add(audit)
     db.commit()

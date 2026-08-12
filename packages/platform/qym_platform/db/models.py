@@ -115,6 +115,66 @@ class Project(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
+class ProjectAnalysisCategoryCatalogVersion(Base):
+    """Immutable project-scoped diagnosis category catalog snapshot."""
+
+    __tablename__ = "project_analysis_category_catalog_versions"
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid4())
+    )
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), index=True)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    categories: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    category_entries: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSON, default=list, nullable=False
+    )
+    category_details_map: Mapped[dict[str, list[str]]] = mapped_column(
+        JSON, default=dict, nullable=False
+    )
+    category_taxonomy: Mapped[dict[str, dict[str, str]]] = mapped_column(
+        JSON, default=dict, nullable=False
+    )
+    max_root_cause_categories: Mapped[int] = mapped_column(
+        Integer, default=3, server_default="3", nullable=False
+    )
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    source: Mapped[str] = mapped_column(
+        String(30), default="manual", server_default="manual", nullable=False
+    )
+    restored_from_version_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("project_analysis_category_catalog_versions.id"), nullable=True
+    )
+    parent_version_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("project_analysis_category_catalog_versions.id"), nullable=True
+    )
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default="1", nullable=False
+    )
+    created_by_user_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("users.id"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "project_id",
+            "version",
+            name="uq_project_analysis_category_catalog_version",
+        ),
+        Index(
+            "ix_project_analysis_category_catalog_versions_active",
+            "project_id",
+            "is_active",
+        ),
+        Index(
+            "ix_project_analysis_category_catalog_versions_project_version",
+            "project_id",
+            "version",
+        ),
+    )
+
+
 class ProjectAnalysisRuleVersion(Base):
     """Project-scoped analyzer rules draft or immutable published snapshot."""
 
@@ -134,7 +194,7 @@ class ProjectAnalysisRuleVersion(Base):
         ),
         default=AnalysisRuleVersionStatus.DRAFT,
     )
-    rules: Mapped[list[dict[str, str]]] = mapped_column(JSON, default=list)
+    rules: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
     source: Mapped[str] = mapped_column(String(30), default="manual")
     parent_version_id: Mapped[Optional[str]] = mapped_column(
         ForeignKey("project_analysis_rule_versions.id"), nullable=True
@@ -315,6 +375,26 @@ class ProjectLlmConnection(Base):
     __table_args__ = (
         UniqueConstraint("project_id", "name", name="uq_project_llm_connection_name"),
         Index("ix_project_llm_connections_project_default", "project_id", "is_default"),
+    )
+
+
+class ProjectAnalysisPromptSettings(Base):
+    """Project-scoped system prompts used by the analysis pipeline."""
+
+    __tablename__ = "project_analysis_prompt_settings"
+
+    project_id: Mapped[str] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), primary_key=True
+    )
+    llm_analyzer_system_prompt: Mapped[str] = mapped_column(Text, nullable=False)
+    aggregator_system_prompt: Mapped[str] = mapped_column(Text, nullable=False)
+    rules_writer_system_prompt: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_by_user_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("users.id"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
     )
 
 
@@ -859,6 +939,12 @@ class ReviewCorrection(Base):
     scores_snapshot: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
 
     ai_root_cause: Mapped[str] = mapped_column(String(200))
+    # Plural category storage. The singular columns remain as the primary
+    # category for compatibility with existing queries and clients.
+    ai_root_causes: Mapped[Optional[list[str]]] = mapped_column(JSON, nullable=True)
+    ai_category_taxonomy: Mapped[Optional[dict[str, Any]]] = mapped_column(
+        JSON, nullable=True
+    )
     ai_root_cause_detail: Mapped[str] = mapped_column(Text, default="")
     ai_root_cause_note: Mapped[str] = mapped_column(Text, default="")
     ai_confidence: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
@@ -866,6 +952,10 @@ class ReviewCorrection(Base):
     ai_solution_note: Mapped[str] = mapped_column(Text, default="")
 
     human_root_cause: Mapped[str] = mapped_column(String(200))
+    human_root_causes: Mapped[Optional[list[str]]] = mapped_column(JSON, nullable=True)
+    human_category_taxonomy: Mapped[Optional[dict[str, Any]]] = mapped_column(
+        JSON, nullable=True
+    )
     human_root_cause_detail: Mapped[str] = mapped_column(Text, default="")
     human_root_cause_note: Mapped[str] = mapped_column(Text, default="")
     human_solution: Mapped[str] = mapped_column(String(200), default="")

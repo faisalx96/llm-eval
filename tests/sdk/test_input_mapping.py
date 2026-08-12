@@ -106,7 +106,7 @@ def test_scalar_metric_input_stays_scalar_and_exposes_column_name(mock_dataset):
     assert kwargs["question"] == "What is AI?"
 
 
-def test_scalar_metric_input_stays_scalar_and_exposes_mapped_name(mock_dataset):
+def test_scalar_metric_input_uses_mapped_name_and_exposes_alias(mock_dataset):
     def task(question):
         return question
 
@@ -129,11 +129,11 @@ def test_scalar_metric_input_stays_scalar_and_exposes_mapped_name(mock_dataset):
         input_data="What is AI?",
     )
 
-    assert kwargs["input_data"] == "What is AI?"
+    assert kwargs["input_data"] == {"question": "What is AI?"}
     assert kwargs["question"] == "What is AI?"
 
 
-def test_mapping_preserves_original_dict_for_input_data(mock_dataset):
+def test_mapping_uses_mapped_dict_for_metric_input_data(mock_dataset):
     def task(question, schema):
         return f"{question} :: {schema}"
 
@@ -162,7 +162,65 @@ def test_mapping_preserves_original_dict_for_input_data(mock_dataset):
         input_data=original,
     )
 
+    assert kwargs["input_data"] == {
+        "question": "List users",
+        "schema": "CREATE TABLE users(id INT)",
+    }
+    assert original == {
+        "sql_prompt": "List users",
+        "sql_context": "CREATE TABLE users(id INT)",
+    }
+
+
+def test_dict_metric_input_without_mapping_preserves_original(mock_dataset):
+    def task(question):
+        return question
+
+    def metric(output, expected, input_data):
+        return 1.0
+
+    evaluator = Evaluator(
+        task=task,
+        dataset=mock_dataset,
+        metrics=[metric],
+        config={"otel_enabled": False},
+    )
+    original = {"question": "What is AI?"}
+
+    _, kwargs = evaluator._resolve_metric_arguments(
+        metric,
+        output="answer",
+        expected="expected",
+        input_data=original,
+    )
+
     assert kwargs["input_data"] is original
+
+
+def test_positional_metric_receives_mapped_input_data(mock_dataset):
+    def task(question):
+        return question
+
+    def metric(output, expected, input_data, /):
+        return 1.0
+
+    evaluator = Evaluator(
+        task=task,
+        dataset=mock_dataset,
+        metrics=[metric],
+        input_mapping={"prompt": "question"},
+        config={"otel_enabled": False},
+    )
+
+    args, kwargs = evaluator._resolve_metric_arguments(
+        metric,
+        output="answer",
+        expected="expected",
+        input_data={"prompt": "What is AI?"},
+    )
+
+    assert args == ("answer", "expected", {"question": "What is AI?"})
+    assert kwargs == {}
 
 
 def test_scalar_metric_input_stays_scalar_without_schema_or_mapping(mock_dataset):
@@ -188,6 +246,32 @@ def test_scalar_metric_input_stays_scalar_without_schema_or_mapping(mock_dataset
     )
 
     assert kwargs["input_data"] == "unnamed input"
+
+
+def test_unrelated_mapping_preserves_legacy_scalar_input(mock_dataset):
+    def task(question):
+        return question
+
+    def metric(output, expected, input_data):
+        return 1.0
+
+    mock_dataset.input_cols = ["question"]
+    evaluator = Evaluator(
+        task=task,
+        dataset=mock_dataset,
+        metrics=[metric],
+        input_mapping={"prompt": "query"},
+        config={"otel_enabled": False},
+    )
+
+    _, kwargs = evaluator._resolve_metric_arguments(
+        metric,
+        output="answer",
+        expected="expected",
+        input_data="What is AI?",
+    )
+
+    assert kwargs["input_data"] == "What is AI?"
 
 
 def test_evaluator_validates_input_mapping(mock_task, mock_dataset):

@@ -1643,6 +1643,72 @@
     .root-cause-metric-control .filter-select {
       min-width: 150px;
     }
+    .root-cause-breakdown-header {
+      justify-content: space-between;
+    }
+    .root-cause-breakdown-title {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-xs);
+      min-width: 0;
+    }
+    .aggregate-results-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: var(--space-xs);
+      padding: var(--space-xs) var(--space-sm);
+      border: 1px solid var(--border-default);
+      border-radius: var(--space-xs);
+      background: var(--bg-elevated);
+      color: var(--text-secondary);
+      font-family: var(--font-sans);
+      font-size: var(--font-sm);
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s, color 0.15s;
+    }
+    .aggregate-results-btn:hover {
+      background: var(--bg-hover);
+      border-color: var(--border-strong);
+      color: var(--text-primary);
+    }
+    .aggregate-results-btn:focus-visible {
+      outline: 2px solid var(--accent-primary);
+      outline-offset: calc(var(--space-xs) / 2);
+    }
+    .aggregate-results-btn:disabled {
+      cursor: wait;
+      opacity: 0.65;
+    }
+    .aggregate-results-btn svg,
+    .root-cause-aggregation-status svg {
+      width: var(--space-md);
+      height: var(--space-md);
+      flex: 0 0 auto;
+    }
+    .root-cause-aggregation-status {
+      display: flex;
+      align-items: flex-start;
+      gap: var(--space-sm);
+      margin-bottom: var(--space-md);
+      padding: var(--space-sm) var(--space-md);
+      border: 1px solid var(--border-default);
+      border-radius: var(--space-xs);
+      background: var(--bg-elevated);
+      color: var(--text-secondary);
+      font-size: var(--font-sm);
+      line-height: 1.5;
+    }
+    .root-cause-aggregation-status.pending {
+      border-color: color-mix(in srgb, var(--info) 35%, var(--border-default));
+      color: var(--info);
+    }
+    .root-cause-aggregation-status.failed {
+      border-color: color-mix(in srgb, var(--error) 35%, var(--border-default));
+      background: var(--error-dim);
+      color: var(--error);
+    }
     .breakdown-errors.task-error-group .breakdown-icon,
     .breakdown-errors.task-error-group .breakdown-header { color: var(--error); }
     .breakdown-errors.trace-error-group .breakdown-icon,
@@ -3007,7 +3073,45 @@
       font-size: var(--font-md);
       font-weight: 650;
     }
-    .metric-analysis-category,
+    .metric-analysis-category-list {
+      display: inline-flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: var(--space-xs);
+      min-width: 0;
+      max-width: 100%;
+    }
+    .metric-analysis-category {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-xs);
+      min-height: var(--badge-height);
+      padding: calc(var(--space-xs) / 2) var(--space-sm);
+      border: 1px solid color-mix(in srgb, var(--metric-analysis-category-color, var(--text-muted)) 55%, transparent);
+      border-radius: var(--radius-pill);
+      background: color-mix(in srgb, var(--metric-analysis-category-color, var(--text-muted)) 14%, var(--bg-surface));
+      color: var(--metric-analysis-category-color, var(--text-muted));
+      font-family: var(--font-sans);
+      font-size: var(--font-xs);
+      font-weight: 650;
+      line-height: 1.2;
+      white-space: nowrap;
+    }
+    .metric-analysis-category::before {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: currentColor;
+      content: '';
+      flex: 0 0 auto;
+    }
+    .metric-analysis-category--empty {
+      border-style: dashed;
+      background: transparent;
+    }
+    .metric-analysis-category--empty::before {
+      display: none;
+    }
     .metric-analysis-confidence {
       padding: 2px 8px;
       border: 1px solid var(--border-default);
@@ -3018,14 +3122,15 @@
     }
     button.metric-analysis-category {
       appearance: none;
-      background: transparent;
-      font-family: var(--font-sans);
       cursor: pointer;
     }
     button.metric-analysis-category:hover {
-      color: var(--text-primary);
-      border-color: var(--border-strong);
-      background: var(--bg-hover);
+      border-color: var(--metric-analysis-category-color, var(--border-strong));
+      background: color-mix(in srgb, var(--metric-analysis-category-color, var(--text-muted)) 24%, var(--bg-surface));
+    }
+    button.metric-analysis-category:focus-visible {
+      outline: 1px solid var(--accent-primary);
+      outline-offset: 2px;
     }
     .metric-analysis-confidence {
       font-family: var(--font-mono);
@@ -3068,12 +3173,26 @@
       color: var(--accent-primary);
     }
     .metric-analysis-note,
+    .metric-analysis-reason,
     .metric-analysis-solution,
     .metric-analysis-error {
       margin-top: var(--space-sm);
       color: var(--text-secondary);
       font-size: var(--font-base);
       line-height: 1.6;
+    }
+    .metric-analysis-reason summary {
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: var(--font-sm);
+      font-weight: 650;
+    }
+    .metric-analysis-reason summary:hover,
+    .metric-analysis-reason[open] summary {
+      color: var(--text-primary);
+    }
+    .metric-analysis-reason-copy {
+      margin-top: var(--space-xs);
     }
     button.metric-analysis-note,
     button.metric-analysis-solution {
@@ -3106,6 +3225,16 @@
     }
     .metric-analysis-error {
       color: var(--error);
+    }
+    .metric-analysis-recovery {
+      margin-top: var(--space-md);
+      padding-top: var(--space-md);
+      border-top: 1px solid var(--border-subtle);
+    }
+    .metric-analysis-recovery-copy {
+      color: var(--text-secondary);
+      font-size: var(--font-sm);
+      line-height: 1.5;
     }
     .rc-sol-label {
       display: block;
@@ -3346,6 +3475,284 @@
       font-size: var(--font-xs);
       cursor: pointer;
       font-weight: 600;
+    }
+
+    /* Diagnosis category picker: a focused, project-backed modal rather than
+       an anchored menu that competes with the item card. */
+    .rdi-category-picker {
+      position: fixed;
+      z-index: 1000;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      padding: var(--space-lg);
+      background: color-mix(in srgb, var(--bg-void) 76%, transparent);
+    }
+    .rdi-category-picker__panel {
+      display: flex;
+      width: min(100%, 560px);
+      max-height: min(720px, calc(100vh - (2 * var(--space-lg))));
+      flex-direction: column;
+      overflow: hidden;
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius-md);
+      background: var(--bg-surface);
+      box-shadow: 0 var(--space-lg) var(--space-xl) color-mix(in srgb, var(--bg-void) 60%, transparent);
+    }
+    .rdi-category-picker__header,
+    .rdi-category-picker__footer {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: var(--space-md);
+      flex: 0 0 auto;
+      padding: var(--space-lg);
+    }
+    .rdi-category-picker__header {
+      border-bottom: 1px solid var(--border-default);
+    }
+    .rdi-category-picker__eyebrow {
+      margin: 0 0 var(--space-xs);
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+      font-weight: 650;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+    .rdi-category-picker__title {
+      margin: 0;
+      color: var(--text-primary);
+      font-size: var(--font-xl);
+      font-weight: 650;
+    }
+    .rdi-category-picker__lead,
+    .rdi-category-picker__status,
+    .rdi-category-picker__empty,
+    .rdi-category-picker__option-meta {
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+      line-height: 1.45;
+    }
+    .rdi-category-picker__lead {
+      max-width: 440px;
+      margin: var(--space-xs) 0 0;
+    }
+    .rdi-category-picker__close {
+      flex: 0 0 auto;
+    }
+    .rdi-category-picker__body {
+      display: flex;
+      flex: 1 1 auto;
+      min-height: 0;
+      flex-direction: column;
+      overflow-y: auto;
+    }
+    .rdi-category-picker__toolbar {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+      padding: var(--space-md) var(--space-lg);
+      border-bottom: 1px solid var(--border-subtle);
+      background: var(--bg-base);
+    }
+    .rdi-category-picker__toolbar > input {
+      min-width: 0;
+      flex: 1 1 auto;
+    }
+    .rdi-category-picker__count {
+      flex: 0 0 auto;
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+      font-size: var(--font-sm);
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+    .rdi-category-picker__list {
+      min-height: 96px;
+      max-height: 330px;
+      padding: var(--space-sm) var(--space-lg);
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      scrollbar-color: var(--border-default) transparent;
+      scrollbar-width: thin;
+    }
+    .rdi-category-picker__option {
+      display: flex;
+      width: 100%;
+      min-height: calc(var(--control-height) + var(--space-sm));
+      align-items: center;
+      gap: var(--space-sm);
+      padding: var(--space-xs) var(--space-sm);
+      border: 1px solid transparent;
+      border-radius: var(--control-radius);
+      background: transparent;
+      color: var(--text-secondary);
+      font-family: var(--font-sans);
+      text-align: left;
+      cursor: pointer;
+    }
+    .rdi-category-picker__option:hover,
+    .rdi-category-picker__option[aria-selected="true"] {
+      border-color: var(--border-default);
+      background: var(--bg-hover);
+      color: var(--text-primary);
+    }
+    .rdi-category-picker__option[aria-selected="true"] {
+      border-color: color-mix(in srgb, var(--accent-primary) 45%, var(--border-default));
+      background: color-mix(in srgb, var(--accent-primary) 10%, var(--bg-surface));
+    }
+    .rdi-category-picker__option:focus-visible {
+      outline: 1px solid var(--accent-primary);
+      outline-offset: 2px;
+    }
+    .rdi-category-picker__check {
+      display: grid;
+      width: var(--space-lg);
+      height: var(--space-lg);
+      flex: 0 0 var(--space-lg);
+      place-items: center;
+      border: 1px solid var(--border-default);
+      border-radius: var(--control-radius);
+      color: var(--bg-void);
+      font-size: var(--font-sm);
+      font-weight: 700;
+    }
+    .rdi-category-picker__option[aria-selected="true"] .rdi-category-picker__check {
+      border-color: var(--accent-primary);
+      background: var(--accent-primary);
+    }
+    .rdi-category-picker__option-copy {
+      display: flex;
+      min-width: 0;
+      flex: 1 1 auto;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .rdi-category-picker__option-name {
+      overflow: hidden;
+      color: inherit;
+      font-size: var(--font-base);
+      font-weight: 600;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .rdi-category-picker__option-meta {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .rdi-category-picker__empty {
+      margin: var(--space-md) 0;
+      text-align: center;
+    }
+    .rdi-category-picker__add {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-sm);
+      padding: var(--space-md) var(--space-lg);
+      border-top: 1px solid var(--border-subtle);
+      background: var(--bg-base);
+    }
+    .rdi-category-picker__add-label {
+      color: var(--text-primary);
+      font-size: var(--font-md);
+      font-weight: 600;
+    }
+    .rdi-category-picker__add-row {
+      display: flex;
+      gap: var(--space-sm);
+    }
+    .rdi-category-picker__add-row > input {
+      min-width: 0;
+      flex: 1 1 auto;
+    }
+    .rdi-category-picker__taxonomy {
+      display: grid;
+      gap: var(--space-sm);
+      padding: var(--space-md) var(--space-lg);
+      border-top: 1px solid var(--border-subtle);
+      background: var(--bg-surface);
+    }
+    .rdi-category-picker__taxonomy-heading {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: var(--space-sm);
+    }
+    .rdi-category-picker__taxonomy-note {
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+    }
+    .rdi-category-picker__taxonomy-field {
+      display: grid;
+      gap: var(--space-xs);
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+    }
+    .rdi-category-picker__taxonomy-field span {
+      color: var(--text-secondary);
+      font-weight: 650;
+    }
+    .rdi-category-picker__taxonomy-field textarea {
+      box-sizing: border-box;
+      height: auto;
+      min-height: calc(var(--space-xl) * 2);
+      padding: var(--space-xs) var(--space-sm);
+      line-height: 1.5;
+      resize: vertical;
+    }
+    .rdi-category-picker__status {
+      margin: 0;
+    }
+    .rdi-category-picker__status.is-error {
+      color: var(--error);
+    }
+    .rdi-category-picker__status.is-saving {
+      color: var(--accent-primary);
+    }
+    .rdi-category-picker__footer {
+      align-items: center;
+      border-top: 1px solid var(--border-default);
+      background: var(--bg-surface);
+    }
+    .rdi-category-picker__clear {
+      flex: 0 0 auto;
+    }
+    .rdi-analysis-warning {
+      display: flex;
+      align-items: flex-start;
+      gap: var(--space-sm);
+      margin-top: var(--space-sm);
+      padding: var(--space-sm) var(--space-md);
+      border: 1px solid color-mix(in srgb, var(--warning) 42%, transparent);
+      border-radius: var(--control-radius);
+      background: color-mix(in srgb, var(--warning) 10%, var(--bg-surface));
+      color: var(--text-secondary);
+      font-size: var(--font-sm);
+      line-height: 1.45;
+    }
+    .rdi-analysis-warning__label {
+      flex: 0 0 auto;
+      color: var(--warning);
+      font-weight: 650;
+    }
+    @media (max-width: 700px) {
+      .rdi-category-picker {
+        padding: 0;
+      }
+      .rdi-category-picker__panel {
+        width: 100%;
+        max-height: 100vh;
+        border-radius: 0;
+      }
+      .rdi-category-picker__header,
+      .rdi-category-picker__footer,
+      .rdi-category-picker__toolbar,
+      .rdi-category-picker__list,
+      .rdi-category-picker__add {
+        padding-right: var(--space-md);
+        padding-left: var(--space-md);
+      }
     }
 
     /* Metadata badges */
@@ -5100,6 +5507,13 @@
         const n = parseInt(raw || '', 10);
         return Number.isFinite(n) && n > 0 ? n : null;
       })();
+
+      // Optional deep link supplied by the diagnosis occurrence map.
+      const TARGET_ITEM_ID = (() => {
+        const params = new URLSearchParams(window.location.search);
+        return params.get('item') || params.get('item_id') || '';
+      })();
+
       function apiUrl(path) {
         return API_ROOT + path.replace(/^\.?\/?/, '');
       }
@@ -5150,6 +5564,7 @@
         'Reasoning Error', 'Tool Use Error', 'Instruction Following', 'Knowledge Gap',
         'Dataset Issue',
       ];
+      const MAX_ROOT_CAUSE_CATEGORIES = 3;
       const ROOT_CAUSE_COLORS = {
         'Hallucination': '#ef4444', 'Incomplete Answer': '#f97316',
         'Wrong Format': '#00d4aa', 'Context Missing': '#3b82f6',
@@ -5163,6 +5578,203 @@
           candidate => candidate.toLowerCase() === normalized
         );
         return name ? ROOT_CAUSE_COLORS[name] : '#e07a5f';
+      }
+
+      function normalizeCategoryLabels(value) {
+        const values = Array.isArray(value) ? value : [];
+        const seen = new Set();
+        return values.map(value => String(value || '').trim()).filter(value => {
+          const key = value.toLocaleLowerCase();
+          if (!value || seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+      }
+
+      function normalizeCategoryTaxonomy(value) {
+        const source = value && typeof value === 'object' ? value : {};
+        const taxonomy = {};
+        ['description', 'when_to_use'].forEach(key => {
+          const text = String(source[key] || '').trim().slice(0, 2000);
+          if (text) taxonomy[key] = text;
+        });
+        return taxonomy;
+      }
+
+      function categoryCatalogEntry(category) {
+        const taxonomy = state.categoryCatalog?.category_taxonomy || {};
+        const key = Object.keys(taxonomy).find(candidate =>
+          String(candidate).trim().toLocaleLowerCase() === String(category).trim().toLocaleLowerCase()
+        );
+        return key && taxonomy[key] && typeof taxonomy[key] === 'object' ? taxonomy[key] : {};
+      }
+
+      function categoryCatalogDetails(category) {
+        const details = state.categoryCatalog?.category_details_map || {};
+        const key = Object.keys(details).find(candidate =>
+          String(candidate).trim().toLocaleLowerCase() === String(category).trim().toLocaleLowerCase()
+        );
+        return key && Array.isArray(details[key]) ? details[key] : [];
+      }
+
+      function setCategoryCatalog(payload) {
+        const source = payload && typeof payload === 'object' && payload.catalog && typeof payload.catalog === 'object'
+          ? payload.catalog
+          : (payload && typeof payload === 'object' ? payload : {});
+        const rawTaxonomy = source.category_taxonomy && typeof source.category_taxonomy === 'object'
+          ? source.category_taxonomy
+          : {};
+        const taxonomy = {};
+        Object.entries(rawTaxonomy).forEach(([category, definition]) => {
+          const normalized = normalizeCategoryTaxonomy(definition);
+          if (Object.keys(normalized).length) taxonomy[category] = normalized;
+        });
+        const categories = normalizeCategoryLabels([
+          ...(Array.isArray(source.categories) ? source.categories : []),
+          ...(Array.isArray(source.root_cause_categories) ? source.root_cause_categories : []),
+          ...Object.keys(taxonomy),
+        ]);
+        state.categoryCatalog = {
+          categories: categories,
+          category_entries: Array.isArray(source.category_entries) ? source.category_entries : [],
+          category_details_map: source.category_details_map && typeof source.category_details_map === 'object'
+            ? source.category_details_map
+            : {},
+          category_taxonomy: taxonomy,
+          max_root_cause_categories: Number(source.max_root_cause_categories) > 0
+            ? Math.min(10, Math.trunc(Number(source.max_root_cause_categories)))
+            : MAX_ROOT_CAUSE_CATEGORIES,
+          version: Number(source.version) || 0,
+          can_manage: source.can_manage !== false && source.is_read_only !== true,
+          loaded: source.loaded !== false,
+        };
+        categories.forEach(category => {
+          if (!state.rootCauseValues.includes(category)) state.rootCauseValues.push(category);
+        });
+        state.rootCauseValues.sort();
+      }
+
+      function seedCategoryCatalogFromRun(run) {
+        const config = run && run.config && typeof run.config === 'object' ? run.config : {};
+        const hasCatalogData = Array.isArray(config.root_cause_categories) ||
+          (config.category_taxonomy && typeof config.category_taxonomy === 'object') ||
+          (config.category_details_map && typeof config.category_details_map === 'object');
+        if (!hasCatalogData) return;
+        setCategoryCatalog({
+          categories: config.root_cause_categories || [],
+          category_details_map: config.category_details_map || {},
+          category_taxonomy: config.category_taxonomy || config.category_taxonomies || {},
+          max_root_cause_categories: config.max_root_cause_categories,
+          version: config.category_catalog_version,
+          can_manage: false,
+          loaded: false,
+        });
+      }
+
+      function projectDiagnosisCatalogSlug() {
+        return String(
+          CURRENT_PROJECT_SLUG || state.run?.project?.slug || state.run?.project_slug || ''
+        ).trim();
+      }
+
+      async function loadProjectCategoryCatalog() {
+        const projectSlug = projectDiagnosisCatalogSlug();
+        if (IS_EXPORT || !projectSlug) return false;
+        try {
+          const response = await fetch(apiUrl('api/projects/' + encodeURIComponent(projectSlug) + '/analysis-category-catalog'));
+          if (!response.ok) throw new Error('Category catalog unavailable');
+          setCategoryCatalog(await response.json());
+          return true;
+        } catch (error) {
+          console.warn('Could not load project diagnosis categories:', error);
+          return false;
+        }
+      }
+
+      function categoryPickerOptions() {
+        const options = [];
+        const seen = new Set();
+        const add = value => {
+          const label = String(value || '').trim();
+          const key = label.toLocaleLowerCase();
+          if (!label || seen.has(key)) return;
+          seen.add(key);
+          options.push(label);
+        };
+        (state.categoryCatalog?.categories || []).forEach(add);
+        state.rootCauseValues.forEach(add);
+        if (options.length === 0) ROOT_CAUSE_PRESETS.forEach(add);
+        return options;
+      }
+
+      async function addProjectDiagnosisCategory(category, taxonomyInput) {
+        const label = String(category || '').trim();
+        if (!label) return false;
+        const known = state.categoryCatalog?.categories || [];
+        const existingLabel = known.find(value => String(value).trim().toLocaleLowerCase() === label.toLocaleLowerCase());
+        const hasTaxonomyInput = taxonomyInput !== undefined;
+        const taxonomy = normalizeCategoryTaxonomy(taxonomyInput);
+        if (existingLabel && !hasTaxonomyInput) return true;
+
+        const projectSlug = projectDiagnosisCatalogSlug();
+        if (IS_EXPORT || !projectSlug) {
+          const nextCategories = existingLabel ? known.slice() : [...known, label];
+          const nextTaxonomy = { ...(state.categoryCatalog?.category_taxonomy || {}) };
+          const taxonomyKey = Object.keys(nextTaxonomy).find(key => key.toLocaleLowerCase() === (existingLabel || label).toLocaleLowerCase());
+          if (hasTaxonomyInput) {
+            if (Object.keys(taxonomy).length) nextTaxonomy[taxonomyKey || existingLabel || label] = taxonomy;
+            else if (taxonomyKey) delete nextTaxonomy[taxonomyKey];
+          }
+          setCategoryCatalog({
+            ...state.categoryCatalog,
+            categories: nextCategories,
+            category_taxonomy: nextTaxonomy,
+            loaded: false,
+          });
+          return true;
+        }
+
+        if (!state.categoryCatalog.loaded) await loadProjectCategoryCatalog();
+        const catalog = state.categoryCatalog;
+        const catalogLabel = (catalog.categories || []).find(value => String(value).trim().toLocaleLowerCase() === label.toLocaleLowerCase());
+        if (catalogLabel && !Object.keys(taxonomy).length) return true;
+        if (!catalog.can_manage) {
+          showToast('error', 'Category not added', 'Project manager access is required to update diagnosis categories.');
+          return false;
+        }
+
+        const nextTaxonomy = { ...(catalog.category_taxonomy || {}) };
+        const taxonomyKey = Object.keys(nextTaxonomy).find(key => key.toLocaleLowerCase() === (catalogLabel || label).toLocaleLowerCase());
+        if (hasTaxonomyInput) {
+          if (Object.keys(taxonomy).length) nextTaxonomy[taxonomyKey || catalogLabel || label] = taxonomy;
+          else if (taxonomyKey) delete nextTaxonomy[taxonomyKey];
+        }
+        const body = {
+          categories: catalogLabel ? [...(catalog.categories || [])] : [...(catalog.categories || []), label],
+          category_entries: catalog.category_entries || [],
+          category_details_map: catalog.category_details_map || {},
+          category_taxonomy: nextTaxonomy,
+          max_root_cause_categories: catalog.max_root_cause_categories || MAX_ROOT_CAUSE_CATEGORIES,
+          base_revision: catalog.version || 0,
+        };
+        try {
+          const response = await fetch(apiUrl('api/projects/' + encodeURIComponent(projectSlug) + '/analysis-category-catalog'), {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+          });
+          const result = await response.json().catch(() => ({}));
+          if (!response.ok) {
+            const detail = result.detail;
+            const message = typeof detail === 'string' ? detail : (detail && detail.message) || 'Could not add the project diagnosis category.';
+            throw new Error(message);
+          }
+          setCategoryCatalog(result.catalog || result);
+          return true;
+        } catch (error) {
+          showToast('error', 'Category not added', error.message || 'Could not update the project diagnosis categories.');
+          return false;
+        }
       }
       const SOLUTION_PRESETS = [
         'Improve Retrieval Context', 'Add Guardrails', 'Refine Prompt Instructions',
@@ -5191,6 +5803,16 @@
         run: null,
         snapshot: null,
         passSummary: null,
+        categoryCatalog: {
+          categories: [],
+          category_entries: [],
+          category_details_map: {},
+          category_taxonomy: {},
+          max_root_cause_categories: MAX_ROOT_CAUSE_CATEGORIES,
+          version: 0,
+          can_manage: false,
+          loaded: false,
+        },
         allMetrics: [],
         selectedMetric: null,
         samplesMetric: null,
@@ -5222,6 +5844,8 @@
         complexityValues: [],
         domainValues: [],
         rootCauseValues: [],
+        analysisAggregationStatus: null,
+        aggregationRequestPending: false,
         allMetadataKeys: [],
         selectedCategories: new Set(),   // which metadata keys to show as breakdowns
         categoryFilters: {},             // custom category filters: key -> null|[values]
@@ -5241,6 +5865,7 @@
         langfuseHost: '',
         langfuseProjectId: '',
         hasRenderedItems: false,
+        targetItemScrolled: false,
       };
 
       const IS_EXPORT = !!window.__QYM_EXPORT__;
@@ -5759,6 +6384,7 @@
           } catch (e) {}
           state.run = data.run;
           state.snapshot = data.snapshot;
+          seedCategoryCatalogFromRun(state.run);
           state.langfuseHost = data.run.langfuse_host || '';
           state.langfuseProjectId = data.run.langfuse_project_id || '';
           state._exportStorageKey = storageKey;
@@ -5782,6 +6408,8 @@
           if (!data.run || !data.snapshot) { showEmpty(); return; }
           state.run = data.run;
           state.snapshot = data.snapshot;
+          seedCategoryCatalogFromRun(state.run);
+          await loadProjectCategoryCatalog();
           state.passSummary = null;
           if (passRes && passRes.ok) {
             const passData = await passRes.json();
@@ -5886,6 +6514,7 @@
         const run = state.run;
         const snap = state.snapshot;
         state.allMetrics = snap.metric_names || run.metric_names || [];
+        state.analysisAggregationStatus = run.metadata?.analysis_aggregation || null;
 
         // Pass scope: swap every row's reduced metric values AND its
         // output/latency/status/trace for the viewed pass's slice, once, so
@@ -5973,8 +6602,9 @@
               for (const d of parseMetaList(md.domain)) domainSet.add(d);
             }
             if (md.root_cause != null && md.root_cause !== '') rootCauseSet.add(String(md.root_cause));
+            rootCauseCategories(md).forEach(category => rootCauseSet.add(category));
             for (const analysis of getRowRootCauseAnalyses(row, 'all')) {
-              if (analysis.root_cause) rootCauseSet.add(String(analysis.root_cause));
+              rootCauseCategories(analysis).forEach(category => rootCauseSet.add(category));
             }
           }
         }
@@ -5985,6 +6615,7 @@
           return (ai===-1?999:ai) - (bi===-1?999:bi);
         });
         state.domainValues = Array.from(domainSet).sort();
+        (state.categoryCatalog?.categories || []).forEach(category => rootCauseSet.add(category));
         state.rootCauseValues = Array.from(rootCauseSet).sort();
 
         for (const k of state.allMetadataKeys) {
@@ -5993,7 +6624,7 @@
 
         // Auto-select categories for breakdown chips
         // Exclude keys that have their own sections or are not useful for grouping
-        const EXCLUDED_CATEGORY_KEYS = new Set(['root_cause', 'root_cause_detail', 'root_cause_note', 'root_cause_source', 'root_cause_confidence', 'solution', 'solution_note', 'solution_source', 'metric_analyses', 'task_started_at_ms', 'retry_count', 'analysis_error', 'trace_stats']);
+        const EXCLUDED_CATEGORY_KEYS = new Set(['root_cause', 'root_causes', 'root_cause_detail', 'root_cause_reason', 'root_cause_note', 'root_cause_source', 'root_cause_confidence', 'solution', 'solution_note', 'solution_source', 'metric_analyses', 'task_started_at_ms', 'retry_count', 'analysis_error', 'trace_stats']);
         const MAX_CARDINALITY = 30; // skip keys with too many unique values
         if (state.selectedCategories.size === 0) {
           for (const k of state.allMetadataKeys) {
@@ -7933,24 +8564,40 @@
         return Object.values(metricMeta).some(isMetricMetaEdited);
       }
 
+      function rootCauseCategories(value) {
+        const raw = value && typeof value === 'object' && !Array.isArray(value)
+          ? (Object.prototype.hasOwnProperty.call(value, 'root_causes')
+            ? value.root_causes
+            : (Object.prototype.hasOwnProperty.call(value, 'root_cause_categories')
+              ? value.root_cause_categories : value.root_cause))
+          : value;
+        const values = Array.isArray(raw) ? raw : (raw ? [raw] : []);
+        const seen = new Set();
+        return values.map(value => String(value || '').trim()).filter(value => {
+          const key = value.toLocaleLowerCase();
+          if (!value || seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+      }
+
       function getRowRootCauseAnalyses(row, metricFilter) {
         const md = row?.item_metadata || {};
         const metricAnalyses = md.metric_analyses && typeof md.metric_analyses === 'object'
           ? md.metric_analyses
           : {};
         const isValid = analysis => analysis && typeof analysis === 'object' &&
-          !analysis.error && String(analysis.root_cause || '').trim();
+          !analysis.error && rootCauseCategories(analysis).length;
         const metricEntries = Object.entries(metricAnalyses)
           .filter(([, analysis]) => isValid(analysis));
         if (metricFilter === 'all' && metricEntries.length) {
-          return metricEntries.map(([metricName, analysis]) => ({ ...analysis, metric_name: metricName }));
+          return metricEntries.map(([metricName, analysis]) => ({ ...analysis, root_causes: rootCauseCategories(analysis), root_cause: rootCauseCategories(analysis)[0] || '', metric_name: metricName }));
         }
         if (metricFilter !== 'all') {
           const analysis = metricAnalyses[metricFilter];
-          if (isValid(analysis)) return [{ ...analysis, metric_name: metricFilter }];
+          if (isValid(analysis)) return [{ ...analysis, root_causes: rootCauseCategories(analysis), root_cause: rootCauseCategories(analysis)[0] || '', metric_name: metricFilter }];
           if (metricEntries.length) return [];
         }
-        const legacyCategory = String(md.root_cause || '').trim();
         const legacyMetric = String(md.root_cause_metric_name || '').trim();
         // A metric-backed compatibility summary is derivative data. Older
         // deletions could leave it behind after removing the metric analysis;
@@ -7959,8 +8606,10 @@
             !isValid(metricAnalyses[legacyMetric])) return [];
         const canUseLegacy = metricFilter === 'all' || legacyMetric === metricFilter ||
           (!legacyMetric && state.allMetrics.length <= 1);
-        return legacyCategory && canUseLegacy ? [{
-          root_cause: legacyCategory,
+        const legacyCategories = rootCauseCategories(md);
+        return legacyCategories.length && canUseLegacy ? [{
+          root_causes: legacyCategories,
+          root_cause: legacyCategories[0],
           root_cause_detail: md.root_cause_detail || '',
           solution: md.solution || '',
           metric_name: legacyMetric,
@@ -7985,6 +8634,96 @@
         });
       }
 
+      function aggregationStatusMatchesCurrentMetric(status) {
+        if (!status || typeof status !== 'object') return false;
+        const metrics = Array.isArray(status.metrics) ? status.metrics : null;
+        if (!metrics || metrics.length === 0 || state.rootCauseMetric === 'all') return true;
+        return metrics.includes(state.rootCauseMetric);
+      }
+
+      function aggregateResultsButtonHtml() {
+        if (IS_EXPORT) return '';
+        const pending = state.aggregationRequestPending;
+        return '<button type="button" class="aggregate-results-btn" id="aggregate-results-btn"' +
+          (pending ? ' disabled aria-busy="true"' : '') +
+          ' title="Canonicalize saved diagnoses without rerunning item analysis">' +
+          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 7h-6V1"/><path d="M20 7a9 9 0 1 0 2 7"/></svg>' +
+          '<span>' + (pending ? 'Aggregating\u2026' : 'Aggregate results') + '</span></button>';
+      }
+
+      function aggregationStatusHtml() {
+        const status = state.analysisAggregationStatus;
+        if (!aggregationStatusMatchesCurrentMetric(status)) return '';
+        if (status.status === 'pending') {
+          return '<div class="root-cause-aggregation-status pending" role="status" aria-live="polite">' +
+            '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>' +
+            '<span>Aggregating saved categories, subcauses, and solutions\u2026</span></div>';
+        }
+        if (status.status === 'failed') {
+          return '<div class="root-cause-aggregation-status failed" role="status" aria-live="polite">' +
+            '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4M12 17h.01"/></svg>' +
+            '<span><strong>Aggregation failed.</strong> Saved diagnoses are shown without consolidation. Select Aggregate results to retry.</span></div>';
+        }
+        return '';
+      }
+
+      async function aggregateSavedResults() {
+        if (state.aggregationRequestPending || IS_EXPORT) return;
+        const runId = state.run?.file_path || RUN_ID || '';
+        if (!runId) return;
+        const metric = state.rootCauseMetric === 'all' ? null : state.rootCauseMetric;
+        state.aggregationRequestPending = true;
+        state.analysisAggregationStatus = {
+          status: 'pending',
+          metrics: metric ? [metric] : null,
+        };
+        renderRootCauseSection();
+
+        try {
+          const response = await fetch(apiUrl('api/runs/' + runId + '/aggregate-analysis'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ metric: metric }),
+          });
+          const payload = await response.json().catch(() => ({}));
+          if (!response.ok) throw new Error(payload.detail || 'Aggregation failed');
+
+          const latestResponse = await fetch(apiUrl('api/runs/' + runId));
+          if (!latestResponse.ok) throw new Error('Aggregation completed, but the updated run could not be loaded.');
+          const latest = await latestResponse.json();
+          if (!latest.run || !latest.snapshot) throw new Error('The updated run data is incomplete.');
+          state.run = latest.run;
+          state.snapshot = latest.snapshot;
+          state.aggregationRequestPending = false;
+          processRun();
+          buildCategoryDropdowns();
+          renderRootCauseSection();
+          renderItems();
+          const changed = Number(payload.aggregated || 0);
+          showToast(
+            'success',
+            'Aggregation complete',
+            changed > 0 ? changed + ' saved labels consolidated.' : 'Saved labels were already canonical.'
+          );
+        } catch (error) {
+          state.aggregationRequestPending = false;
+          state.analysisAggregationStatus = {
+            status: 'failed',
+            metrics: metric ? [metric] : null,
+            error: error.message || 'Aggregation failed',
+          };
+          renderRootCauseSection();
+          showToast('error', 'Aggregation failed', error.message || 'Saved diagnoses were not changed.');
+        }
+      }
+
+      function wireAggregateResultsButton(section) {
+        const button = section.querySelector('#aggregate-results-btn');
+        if (button && !state.aggregationRequestPending) {
+          button.addEventListener('click', aggregateSavedResults);
+        }
+      }
+
       function renderSankeyDiagram(rows, filteredItemIds, metricFilter) {
         const container = document.getElementById('sankey-diagram-container');
         if (!container) return;
@@ -7997,13 +8736,14 @@
           const itemId = row.item_id || String(row.index);
           if (!filteredItemIds.has(itemId)) continue;
           for (const analysis of getRowRootCauseAnalyses(row, metricFilter)) {
-            const rc = analysis.root_cause || '';
             const sol = analysis.solution || '';
-            if (!rc || !sol) continue;
-            const key = rc + '|||' + sol;
-            links[key] = (links[key] || 0) + 1;
-            rcCounts[rc] = (rcCounts[rc] || 0) + 1;
-            solCounts[sol] = (solCounts[sol] || 0) + 1;
+            if (!sol) continue;
+            for (const rc of rootCauseCategories(analysis)) {
+              const key = rc + '|||' + sol;
+              links[key] = (links[key] || 0) + 1;
+              rcCounts[rc] = (rcCounts[rc] || 0) + 1;
+              solCounts[sol] = (solCounts[sol] || 0) + 1;
+            }
           }
         }
 
@@ -8225,7 +8965,7 @@
 
       function getCategoryChipKeys() {
         // Return metadata keys eligible for breakdown chips
-        const EXCLUDED = new Set(['root_cause', 'root_cause_detail', 'root_cause_note', 'root_cause_source', 'root_cause_confidence', 'solution', 'solution_note', 'solution_source', 'metric_analyses', 'task_started_at_ms', 'retry_count', 'analysis_error']);
+        const EXCLUDED = new Set(['root_cause', 'root_causes', 'root_cause_detail', 'root_cause_reason', 'root_cause_note', 'root_cause_source', 'root_cause_confidence', 'solution', 'solution_note', 'solution_source', 'metric_analyses', 'task_started_at_ms', 'retry_count', 'analysis_error']);
         const MAX_CARD = 30;
         const rows = state.snapshot.rows || [];
         const keys = [];
@@ -8738,13 +9478,14 @@
           const itemId = row.item_id || String(row.index);
           if (!filteredItemIds.has(itemId)) continue;
           for (const analysis of getRowRootCauseAnalyses(row, state.rootCauseMetric)) {
-            const rcRaw = String(analysis.root_cause || '');
-            if (!rcRaw) continue;
             const rcDetail = analysis.root_cause_detail || '';
-            if (!rcCategories[rcRaw]) rcCategories[rcRaw] = { count: 0, subcauses: {} };
-            rcCategories[rcRaw].count++;
-            if (rcDetail) {
-              rcCategories[rcRaw].subcauses[rcDetail] = (rcCategories[rcRaw].subcauses[rcDetail] || 0) + 1;
+            for (const rcRaw of rootCauseCategories(analysis)) {
+              if (!rcRaw) continue;
+              if (!rcCategories[rcRaw]) rcCategories[rcRaw] = { count: 0, subcauses: {} };
+              rcCategories[rcRaw].count++;
+              if (rcDetail) {
+                rcCategories[rcRaw].subcauses[rcDetail] = (rcCategories[rcRaw].subcauses[rcDetail] || 0) + 1;
+              }
             }
           }
         }
@@ -8778,7 +9519,8 @@
         let html = '<div class="root-cause-title-row"><h3 class="section-title">Root Cause Analysis <button class="auto-analyze-btn" id="auto-analyze-btn" title="AI-powered root cause analysis" style="margin-left:12px;"><span class="ai-icon">\uD83E\uDD16</span> Auto-Analyze</button></h3>' +
           rootCauseMetricControlHtml() + '</div>';
         html += '<div class="comparison-stats"><div class="breakdown-section breakdown-root-cause">';
-        html += '<div class="breakdown-header"><span class="breakdown-icon">\u2666</span> Categories &amp; Subcauses</div>';
+        html += '<div class="breakdown-header root-cause-breakdown-header"><span class="root-cause-breakdown-title"><span class="breakdown-icon">\u2666</span> Categories &amp; Subcauses</span>' + aggregateResultsButtonHtml() + '</div>';
+        html += aggregationStatusHtml();
         html += '<div class="breakdown-grid">';
 
         for (const cat of catStats) {
@@ -8810,6 +9552,7 @@
         // Render Sankey diagram
         renderSankeyDiagram(rows, filteredItemIds, state.rootCauseMetric);
         wireRootCauseMetricControl(section);
+        wireAggregateResultsButton(section);
 
         // Sankey highlight helpers scoped to this section
         var sankeyContainer = section.querySelector('#sankey-diagram-container');
@@ -9202,7 +9945,8 @@
           if (state.rootCauseFilter !== null) {
             if (state.rootCauseFilter.length === 0) continue;
             const rcValues = getRowRootCauseAnalyses(row, state.rootCauseMetric)
-              .map(analysis => String(analysis.root_cause || '').toLowerCase());
+              .flatMap(analysis => rootCauseCategories(analysis))
+              .map(value => value.toLowerCase());
             const wantNone = state.rootCauseFilter.includes('__none__');
             const namedFilters = state.rootCauseFilter.filter(f => f !== '__none__');
             const matchesNamed = namedFilters.length > 0 &&
@@ -9312,6 +10056,15 @@
         if (!host || !grid || anchorTop == null) return;
         const currentTop = grid.getBoundingClientRect().top;
         host.scrollTop += currentTop - anchorTop;
+      }
+
+      function scrollToTargetItem() {
+        if (!TARGET_ITEM_ID || state.targetItemScrolled || state.itemDetailView === 'heatmap') return;
+        const target = Array.from(document.querySelectorAll('#items-grid .item-card[data-item-id]'))
+          .find(node => node.dataset.itemId === TARGET_ITEM_ID);
+        if (!target) return;
+        state.targetItemScrolled = true;
+        requestAnimationFrame(() => target.scrollIntoView({ behavior: 'smooth', block: 'center' }));
       }
 
       function scrollItemByItemToTop() {
@@ -9685,6 +10438,10 @@
         updateClearButton();
 
         const totalPages = Math.max(1, Math.ceil(items.length / state.pageSize));
+        if (!state.hasRenderedItems && TARGET_ITEM_ID) {
+          const targetIndex = items.findIndex(({ row }) => String(row.item_id || row.index) === TARGET_ITEM_ID);
+          if (targetIndex >= 0) state.page = Math.floor(targetIndex / state.pageSize) + 1;
+        }
         if (state.page > totalPages) state.page = totalPages;
         const start = (state.page - 1) * state.pageSize;
         const pageItems = items.slice(start, start + state.pageSize);
@@ -9770,6 +10527,25 @@
             typeof row.item_metadata.metric_analyses === 'object'
             ? row.item_metadata.metric_analyses
             : {};
+          const itemAnalysisWarnings = [];
+          const addItemAnalysisWarning = value => {
+            const warning = String(value || '').trim();
+            if (!warning) return;
+            const key = warning.toLocaleLowerCase();
+            if (!itemAnalysisWarnings.some(existing => existing.toLocaleLowerCase() === key)) {
+              itemAnalysisWarnings.push(warning);
+            }
+          };
+          addItemAnalysisWarning(row.item_metadata?.analysis_warning);
+          Object.values(metricAnalyses).forEach(analysis => addItemAnalysisWarning(analysis?.warning));
+          const itemAnalysisWarning = itemAnalysisWarnings.join('; ');
+          const itemAnalysisWarningLabel = /(taxonomy|taxonom)/i.test(itemAnalysisWarning) ? 'No taxonomy' : 'Analysis warning';
+          const itemAnalysisWarningHtml = itemAnalysisWarning
+            ? '<div class="rdi-analysis-warning" role="status"><span class="rdi-analysis-warning__label">' + itemAnalysisWarningLabel + '</span><span>' + escapeHtml(itemAnalysisWarning) + '</span></div>'
+            : '';
+          const itemAnalysisWarningMarker = itemAnalysisWarning
+            ? '<span class="qym-tag qym-tag--warning" title="' + escapeAttr(itemAnalysisWarning) + '">' + escapeHtml(itemAnalysisWarningLabel) + '</span>'
+            : '';
           let perMetricAnalysisHtml = '';
           {
             const analysisCards = state.allMetrics.map((metricName, metricIndex) => {
@@ -9785,17 +10561,40 @@
               if (!hasStoredAnalysis && !metricFailed) return '';
               const analysis = hasStoredAnalysis ? storedAnalysis : {};
               const metricEditData = ' data-metric-rc-item="' + escapeAttr(itemId) + '" data-metric-name="' + escapeAttr(metricName) + '"';
+              const analysisWarning = itemAnalysisWarning ? '' : String(analysis.warning || '').trim();
+              const analysisWarningHtml = analysisWarning
+                ? '<div class="rdi-analysis-warning" role="status"><span class="rdi-analysis-warning__label">' + (/(taxonomy|taxonom)/i.test(analysisWarning) ? 'No taxonomy' : 'Analysis warning') + '</span><span>' + escapeHtml(analysisWarning) + '</span></div>'
+                : '';
               if (analysis.error) {
                 return '<div class="metric-analysis-card" style="--metric-analysis-color:var(--error);">' +
                   '<div class="metric-analysis-head"><span class="metric-analysis-name">' + escapeHtml(metricName) + '</span>' +
                     '<button type="button" class="metric-analysis-edit"' + metricEditData + '>Assign root cause</button></div>' +
-                  '<div class="metric-analysis-error">Analysis failed: ' + escapeHtml(String(analysis.error)) + '</div>' +
+                  '<div class="metric-analysis-error" role="alert">Analysis failed: ' + escapeHtml(String(analysis.error)) + '</div>' +
+                  analysisWarningHtml +
+                  '<div class="metric-analysis-recovery">' +
+                    '<div class="metric-analysis-recovery-copy">AI analysis did not produce a usable diagnosis. You can still add a manual category, specific issue, feedback, or recommended solution.</div>' +
+                    '<button type="button" class="metric-analysis-detail" data-metric-rcdetail-item="' + escapeAttr(itemId) + '" data-metric-name="' + escapeAttr(metricName) + '" title="Add specific issue">' +
+                      (analysis.root_cause_detail ? escapeHtml(analysis.root_cause_detail) : '<span class="metric-analysis-empty">+ Add specific issue</span>') + '</button>' +
+                    '<button type="button" class="metric-analysis-note" data-metric-feedback-item="' + escapeAttr(itemId) + '" data-metric-name="' + escapeAttr(metricName) + '" title="Add feedback">' +
+                      (analysis.root_cause_note ? escapeHtml(analysis.root_cause_note) : '<span class="metric-analysis-empty">+ Add feedback</span>') + '</button>' +
+                    '<button type="button" class="metric-analysis-solution" data-metric-sol-item="' + escapeAttr(itemId) + '" data-metric-name="' + escapeAttr(metricName) + '" title="Add recommended solution">' +
+                      ([analysis.solution, analysis.solution_note].filter(Boolean).join(' — ') ? '<strong>Recommended solution:</strong> ' + escapeHtml([analysis.solution, analysis.solution_note].filter(Boolean).join(' — ')) : '<span class="metric-analysis-empty">+ Add recommended solution</span>') + '</button>' +
+                  '</div>' +
                 '</div>';
               }
-              const analysisColor = rootCauseColor(analysis.root_cause);
+              const analysisCategories = rootCauseCategories(analysis);
+              const hasCategories = analysisCategories.length > 0;
+              const categoryValues = hasCategories ? analysisCategories : [(analysis.root_cause || '+ Category')];
+              const categoryBadges = categoryValues.map(category => {
+                const isEmpty = !hasCategories;
+                const categoryColor = isEmpty ? 'var(--text-muted)' : rootCauseColor(category);
+                return '<button type="button" class="metric-analysis-category' + (isEmpty ? ' metric-analysis-category--empty' : '') + '"' + metricEditData + ' style="--metric-analysis-category-color:' + categoryColor + ';" title="Change categories" aria-label="Change category: ' + escapeAttr(category) + '">' + escapeHtml(category) + '</button>';
+              }).join('');
+              const analysisColor = rootCauseColor(analysisCategories[0]);
               const confidence = analysis.source === 'human'
                 ? 'Human edited'
                 : (analysis.confidence == null ? '' : Math.round(Number(analysis.confidence) * 100) + '% confidence');
+              const categoryReason = String(analysis.root_cause_reason || '').trim();
               const solutionText = [analysis.solution, analysis.solution_note].filter(Boolean).join(' — ');
               const metricReview = row.review_corrections?.[metricName] || {};
               const reviewCorrectionId = metricReview.id;
@@ -9815,10 +10614,12 @@
               return '<div class="metric-analysis-card" style="--metric-analysis-color:' + analysisColor + ';">' +
                 '<div class="metric-analysis-head">' +
                   '<span class="metric-analysis-name">' + escapeHtml(metricName) + '</span>' +
-                  '<button type="button" class="metric-analysis-category"' + metricEditData + ' title="Change category">' + escapeHtml(analysis.root_cause || '+ Category') + '</button>' +
+                '<div class="metric-analysis-category-list" role="group" aria-label="Root-cause categories">' + categoryBadges + '</div>' +
                   (confidence ? '<span class="metric-analysis-confidence">' + escapeHtml(confidence) + '</span>' : '') +
                   reviewActionsHtml +
                 '</div>' +
+                analysisWarningHtml +
+                (categoryReason ? '<details class="metric-analysis-reason"><summary>Why this category</summary><div class="metric-analysis-reason-copy">' + escapeHtml(categoryReason) + '</div></details>' : '') +
                 '<button type="button" class="metric-analysis-detail" data-metric-rcdetail-item="' + escapeAttr(itemId) + '" data-metric-name="' + escapeAttr(metricName) + '" title="Change specific issue">' +
                   (analysis.root_cause_detail ? escapeHtml(analysis.root_cause_detail) : '<span class="metric-analysis-empty">+ Add specific issue</span>') + '</button>' +
                 '<button type="button" class="metric-analysis-note" data-metric-feedback-item="' + escapeAttr(itemId) + '" data-metric-name="' + escapeAttr(metricName) + '" title="Edit feedback">' +
@@ -9844,12 +10645,12 @@
 
           // Item metadata badges
           let itemMetadataHtml = '';
-          const SPECIAL_KEYS = ['complexity', 'domain', 'root_cause', 'root_cause_detail', 'root_cause_note', 'root_cause_source', 'root_cause_confidence', 'solution', 'solution_note', 'solution_source', 'metric_analyses'];
+          const SPECIAL_KEYS = ['complexity', 'domain', 'root_cause', 'root_causes', 'root_cause_detail', 'root_cause_reason', 'root_cause_note', 'root_cause_source', 'root_cause_confidence', 'solution', 'solution_note', 'solution_source', 'metric_analyses', 'analysis_warning'];
           const itemMd = row.item_metadata || {};
           if (typeof itemMd === 'object') {
             let badgesHtml = '';
             for (const sk of SPECIAL_KEYS) {
-              if (sk.startsWith('root_cause') || sk.startsWith('solution')) continue;
+              if (sk.startsWith('root_cause') || sk.startsWith('solution') || sk === 'analysis_warning') continue;
               if (itemMd[sk] != null && itemMd[sk] !== '' && state.visibleMetadataFields[sk] !== false) {
                 const icon = sk === 'complexity' ? '\u2666' : '\u25C6';
                 const vals = (sk === 'domain' || sk === 'patterns') ? parseMetaList(itemMd[sk]) : [String(itemMd[sk])];
@@ -9911,6 +10712,7 @@
             '<span class="item-chevron' + (isExpanded ? ' open' : '') + '"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m5.5 3.5 5 4.5-5 4.5"/></svg></span>' +
             '<span class="item-index" title="ID: ' + escapeHtml(itemId) + '">#' + (row.index + 1) + '</span>' +
             (!isExpanded && !isRepeatItem ? statusIndicator : '') +
+            itemAnalysisWarningMarker +
             (isExpanded
               ? '<span class="item-header-spacer"></span>'
               : '<span class="item-title" title="' + escapeAttr(displayItemId) + '">' + escapeHtml(titleText) + '</span>') +
@@ -9921,14 +10723,15 @@
 
           if (!isExpanded) {
             // The whole collapsed card is the expand target
-            return '<div class="item-card item-collapsed item-header-expand"' + expandAttrs + '>' + headerHtml + '</div>';
+            return '<div class="item-card item-collapsed item-header-expand" data-item-id="' + escapeAttr(itemId) + '"' + expandAttrs + '>' + headerHtml + '</div>';
           }
 
-          return '<div class="item-card">' +
+          return '<div class="item-card" data-item-id="' + escapeAttr(itemId) + '">' +
             headerHtml +
             '<div class="item-input-row"><div class="input-label">INPUT <button class="copy-btn qym-icon-action" data-copy-text="' + escapeAttr(typeof input === 'object' ? JSON.stringify(input,null,2) : String(input)) + '" title="Copy input">' + COPY_ICON + '</button></div><div class="input-text">' + renderMarkdownSafe(input) + '</div></div>' +
             (expected ? '<div class="item-expected-row"><div class="expected-label">EXPECTED OUTPUT <button class="copy-btn qym-icon-action" data-copy-text="' + escapeAttr(typeof expected === 'object' ? JSON.stringify(expected,null,2) : String(expected)) + '" title="Copy expected">' + COPY_ICON + '</button></div><div class="expected-text collapsed">' + renderMarkdownSafe(expected) + '</div><button class="expected-toggle" onclick="this.previousElementSibling.classList.toggle(\'collapsed\'); this.textContent = this.previousElementSibling.classList.contains(\'collapsed\') ? \'Show more \u25BC\' : \'Show less \u25B2\';">Show more \u25BC</button></div>' : '') +
             itemMetadataHtml +
+            itemAnalysisWarningHtml +
             outputBlockHtml +
           '</div>';
         }).join('');
@@ -9954,6 +10757,7 @@
         }
 
         state.hasRenderedItems = true;
+        scrollToTargetItem();
 
         wireOutputGroupHandlers(container);
         wireMetricEditHandlers();
@@ -10179,7 +10983,7 @@
         document.querySelectorAll('[data-rc-item]:not([data-feedback-item])').forEach(trigger => {
           trigger.addEventListener('click', (e) => {
             e.stopPropagation();
-            showRootCauseDropdown(trigger.dataset.rcItem, trigger);
+            showRootCauseCategoryPicker(trigger.dataset.rcItem, trigger);
           });
         });
         document.querySelectorAll('[data-rcdetail-item]').forEach(trigger => {
@@ -10280,7 +11084,7 @@
         document.querySelectorAll('[data-metric-rc-item]').forEach(trigger => {
           trigger.addEventListener('click', (e) => {
             e.stopPropagation();
-            showRootCauseDropdown(
+            showRootCauseCategoryPicker(
               trigger.dataset.metricRcItem,
               trigger,
               trigger.dataset.metricName
@@ -10392,12 +11196,30 @@
         const metricAnalyses = Object.assign({}, row.item_metadata.metric_analyses || {});
         const analysis = Object.assign({}, metricAnalyses[metricName] || {});
 
-        if (Object.prototype.hasOwnProperty.call(patch, 'root_cause')) {
-          const value = String(patch.root_cause || '').trim();
-          if (value) analysis.root_cause = value;
-          else {
+        if (Object.prototype.hasOwnProperty.call(patch, 'root_causes')) {
+          const categories = rootCauseCategories({ root_causes: patch.root_causes });
+          if (categories.length) {
+            analysis.root_causes = categories;
+            analysis.root_cause = categories[0];
+          } else {
+            delete analysis.root_causes;
             delete analysis.root_cause;
             delete analysis.root_cause_detail;
+            delete analysis.root_cause_reason;
+            delete analysis.root_cause_note;
+            delete analysis.confidence;
+          }
+        } else if (Object.prototype.hasOwnProperty.call(patch, 'root_cause')) {
+          const value = String(patch.root_cause || '').trim();
+          if (value) {
+            analysis.root_cause = value;
+            analysis.root_causes = [value];
+          }
+          else {
+            delete analysis.root_causes;
+            delete analysis.root_cause;
+            delete analysis.root_cause_detail;
+            delete analysis.root_cause_reason;
             delete analysis.root_cause_note;
             delete analysis.confidence;
           }
@@ -10425,7 +11247,10 @@
           if (value) analysis.solution_note = value;
           else delete analysis.solution_note;
         }
-        delete analysis.error;
+        // Keep an AI failure visible until a human category is supplied. This
+        // lets reviewers add context first without falsely presenting an
+        // incomplete manual note as a resolved diagnosis.
+        if (rootCauseCategories(analysis).length) delete analysis.error;
         delete analysis.confidence;
         analysis.source = 'human';
 
@@ -10436,28 +11261,32 @@
         else delete row.item_metadata.metric_analyses;
       }
 
-      async function saveMetricAnalysisPatch(itemId, metricName, patch) {
+      async function saveMetricAnalysisPatch(itemId, metricName, patch, options = {}) {
+        const silent = options.silent === true;
         const rows = state.snapshot.rows || [];
         const row = rows.find(r => (r.item_id || String(r.index)) === itemId);
 
         const applyLocally = () => {
           applyMetricAnalysisPatchLocally(row, metricName, patch);
-          if (patch.root_cause && !state.rootCauseValues.includes(patch.root_cause)) {
-            state.rootCauseValues.push(patch.root_cause);
-            state.rootCauseValues.sort();
-          }
+          rootCauseCategories(patch).forEach(category => {
+            if (!state.rootCauseValues.includes(category)) state.rootCauseValues.push(category);
+          });
+          state.rootCauseValues.sort();
           buildCategoryDropdowns();
-          renderItems();
+          if (!silent) renderItems();
         };
 
         if (IS_EXPORT) {
           applyLocally();
           autoSaveExport();
-          return;
+          return true;
         }
 
         const runId = state.run?.file_path;
-        if (!runId) return;
+        if (!runId) {
+          showToast('error', 'Could not save diagnosis', 'This run is not available for editing.');
+          return false;
+        }
         try {
           const res = await fetch(apiUrl('api/runs/update_root_cause'), {
             method: 'POST',
@@ -10470,134 +11299,189 @@
           });
           const data = await res.json().catch(() => ({}));
           if (!res.ok || data.detail || data.error) {
-            console.error('Failed to save metric root cause:', data.detail || data.error);
-            return;
+            const message = data.detail || data.error || 'The server rejected the manual diagnosis.';
+            console.error('Failed to save metric root cause:', message);
+            showToast('error', 'Could not save diagnosis', message);
+            return false;
           }
           if (data.row) {
             applyUpdatedRow(data.row);
-            if (patch.root_cause && !state.rootCauseValues.includes(patch.root_cause)) {
-              state.rootCauseValues.push(patch.root_cause);
-              state.rootCauseValues.sort();
-            }
+            rootCauseCategories(patch).forEach(category => {
+              if (!state.rootCauseValues.includes(category)) state.rootCauseValues.push(category);
+            });
+            state.rootCauseValues.sort();
             buildCategoryDropdowns();
-            renderItems();
+            if (!silent) renderItems();
           } else {
             applyLocally();
           }
+          return true;
         } catch (err) {
           console.error('Error saving metric root cause:', err);
+          showToast('error', 'Could not save diagnosis', 'Check your connection and try again.');
+          return false;
         }
       }
 
-      function showRootCauseDropdown(itemId, anchorEl, metricName) {
-        document.querySelectorAll('.root-cause-dropdown').forEach(d => d.remove());
+      function showRootCauseCategoryPicker(itemId, anchorEl, metricName) {
+        document.querySelectorAll('.rdi-category-picker, .root-cause-dropdown').forEach(node => node.remove());
         const rows = state.snapshot.rows || [];
         const row = rows.find(r => (r.item_id || String(r.index)) === itemId);
-        const currentRC = metricName
-          ? (row?.item_metadata?.metric_analyses?.[metricName]?.root_cause || '')
-          : (row?.item_metadata?.root_cause || '');
-        const allOptions = [...ROOT_CAUSE_PRESETS];
-        for (const v of state.rootCauseValues) { if (!allOptions.includes(v)) allOptions.push(v); }
-        for (const r of rows) {
-          const analyses = r.item_metadata?.metric_analyses;
-          if (!analyses || typeof analyses !== 'object') continue;
-          for (const analysis of Object.values(analyses)) {
-            const value = analysis && typeof analysis === 'object' ? analysis.root_cause : '';
-            if (value && !allOptions.includes(value)) allOptions.push(value);
-          }
-        }
+        let selectedCategories = metricName
+          ? rootCauseCategories(row?.item_metadata?.metric_analyses?.[metricName])
+          : rootCauseCategories(row?.item_metadata);
+        let allOptions = categoryPickerOptions();
+        let saveChain = Promise.resolve();
+        let closed = false;
 
-        const dropdown = document.createElement('div');
-        dropdown.className = 'root-cause-dropdown';
-        let html = '<div class="rc-option ' + (!currentRC ? 'active' : '') + '" data-rc-value=""><span class="rc-dot" style="background:var(--text-muted);"></span> None (clear)</div>';
-        html += '<div class="rc-divider"></div>';
-        for (const opt of allOptions) {
-          const color = rootCauseColor(opt);
-          const isCustom = !ROOT_CAUSE_PRESETS.includes(opt);
-          html += '<div class="rc-option ' + (opt === currentRC ? 'active' : '') + '" data-rc-value="' + escapeAttr(opt) + '"><span class="rc-dot" style="background:' + color + ';"></span> ' + escapeHtml(opt) +
-            (isCustom && !metricName ? '<span class="rc-delete-btn" data-rc-delete="' + escapeAttr(opt) + '" title="Delete this category">\u00D7</span>' : '') +
-          '</div>';
-        }
-        html += '<div class="rc-divider"></div>';
-        html += '<div class="rc-custom-input"><input class="qym-control qym-input" type="text" placeholder="Custom category..." /><button class="qym-inline-action">Add</button></div>';
-        dropdown.innerHTML = html;
-
-        document.body.appendChild(dropdown);
-        const rect = anchorEl.getBoundingClientRect();
-        const dropH = dropdown.offsetHeight;
-        const spaceBelow = window.innerHeight - rect.bottom - 8;
-        const spaceAbove = rect.top - 8;
-        if (spaceBelow >= dropH || spaceBelow >= spaceAbove) {
-          dropdown.style.top = (rect.bottom + 4) + 'px';
-        } else {
-          dropdown.style.top = Math.max(4, rect.top - dropH - 4) + 'px';
-        }
-        dropdown.style.left = Math.min(rect.left, window.innerWidth - dropdown.offsetWidth - 8) + 'px';
-        dropdown.style.maxHeight = Math.max(spaceBelow, spaceAbove) + 'px';
-
-        // Delete buttons — clear value from all items, remove from list
-        dropdown.querySelectorAll('.rc-delete-btn').forEach(btn => {
-          btn.addEventListener('click', async (e) => {
-            e.stopPropagation();
-            const val = btn.dataset.rcDelete;
-            if (!confirm('Delete category "' + val + '"? This will clear it from all items that have it.')) return;
-            const rows = state.snapshot.rows || [];
-            const runId = state.run?.file_path;
-            for (const r of rows) {
-              if (r.item_metadata?.root_cause === val) {
-                const rid = r.item_id || String(r.index);
-                if (!IS_EXPORT && runId) {
-                  await fetch(apiUrl('api/runs/update_root_cause'), {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ item_id: rid, root_cause: '', root_cause_detail: '', run_id: runId }),
-                  }).catch(() => {});
-                }
-                if (r.item_metadata) { delete r.item_metadata.root_cause; delete r.item_metadata.root_cause_source; delete r.item_metadata.root_cause_confidence; delete r.item_metadata.root_cause_detail; }
-              }
+        const picker = document.createElement('div');
+        picker.className = 'rdi-category-picker';
+        picker.setAttribute('role', 'presentation');
+        picker.innerHTML = '<div class="rdi-category-picker__panel" role="dialog" aria-modal="true" aria-labelledby="rdi-category-picker-title">' +
+          '<div class="rdi-category-picker__header"><div><p class="rdi-category-picker__eyebrow">Diagnosis categories</p><h2 class="rdi-category-picker__title" id="rdi-category-picker-title">Change categories</h2><p class="rdi-category-picker__lead">Choose the categories that explain this item. Click a selected category again to remove it. Human selections are not limited by the analysis setting.</p></div><button type="button" class="rdi-category-picker__close qym-icon-action" aria-label="Close diagnosis categories" title="Close">×</button></div>' +
+          '<div class="rdi-category-picker__body"><div class="rdi-category-picker__toolbar"><input class="qym-control qym-input" type="search" placeholder="Search categories" aria-label="Search diagnosis categories" autocomplete="off" /><span class="rdi-category-picker__count" aria-live="polite"></span></div><div class="rdi-category-picker__list" role="listbox" aria-multiselectable="true"></div><div class="rdi-category-picker__add"><span class="rdi-category-picker__add-label">Add to project categories</span><div class="rdi-category-picker__add-row"><input class="qym-control qym-input" type="text" placeholder="New category" aria-label="New project diagnosis category" /><button type="button" class="rdi-category-picker__add-button qym-inline-action qym-inline-action--neutral">Add</button></div><div class="rdi-category-picker__taxonomy"><div class="rdi-category-picker__taxonomy-heading"><span class="rdi-category-picker__add-label">Category guidance</span><span class="rdi-category-picker__taxonomy-note">Optional · saved to the project</span></div><label class="rdi-category-picker__taxonomy-field"><span>Description</span><textarea class="qym-control qym-input" data-picker-taxonomy="description" rows="2" maxlength="2000" placeholder="What this category means..." spellcheck="true"></textarea></label><label class="rdi-category-picker__taxonomy-field"><span>Use when</span><textarea class="qym-control qym-input" data-picker-taxonomy="when_to_use" rows="2" maxlength="2000" placeholder="When the analyzer should use this category..." spellcheck="true"></textarea></label></div><p class="rdi-category-picker__status" role="status" aria-live="polite">New categories and guidance are saved to this project automatically.</p></div></div>' +
+          '<div class="rdi-category-picker__footer"><span class="rdi-category-picker__status" data-picker-save-status role="status" aria-live="polite">Selection saves as you click.</span><button type="button" class="rdi-category-picker__clear qym-inline-action qym-inline-action--neutral">Clear selection</button></div>' +
+        '</div>';
+        const panel = picker.querySelector('.rdi-category-picker__panel');
+        const optionsContainer = picker.querySelector('.rdi-category-picker__list');
+        const searchInput = picker.querySelector('.rdi-category-picker__toolbar input');
+        const countLabel = picker.querySelector('.rdi-category-picker__count');
+        const addInput = picker.querySelector('.rdi-category-picker__add-row input');
+        const addButton = picker.querySelector('.rdi-category-picker__add-button');
+        const addStatus = picker.querySelector('.rdi-category-picker__add .rdi-category-picker__status');
+        const taxonomyDescriptionInput = picker.querySelector('[data-picker-taxonomy="description"]');
+        const taxonomyWhenToUseInput = picker.querySelector('[data-picker-taxonomy="when_to_use"]');
+        const saveStatus = picker.querySelector('[data-picker-save-status]');
+        const sameCategory = (left, right) => String(left).trim().toLocaleLowerCase() === String(right).trim().toLocaleLowerCase();
+        const readTaxonomy = () => ({
+          description: taxonomyDescriptionInput.value.trim(),
+          when_to_use: taxonomyWhenToUseInput.value.trim(),
+        });
+        const clearTaxonomy = () => {
+          taxonomyDescriptionInput.value = '';
+          taxonomyWhenToUseInput.value = '';
+        };
+        const setStatus = (node, text, tone) => {
+          if (!node) return;
+          node.textContent = text;
+          node.classList.toggle('is-error', tone === 'error');
+          node.classList.toggle('is-saving', tone === 'saving');
+        };
+        const renderOptions = () => {
+          const query = String(searchInput.value || '').trim().toLocaleLowerCase();
+          const visibleOptions = allOptions.filter(option => !query || option.toLocaleLowerCase().includes(query));
+          optionsContainer.innerHTML = visibleOptions.length
+            ? visibleOptions.map(option => {
+                const selected = selectedCategories.some(category => sameCategory(category, option));
+                const taxonomy = categoryCatalogEntry(option);
+                const details = categoryCatalogDetails(option);
+                const meta = String(taxonomy.description || taxonomy.when_to_use || '').trim() ||
+                  (details.length ? details.length + (details.length === 1 ? ' saved detail' : ' saved details') : 'Project diagnosis category');
+                return '<button type="button" class="rdi-category-picker__option" role="option" aria-selected="' + selected + '" data-category-value="' + escapeAttr(option) + '"><span class="rdi-category-picker__check" aria-hidden="true">' + (selected ? '✓' : '') + '</span><span class="rdi-category-picker__option-copy"><span class="rdi-category-picker__option-name">' + escapeHtml(option) + '</span><span class="rdi-category-picker__option-meta">' + escapeHtml(meta) + '</span></span></button>';
+              }).join('')
+            : '<p class="rdi-category-picker__empty">No diagnosis categories match this search.</p>';
+          countLabel.textContent = selectedCategories.length + ' selected';
+        };
+        const queueSelectionSave = () => {
+          const nextSelection = selectedCategories.slice();
+          saveChain = saveChain.then(async () => {
+            setStatus(saveStatus, 'Saving selection…', 'saving');
+            const saved = await saveRootCause(itemId, nextSelection, metricName, { silent: true });
+            if (saved === false) {
+              setStatus(saveStatus, 'Could not save this selection.', 'error');
+              return false;
             }
-            const idx = state.rootCauseValues.indexOf(val);
-            if (idx >= 0) state.rootCauseValues.splice(idx, 1);
-            dropdown.remove();
-            buildCategoryDropdowns();
-            renderItems();
+            setStatus(saveStatus, 'Selection saved.', '');
+            return true;
           });
-        });
-
-        dropdown.querySelectorAll('.rc-option').forEach(opt => {
-          opt.addEventListener('click', async () => {
-            await saveRootCause(itemId, opt.dataset.rcValue, metricName);
-            dropdown.remove();
-          });
-        });
-
-        const customInput = dropdown.querySelector('.rc-custom-input input');
-        const customBtn = dropdown.querySelector('.rc-custom-input button');
-        customBtn.addEventListener('click', async () => {
-          const val = customInput.value.trim();
-          if (val) { await saveRootCause(itemId, val, metricName); dropdown.remove(); }
-        });
-        customInput.addEventListener('keydown', async (e) => {
-          if (e.key === 'Enter') {
-            const val = customInput.value.trim();
-            if (val) { await saveRootCause(itemId, val, metricName); dropdown.remove(); }
+        };
+        optionsContainer.addEventListener('click', event => {
+          const option = event.target.closest('[data-category-value]');
+          if (!option) return;
+          const value = String(option.dataset.categoryValue || '').trim();
+          const index = selectedCategories.findIndex(category => sameCategory(category, value));
+          if (index >= 0) {
+            selectedCategories.splice(index, 1);
+          } else {
+            selectedCategories.push(value);
           }
+          renderOptions();
+          queueSelectionSave();
         });
-
+        searchInput.addEventListener('input', renderOptions);
+        picker.querySelector('.rdi-category-picker__clear').addEventListener('click', () => {
+          if (!selectedCategories.length) return;
+          selectedCategories = [];
+          renderOptions();
+          queueSelectionSave();
+        });
+        const addCategory = async () => {
+          const value = String(addInput.value || '').trim();
+          if (!value) return;
+          const taxonomy = readTaxonomy();
+          const existing = allOptions.find(option => sameCategory(option, value));
+          if (existing) {
+            addButton.disabled = true;
+            setStatus(addStatus, 'Saving category guidance…', 'saving');
+            const updated = await addProjectDiagnosisCategory(existing, taxonomy);
+            addButton.disabled = false;
+            if (!updated) {
+              setStatus(addStatus, 'This category guidance could not be saved.', 'error');
+              return;
+            }
+            addInput.value = '';
+            clearTaxonomy();
+            if (!selectedCategories.some(category => sameCategory(category, existing))) {
+              selectedCategories.push(existing);
+              renderOptions();
+              queueSelectionSave();
+            }
+            setStatus(addStatus, 'Category guidance saved to the project.', '');
+            return;
+          }
+          addButton.disabled = true;
+          setStatus(addStatus, 'Adding category and guidance…', 'saving');
+          const added = await addProjectDiagnosisCategory(value, taxonomy);
+          addButton.disabled = false;
+          if (!added) {
+            setStatus(addStatus, 'This category could not be added to the project.', 'error');
+            return;
+          }
+          allOptions.push(value);
+          addInput.value = '';
+          clearTaxonomy();
+          selectedCategories.push(value);
+          setStatus(addStatus, 'Added to the project with guidance and selected.', '');
+          queueSelectionSave();
+          renderOptions();
+        };
+        addButton.addEventListener('click', addCategory);
+        addInput.addEventListener('keydown', event => {
+          if (event.key !== 'Enter') return;
+          event.preventDefault();
+          addCategory();
+        });
+        picker.querySelector('.rdi-category-picker__close').addEventListener('click', () => cleanup());
+        picker.addEventListener('click', event => {
+          if (event.target === picker) cleanup();
+        });
+        panel.addEventListener('click', event => event.stopPropagation());
+        const keyHandler = event => {
+          if (event.key === 'Escape') cleanup();
+        };
         const cleanup = () => {
-          dropdown.remove();
-          document.removeEventListener('click', closeHandler);
-          window.removeEventListener('scroll', scrollHandler, true);
+          if (closed) return;
+          closed = true;
+          picker.remove();
+          document.removeEventListener('keydown', keyHandler);
+          saveChain.finally(() => {
+            if (!document.querySelector('.rdi-category-picker')) renderItems();
+          });
         };
-        const closeHandler = (e) => {
-          if (!dropdown.contains(e.target)) cleanup();
-        };
-        const scrollHandler = (e) => {
-          if (!dropdown.contains(e.target)) cleanup();
-        };
-        setTimeout(() => {
-          document.addEventListener('click', closeHandler);
-          window.addEventListener('scroll', scrollHandler, true);
-        }, 0);
+        renderOptions();
+        document.body.appendChild(picker);
+        document.addEventListener('keydown', keyHandler);
+        setTimeout(() => searchInput.focus(), 0);
       }
 
       function showRcDetailDropdown(itemId, anchorEl, metricName) {
@@ -10664,7 +11548,7 @@
                 if (!IS_EXPORT && runId) {
                   await fetch(apiUrl('api/runs/update_root_cause'), {
                     method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ item_id: rid, root_cause: r.item_metadata?.root_cause || '', root_cause_detail: '', run_id: runId }),
+                    body: JSON.stringify({ item_id: rid, root_causes: rootCauseCategories(r.item_metadata), root_cause_detail: '', run_id: runId }),
                   }).catch(() => {});
                 }
                 if (r.item_metadata) delete r.item_metadata.root_cause_detail;
@@ -10677,8 +11561,8 @@
 
         dropdown.querySelectorAll('.rc-option').forEach(opt => {
           opt.addEventListener('click', async () => {
-            await saveRootCauseDetail(itemId, opt.dataset.rcdetailValue, metricName);
-            dropdown.remove();
+            const saved = await saveRootCauseDetail(itemId, opt.dataset.rcdetailValue, metricName);
+            if (saved !== false) dropdown.remove();
           });
         });
 
@@ -10686,8 +11570,8 @@
         const customBtn = dropdown.querySelector('.rc-custom-input button');
         const doSave = async () => {
           const val = customInput.value.trim();
-          await saveRootCauseDetail(itemId, val, metricName);
-          dropdown.remove();
+          const saved = await saveRootCauseDetail(itemId, val, metricName);
+          if (saved !== false) dropdown.remove();
         };
         customBtn.addEventListener('click', doSave);
         customInput.addEventListener('keydown', async (e) => { if (e.key === 'Enter') doSave(); });
@@ -10710,11 +11594,12 @@
         }, 0);
       }
 
-      async function saveRootCause(itemId, rootCause, metricName) {
+      async function saveRootCause(itemId, rootCauses, metricName, options = {}) {
+        const categories = rootCauseCategories({ root_causes: rootCauses });
         if (metricName) {
-          await saveMetricAnalysisPatch(itemId, metricName, { root_cause: rootCause });
-          return;
+          return saveMetricAnalysisPatch(itemId, metricName, { root_causes: categories }, options);
         }
+        const silent = options.silent === true;
         const rows = state.snapshot.rows || [];
         const row = rows.find(r => (r.item_id || String(r.index)) === itemId);
         const existingDetail = row?.item_metadata?.root_cause_detail || '';
@@ -10722,58 +11607,71 @@
         function applyLocally() {
           if (row) {
             if (!row.item_metadata) row.item_metadata = {};
-            if (rootCause) {
-              row.item_metadata.root_cause = rootCause;
+            if (categories.length) {
+              row.item_metadata.root_causes = categories;
+              row.item_metadata.root_cause = categories[0];
               row.item_metadata.root_cause_source = 'human';
               delete row.item_metadata.root_cause_confidence;
             } else {
+              delete row.item_metadata.root_causes;
               delete row.item_metadata.root_cause;
               delete row.item_metadata.root_cause_source;
               delete row.item_metadata.root_cause_confidence;
             }
           }
-          if (rootCause && !state.rootCauseValues.includes(rootCause)) { state.rootCauseValues.push(rootCause); state.rootCauseValues.sort(); }
-          if (rootCause && !state.allMetadataKeys.includes('root_cause')) { state.allMetadataKeys.push('root_cause'); state.allMetadataKeys.sort(); }
+          categories.forEach(category => { if (!state.rootCauseValues.includes(category)) state.rootCauseValues.push(category); });
+          state.rootCauseValues.sort();
+          if (categories.length && !state.allMetadataKeys.includes('root_cause')) { state.allMetadataKeys.push('root_cause'); state.allMetadataKeys.sort(); }
           buildCategoryDropdowns();
-          renderItems();
+          if (!silent) renderItems();
         }
 
         if (IS_EXPORT) {
           applyLocally();
           autoSaveExport();
-          return;
+          return true;
         }
 
         const runId = state.run?.file_path;
-        if (!runId) return;
+        if (!runId) return false;
         try {
           const res = await fetch(apiUrl('api/runs/update_root_cause'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ item_id: itemId, root_cause: rootCause, root_cause_detail: existingDetail, run_id: runId }),
+            body: JSON.stringify({ item_id: itemId, root_causes: categories, root_cause_detail: existingDetail, run_id: runId }),
           });
           const data = await res.json().catch(() => ({}));
-          if (!res.ok || data.error) { console.error('Failed to save root cause:', data.error); return; }
+          if (!res.ok || data.error) {
+            const message = data.detail || data.error || 'The server rejected the manual diagnosis.';
+            console.error('Failed to save root cause:', message);
+            showToast('error', 'Could not save diagnosis', message);
+            return false;
+          }
           if (data && data.row) {
             applyUpdatedRow(data.row);
-            if (rootCause && !state.rootCauseValues.includes(rootCause)) { state.rootCauseValues.push(rootCause); state.rootCauseValues.sort(); }
-            if (rootCause && !state.allMetadataKeys.includes('root_cause')) { state.allMetadataKeys.push('root_cause'); state.allMetadataKeys.sort(); }
+            categories.forEach(category => { if (!state.rootCauseValues.includes(category)) state.rootCauseValues.push(category); });
+            state.rootCauseValues.sort();
+            if (categories.length && !state.allMetadataKeys.includes('root_cause')) { state.allMetadataKeys.push('root_cause'); state.allMetadataKeys.sort(); }
             buildCategoryDropdowns();
-            renderItems();
+            if (!silent) renderItems();
           } else {
             applyLocally();
           }
-        } catch (err) { console.error('Error saving root cause:', err); }
+          return true;
+        } catch (err) {
+          console.error('Error saving root cause:', err);
+          showToast('error', 'Could not save diagnosis', 'Check your connection and try again.');
+          return false;
+        }
       }
 
       async function saveRootCauseDetail(itemId, detail, metricName) {
         if (metricName) {
-          await saveMetricAnalysisPatch(itemId, metricName, { root_cause_detail: detail });
-          return;
+          return saveMetricAnalysisPatch(itemId, metricName, { root_cause_detail: detail });
         }
         const rows = state.snapshot.rows || [];
         const row = rows.find(r => (r.item_id || String(r.index)) === itemId);
-        const existingCategory = row?.item_metadata?.root_cause || '';
+        const existingCategories = rootCauseCategories(row?.item_metadata);
 
         function applyLocally() {
           if (row) {
@@ -10786,26 +11684,36 @@
         if (IS_EXPORT) {
           applyLocally();
           autoSaveExport();
-          return;
+          return true;
         }
 
         const runId = state.run?.file_path;
-        if (!runId) return;
+        if (!runId) return false;
         try {
           const res = await fetch(apiUrl('api/runs/update_root_cause'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ item_id: itemId, root_cause: existingCategory, root_cause_detail: detail, run_id: runId }),
+            body: JSON.stringify({ item_id: itemId, root_causes: existingCategories, root_cause_detail: detail, run_id: runId }),
           });
           const data = await res.json().catch(() => ({}));
-          if (!res.ok || data.error) { console.error('Failed to save root cause detail:', data.error); return; }
+          if (!res.ok || data.error) {
+            const message = data.detail || data.error || 'The server rejected the manual diagnosis.';
+            console.error('Failed to save root cause detail:', message);
+            showToast('error', 'Could not save diagnosis', message);
+            return false;
+          }
           if (data && data.row) {
             applyUpdatedRow(data.row);
             renderItems();
           } else {
             applyLocally();
           }
-        } catch (err) { console.error('Error saving root cause detail:', err); }
+          return true;
+        } catch (err) {
+          console.error('Error saving root cause detail:', err);
+          showToast('error', 'Could not save diagnosis', 'Check your connection and try again.');
+          return false;
+        }
       }
 
       function showSolutionDropdown(itemId, anchorEl, metricName) {
@@ -10855,8 +11763,8 @@
 
         dropdown.querySelectorAll('.rc-option').forEach(opt => {
           opt.addEventListener('click', async () => {
-            await saveSolution(itemId, opt.dataset.solValue, metricName);
-            dropdown.remove();
+            const saved = await saveSolution(itemId, opt.dataset.solValue, metricName);
+            if (saved !== false) dropdown.remove();
           });
         });
 
@@ -10864,12 +11772,18 @@
         const customBtn = dropdown.querySelector('.rc-custom-input button');
         customBtn.addEventListener('click', async () => {
           const val = customInput.value.trim();
-          if (val) { await saveSolution(itemId, val, metricName); dropdown.remove(); }
+          if (val) {
+            const saved = await saveSolution(itemId, val, metricName);
+            if (saved !== false) dropdown.remove();
+          }
         });
         customInput.addEventListener('keydown', async (e) => {
           if (e.key === 'Enter') {
             const val = customInput.value.trim();
-            if (val) { await saveSolution(itemId, val, metricName); dropdown.remove(); }
+            if (val) {
+              const saved = await saveSolution(itemId, val, metricName);
+              if (saved !== false) dropdown.remove();
+            }
           }
         });
 
@@ -10892,8 +11806,7 @@
 
       async function saveSolution(itemId, solution, metricName) {
         if (metricName) {
-          await saveMetricAnalysisPatch(itemId, metricName, { solution: solution });
-          return;
+          return saveMetricAnalysisPatch(itemId, metricName, { solution: solution });
         }
         const rows = state.snapshot.rows || [];
         const row = rows.find(r => (r.item_id || String(r.index)) === itemId);
@@ -10909,26 +11822,36 @@
         if (IS_EXPORT) {
           applyLocally();
           autoSaveExport();
-          return;
+          return true;
         }
 
         const runId = state.run?.file_path;
-        if (!runId) return;
+        if (!runId) return false;
         try {
           const res = await fetch(apiUrl('api/runs/update_root_cause'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ item_id: itemId, root_cause: row?.item_metadata?.root_cause || '', root_cause_detail: row?.item_metadata?.root_cause_detail || '', solution: solution, run_id: runId }),
+            body: JSON.stringify({ item_id: itemId, root_causes: rootCauseCategories(row?.item_metadata), root_cause_detail: row?.item_metadata?.root_cause_detail || '', solution: solution, run_id: runId }),
           });
           const data = await res.json().catch(() => ({}));
-          if (!res.ok || data.error) { console.error('Failed to save solution:', data.error); return; }
+          if (!res.ok || data.error) {
+            const message = data.detail || data.error || 'The server rejected the manual diagnosis.';
+            console.error('Failed to save solution:', message);
+            showToast('error', 'Could not save diagnosis', message);
+            return false;
+          }
           if (data && data.row) {
             applyUpdatedRow(data.row);
             renderItems();
           } else {
             applyLocally();
           }
-        } catch (err) { console.error('Error saving solution:', err); }
+          return true;
+        } catch (err) {
+          console.error('Error saving solution:', err);
+          showToast('error', 'Could not save diagnosis', 'Check your connection and try again.');
+          return false;
+        }
       }
 
       function initExpectedToggles() {
@@ -11053,7 +11976,9 @@
           const md = row.item_metadata || {};
           const vals = category === 'domain'
             ? parseMetaList(md.domain)
-            : [String(md[category] ?? '')];
+            : category === 'root_cause'
+              ? [...rootCauseCategories(md), ...getRowRootCauseAnalyses(row, 'all').flatMap(analysis => rootCauseCategories(analysis))]
+              : [String(md[category] ?? '')];
           vals.forEach(val => {
             if (itemCounts[val] !== undefined) itemCounts[val]++;
           });
@@ -11063,7 +11988,7 @@
           var noRcCount = 0;
           for (var ri = 0; ri < rows.length; ri++) {
             var rmd = rows[ri].item_metadata || {};
-            if (!rmd.root_cause) noRcCount++;
+            if (getRowRootCauseAnalyses(rows[ri], 'all').length === 0) noRcCount++;
           }
           var noRcHidden = searchValue && !'(no root cause)'.includes(searchValue.toLowerCase()) ? ' style="display:none"' : '';
           extraOptions = '<div class="multi-select-option qym-dropdown__option is-empty-option" data-value="__none__"' + noRcHidden + '><label class="ms-option-main"><input type="checkbox" data-cat="' + escapeAttr(category) + '" data-val="__none__" /><span style="font-style:italic;">(No Root Cause)</span><span class="option-count">' + noRcCount + '</span></label><button type="button" class="ms-only-btn qym-dropdown__only" aria-label="Show only items without a root cause" title="Show only this option">Only</button></div>';
