@@ -13,7 +13,7 @@
   <tbody>
     <tr><td><code>output</code></td><td>The task's output for this item. For tasks that return the envelope <code>{"output": ..., "metadata": ...}</code>, custom metrics receive the <strong>whole envelope</strong> here (see <a href="#sdk-guide/custom-metrics">Reading task metadata</a> below).</td></tr>
     <tr><td><code>expected</code></td><td>The item's <code>expected_output</code> from the dataset (may be <code>None</code>).</td></tr>
-    <tr><td><code>input_data</code></td><td>The item's <code>input</code> (the same value the task received).</td></tr>
+    <tr><td><code>input_data</code></td><td>The item's <code>input</code>. Configured field-name mappings are applied; without <code>input_mapping</code>, the original value and shape are preserved.</td></tr>
     <tr><td><code>task_metadata</code></td><td>The hidden metadata dict returned by the task-output envelope, or <code>{}</code>.</td></tr>
     <tr><td><code>metadata</code></td><td>The dataset item's <code>metadata</code> dict (the row's metadata, not the task's).</td></tr>
     <tr><td><code>item_metadata</code></td><td>An alias for the same dataset item metadata. Use whichever name reads better.</td></tr>
@@ -45,7 +45,7 @@ result = Evaluator(
 <p>So a third positional parameter receives <code>input_data</code> regardless of what you named it. The safest habit is to stick to the recognized names and give optional ones defaults:</p>
 <pre data-lang="python">def my_metric(output, expected=None, input_data=None, metadata=None):
     ...</pre>
-<p>For a multi-column CSV input, a metric may read the whole dict through <code>input_data</code> or request one field directly. If <code>input_mapping={"sql_context": "schema"}</code> is set, both names work:</p>
+<p>For a multi-column CSV input, a metric may read the mapped dict through <code>input_data</code> or request one field directly. If <code>input_mapping={"sql_context": "schema"}</code> is set, <code>input_data</code> contains <code>schema</code>, while both <code>sql_context</code> and <code>schema</code> work as individual metric parameters:</p>
 <pre data-lang="python">def execution_accuracy(output, expected, schema=None):
     return run_sql_against_schema(output, expected, schema)</pre>
 

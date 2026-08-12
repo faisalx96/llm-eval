@@ -114,6 +114,14 @@
     return apiUrl(`projects/${encoded}${cleanSuffix ? `/${cleanSuffix}` : ''}`);
   }
 
+  function analyzerUrlForRun(run) {
+    const slug = state.currentProject && state.currentProject.slug;
+    const runId = run && (run.file_path || run.run_id || '');
+    return slug
+      ? projectUrl(slug, `analysis?run=${encodeURIComponent(runId)}`)
+      : apiUrl(`run/${encodeURIComponent(runId)}/analyzer`);
+  }
+
   function navigateTo(url) {
     if (window.QymShell && typeof window.QymShell.navigateTo === 'function') {
       window.QymShell.navigateTo(url);

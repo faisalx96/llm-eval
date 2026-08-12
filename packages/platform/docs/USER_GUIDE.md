@@ -195,25 +195,38 @@ Reference a platform dataset from the SDK by name, version, or alias after setti
 
 ### AI root-cause analysis
 
-Configure at least one project LLM connection first. Open **Auto-analysis** from the project navigation, or use the run-specific analyzer on a run page. Select one or more metrics; each item/metric pair is analyzed independently, so one item can carry different diagnoses for different metrics. Filters cover all/failed/passed/errors, score thresholds, metadata and root-cause values, explicit item IDs, and skipping already-analyzed targets.
+Configure at least one provider under **Project Settings → LLM Connections**. Any OpenAI-compatible provider can be used; test the connection before selecting it in the analyzer. Open **Auto-analysis** from the project navigation, or use the run-specific analyzer on a run page.
+
+To run an analysis:
+
+1. Choose a run and one or more metrics. Each item/metric pair is analyzed independently, so one item can carry different diagnoses for different metrics.
+2. Filter by outcome, score threshold, complexity, domain, root-cause values, explicit item IDs, or already-analyzed targets. With multiple metrics selected, an item limit retains every matching selected metric for each chosen item.
+3. Preview the prompt or test up to three items without saving results.
+4. Start the analysis and follow its streamed progress.
 
 The analyzer proposes a **root cause category**, a reusable **root cause detail**, and an evidence-based **note**. AI-suggested values show a robot indicator with confidence; human-confirmed values show a checkmark.
 
-The analyzer playground supports prompt editing, variable mapping, category/detail catalogs, additional instructions, prompt previews, and test analyses of up to three items that do not save results.
+The analyzer playground supports system-prompt editing, nested input/output/metric mappings, custom-variable interpolation, category/detail catalogs, additional instructions, field selection, prompt previews, and unsaved test analyses.
 
 Project context strengthens the analysis:
 
 - **Project description** — explain the business domain and correctness expectations.
-- **Analysis rules** — versioned title/instruction pairs with a draft → published → `production` alias lifecycle, lineage, comparisons, and rule generation from selected sources.
-- **Reference documents** — PDF, DOCX, text, Markdown, HTML, CSV, JSON, and YAML uploads are converted to bounded text in a shared project library; select which documents a run uses. Each upload is limited to 10 MB and 40,000 extracted characters, with at most eight documents and 80,000 reference characters per prompt.
+- **Analysis rules** — manage versioned title/instruction pairs through a draft → published → `production` alias lifecycle. Rules support lineage, comparisons, cloning, and append-only generation from selected documents and approved correction examples.
+- **Reference documents** — upload PDF, DOCX, text, Markdown, HTML, CSV, JSON, or YAML into a shared project library, then select the documents a run uses. Each upload is limited to 10 MB. The normal prompt-safe representation is 40,000 characters; an explicit full-content choice can retain up to 200,000 characters. A prompt can include at most eight selected documents and 80,000 reference characters, within a final 120,000-character safety budget.
 
-The default prompt sends the selected metric result, useful trace evidence, project context, active rules, and selected documents. It redacts credential-like fields. Approved correction snapshots are evidence for rule generation; they are not added to per-item prompts as few-shot examples.
+Rule generation processes large sources in bounded patches, using separate 256,000-character document/example patches and a 320,000-character request budget. HTML scripts and styles are ignored, scanned PDFs require OCR, and PDF/DOCX extraction rejects unsafe expansion. Hard-cap truncation is reported.
+
+The default prompt sends the selected metric result, an organized view of native trace spans, project context, active rules, and selected documents. Trace evidence is grouped into agent and evaluation sections, repeated chat messages are deduplicated, and credential-like fields are redacted. Approved correction snapshots can support rule generation but are not added to per-item prompts as few-shot examples. Saved analysis metadata records the resolved production rule-version ID for reproducibility.
 
 The platform analysis route is `/api/runs/{run_id}/analyze`; the `qym analyze run` CLI command uses the same route.
 
 ### Reviews
 
-Reviews are project-scoped. Members can edit corrections and participate in review; approval permissions follow the project/run rules. Corrections keep append-only revisions and snapshots. Approving a newer correction supersedes the previously active one for that item, and approved examples feed future analysis.
+Reviews are project-scoped. Members can edit corrections and participate in review; approval permissions follow the project and run rules. The review page supports search and filters, inline editing, bulk approval/rejection/deletion, and review comments.
+
+Corrections keep append-only numbered revisions, before/after values, actor source, linked review candidates, captured input/output/score snapshots, and review status. A candidate can be pending, approved, rejected, superseded, or withdrawn. Only one active candidate exists per item/metric scope: approving a newer correction supersedes the prior active one, while rejecting or removing a correction retains its audit history. Editing a correction also synchronizes the corresponding run-item metadata.
+
+Approved correction examples can provide evidence for future analysis-rule generation, but they are not inserted into per-item analyzer prompts.
 
 ### Traces
 

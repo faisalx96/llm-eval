@@ -27,11 +27,13 @@ from qym_platform.datetime_utils import utc_now_naive
 from qym_platform.db.base import Base
 from qym_platform.db.models import (
     ApiKey,
+    AuditLog,
     CorrectionStatus,
     Project,
     ProjectMembership,
     ProjectRole,
     ReviewCorrection,
+    RootCauseRevision,
     Run,
     RunItem,
     RunItemScore,
@@ -284,6 +286,146 @@ def test_corrections_list_limit_is_applied(client, session_factory) -> None:
     payload = response.json()
     assert len(payload["corrections"]) == 12
     assert payload["total"] == 16
+
+
+def test_deleting_run_preserves_analysis_for_restore(
+    client, session_factory
+) -> None:
+    run_id = "00000000-0000-0000-0000-000000000105"
+    with session_factory() as session:
+        run = _seed_run(session, run_id=run_id)
+        item = RunItem(
+            run_id=run.id,
+            item_id="item-root-cause",
+            index=0,
+            input={"prompt": "hello"},
+            output={"answer": "nope"},
+            item_metadata={
+                "keep": "execution metadata",
+                "root_cause": "Context Missing",
+                "root_cause_source": "ai",
+                "metric_analyses": {
+                    "judge": {"root_cause": "Context Missing", "source": "ai"}
+                },
+            },
+        )
+        session.add(item)
+        session.flush()
+        revision = RootCauseRevision(
+            run_id=run.id,
+            item_id=item.item_id,
+            revision_number=1,
+            actor_source="ai",
+            before_state={},
+            after_state={"root_cause": "Context Missing"},
+        )
+        session.add(revision)
+        session.flush()
+        revision_id = revision.id
+        session.add(
+            ReviewCorrection(
+                run_id=run.id,
+                item_id=item.item_id,
+                task=run.task,
+                input_snapshot=item.input,
+                expected_snapshot={},
+                output_snapshot=item.output,
+                scores_snapshot={},
+                ai_root_cause="Context Missing",
+                human_root_cause="",
+                revision_id=revision_id,
+                status=CorrectionStatus.PENDING,
+                is_active=True,
+            )
+        )
+        session.add(
+            AuditLog(
+                action="root_cause_change:ai",
+                entity_type="root_cause_revision",
+                entity_id=str(revision_id),
+                before={},
+                after={"root_cause": "Context Missing"},
+            )
+        )
+        session.commit()
+
+    before = client.get("/api/corrections", headers=_ui_headers("admin@example.com"))
+    assert before.status_code == 200
+    assert before.json()["total"] == 1
+
+    deleted = client.post(
+        "/api/runs/delete",
+        headers=_ui_headers("owner@example.com"),
+        json={"file_path": run_id},
+    )
+    assert deleted.status_code == 200
+
+    with session_factory() as session:
+        run = session.query(Run).filter(Run.id == run_id).one()
+        assert run.deleted_at is not None
+        assert session.query(ReviewCorrection).filter(ReviewCorrection.run_id == run_id).count() == 1
+        assert session.query(RootCauseRevision).filter(RootCauseRevision.run_id == run_id).count() == 1
+        assert (
+            session.query(AuditLog)
+            .filter(
+                AuditLog.entity_type == "root_cause_revision",
+                AuditLog.entity_id == str(revision_id),
+            )
+            .count()
+            == 1
+        )
+        item = session.query(RunItem).filter(RunItem.run_id == run_id).one()
+        assert item.item_metadata["root_cause"] == "Context Missing"
+        assert item.item_metadata["metric_analyses"]["judge"]["source"] == "ai"
+
+    after = client.get("/api/corrections", headers=_ui_headers("admin@example.com"))
+    assert after.status_code == 200
+    assert after.json()["total"] == 0
+
+    restored = client.post(
+        "/api/runs/restore",
+        headers=_ui_headers("admin@example.com"),
+        json={"run_id": run_id},
+    )
+    assert restored.status_code == 200
+
+    visible = client.get("/api/corrections", headers=_ui_headers("admin@example.com"))
+    assert visible.status_code == 200
+    assert visible.json()["total"] == 1
+    with session_factory() as session:
+        run = session.query(Run).filter(Run.id == run_id).one()
+        assert run.deleted_at is None
+        assert session.query(ReviewCorrection).filter(ReviewCorrection.run_id == run_id).count() == 1
+        assert session.query(RootCauseRevision).filter(RootCauseRevision.run_id == run_id).count() == 1
+
+
+def test_corrections_list_hides_orphaned_soft_deleted_run(
+    client, session_factory
+) -> None:
+    run_id = "00000000-0000-0000-0000-000000000106"
+    with session_factory() as session:
+        run = _seed_run(session, run_id=run_id)
+        session.add(
+            ReviewCorrection(
+                run_id=run.id,
+                item_id="item-orphan",
+                task=run.task,
+                input_snapshot={},
+                expected_snapshot={},
+                output_snapshot={},
+                scores_snapshot={},
+                ai_root_cause="Context Missing",
+                human_root_cause="",
+                status=CorrectionStatus.PENDING,
+                is_active=True,
+            )
+        )
+        run.deleted_at = utc_now_naive()
+        session.commit()
+
+    response = client.get("/api/corrections", headers=_ui_headers("admin@example.com"))
+    assert response.status_code == 200
+    assert response.json()["total"] == 0
 
 
 def test_runs_list_includes_median_latency(client, session_factory) -> None:

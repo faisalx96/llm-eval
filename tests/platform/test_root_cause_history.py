@@ -29,6 +29,7 @@ from qym_platform.api.analysis import (
     AnalyzerRuleConfig,
     PlaygroundConfig,
     ReferenceDocument,
+    RuleInferenceRequest,
     _analysis_config_with_project_context,
     _aggregate_run_analysis_results,
     _approve_candidate,
@@ -37,6 +38,7 @@ from qym_platform.api.analysis import (
     _delete_active_candidate,
     _filter_analysis_targets,
     _load_metric_specs,
+    _list_analysis_examples,
     _persist_aggregated_bindings,
     _persisted_ai_analysis_bindings,
     _playground_config_to_analyzer,
@@ -50,6 +52,7 @@ from qym_platform.api.analysis import (
     compare_project_analysis_rule_versions,
     create_project_analysis_rule_version,
     delete_project_analysis_rule_version,
+    infer_project_analysis_rules,
     list_project_analysis_rule_versions,
     merge_project_analysis_rule_versions,
     permanently_delete_project_analysis_rule_version,
@@ -57,6 +60,7 @@ from qym_platform.api.analysis import (
     update_analysis_context,
     upload_analysis_document,
 )
+from qym_platform.api import analysis as analysis_api
 from qym_platform.api.runs import _build_run_data
 from qym_platform.auth import Principal
 from qym_platform.db.base import Base
@@ -80,11 +84,16 @@ from qym_platform.db.models import (
     User,
     UserRole,
 )
-from qym_platform.services.analysis_aggregation import AnalysisAggregationError
+from qym_platform.services.analysis_aggregation import (
+    AggregationResponse,
+    AnalysisAggregationError,
+)
 from qym_platform.services import llm_analyzer as llm_analyzer_service
 from qym_platform.services.llm_analyzer import (
+    MAX_ANALYSIS_PROMPT_CHARS,
     ROOT_CAUSE_CATEGORIES,
     RULE_WRITER_SYSTEM_PROMPT,
+    AnalysisRule,
     AnalysisResult,
     analyze_single_item,
     build_analysis_prompt,
@@ -92,10 +101,16 @@ from qym_platform.services.llm_analyzer import (
     get_few_shot_examples,
     normalize_analysis_rules,
     parse_llm_response,
+    prompt_character_count,
+)
+from qym_platform.services.document_extractor import (
+    MAX_REFERENCE_DOCUMENT_CHARS,
+    MAX_REFERENCE_DOCUMENT_CONTENT_CHARS,
 )
 from qym_platform.services.root_cause_changes import (
     apply_root_cause_change,
     build_ai_state,
+    replace_metric_review_candidate,
 )
 
 
@@ -1103,12 +1118,11 @@ def test_build_analysis_prompt_resolves_custom_variable_from_selected_metric_met
     assert any('"judge": "llm"' in message["content"] for message in messages)
 
 
-def test_build_analysis_prompt_includes_only_useful_trace_evidence(
+def test_build_analysis_prompt_organizes_native_trace_payload(
     db_session: Session,
 ) -> None:
     _, _, _, item = _seed_run(db_session)
     item.trace_id = "trace-1"
-    item.trace_url = "https://qym.example/runs/run-1?trace_id=trace-1"
     db_session.add_all(
         [
             Span(
@@ -1159,7 +1173,7 @@ def test_build_analysis_prompt_includes_only_useful_trace_evidence(
                 attributes={
                     "openinference.span.kind": "TOOL",
                     "tool.name": "query_sql",
-                    "input.value": '{"sql":"select * from archived_orders"}',
+                    "input.value": '{"sql":"select * from archived_orders","authorization":"trace-secret"}',
                     "output.value": '{"error":"table unavailable"}',
                     "qym.tool.error_source": "json",
                 },
@@ -1184,31 +1198,173 @@ def test_build_analysis_prompt_includes_only_useful_trace_evidence(
         message["content"] for message in messages if message["role"] == "system"
     )
 
-    assert "TRACE EVIDENCE:" in system_content
-    assert '"step": "ChatCompletion"' in system_content
-    assert '"chat_history":' in system_content
+    assert "TRACE EVIDENCE:\n" in system_content
+    assert "Agent trace:" in system_content
+    assert "Evaluation trace:\n(none)" in system_content
+    assert "Step 1 — ChatCompletion:" in system_content
+    assert "Step 2 — tool:query_sql:" in system_content
+    assert "CALL:" in system_content
+    assert "THINKING:" in system_content
+    assert "OUTPUT:" in system_content
+    assert '"authorization": "[REDACTED]"' in system_content
+    assert "trace-secret" not in system_content
+    assert "ChatCompletion" in system_content
     assert "You are a SQL agent." in system_content
     assert "Use the archived orders table." in system_content
-    assert '"internal_responses":' in system_content
     assert "The join returned no rows." in system_content
-    assert system_content.count("The customer key may be stale.") == 1
-    assert '"name": "query_sql"' in system_content
     assert "table unavailable" in system_content
-    assert '"classification": "noisy_reasoning"' in system_content
-    assert "TRACE ID:" not in system_content
-    assert "TRACE URL:" not in system_content
-    assert '"span_id"' not in system_content
-    assert '"parent_span_id"' not in system_content
-    assert '"start_time_ns"' not in system_content
-    assert '"duration_ms"' not in system_content
-    assert '"links"' not in system_content
-    assert '"input.value"' not in system_content
-    assert '"output.value"' not in system_content
-    assert system_content.count('"answer": "actual"') == 1
-    assert "llm.token_count.total" not in system_content
-    assert "call-123" not in system_content
+    assert "span_id" not in system_content
+    assert "parent_span_id" not in system_content
+    assert "input.value" not in system_content
     assert "linked-trace" not in system_content
-    assert "trace-secret" not in system_content
+
+    without_trace_messages = build_analysis_prompt(
+        item,
+        {},
+        [],
+        config={"include_fields": {"trace": False}},
+    )
+    without_trace = next(
+        message["content"]
+        for message in without_trace_messages
+        if message["role"] == "system"
+    )
+    assert "TRACE EVIDENCE:" not in without_trace
+    assert "Agent trace:" not in without_trace
+    assert "You are a SQL agent." not in without_trace
+    assert system_content.count("The customer key may be stale.") == 1
+
+
+def test_organize_trace_content_drops_chains_and_emits_deltas_by_section() -> None:
+    def llm_span(
+        span_id: str,
+        parent_span_id: str,
+        start_time_ns: int,
+        input_messages: list[tuple[str, str]],
+        output: str,
+        thinking: str,
+    ) -> dict[str, Any]:
+        attributes: dict[str, Any] = {"openinference.span.kind": "LLM"}
+        for index, (role, content) in enumerate(input_messages):
+            attributes[f"llm.input_messages.{index}.message.role"] = role
+            attributes[f"llm.input_messages.{index}.message.content"] = content
+        attributes["llm.output_messages.0.message.role"] = "assistant"
+        attributes["llm.output_messages.0.message.content"] = output
+        attributes["llm.output_messages.0.message.reasoning"] = thinking
+        return {
+            "span_id": span_id,
+            "parent_span_id": parent_span_id,
+            "name": "ChatCompletion",
+            "kind": "CLIENT",
+            "start_time_ns": start_time_ns,
+            "attributes": attributes,
+            "events": [],
+            "links": [],
+        }
+
+    organized = llm_analyzer_service._organize_trace_content(
+        [
+            {
+                "span_id": "root-chain",
+                "name": "item-chain",
+                "kind": "INTERNAL",
+                "start_time_ns": 1,
+                "attributes": {"openinference.span.kind": "CHAIN"},
+            },
+            {
+                "span_id": "agent-wrapper",
+                "parent_span_id": "root-chain",
+                "name": "agent-task",
+                "kind": "INTERNAL",
+                "start_time_ns": 2,
+                "attributes": {"openinference.span.kind": "AGENT"},
+            },
+            llm_span(
+                "agent-call-1",
+                "agent-wrapper",
+                3,
+                [("system", "system once"), ("user", "question once")],
+                "first answer",
+                "think once",
+            ),
+            {
+                "span_id": "empty-agent-call",
+                "parent_span_id": "agent-wrapper",
+                "name": "ChatCompletion",
+                "kind": "CLIENT",
+                "start_time_ns": 4,
+                "attributes": {"openinference.span.kind": "LLM"},
+            },
+            llm_span(
+                "agent-call-2",
+                "agent-wrapper",
+                5,
+                [
+                    ("system", "system once"),
+                    ("user", "question once"),
+                    ("assistant", "first answer"),
+                    ("user", "new follow-up"),
+                ],
+                "second answer",
+                "think twice",
+            ),
+            {
+                "span_id": "evaluation-wrapper",
+                "parent_span_id": "root-chain",
+                "name": "eval_metrics",
+                "kind": "INTERNAL",
+                "start_time_ns": 5,
+                "attributes": {"openinference.span.kind": "EVALUATOR"},
+            },
+            {
+                "span_id": "evaluation-chain",
+                "parent_span_id": "evaluation-wrapper",
+                "name": "judge-chain",
+                "kind": "INTERNAL",
+                "start_time_ns": 6,
+                "attributes": {"openinference.span.kind": "CHAIN"},
+            },
+            llm_span(
+                "evaluation-call-1",
+                "evaluation-chain",
+                7,
+                [("system", "judge instructions"), ("user", "first answer")],
+                "score one",
+                "judge thinking one",
+            ),
+            llm_span(
+                "evaluation-call-2",
+                "evaluation-chain",
+                8,
+                [
+                    ("system", "judge instructions"),
+                    ("user", "first answer"),
+                    ("assistant", "score one"),
+                    ("user", "next metric"),
+                ],
+                "final score",
+                "judge thinking two",
+            ),
+        ]
+    )
+
+    assert organized.index("Agent trace:") < organized.index("Evaluation trace:")
+    assert "item-chain" not in organized
+    assert "agent-task" not in organized
+    assert "judge-chain" not in organized
+    assert organized.count("system once") == 1
+    assert organized.count("question once") == 1
+    assert organized.count("new follow-up") == 1
+    assert organized.count("think once") == 1
+    assert organized.count("think twice") == 1
+    assert "(no new content)" not in organized
+    assert "Agent trace:\nStep 1 — ChatCompletion:" in organized
+    assert "Agent trace:\nStep 1 — ChatCompletion:\nCALL:" in organized
+    agent_trace = organized.split("Evaluation trace:", 1)[0]
+    assert "Step 2 — ChatCompletion:" in agent_trace
+    assert "Step 3 — ChatCompletion:" not in agent_trace
+    assert "Evaluation trace:\nStep 1 — ChatCompletion:" in organized
+    assert organized.count("Step 2 — ChatCompletion:") == 2
 
 
 def test_build_analysis_prompt_ignores_legacy_project_description(
@@ -1233,7 +1389,7 @@ def test_build_analysis_prompt_ignores_legacy_project_description(
     assert "{business_context}" not in system_content
 
 
-def test_build_analysis_prompt_renders_all_new_system_contexts(
+def test_build_analysis_prompt_omits_redundant_system_contexts(
     db_session: Session,
 ) -> None:
     _, _, run, item = _seed_run(db_session)
@@ -1301,23 +1457,29 @@ def test_build_analysis_prompt_renders_all_new_system_contexts(
     ):
         assert placeholder not in system_content
 
-    assert "Project: Project One" in system_content
+    for heading in (
+        "BUSINESS CONTEXT:",
+        "METRIC CONTEXT:",
+        "MODEL CONTEXT:",
+    ):
+        assert heading not in system_content
+    assert "Project: Project One" not in system_content
     assert "Project description:" not in system_content
     assert "Stored project description:" not in system_content
-    assert "Evaluation task: insightor_api" in system_content
-    assert "Dataset: dataset-1" in system_content
+    assert "Evaluation task: insightor_api" not in system_content
+    assert "Dataset: dataset-1" not in system_content
     assert "Attached reference documents: policy.md" not in system_content
     assert "Reasoning Error" in system_content
     assert "Join mismatch" in system_content
 
-    assert '"selected_metric": "accuracy"' in system_content
+    assert '"selected_metric": "accuracy"' not in system_content
     assert '"score": 0.1' in system_content
     assert '"label": "fail"' in system_content
     assert "The generated answer used the wrong join." in system_content
-    assert '"pass_threshold": 0.8' in system_content
-    assert '"direction": "maximize"' in system_content
+    assert '"pass_threshold": 0.8' not in system_content
+    assert '"direction": "maximize"' not in system_content
 
-    assert '"evaluated_model": "provider/evaluated-model-v2"' in system_content
+    assert '"evaluated_model": "provider/evaluated-model-v2"' not in system_content
     assert '"temperature": 0.3' not in system_content
     assert '"api_key": "[REDACTED]"' not in system_content
     assert "must-not-reach-the-analyzer" not in system_content
@@ -1333,7 +1495,7 @@ def test_build_analysis_prompt_renders_all_new_system_contexts(
     assert "Always cite the account policy." in user_content
 
 
-def test_build_analysis_prompt_renders_custom_context_fields_and_literal_json() -> None:
+def test_build_analysis_prompt_removes_legacy_context_fields_and_preserves_literal_json() -> None:
     item = RunItem(
         run_id="detached-run",
         item_id="item-1",
@@ -1348,9 +1510,9 @@ def test_build_analysis_prompt_renders_custom_context_fields_and_literal_json() 
         config={
             "system_prompt": (
                 "Categories:\n{categories}\n\n"
-                "Business:\n{business_context}\n\n"
-                "Metric:\n{metric_context}\n\n"
-                "Model:\n{model_context}\n\n"
+                "**BUSINESS CONTEXT**\n{business_context}\n\n"
+                "**METRIC CONTEXT**\n{metric_context}\n\n"
+                "**MODEL CONTEXT**\n{model_context}\n\n"
                 "Item:\n{item_context}\n\n"
                 'Return {{"root_cause": "value"}}.'
             ),
@@ -1366,9 +1528,15 @@ def test_build_analysis_prompt_renders_custom_context_fields_and_literal_json() 
         message["content"] for message in messages if message["role"] == "user"
     )
 
-    assert '"domain": "support"' in system_content
-    assert "Prefer the human rubric." in system_content
-    assert '"family": "small-model"' in system_content
+    assert '"domain": "support"' not in system_content
+    assert "Prefer the human rubric." not in system_content
+    assert '"family": "small-model"' not in system_content
+    assert "{business_context}" not in system_content
+    assert "{metric_context}" not in system_content
+    assert "{model_context}" not in system_content
+    assert "BUSINESS CONTEXT" not in system_content
+    assert "METRIC CONTEXT" not in system_content
+    assert "MODEL CONTEXT" not in system_content
     assert '"question": "Why?"' in system_content
     assert 'Return {"root_cause": "value"}.' in system_content
     assert "INPUT:" not in user_content
@@ -1411,9 +1579,9 @@ def test_custom_system_prompt_appends_all_omitted_analyzer_context() -> None:
     )
 
     assert "SUPPLIED ANALYSIS DATA" in system_content
-    assert "Billing support" in system_content
-    assert "Evidence is required" in system_content
-    assert "Evaluated model family: small" in system_content
+    assert "Billing support" not in system_content
+    assert "Evidence is required" not in system_content
+    assert "Evaluated model family: small" not in system_content
     assert "The answer omitted the required evidence." in system_content
     assert 'JSON field "solution"' not in system_content
     assert "Add Evidence" not in system_content
@@ -1478,7 +1646,7 @@ def test_default_prompt_requests_only_diagnosis_fields() -> (
     )
     assert '"confidence": <float between 0.0-1.0>' in system_content
     assert (
-        '"root_cause_note": "<2-3 sentences maximum: what went wrong and why>"'
+        '"root_cause_note": "<2-3 sentences maximum: the item-specific failure narrative>"'
         in system_content
     )
     assert '"solution"' not in system_content
@@ -1648,10 +1816,10 @@ def test_analysis_prompt_scopes_category_root_cause_and_feedback_to_selected_met
         message["content"] for message in format_messages if message["role"] == "user"
     )
 
-    assert '"selected_metric": "accuracy"' in accuracy_prompt
+    assert '"selected_metric": "accuracy"' not in accuracy_prompt
     assert '"accuracy": {' in accuracy_prompt
     assert '"format": {' not in accuracy_prompt
-    assert '"selected_metric": "format"' in format_prompt
+    assert '"selected_metric": "format"' not in format_prompt
     assert '"format": {' in format_prompt
     assert '"accuracy": {' not in format_prompt
     assert accuracy_user_message == "Return only the JSON object required by the system prompt."
@@ -1728,6 +1896,7 @@ async def test_analyze_single_item_sends_max_tokens_and_records_provenance() -> 
         max_tokens=321,
     )
 
+    assert create.await_args.kwargs["temperature"] == 0.0
     assert create.await_args.kwargs["max_tokens"] == 321
     assert result.analyzer_model == "test-model"
     assert result.provider_request_id == "provider-request-1"
@@ -1742,6 +1911,20 @@ def test_playground_config_has_no_project_description_override() -> None:
 
     assert "project_description" not in PlaygroundConfig.model_fields
     assert _playground_config_to_analyzer(config) is None
+
+
+def test_playground_config_passes_run_context_toggles_to_analyzer() -> None:
+    config = PlaygroundConfig(
+        include_project_rules=False,
+        include_project_documents=False,
+        include_fields={"trace": False},
+    )
+
+    assert _playground_config_to_analyzer(config) == {
+        "_include_project_rules": False,
+        "_include_project_documents": False,
+        "include_fields": {"trace": False},
+    }
 
 
 def test_rule_request_models_allow_more_than_twenty_rules() -> None:
@@ -1828,6 +2011,98 @@ def test_analysis_targets_include_every_failed_metric_and_skip_each_completed_me
     assert [(target.item_id, metric) for target, metric in remaining] == [
         (item.item_id, "format")
     ]
+
+
+def test_analysis_targets_protect_human_labels_per_metric(
+    db_session: Session,
+) -> None:
+    _, _, run, item = _seed_run(db_session)
+    run.metrics = ["accuracy", "format"]
+    format_score = RunItemScore(
+        run_id=run.id,
+        item_id=item.item_id,
+        metric_name="format",
+        score_numeric=0.2,
+    )
+    item.item_metadata = {
+        "root_cause": "Legacy AI",
+        "root_cause_source": "ai",
+        "metric_analyses": {
+            "accuracy": {"source": "human", "root_cause": "Manual Category"},
+            "format": {"source": "ai", "root_cause": "Old Category"},
+        },
+    }
+    db_session.add(format_score)
+    db_session.commit()
+    scores = db_session.query(RunItemScore).filter(RunItemScore.run_id == run.id).all()
+    scores_by_item = {
+        item.item_id: {score.metric_name: score for score in scores}
+    }
+
+    protected = _filter_analysis_targets(
+        run,
+        AnalyzeRequest(
+            metrics=["accuracy", "format"],
+            item_filter="failed",
+            only_unanalyzed=False,
+            allow_human_overwrite=False,
+        ),
+        [item],
+        scores_by_item,
+        {},
+    )
+    assert [(target.item_id, metric) for target, metric in protected] == [
+        (item.item_id, "format")
+    ]
+
+    human_override = _filter_analysis_targets(
+        run,
+        AnalyzeRequest(
+            metrics=["accuracy", "format"],
+            item_filter="failed",
+            only_unanalyzed=True,
+            allow_human_overwrite=True,
+        ),
+        [item],
+        scores_by_item,
+        {},
+    )
+    assert [(target.item_id, metric) for target, metric in human_override] == [
+        (item.item_id, "accuracy")
+    ]
+
+
+def test_analysis_targets_protect_human_detail_only_labels(
+    db_session: Session,
+) -> None:
+    _, _, run, item = _seed_run(db_session)
+    item.item_metadata = {
+        "metric_analyses": {
+            "accuracy": {
+                "source": "human",
+                "root_cause_note": "Reviewer explanation without a category yet",
+            }
+        }
+    }
+    db_session.commit()
+    score = (
+        db_session.query(RunItemScore)
+        .filter(
+            RunItemScore.run_id == run.id,
+            RunItemScore.item_id == item.item_id,
+            RunItemScore.metric_name == "accuracy",
+        )
+        .one()
+    )
+
+    targets = _filter_analysis_targets(
+        run,
+        AnalyzeRequest(item_filter="failed", only_unanalyzed=True),
+        [item],
+        {item.item_id: {"accuracy": score}},
+        {},
+    )
+    assert targets == []
 
 
 def test_unknown_requested_metric_is_rejected(db_session: Session) -> None:
@@ -1939,6 +2214,69 @@ def test_analysis_target_limit_uses_deterministic_severity_order(
     ]
 
 
+def test_analysis_target_limit_counts_items_and_keeps_selected_metrics(
+    db_session: Session,
+) -> None:
+    _, _, run, first_item = _seed_run(db_session)
+    run.metrics = ["accuracy", "format"]
+    second_item = RunItem(
+        run_id=run.id,
+        item_id="item-2",
+        index=1,
+        input={"question": "second"},
+        item_metadata={},
+    )
+    first_scores = {
+        "accuracy": db_session.query(RunItemScore)
+        .filter(
+            RunItemScore.run_id == run.id,
+            RunItemScore.item_id == first_item.item_id,
+            RunItemScore.metric_name == "accuracy",
+        )
+        .one(),
+        "format": RunItemScore(
+            run_id=run.id,
+            item_id=first_item.item_id,
+            metric_name="format",
+            score_numeric=0.2,
+        ),
+    }
+    second_scores = {
+        "accuracy": RunItemScore(
+            run_id=run.id,
+            item_id=second_item.item_id,
+            metric_name="accuracy",
+            score_numeric=0.4,
+        ),
+        "format": RunItemScore(
+            run_id=run.id,
+            item_id=second_item.item_id,
+            metric_name="format",
+            score_numeric=0.5,
+        ),
+    }
+    db_session.add_all([second_item, first_scores["format"], *second_scores.values()])
+    db_session.commit()
+
+    targets = _filter_analysis_targets(
+        run,
+        AnalyzeRequest(
+            metrics=["accuracy", "format"],
+            item_filter="failed",
+            only_unanalyzed=False,
+            limit=1,
+        ),
+        [first_item, second_item],
+        {first_item.item_id: first_scores, second_item.item_id: second_scores},
+        {},
+    )
+
+    assert [(item.item_id, metric) for item, metric in targets] == [
+        ("item-1", "accuracy"),
+        ("item-1", "format"),
+    ]
+
+
 def test_analysis_targets_do_not_apply_max_score_as_an_upper_bound_to_minimize_metrics(
     db_session: Session,
 ) -> None:
@@ -1986,6 +2324,7 @@ def test_analysis_results_are_saved_by_metric_with_legacy_item_summary(
             metric_name="accuracy",
             root_cause="Reasoning Error",
             root_cause_detail="Wrong join key",
+            root_cause_reason="The output shows the model joined records using the wrong key.",
             root_cause_note="The metric explanation identifies the join mismatch.",
             confidence=0.9,
             solution="Add Output Validation",
@@ -2013,9 +2352,15 @@ def test_analysis_results_are_saved_by_metric_with_legacy_item_summary(
 
     assert errors == 0
     assert [payload["metric_name"] for payload in payloads] == ["accuracy", "format"]
+    assert payloads[0]["root_cause_reason"] == (
+        "The output shows the model joined records using the wrong key."
+    )
     assert (
         item.item_metadata["metric_analyses"]["accuracy"]["root_cause"]
         == "Reasoning Error"
+    )
+    assert item.item_metadata["metric_analyses"]["accuracy"]["root_cause_reason"] == (
+        "The output shows the model joined records using the wrong key."
     )
     assert (
         item.item_metadata["metric_analyses"]["format"]["root_cause"] == "Wrong Format"
@@ -2027,6 +2372,9 @@ def test_analysis_results_are_saved_by_metric_with_legacy_item_summary(
         == "rule-version-v1"
     )
     assert item.item_metadata["root_cause"] == "Reasoning Error"
+    assert item.item_metadata["root_cause_reason"] == (
+        "The output shows the model joined records using the wrong key."
+    )
     assert item.item_metadata["root_cause_metric_name"] == "accuracy"
     candidates = (
         db_session.query(ReviewCorrection)
@@ -2075,6 +2423,43 @@ def test_analysis_results_are_saved_by_metric_with_legacy_item_summary(
         "accuracy": {"id": candidates[0].id, "status": "approved"},
         "format": {"id": candidates[1].id, "status": "pending"},
     }
+
+
+def test_untaxonomized_ai_category_is_saved_with_item_warning(
+    db_session: Session,
+) -> None:
+    actor, _, run, item = _seed_run(db_session)
+    warning = (
+        "Warning: AI selected category 'Novel Failure' without complete taxonomy. "
+        "The diagnosis was accepted for this item; add taxonomy guidance before "
+        "relying on this label in future analyses."
+    )
+    result = AnalysisResult(
+        item_id=item.item_id,
+        metric_name="accuracy",
+        root_cause="Novel Failure",
+        root_cause_note="The output shows a project-specific failure.",
+        confidence=0.6,
+        warning=warning,
+    )
+
+    payloads, errors = _save_analysis_results(
+        db_session,
+        run,
+        [(item, "accuracy")],
+        [result],
+        Principal(user=actor, auth_type="none"),
+    )
+    db_session.refresh(item)
+
+    assert errors == 0
+    assert payloads[0]["error"] is None
+    assert payloads[0]["warning"] == warning
+    assert item.item_metadata["analysis_warning"] == warning
+    assert item.item_metadata["metric_analyses"]["accuracy"]["root_cause"] == (
+        "Novel Failure"
+    )
+    assert item.item_metadata["metric_analyses"]["accuracy"]["warning"] == warning
 
 
 def test_approve_metric_analysis_materializes_legacy_metric_candidate(
@@ -2194,6 +2579,156 @@ def test_new_analysis_overwrites_old_item_and_metric_analysis(
     assert active_candidate.ai_root_cause_detail == "Expected SQL mismatches request"
 
 
+def test_save_analysis_results_preserves_human_metric_without_explicit_overwrite(
+    db_session: Session,
+) -> None:
+    actor, _, run, item = _seed_run(db_session)
+    human_analysis = {
+        "source": "human",
+        "root_cause": "Manual Category",
+        "root_cause_detail": "Manual detail",
+        "root_cause_note": "Keep this reviewer explanation.",
+    }
+    item.item_metadata = {
+        "root_cause": "Legacy AI",
+        "root_cause_source": "ai",
+        "metric_analyses": {"accuracy": human_analysis},
+    }
+    db_session.commit()
+    human_candidate = replace_metric_review_candidate(
+        db_session,
+        run=run,
+        item=item,
+        metric_name="accuracy",
+        analysis=human_analysis,
+        actor_user_id=actor.id,
+        actor_source="human",
+    )
+    assert human_candidate is not None
+    db_session.commit()
+
+    result = AnalysisResult(
+        item_id=item.item_id,
+        metric_name="accuracy",
+        root_cause="Fresh AI Category",
+        root_cause_detail="Fresh AI detail",
+        root_cause_note="Fresh AI note",
+        confidence=0.92,
+    )
+    _save_analysis_results(
+        db_session,
+        run,
+        [(item, "accuracy")],
+        [result],
+        Principal(user=actor, auth_type="none"),
+    )
+    db_session.refresh(item)
+    db_session.refresh(human_candidate)
+
+    assert item.item_metadata["metric_analyses"]["accuracy"] == human_analysis
+    assert human_candidate.is_active is True
+    assert human_candidate.human_root_cause == "Manual Category"
+
+    _save_analysis_results(
+        db_session,
+        run,
+        [(item, "accuracy")],
+        [result],
+        Principal(user=actor, auth_type="none"),
+        allow_human_overwrite=True,
+    )
+    db_session.refresh(item)
+    db_session.refresh(human_candidate)
+
+    assert item.item_metadata["metric_analyses"]["accuracy"]["source"] == "ai"
+    assert item.item_metadata["metric_analyses"]["accuracy"]["root_cause"] == (
+        "Fresh AI Category"
+    )
+    assert human_candidate.is_active is False
+
+
+def test_save_analysis_results_reloads_concurrent_human_metric_before_persisting(
+    db_session: Session,
+) -> None:
+    actor, _, run, item = _seed_run(db_session)
+    # Keep the AI session's item stale while a reviewer session commits a human
+    # diagnosis, matching the state transition that can happen during an LLM call.
+    assert item.item_metadata in (None, {})
+    reviewer_session = sessionmaker(bind=db_session.get_bind())()
+    try:
+        reviewer_item = (
+            reviewer_session.query(RunItem)
+            .filter(RunItem.run_id == run.id, RunItem.item_id == item.item_id)
+            .one()
+        )
+        human_analysis = {
+            "source": "human",
+            "root_cause": "Manual Category",
+            "root_cause_detail": "Reviewer diagnosis committed during analysis",
+        }
+        reviewer_item.item_metadata = {
+            "metric_analyses": {"accuracy": human_analysis}
+        }
+        reviewer_session.commit()
+    finally:
+        reviewer_session.close()
+
+    result = AnalysisResult(
+        item_id=item.item_id,
+        metric_name="accuracy",
+        root_cause="Fresh AI Category",
+        root_cause_detail="Fresh AI detail",
+        root_cause_note="Fresh AI note",
+        confidence=0.92,
+    )
+    payloads, errors = _save_analysis_results(
+        db_session,
+        run,
+        [(item, "accuracy")],
+        [result],
+        Principal(user=actor, auth_type="none"),
+    )
+    db_session.refresh(item)
+
+    assert errors == 0
+    assert payloads[0]["persistence_status"] == "skipped_human_protection"
+    assert item.item_metadata["metric_analyses"]["accuracy"] == human_analysis
+
+
+def test_save_analysis_results_does_not_replace_human_metric_with_ai_error(
+    db_session: Session,
+) -> None:
+    actor, _, run, item = _seed_run(db_session)
+    human_analysis = {
+        "source": "human",
+        "root_cause": "Manual Category",
+        "root_cause_detail": "Keep the reviewer diagnosis on analyzer failure",
+    }
+    item.item_metadata = {"metric_analyses": {"accuracy": human_analysis}}
+    db_session.commit()
+
+    result = AnalysisResult(
+        item_id=item.item_id,
+        metric_name="accuracy",
+        root_cause="",
+        root_cause_note="",
+        confidence=0.0,
+        error="Analyzer request timed out",
+    )
+    payloads, errors = _save_analysis_results(
+        db_session,
+        run,
+        [(item, "accuracy")],
+        [result],
+        Principal(user=actor, auth_type="none"),
+    )
+    db_session.refresh(item)
+
+    assert errors == 0
+    assert payloads[0]["persistence_status"] == "skipped_human_protection"
+    assert item.item_metadata["metric_analyses"]["accuracy"] == human_analysis
+
+
 def test_persisted_ai_labels_can_be_reaggregated_without_changing_feedback(
     db_session: Session,
 ) -> None:
@@ -2303,9 +2838,9 @@ async def test_zero_target_aggregation_is_a_noop_without_llm_calls(
         "root_cause_source": "ai",
     }
     db_session.commit()
-    create = AsyncMock()
+    parse = AsyncMock()
     client = SimpleNamespace(
-        chat=SimpleNamespace(completions=SimpleNamespace(create=create))
+        chat=SimpleNamespace(completions=SimpleNamespace(parse=parse))
     )
 
     categories, changed = await _aggregate_run_analysis_results(
@@ -2322,7 +2857,84 @@ async def test_zero_target_aggregation_is_a_noop_without_llm_calls(
 
     assert categories == {"Reasoning Error": 1}
     assert changed == 0
-    create.assert_not_awaited()
+    parse.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_forced_aggregation_reprocesses_saved_labels_and_records_status(
+    db_session: Session,
+) -> None:
+    actor, _reviewer, run, item = _seed_run(db_session)
+    item.item_metadata = {
+        "metric_analyses": {
+            "accuracy": {
+                "source": "ai",
+                "root_cause": "Reasoning Error",
+                "root_cause_detail": "Failure variant one",
+            },
+            "format": {
+                "source": "ai",
+                "root_cause": "Reasoning Error",
+                "root_cause_detail": "Failure variant two",
+            },
+        }
+    }
+    db_session.commit()
+    client = SimpleNamespace(
+        chat=SimpleNamespace(
+            completions=SimpleNamespace(
+                parse=AsyncMock(
+                    return_value=SimpleNamespace(
+                        choices=[
+                            SimpleNamespace(
+                                message=SimpleNamespace(
+                                    parsed=AggregationResponse.model_validate(
+                                        {
+                                            "category_clusters": [],
+                                            "detail_clusters": [
+                                                {
+                                                    "canonical_label": (
+                                                        "Shared failure mechanism"
+                                                    ),
+                                                    "member_ids": ["d0", "d1"],
+                                                }
+                                            ],
+                                        }
+                                    )
+                                )
+                            )
+                        ]
+                    )
+                )
+            )
+        )
+    )
+
+    categories, changed = await _aggregate_run_analysis_results(
+        db=db_session,
+        run=run,
+        all_items=[item],
+        analysis_targets=[],
+        new_results=[],
+        client=client,
+        model="test-model",
+        analyzer_config={"root_cause_categories": ["Reasoning Error"]},
+        principal=Principal(user=actor, auth_type="none"),
+        force=True,
+    )
+    db_session.commit()
+    db_session.refresh(item)
+    db_session.refresh(run)
+
+    assert categories == {"Reasoning Error": 2}
+    assert changed == 2
+    metric_analyses = item.item_metadata["metric_analyses"]
+    assert {
+        analysis["root_cause_detail"] for analysis in metric_analyses.values()
+    } == {"Shared failure mechanism"}
+    assert run.run_metadata["analysis_aggregation"]["status"] == "succeeded"
+    assert run.run_metadata["analysis_aggregation"]["metrics"] is None
+    assert run.run_metadata["analysis_aggregation"]["aggregated"] == 2
 
 
 @pytest.mark.asyncio
@@ -2347,11 +2959,11 @@ async def test_failed_aggregation_restores_raw_new_labels(
         ),
     ]
     invalid_response = SimpleNamespace(
-        choices=[SimpleNamespace(message=SimpleNamespace(content='{"groups": []}'))]
+        choices=[SimpleNamespace(message=SimpleNamespace(parsed=None, refusal=None))]
     )
     client = SimpleNamespace(
         chat=SimpleNamespace(
-            completions=SimpleNamespace(create=AsyncMock(return_value=invalid_response))
+            completions=SimpleNamespace(parse=AsyncMock(return_value=invalid_response))
         )
     )
 
@@ -2396,13 +3008,26 @@ def test_analysis_rules_are_normalized_and_included_in_prompt() -> None:
 
     assert "Schema semantics" in system_content
     assert "Check joins against the documented entity keys" in system_content
-    assert "ANALYSIS RULES:" in system_content
+    assert "ANALYSIS RULES (diagnostic guidance for this root-cause analyzer):" in system_content
     assert (
         "1. Schema semantics\nCheck joins against the documented entity keys."
         in system_content
     )
+    assert "diagnostic guidance for this root-cause analyzer" in system_content
+    assert "not a judge rubric, pass/fail criteria" in system_content
+    assert "classification aid" in system_content
+    assert "signal-to-mechanism" in system_content
     assert "business requirements" in RULE_WRITER_SYSTEM_PROMPT
     assert "decision logic" in RULE_WRITER_SYSTEM_PROMPT
+    assert "downstream LLM analyzer" in RULE_WRITER_SYSTEM_PROMPT
+    complete_writer_prompt = llm_analyzer_service._writer_system_instructions(None)
+    assert "DIAGNOSTIC CLASSIFICATION CONTRACT" in complete_writer_prompt
+    assert "classify the root cause" in complete_writer_prompt
+    assert "conditional root-cause category" in complete_writer_prompt
+    assert "make the analyzer the grammatical subject" in complete_writer_prompt
+    assert "Do not write scoring criteria" in complete_writer_prompt
+    assert "operating instructions for the evaluated agent/model" in complete_writer_prompt
+    assert "remediation and prevention advice" in complete_writer_prompt
 
     more_than_twenty = normalize_analysis_rules(
         [
@@ -2411,6 +3036,210 @@ def test_analysis_rules_are_normalized_and_included_in_prompt() -> None:
         ]
     )
     assert len(more_than_twenty) == 21
+
+
+def test_rule_inference_metadata_is_validated_persisted_and_not_injected() -> None:
+    source = "Approved policy excerpt: every answer must cite the retrieved record."
+    explanation = (
+        "This lets the analyzer distinguish an evidence gap from a reasoning error "
+        "when the output omits a required citation."
+    )
+    rules = normalize_analysis_rules(
+        [
+            {
+                "title": "Evidence grounding",
+                "instruction": "Check whether the response connects its conclusion to retrieved evidence.",
+                "inferred_from": source,
+                "explanation": explanation,
+            }
+        ]
+    )
+
+    assert rules == [
+        {
+            "title": "Evidence grounding",
+            "instruction": "Check whether the response connects its conclusion to retrieved evidence.",
+            "inferred_from": source,
+            "explanation": explanation,
+        }
+    ]
+    model = AnalysisRule.model_validate(rules[0])
+    assert model.inferred_from == source
+    assert model.explanation == explanation
+
+    item = RunItem(run_id="run-1", item_id="item-1", index=0, input={"question": "q"})
+    messages = build_analysis_prompt(item, {}, [], config={"analysis_rules": rules})
+    system_content = next(
+        message["content"] for message in messages if message["role"] == "system"
+    )
+    assert "Evidence grounding" in system_content
+    assert "Check whether the response connects its conclusion" in system_content
+    assert source not in system_content
+    assert explanation not in system_content
+    complete_writer_prompt = llm_analyzer_service._writer_system_instructions(None)
+    assert '"inferred_from"' in complete_writer_prompt
+    assert '"explanation"' in complete_writer_prompt
+
+
+def test_rule_writer_returns_inference_metadata(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    completion = SimpleNamespace(
+        choices=[
+            SimpleNamespace(
+                message=SimpleNamespace(
+                    content=json.dumps(
+                        {
+                            "rules": [
+                                {
+                                    "title": "Evidence grounding",
+                                    "instruction": "Compare conclusions with retrieved evidence.",
+                                    "inferred_from": "The approved policy requires citations.",
+                                    "explanation": "This helps localize unsupported conclusions.",
+                                }
+                            ]
+                        }
+                    )
+                )
+            )
+        ]
+    )
+    monkeypatch.setattr(
+        llm_analyzer_service,
+        "create_chat_completion_compat",
+        AsyncMock(return_value=completion),
+    )
+
+    rules = asyncio.run(
+        llm_analyzer_service.infer_analysis_rules(
+            SimpleNamespace(),
+            "test-model",
+            reference_documents=[
+                {"name": "policy.md", "content": "The approved policy requires citations."}
+            ],
+            corrections=[],
+        )
+    )
+
+    assert rules == [
+        {
+            "title": "Evidence grounding",
+            "instruction": "Compare conclusions with retrieved evidence.",
+            "inferred_from": "The approved policy requires citations.",
+            "explanation": "This helps localize unsupported conclusions.",
+        }
+    ]
+
+
+def test_rule_writer_rejects_generated_rules_without_audit_metadata(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    completion = SimpleNamespace(
+        choices=[
+            SimpleNamespace(
+                message=SimpleNamespace(
+                    content=(
+                        '{"rules":[{"title":"Evidence",'
+                        '"instruction":"Check the evidence."}]}'
+                    )
+                )
+            )
+        ]
+    )
+    monkeypatch.setattr(
+        llm_analyzer_service,
+        "create_chat_completion_compat",
+        AsyncMock(return_value=completion),
+    )
+
+    with pytest.raises(ValueError, match="did not contain usable rules"):
+        asyncio.run(
+            llm_analyzer_service.infer_analysis_rules(
+                SimpleNamespace(),
+                "test-model",
+                reference_documents=[
+                    {"name": "policy.md", "content": "Use the supplied evidence."}
+                ],
+                corrections=[],
+            )
+        )
+
+
+def test_rule_writer_accepts_an_explicit_empty_rule_list(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    completion = SimpleNamespace(
+        choices=[SimpleNamespace(message=SimpleNamespace(content='{"rules":[]}'))]
+    )
+    monkeypatch.setattr(
+        llm_analyzer_service,
+        "create_chat_completion_compat",
+        AsyncMock(return_value=completion),
+    )
+    existing_rules = [
+        {
+            "id": "rule-existing",
+            "title": "Evidence",
+            "instruction": "Check the supplied evidence.",
+        }
+    ]
+
+    rules = asyncio.run(
+        llm_analyzer_service.infer_analysis_rules(
+            SimpleNamespace(),
+            "test-model",
+            existing_rules=existing_rules,
+            reference_documents=[
+                {"name": "policy.md", "content": "No distinct new insight."}
+            ],
+            corrections=[],
+        )
+    )
+
+    assert rules == existing_rules
+
+
+def test_custom_rule_writer_prompt_keeps_classification_contract() -> None:
+    messages = llm_analyzer_service._writer_messages(
+        existing_rules=[],
+        reference_documents=[
+            {"name": "policy.md", "content": "The response must cite evidence."}
+        ],
+        correction_payload=[],
+        system_prompt="Extract useful project rules.",
+        update=False,
+    )
+
+    system_prompt = messages[0]["content"]
+    assert system_prompt.startswith("Extract useful project rules.")
+    assert "DIAGNOSTIC CLASSIFICATION CONTRACT" in system_prompt
+    assert system_prompt.count("DIAGNOSTIC CLASSIFICATION CONTRACT") == 1
+    assert "SOURCE HANDLING CONTRACT" in system_prompt
+    assert "RULE WRITING CONTRACT" in system_prompt
+    assert "classify the root cause" in system_prompt
+    assert "inferred_from" in system_prompt
+    legacy_prompt = (
+        llm_analyzer_service.RULE_WRITER_SYSTEM_PROMPT
+        + "\n\n"
+        + llm_analyzer_service.RULE_WRITER_FIXED_CONTRACT
+    )
+    assert (
+        llm_analyzer_service.normalize_rule_writer_system_prompt(legacy_prompt)
+        == llm_analyzer_service.RULE_WRITER_SYSTEM_PROMPT
+    )
+    legacy_messages = llm_analyzer_service._writer_messages(
+        existing_rules=[],
+        reference_documents=[
+            {"name": "policy.md", "content": "The response must cite evidence."}
+        ],
+        correction_payload=[],
+        system_prompt=legacy_prompt,
+        update=False,
+    )
+    assert (
+        legacy_messages[0]["content"].count("DIAGNOSTIC CLASSIFICATION CONTRACT")
+        == 1
+    )
 
 
 def test_all_approved_examples_are_returned_without_cap(
@@ -2488,7 +3317,9 @@ def test_rule_writer_prompt_includes_every_approved_example(
                 message=SimpleNamespace(
                     content=(
                         '{"rules":[{"title":"Evidence","instruction":'
-                        '"Check every conclusion against the supplied evidence."}]}'
+                        '"Check every conclusion against the supplied evidence.",'
+                        '"inferred_from":"Approved examples.",'
+                        '"explanation":"The examples show an evidence gap."}]}'
                     )
                 )
             )
@@ -2527,6 +3358,7 @@ def test_rule_writer_prompt_includes_every_approved_example(
     messages = create_completion.await_args.kwargs["messages"]
     assert "max_tokens" not in create_completion.await_args.kwargs
     assert "max_completion_tokens" not in create_completion.await_args.kwargs
+    assert create_completion.await_args.kwargs["temperature"] == 0.0
     user_prompt = next(
         message["content"] for message in messages if message["role"] == "user"
     )
@@ -2537,27 +3369,209 @@ def test_rule_writer_prompt_includes_every_approved_example(
     assert "Validate the answer against the retrieved context." not in user_prompt
     assert '"approved_solution"' not in user_prompt
 
+    payload = json.loads(user_prompt[user_prompt.index("{") :])
+    example = payload["approved_correction_examples"][0]
+    assert set(example) == {
+        "input",
+        "expected",
+        "output",
+        "previous_ai_root_cause",
+        "previous_ai_root_causes",
+        "approved_root_cause",
+        "approved_root_causes",
+        "approved_detail",
+        "reviewer_reasoning",
+    }
+    assert example["approved_root_causes"] == ["Reasoning Error"]
+    assert "previous_ai_category_taxonomy" not in example
+    assert "approved_category_taxonomy" not in example
+
+
+def test_rule_writer_processes_large_example_bank_after_documents_in_patches(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    completion = SimpleNamespace(
+        choices=[
+            SimpleNamespace(
+                message=SimpleNamespace(
+                    content=(
+                        '{"rules":[{"title":"Evidence","instruction":'
+                        '"Check the supplied evidence.",'
+                        '"inferred_from":"Supplied project data.",'
+                        '"explanation":"The source establishes an evidence requirement."}]}'
+                    )
+                )
+            )
+        ]
+    )
+    create_completion = AsyncMock(return_value=completion)
+    monkeypatch.setattr(
+        llm_analyzer_service,
+        "create_chat_completion_compat",
+        create_completion,
+    )
+    corrections = [
+        SimpleNamespace(
+            input_snapshot={"question": f"Approved example {index}"},
+            expected_snapshot={"answer": f"Expected {index}"},
+            output_snapshot={"answer": f"Actual {index}"},
+            ai_root_cause="Reasoning Error",
+            human_root_cause="Reasoning Error",
+            human_root_cause_detail=f"Evidence gap {index}",
+            human_root_cause_note="n" * 800,
+        )
+        for index in range(220)
+    ]
+    stats: dict[str, Any] = {}
+
+    asyncio.run(
+        llm_analyzer_service.infer_analysis_rules(
+            SimpleNamespace(),
+            "test-model",
+            reference_documents=[
+                {"name": "rubric.md", "content": "Use the supplied evidence."}
+            ],
+            corrections=corrections,
+            stats=stats,
+        )
+    )
+
+    assert stats["document_patches"] == 1
+    assert stats["approved_example_patches"] > 1
+    assert stats["writer_calls"] == 1 + stats["approved_example_patches"]
+    assert stats["patching_used"] is True
+    assert all(
+        patch["prompt_characters"]
+        <= llm_analyzer_service.MAX_RULE_WRITER_PROMPT_CHARS
+        for patch in stats["patches"]
+    )
+
+    payloads = []
+    for call in create_completion.await_args_list:
+        user_prompt = next(
+            message["content"]
+            for message in call.kwargs["messages"]
+            if message["role"] == "user"
+        )
+        payloads.append(json.loads(user_prompt[user_prompt.index("{") :]))
+    assert payloads[0]["reference_documents"]
+    assert payloads[0]["approved_correction_examples"] == []
+    assert all(not payload["reference_documents"] for payload in payloads[1:])
+    assert sum(
+        len(payload["approved_correction_examples"]) for payload in payloads
+    ) == len(corrections)
+
+
+def test_rule_writer_carries_generated_rules_into_later_patches(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(llm_analyzer_service, "MAX_RULE_WRITER_DOCUMENT_CHARS", 12)
+    completions = [
+        SimpleNamespace(
+            choices=[
+                SimpleNamespace(
+                    message=SimpleNamespace(
+                        content=json.dumps(
+                            {
+                                "rules": [
+                                    {
+                                        "title": "First patch rule",
+                                        "instruction": "Use the first source signal.",
+                                        "inferred_from": "First document part.",
+                                        "explanation": "It establishes the first signal.",
+                                    }
+                                ]
+                            }
+                        )
+                    )
+                )
+            ]
+        ),
+        SimpleNamespace(
+            choices=[
+                SimpleNamespace(
+                    message=SimpleNamespace(
+                        content=json.dumps(
+                            {
+                                "rules": [
+                                    {
+                                        "title": "Second patch rule",
+                                        "instruction": "Use the second source signal.",
+                                        "inferred_from": "Second document part.",
+                                        "explanation": "It establishes a distinct signal.",
+                                    }
+                                ]
+                            }
+                        )
+                    )
+                )
+            ]
+        ),
+    ]
+    create_completion = AsyncMock(side_effect=completions)
+    monkeypatch.setattr(
+        llm_analyzer_service,
+        "create_chat_completion_compat",
+        create_completion,
+    )
+    stats: dict[str, Any] = {}
+
+    rules = asyncio.run(
+        llm_analyzer_service.infer_analysis_rules(
+            SimpleNamespace(),
+            "test-model",
+            reference_documents=[
+                {"name": "policy.md", "content": "first-part--second-part"}
+            ],
+            corrections=[],
+            stats=stats,
+        )
+    )
+
+    assert [rule["title"] for rule in rules] == [
+        "First patch rule",
+        "Second patch rule",
+    ]
+    second_user_prompt = create_completion.await_args_list[1].kwargs["messages"][1][
+        "content"
+    ]
+    second_payload = json.loads(second_user_prompt[second_user_prompt.index("{") :])
+    assert [rule["title"] for rule in second_payload["existing_rules"]] == [
+        "First patch rule"
+    ]
+    assert stats["patching_used"] is True
+
 
 @pytest.mark.parametrize(
     "content",
     [
         (
             "Here is the ruleset:\n```json\n"
-            '{"rules":[{"title":"Evidence","instruction":"Check the evidence."}]}\n'
+            '{"rules":[{"title":"Evidence","instruction":"Check the evidence.",'
+            '"inferred_from":"Evidence policy.",'
+            '"explanation":"It identifies unsupported conclusions."}]}\n'
             "```"
         ),
-        '[{"title":"Evidence","instruction":"Check the evidence."}]',
+        (
+            '[{"title":"Evidence","instruction":"Check the evidence.",'
+            '"inferred_from":"Evidence policy.",'
+            '"explanation":"It identifies unsupported conclusions."}]'
+        ),
         (
             "```python\n"
             "{'analysis_rules': [{'title': 'Evidence', "
-            "'instruction': 'Check the evidence.'}]}\n```"
+            "'instruction': 'Check the evidence.', "
+            "'inferred_from': 'Evidence policy.', "
+            "'explanation': 'It identifies unsupported conclusions.'}]}\n```"
         ),
         [
             {
                 "type": "text",
                 "text": (
                     '{"rules":[{"title":"Evidence",'
-                    '"instruction":"Check the evidence."}]}'
+                    '"instruction":"Check the evidence.",'
+                    '"inferred_from":"Evidence policy.",'
+                    '"explanation":"It identifies unsupported conclusions."}]}'
                 ),
             }
         ],
@@ -2580,13 +3594,20 @@ def test_rule_writer_accepts_compatible_provider_output_shapes(
         llm_analyzer_service.infer_analysis_rules(
             SimpleNamespace(),
             "test-model",
-            reference_documents=[],
+            reference_documents=[
+                {"name": "Evidence policy", "content": "Use the supplied evidence."}
+            ],
             corrections=[],
         )
     )
 
     assert rules == [
-        {"title": "Evidence", "instruction": "Check the evidence."}
+        {
+            "title": "Evidence",
+            "instruction": "Check the evidence.",
+            "inferred_from": "Evidence policy.",
+            "explanation": "It identifies unsupported conclusions.",
+        }
     ]
 
 
@@ -2600,7 +3621,9 @@ def test_rule_writer_uses_reasoning_when_content_is_empty(
                     content="",
                     reasoning=(
                         '{"rules":[{"title":"Evidence",'
-                        '"instruction":"Check the evidence."}]}'
+                        '"instruction":"Check the evidence.",'
+                        '"inferred_from":"Evidence policy.",'
+                        '"explanation":"It identifies unsupported conclusions."}]}'
                     ),
                 )
             )
@@ -2616,7 +3639,9 @@ def test_rule_writer_uses_reasoning_when_content_is_empty(
         llm_analyzer_service.infer_analysis_rules(
             SimpleNamespace(),
             "test-model",
-            reference_documents=[],
+            reference_documents=[
+                {"name": "Evidence policy", "content": "Use the supplied evidence."}
+            ],
             corrections=[],
         )
     )
@@ -2638,10 +3663,14 @@ def test_rule_updater_preserves_existing_ids_and_allows_add_edit_delete(
                                     "id": "rule-keep",
                                     "title": "Renamed evidence rule",
                                     "instruction": "Use the updated evidence policy.",
+                                    "inferred_from": "Existing approved policy excerpt.",
+                                    "explanation": "It helps explain unsupported conclusions.",
                                 },
                                 {
                                     "title": "New rule",
                                     "instruction": "Use the new project requirement.",
+                                    "inferred_from": "New project requirement.",
+                                    "explanation": "It supplies a new diagnostic signal.",
                                 },
                             ]
                         }
@@ -2666,6 +3695,8 @@ def test_rule_updater_preserves_existing_ids_and_allows_add_edit_delete(
                     "id": "rule-keep",
                     "title": "Evidence",
                     "instruction": "Use the evidence.",
+                    "inferred_from": "Existing approved policy excerpt.",
+                    "explanation": "It helps explain unsupported conclusions.",
                 },
                 {
                     "id": "rule-delete",
@@ -2673,7 +3704,9 @@ def test_rule_updater_preserves_existing_ids_and_allows_add_edit_delete(
                     "instruction": "Remove this stale rule.",
                 },
             ],
-            reference_documents=[],
+            reference_documents=[
+                {"name": "Evidence policy", "content": "Use the supplied evidence."}
+            ],
             corrections=[],
         )
     )
@@ -2683,16 +3716,211 @@ def test_rule_updater_preserves_existing_ids_and_allows_add_edit_delete(
             "id": "rule-keep",
             "title": "Renamed evidence rule",
             "instruction": "Use the updated evidence policy.",
+            "inferred_from": "Existing approved policy excerpt.",
+            "explanation": "It helps explain unsupported conclusions.",
         },
         {
             "title": "New rule",
             "instruction": "Use the new project requirement.",
+            "inferred_from": "New project requirement.",
+            "explanation": "It supplies a new diagnostic signal.",
         },
     ]
     system_prompt = create_completion.await_args.kwargs["messages"][0]["content"]
     assert "Preserve the exact id" in system_prompt
     user_prompt = create_completion.await_args.kwargs["messages"][1]["content"]
     assert "rule-delete" in user_prompt
+
+
+def test_rule_generator_appends_only_distinct_rules_and_preserves_existing_rules(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    completion = SimpleNamespace(
+        choices=[
+            SimpleNamespace(
+                message=SimpleNamespace(
+                    content=json.dumps(
+                        {
+                            "rules": [
+                                {
+                                    "id": "rule-existing",
+                                    "title": "Renamed evidence rule",
+                                    "instruction": "A revised instruction.",
+                                    "inferred_from": "Existing policy excerpt.",
+                                    "explanation": "Existing audit explanation.",
+                                },
+                                {
+                                    "title": "Evidence",
+                                    "instruction": "Repeat the existing evidence check.",
+                                    "inferred_from": "Existing policy excerpt.",
+                                    "explanation": "Existing audit explanation.",
+                                },
+                                {
+                                    "title": "New diagnostic signal",
+                                    "instruction": "Use the new project requirement as a distinct diagnostic signal.",
+                                    "inferred_from": "New project requirement.",
+                                    "explanation": "It adds a distinct classification signal.",
+                                },
+                            ]
+                        }
+                    )
+                )
+            )
+        ]
+    )
+    create_completion = AsyncMock(return_value=completion)
+    monkeypatch.setattr(
+        llm_analyzer_service,
+        "create_chat_completion_compat",
+        create_completion,
+    )
+    existing_rules = [
+        {
+            "id": "rule-existing",
+            "title": "Evidence",
+            "instruction": "Use the supplied evidence.",
+            "inferred_from": "Existing policy excerpt.",
+            "explanation": "Existing audit explanation.",
+        }
+    ]
+
+    rules = asyncio.run(
+        llm_analyzer_service.generate_analysis_rules(
+            SimpleNamespace(),
+            "test-model",
+            existing_rules=existing_rules,
+            reference_documents=[
+                {"name": "policy.md", "content": "Use the new project requirement."}
+            ],
+            corrections=[],
+        )
+    )
+
+    assert rules[0] == existing_rules[0]
+    assert rules[1:] == [
+        {
+            "title": "New diagnostic signal",
+            "instruction": "Use the new project requirement as a distinct diagnostic signal.",
+            "inferred_from": "New project requirement.",
+            "explanation": "It adds a distinct classification signal.",
+        }
+    ]
+    system_prompt = create_completion.await_args.kwargs["messages"][0]["content"]
+    assert "existing rules" in system_prompt
+    assert "immutable" in system_prompt
+    user_prompt = create_completion.await_args.kwargs["messages"][1]["content"]
+    assert '"existing_rules"' in user_prompt
+    assert "Existing policy excerpt." in user_prompt
+
+
+@pytest.mark.parametrize("publish_before_generate", [False, True])
+def test_project_rule_generation_is_append_only_for_drafts_and_published_versions(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+    publish_before_generate: bool,
+) -> None:
+    _, manager, run, _ = _seed_run(db_session)
+    principal = Principal(user=manager, auth_type="session")
+    created = update_analysis_context(
+        run.id,
+        AnalysisContextUpdate(
+            analysis_rules=[
+                AnalyzerRuleConfig(
+                    title="Evidence",
+                    instruction="Use the supplied evidence.",
+                )
+            ]
+        ),
+        db_session,
+        principal,
+    )
+    original_rules = [dict(rule) for rule in created["analysis_rules"]]
+    target_version_id = created["rule_version"]["id"]
+    if publish_before_generate:
+        published = publish_project_analysis_rule_version(
+            run.id,
+            created["rule_version"]["id"],
+            AnalysisRuleVersionPublish(set_alias="production"),
+            db_session,
+            principal,
+        )
+        target_version_id = published["version"]["id"]
+
+    db_session.add(
+        AnalyzerDocument(
+            project_id=run.project_id,
+            uploaded_by_user_id=manager.id,
+            name="policy.md",
+            content="Use the new project requirement.",
+            characters=len("Use the new project requirement."),
+            enabled=True,
+        )
+    )
+    db_session.commit()
+
+    monkeypatch.setattr(
+        analysis_api,
+        "_get_llm_config",
+        lambda *_args, **_kwargs: {"llm_model": "test-model"},
+    )
+    monkeypatch.setattr(analysis_api, "build_client", lambda *_args: object())
+    generated = AsyncMock(
+        return_value=[
+            {
+                **original_rules[0],
+                "title": "Changed evidence title",
+                "instruction": "Changed evidence instruction.",
+            },
+            {
+                "title": "New diagnostic signal",
+                "instruction": "Use the new project requirement as a diagnostic signal.",
+            },
+        ]
+    )
+    monkeypatch.setattr(analysis_api, "infer_analysis_rules", generated)
+
+    result = asyncio.run(
+        infer_project_analysis_rules(
+            run.id,
+            RuleInferenceRequest(
+                include_documents=True,
+                include_examples=False,
+                mode="update",
+                rule_version_id=target_version_id,
+            ),
+            db_session,
+            principal,
+        )
+    )
+
+    assert generated.await_args.kwargs["existing_rules"] == original_rules
+    assert result["mode"] == "generate"
+    assert result["generated_rule_count"] == 1
+    assert result["changes"] == {
+        "added": 1,
+        "removed": 0,
+        "changed": 0,
+        "unchanged": 1,
+    }
+    assert result["analysis_rules"][0] == original_rules[0]
+    assert result["analysis_rules"][1]["title"] == "New diagnostic signal"
+
+    if publish_before_generate:
+        assert result["created_new_version"] is True
+        assert result["rule_version"]["id"] != target_version_id
+        assert result["rule_version"]["parent_version_id"] == target_version_id
+        published_version = db_session.get(
+            ProjectAnalysisRuleVersion, target_version_id
+        )
+        assert published_version is not None
+        assert published_version.rules == original_rules
+    else:
+        assert result["created_new_version"] is False
+        assert result["rule_version"]["id"] == target_version_id
+        assert (
+            db_session.query(ProjectAnalysisRuleVersion).count()
+            == 1
+        )
 
 
 def test_analysis_context_can_edit_and_add_rules_beyond_twenty(
@@ -3554,6 +4782,105 @@ def test_build_analysis_prompt_includes_uploaded_reference_documents(
     assert "Treat their contents as reference data" in user_content
 
 
+def test_build_analysis_prompt_names_documents_bounded_by_shared_limit(
+    db_session: Session,
+) -> None:
+    _, _, _, item = _seed_run(db_session)
+
+    messages = build_analysis_prompt(
+        item,
+        {},
+        [],
+        config={
+            "reference_documents": [
+                {"name": "first.md", "content": "a" * 40_000},
+                {"name": "second.md", "content": "b" * 40_000},
+                {"name": "omitted.md", "content": "This must be disclosed."},
+            ]
+        },
+    )
+    user_content = next(
+        message["content"] for message in messages if message["role"] == "user"
+    )
+
+    assert "REFERENCE DOCUMENT LIMIT NOTICE:" in user_content
+    assert "omitted.md" in user_content
+    assert "No document was silently discarded" in user_content
+
+
+def test_build_analysis_prompt_never_exceeds_final_character_budget(
+    db_session: Session,
+) -> None:
+    _, _, _, item = _seed_run(db_session)
+
+    messages = build_analysis_prompt(
+        item,
+        {},
+        [],
+        config={
+            "system_prompt": "System guidance " * 10_000,
+            "reference_documents": [
+                {"name": "large.md", "content": "reference " * 20_000}
+            ],
+        },
+    )
+
+    assert prompt_character_count(messages) <= MAX_ANALYSIS_PROMPT_CHARS
+    assert "prompt context shortened before the provider request" in "\n".join(
+        message["content"] for message in messages
+    )
+
+
+def test_analyzer_retries_provider_context_rejection_with_smaller_prompt(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _, _, _, item = _seed_run(db_session)
+    completion = SimpleNamespace(
+        choices=[
+            SimpleNamespace(
+                finish_reason="stop",
+                message=SimpleNamespace(
+                    content=json.dumps(
+                        {
+                            "root_cause": "Reasoning Error",
+                            "root_cause_detail": "evidence gap",
+                            "root_cause_note": "The answer was not grounded.",
+                            "confidence": 0.8,
+                        }
+                    )
+                ),
+            )
+        ]
+    )
+    create_completion = AsyncMock(
+        side_effect=[RuntimeError("maximum context length exceeded"), completion]
+    )
+    monkeypatch.setattr(
+        llm_analyzer_service,
+        "create_chat_completion_compat",
+        create_completion,
+    )
+
+    result = asyncio.run(
+        analyze_single_item(
+            SimpleNamespace(),
+            "test-model",
+            item,
+            {},
+            [],
+            config={"system_prompt": "System guidance " * 10_000},
+        )
+    )
+
+    assert result.error is None
+    assert create_completion.await_count == 2
+    first_messages = create_completion.await_args_list[0].kwargs["messages"]
+    second_messages = create_completion.await_args_list[1].kwargs["messages"]
+    assert prompt_character_count(second_messages) < prompt_character_count(first_messages)
+    assert prompt_character_count(second_messages) <= MAX_ANALYSIS_PROMPT_CHARS // 2
+
+
 def test_project_context_uses_only_enabled_reference_documents(
     db_session: Session,
 ) -> None:
@@ -3586,6 +4913,75 @@ def test_project_context_uses_only_enabled_reference_documents(
     assert config["reference_documents"] == [
         {"name": "enabled.md", "content": "Use this context."}
     ]
+
+
+def test_run_context_toggles_control_prompt_sources(db_session: Session) -> None:
+    _, _, run, item = _seed_run(db_session)
+    item.trace_id = "trace-toggle"
+    db_session.add(
+        Span(
+            run_id=item.run_id,
+            trace_id=item.trace_id,
+            span_id="trace-toggle-span",
+            name="trace-toggle-step",
+            kind="INTERNAL",
+            attributes={
+                "openinference.span.kind": "LLM",
+                "llm.input_messages.0.message.role": "user",
+                "llm.input_messages.0.message.content": "trace-only input",
+                "llm.output_messages.0.message.role": "assistant",
+                "llm.output_messages.0.message.content": "trace-only output",
+            },
+            events=[],
+        )
+    )
+    db_session.commit()
+
+    supplied_context = {
+        "analysis_rules": [
+            {"title": "Context-only rule", "instruction": "Use this rule."}
+        ],
+        "reference_documents": [
+            {"name": "context-only.md", "content": "Use this document."}
+        ],
+        "include_fields": {"trace": True},
+    }
+    enabled_config = _analysis_config_with_project_context(
+        db_session,
+        run,
+        {
+            **supplied_context,
+            "_include_project_rules": True,
+            "_include_project_documents": True,
+        },
+    )
+    disabled_config = _analysis_config_with_project_context(
+        db_session,
+        run,
+        {
+            **supplied_context,
+            "_include_project_rules": False,
+            "_include_project_documents": False,
+            "include_fields": {"trace": False},
+        },
+    )
+
+    enabled_prompt = "\n".join(
+        message["content"]
+        for message in build_analysis_prompt(item, {}, [], config=enabled_config)
+    )
+    disabled_prompt = "\n".join(
+        message["content"]
+        for message in build_analysis_prompt(item, {}, [], config=disabled_config)
+    )
+
+    assert "Context-only rule" in enabled_prompt
+    assert "Use this document." in enabled_prompt
+    assert "trace-only output" in enabled_prompt
+    assert "Context-only rule" not in disabled_prompt
+    assert "Use this document." not in disabled_prompt
+    assert "trace-only output" not in disabled_prompt
+    assert "TRACE EVIDENCE:\n" not in disabled_prompt
 
 
 def test_playground_config_passes_reference_documents_to_analyzer() -> None:
@@ -3658,6 +5054,219 @@ def test_analysis_document_upload_returns_prompt_ready_text(
     }
     assert document["id"]
     assert document["created_at"]
+
+
+def test_analysis_document_upload_requires_and_reports_large_content_decision(
+    db_session: Session,
+) -> None:
+    actor, _, run, _ = _seed_run(db_session)
+    raw = b"x" * (MAX_REFERENCE_DOCUMENT_CONTENT_CHARS + 1)
+
+    with pytest.raises(HTTPException) as exc_info:
+        asyncio.run(
+            upload_analysis_document(
+                run_id=run.id,
+                file=UploadFile(filename="large.txt", file=BytesIO(raw)),
+                db=db_session,
+                principal=Principal(user=actor, auth_type="none"),
+                large_document_action="ask",
+            )
+        )
+
+    assert exc_info.value.status_code == 409
+    assert exc_info.value.detail["code"] == "DOCUMENT_CONTENT_LIMIT"
+    assert exc_info.value.detail["content_will_be_cut"] is True
+
+    shortened = asyncio.run(
+        upload_analysis_document(
+            run_id=run.id,
+            file=UploadFile(filename="large-shortened.txt", file=BytesIO(raw)),
+            db=db_session,
+            principal=Principal(user=actor, auth_type="none"),
+            large_document_action="truncate",
+        )
+    )
+    shortened_document = shortened["document"]
+    assert shortened["content_decision"] == "truncate"
+    assert shortened_document["characters"] == MAX_REFERENCE_DOCUMENT_CHARS
+    assert shortened_document["truncated"] is True
+    assert "prompt-safe limit" in shortened["warning"]
+
+    full = asyncio.run(
+        upload_analysis_document(
+            run_id=run.id,
+            file=UploadFile(filename="large-full.txt", file=BytesIO(raw)),
+            db=db_session,
+            principal=Principal(user=actor, auth_type="none"),
+            large_document_action="full",
+        )
+    )
+    full_document = full["document"]
+    assert full["content_decision"] == "full"
+    assert full_document["characters"] == MAX_REFERENCE_DOCUMENT_CONTENT_CHARS
+    assert full_document["content_over_limit"] is True
+    assert "absolute content limit" in full["warning"]
+
+
+def test_rule_inference_rejects_stale_explicit_example_selection(
+    db_session: Session,
+) -> None:
+    _, manager, run, _ = _seed_run(db_session)
+
+    with pytest.raises(HTTPException) as exc_info:
+        asyncio.run(
+            infer_project_analysis_rules(
+                run.id,
+                RuleInferenceRequest(
+                    include_documents=False,
+                    include_examples=True,
+                    approved_example_ids=[999999],
+                ),
+                db_session,
+                Principal(user=manager, auth_type="none"),
+            )
+        )
+
+    assert exc_info.value.status_code == 409
+    assert exc_info.value.detail["code"] == "APPROVED_EXAMPLES_CHANGED"
+    assert exc_info.value.detail["missing_ids"] == [999999]
+
+
+def test_approved_example_picker_is_paged_and_filters_by_user(
+    db_session: Session,
+) -> None:
+    actor, manager, run, _ = _seed_run(db_session)
+    run.model = "gpt-4o"
+    corrections = [
+        ReviewCorrection(
+            run_id=run.id,
+            item_id=f"picker-item-{index}",
+            metric_name="accuracy",
+            task=run.task,
+            input_snapshot={"question": f"Question {index}"},
+            expected_snapshot={"answer": f"Expected {index}"},
+            output_snapshot={"answer": f"Actual {index}"},
+            scores_snapshot={},
+            ai_root_cause="Reasoning Error",
+            ai_root_cause_detail=f"AI detail {index}",
+            human_root_cause="Reasoning Error",
+            human_root_cause_detail=f"Approved detail {index}",
+            human_root_cause_note="Approved by review.",
+            corrected_by_user_id=actor.id,
+            reviewed_by_user_id=manager.id,
+            ai_confidence=0.8,
+            status=CorrectionStatus.APPROVED,
+            is_active=True,
+        )
+        for index in range(25)
+    ]
+    alternate_run = Run(
+        id="run-picker-alt",
+        project_id=run.project_id,
+        created_by_user_id=actor.id,
+        owner_user_id=actor.id,
+        task=run.task,
+        dataset="dataset-2",
+        model="gpt-4o-mini",
+        metrics=["accuracy"],
+        status=RunWorkflowStatus.COMPLETED,
+    )
+    alternate_correction = ReviewCorrection(
+        run_id=alternate_run.id,
+        item_id="picker-item-alternate",
+        metric_name="accuracy",
+        task=run.task,
+        input_snapshot={"question": "Alternate question"},
+        expected_snapshot={"answer": "Alternate expected"},
+        output_snapshot={"answer": "Alternate actual"},
+        scores_snapshot={},
+        ai_root_cause="Reasoning Error",
+        human_root_cause="Reasoning Error",
+        corrected_by_user_id=actor.id,
+        reviewed_by_user_id=manager.id,
+        ai_confidence=0.8,
+        status=CorrectionStatus.APPROVED,
+        is_active=True,
+    )
+    db_session.add_all([*corrections, alternate_run, alternate_correction])
+    db_session.commit()
+
+    payload = _list_analysis_examples(
+        scope_id=run.id,
+        page=2,
+        page_size=10,
+        task=[run.task],
+        dataset=[run.dataset],
+        model=None,
+        run_name=None,
+        user_id=[actor.id],
+        source=None,
+        conf_min=70,
+        conf_max=90,
+        search="picker-item",
+        selected_ids=[corrections[0].id],
+        db=db_session,
+        principal=Principal(user=manager, auth_type="none"),
+    )
+
+    assert payload["total"] == 25
+    assert payload["page"] == 2
+    assert payload["page_count"] == 3
+    assert len(payload["examples"]) == 10
+    assert payload["selected_ids"] == [corrections[0].id]
+    assert payload["selected_count"] == 1
+    assert payload["examples"][0]["source"] == "Corrected"
+    assert payload["facets"]["users"]
+    assert {user["id"] for user in payload["facets"]["users"]} == {
+        actor.id,
+        manager.id,
+    }
+    # Dataset options ignore the active dataset filter, while model options
+    # still respect it because model is a different dimension.
+    assert {"dataset-1", "dataset-2"}.issubset(payload["facets"]["datasets"])
+    assert payload["facets"]["models"] == ["gpt-4o"]
+
+    model_self_excluded = _list_analysis_examples(
+        scope_id=run.id,
+        page=1,
+        page_size=10,
+        task=[run.task],
+        dataset=None,
+        model=["gpt-4o"],
+        run_name=None,
+        user_id=None,
+        source=None,
+        conf_min=0,
+        conf_max=100,
+        search=None,
+        selected_ids=None,
+        db=db_session,
+        principal=Principal(user=manager, auth_type="none"),
+    )
+    assert {"gpt-4o", "gpt-4o-mini"}.issubset(model_self_excluded["facets"]["models"])
+
+    selected_payload = _list_analysis_examples(
+        scope_id=run.id,
+        page=1,
+        page_size=10,
+        task=None,
+        dataset=None,
+        model=None,
+        run_name=None,
+        user_id=None,
+        source=None,
+        conf_min=0,
+        conf_max=100,
+        search=None,
+        selected_ids=[corrections[0].id],
+        selected_only=True,
+        db=db_session,
+        principal=Principal(user=manager, auth_type="none"),
+    )
+    assert selected_payload["total"] == 1
+    assert [example["id"] for example in selected_payload["examples"]] == [
+        corrections[0].id
+    ]
 
 
 def test_build_analysis_prompt_projects_nested_output_mapping() -> None:
@@ -3803,7 +5412,8 @@ def test_build_analysis_prompt_projects_nested_metric_metadata() -> None:
     assert "SELECTED METADATA:" in system_content
     assert '"reason": "bad join"' in system_content
     assert '"missing": [' in system_content
-    assert "unused" not in system_content
+    selected_metadata = system_content.split("SELECTED METADATA:\n", 1)[1]
+    assert '"unused": true' not in selected_metadata
 
 
 def test_build_analysis_prompt_projects_metric_metadata_by_metric_name() -> None:
@@ -3849,7 +5459,8 @@ def test_build_analysis_prompt_projects_metric_metadata_by_metric_name() -> None
     assert '"reason": "bad join"' in system_content
     assert '"format": {' in system_content
     assert '"reason": "valid json"' in system_content
-    assert "missing" not in system_content
+    selected_metadata = system_content.split("SELECTED METADATA:\n", 1)[1]
+    assert '"missing": "city"' not in selected_metadata
 
 
 def test_build_analysis_prompt_includes_only_selected_metric_metadata_by_default() -> None:
@@ -3929,6 +5540,17 @@ def test_task_root_cause_catalog_includes_defaults_and_task_history(
     assert "Reasoning Error" in categories
     # details are grouped per category
     assert "Join mismatch" in details.get("Reasoning Error", [])
+
+    analyzer_config = analysis_api._analysis_config_with_category_catalog(
+        db_session, run, [item], {}
+    )
+    assert analyzer_config is not None
+    assert analyzer_config["category_example_counts"]["Reasoning Error"] == 1
+    prompt = "\n".join(
+        message["content"]
+        for message in build_analysis_prompt(item, {}, [], config=analyzer_config)
+    )
+    assert "Approved examples: 1" in prompt
 
 
 def test_approve_correction_promotes_active_candidate_when_given_stale_id(

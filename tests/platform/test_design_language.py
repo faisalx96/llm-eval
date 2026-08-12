@@ -59,6 +59,7 @@ def _rule_body(text: str, selector: str) -> str:
 # name the selector in your commit message.
 # ---------------------------------------------------------------------------
 FROZEN_HARDCODED_SIZES: dict[str, list[str]] = {
+    "codemirror-bundle.js": ["14"],
     "compare.html": ["7", "10", "10", "10", "10", "10", "10", "11", "11", "13", "14", "14", "20", "32", "48"],
     "dashboard.css": ["8", "9", "14", "16", "18", "18", "20", "20", "20", "24", "24", "32", "48", "48"],
     "datasets.html": ["10", "13", "13", "14", "32"],
@@ -66,7 +67,7 @@ FROZEN_HARDCODED_SIZES: dict[str, list[str]] = {
     "reviews.html": ["40"],
     "run.html": ["7", "10", "10", "10", "10", "10", "11", "11", "11", "13", "14", "14", "14", "16", "48", "48"],
     "shell.css": ["10", "10", "10", "11", "11", "11", "11", "11", "12", "12", "24"],
-    "trace_viewer.js": ["11", "12"],
+    "trace_viewer.js": ["11", "12", "12"],
 }
 
 
@@ -310,10 +311,12 @@ class TestSharedComponents:
         assert "font-size: var(--font-md)" in auth_input
 
         connection = _rule_body(dashboard_css, ".pg-connection")
-        assert "height: 42px" in connection
-        connection_select = _rule_body(dashboard_css, ".pg-connection-select")
-        for declaration in ("height: 100%", "border: 0", "background: transparent"):
-            assert declaration in connection_select
+        assert "width: min(360px, 100%)" in connection
+        assert "min-width: 320px" in connection
+        connection_selector = _rule_body(dashboard_css, ".pg-connection-selector")
+        assert "min-width: 320px" in connection_selector
+        review_selector = _rule_body(ui_css, ".qym-review-selector")
+        assert "min-width: 240px" in review_selector
 
         companions = ui_css.split(
             "/* Compact rows keep their action companions level with the 24px field. */",
@@ -371,8 +374,9 @@ class TestSharedComponents:
         source = UI_BEHAVIOR.read_text(encoding="utf-8")
         for contract in (
             "marker.setAttribute('aria-describedby', tooltip.id);",
-            "button.setAttribute('aria-haspopup', 'dialog');",
+            "isSingleSelect ? 'listbox' : 'dialog'",
             "button.setAttribute('aria-expanded'",
+            "enhanceSelect: enhanceSelect",
             "directTabs(tablist)",
             "'ArrowLeft', 'ArrowRight', 'Home', 'End'",
             "new MutationObserver",
@@ -394,6 +398,31 @@ class TestSharedComponents:
             if component_rule.search(path.read_text(encoding="utf-8")):
                 forks.append(path.name)
         assert not forks, f"canonical qym component rules forked outside ui_components.css: {forks}"
+
+    def test_auto_analysis_component_compatibility_uses_upstream_layer(self):
+        """Analyzer adapters extend the upstream primitives without replacing them."""
+        css = UI_COMPONENTS.read_text(encoding="utf-8")
+        source = UI_BEHAVIOR.read_text(encoding="utf-8")
+
+        for selector in (
+            ".qym-dropdown > .qym-dropdown__trigger",
+            ".qym-dropdown > .qym-dropdown__menu",
+            ".qym-dropdown.is-open > .qym-dropdown__menu",
+            ".qym-pagination--compact",
+            ".qym-pagination--run",
+            ".qym-icon-action--danger",
+        ):
+            assert selector in css
+
+        for contract in (
+            "function renderLegacyPagination",
+            "function toggleStructuredDropdown",
+            "function filterStructuredDropdown",
+            "options.variant === 'run'",
+            "options.variant === 'compact'",
+            "document.querySelectorAll('.qym-dropdown.is-open')",
+        ):
+            assert contract in source
 
     def test_qdt_table_reference_implementation(self):
         """.qdt-table is the blessed table recipe — keep it on-spec."""

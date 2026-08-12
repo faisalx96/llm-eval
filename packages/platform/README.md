@@ -175,6 +175,10 @@ SDK clients stream runs when `QYM_BASE_URL` and a project `QYM_API_KEY` are set.
 
 Reviews support filtering, human corrections, root-cause revisions, approval decisions, bulk operations, and AI-assisted analysis. AI analysis uses the project's default LLM connection and browser/session authentication.
 
+Background analysis jobs run on a bounded in-process executor. Configure the
+capacity with `QYM_ANALYSIS_JOB_MAX_WORKERS` (default `2`). The registry is
+intentionally in-memory while the platform runs as one Uvicorn worker.
+
 ## Datasets
 
 Datasets are project-scoped and versioned:

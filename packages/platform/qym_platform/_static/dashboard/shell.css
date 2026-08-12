@@ -17,12 +17,25 @@
   --shell-font-lg: 17px;
 }
 
+/* Keep the shell as the only page-level scrolling surface. Individual
+   controls may still scroll inside it, but the document itself must not
+   expose a second overscroll area beneath the app shell. */
+html,
+body {
+  height: 100%;
+  min-height: 100%;
+  overflow: hidden;
+  overscroll-behavior-y: none;
+}
+
 /* ════════════════════════════════════════════════
    LAYOUT SHELL
    ════════════════════════════════════════════════ */
 .qym-app {
   display: flex;
   height: 100vh;
+  height: 100dvh;
+  min-height: 100%;
   overflow: hidden;
 }
 
@@ -367,7 +380,7 @@
    ════════════════════════════════════════════════ */
 .main-area {
   flex: 1; display: flex; flex-direction: column;
-  min-width: 0; overflow: hidden;
+  min-width: 0; min-height: 0; overflow: hidden;
 }
 
 .topbar {
@@ -392,6 +405,7 @@
 .shell-content {
   flex: 1;
   overflow: auto;
+  overscroll-behavior-y: none;
   background: var(--bg-base);
   display: flex;
   flex-direction: column;

@@ -1902,15 +1902,63 @@ class Evaluator:
             return input_cols[0] or None
         return None
 
-    def _metric_input_aliases(self, input_data: Any) -> Dict[str, Any]:
-        """Expose original and mapped input names without changing input_data."""
+    def _prepare_metric_input(self, input_data: Any) -> Any:
+        """Apply configured input names at the metric boundary.
+
+        Without an input mapping, preserve the dataset value exactly for legacy
+        metrics. When a configured mapping renames at least one field, expose
+        the renamed shape through the metric's ``input_data`` argument.
+        """
+        if not self.input_mapping:
+            return input_data
+
+        if isinstance(input_data, dict):
+            mapped: Dict[str, Any] = {}
+            changed = False
+            for input_name, value in input_data.items():
+                mapped_name = self.input_mapping.get(input_name, input_name)
+                if mapped_name in mapped:
+                    raise ValueError(
+                        "Multiple input columns map to the same task parameter "
+                        f"'{mapped_name}'."
+                    )
+                mapped[mapped_name] = value
+                changed = changed or mapped_name != input_name
+            return mapped if changed else input_data
+
+        input_name = self._single_dataset_input_name()
+        if input_name:
+            mapped_name = self.input_mapping.get(input_name)
+            if mapped_name and mapped_name != input_name:
+                return {mapped_name: input_data}
+            return input_data
+
+        # A one-entry mapping is unambiguous even for dataset implementations
+        # that do not expose their single input column name.
+        if len(self.input_mapping) == 1:
+            input_name, mapped_name = next(iter(self.input_mapping.items()))
+            if mapped_name != input_name:
+                return {mapped_name: input_data}
+
+        return input_data
+
+    def _metric_input_aliases(
+        self, input_data: Any, mapped_input_data: Any
+    ) -> Dict[str, Any]:
+        """Expose original and mapped input names as metric arguments."""
         aliases: Dict[str, Any] = {}
         if isinstance(input_data, dict):
             for key, value in input_data.items():
                 if not isinstance(key, str):
                     continue
                 aliases.setdefault(key, value)
-                aliases[self.input_mapping.get(key, key)] = value
+
+            # Apply the mapped shape after the original shape so an explicit
+            # mapping has deterministic precedence if names overlap.
+            if isinstance(mapped_input_data, dict):
+                for key, value in mapped_input_data.items():
+                    if isinstance(key, str):
+                        aliases[key] = value
             return aliases
 
         input_name = self._single_dataset_input_name()
@@ -1942,13 +1990,12 @@ class Evaluator:
         sig = inspect.signature(metric)
         params = list(sig.parameters.values())
         has_var_kwargs = any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params)
+        mapped_input_data = self._prepare_metric_input(input_data)
 
         named_values = {
             "output": output,
             "expected": expected,
-            # Preserve the longstanding metric contract: input_data is exactly
-            # the value stored on the dataset item.
-            "input_data": input_data,
+            "input_data": mapped_input_data,
             "task_metadata": task_metadata or {},
             "metadata": item_metadata or {},
             "item_metadata": item_metadata or {},
@@ -1956,7 +2003,9 @@ class Evaluator:
 
         # Individual parameters may use either original dataset names or names
         # produced by input_mapping. Reserved metric parameters win collisions.
-        for key, value in self._metric_input_aliases(input_data).items():
+        for key, value in self._metric_input_aliases(
+            input_data, mapped_input_data
+        ).items():
             named_values.setdefault(key, value)
 
         concrete_params = [
@@ -1985,7 +2034,7 @@ class Evaluator:
         positional = [
             output,
             expected,
-            input_data,
+            mapped_input_data,
             item_metadata or {},
         ]
         return tuple(positional[: len(concrete_params)]), {}
