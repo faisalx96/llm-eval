@@ -173,8 +173,10 @@ def _legacy_project_catalog(
         WHERE r.project_id = :project_id
         """
     )
-    result = bind.execution_options(stream_results=True).execute(
-        item_query, {"project_id": project_id}
+    result = bind.execute(
+        item_query,
+        {"project_id": project_id},
+        execution_options={"stream_results": True},
     )
     while True:
         rows = result.fetchmany(500)
@@ -228,8 +230,10 @@ def _legacy_project_catalog(
         WHERE r.project_id = :project_id
         """
     )
-    result = bind.execution_options(stream_results=True).execute(
-        correction_query, {"project_id": project_id}
+    result = bind.execute(
+        correction_query,
+        {"project_id": project_id},
+        execution_options={"stream_results": True},
     )
     while True:
         rows = result.fetchmany(500)
