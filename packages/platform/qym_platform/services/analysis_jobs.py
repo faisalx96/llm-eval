@@ -25,6 +25,16 @@ ACTIVE_JOB_STATUSES = frozenset({"queued", "running", "cancelling"})
 TERMINAL_JOB_STATUSES = frozenset({"completed", "failed", "cancelled"})
 
 
+def _pass_number_from_payload(payload: Dict[str, Any]) -> Optional[int]:
+    value = payload.get("pass_number")
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
 @dataclass
 class AnalysisJob:
     """Mutable state for one background run analysis."""
@@ -56,6 +66,7 @@ class AnalysisJob:
         return {
             "job_id": self.job_id,
             "run_id": self.run_id,
+            "pass_number": _pass_number_from_payload(self.request_payload),
             "status": self.status,
             "progress": dict(self.progress),
             "result": self.result,
@@ -113,10 +124,16 @@ class AnalysisJobManager:
         with self._lock:
             return self._jobs.get(job_id)
 
-    def active_for_run(self, run_id: str) -> Optional[AnalysisJob]:
+    def active_for_run(
+        self, run_id: str, pass_number: Optional[int] = None
+    ) -> Optional[AnalysisJob]:
         with self._lock:
             for job in reversed(list(self._jobs.values())):
-                if job.run_id == run_id and job.status in ACTIVE_JOB_STATUSES:
+                if (
+                    job.run_id == run_id
+                    and _pass_number_from_payload(job.request_payload) == pass_number
+                    and job.status in ACTIVE_JOB_STATUSES
+                ):
                     return job
         return None
 
@@ -130,13 +147,19 @@ class AnalysisJobManager:
         progress: Optional[Dict[str, Any]],
         runner: AnalysisRunner,
     ) -> Tuple[AnalysisJob, bool]:
-        """Create a job or return the existing active job for the run."""
+        """Create a job or return the existing active job for this run/pass."""
+        pass_number = _pass_number_from_payload(request_payload)
         with self._lock:
             existing = next(
                 (
                     job
                     for job in reversed(list(self._jobs.values()))
-                    if job.run_id == run_id and job.status in ACTIVE_JOB_STATUSES
+                    if (
+                        job.run_id == run_id
+                        and _pass_number_from_payload(job.request_payload)
+                        == pass_number
+                        and job.status in ACTIVE_JOB_STATUSES
+                    )
                 ),
                 None,
             )

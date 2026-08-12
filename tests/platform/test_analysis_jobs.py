@@ -71,3 +71,51 @@ async def test_analysis_job_manager_reuses_one_active_job_per_run() -> None:
     manager.cancel(first.job_id)
     await asyncio.sleep(0)
     await asyncio.sleep(0)
+
+
+@pytest.mark.asyncio
+async def test_analysis_job_manager_scopes_active_jobs_by_pass() -> None:
+    manager = AnalysisJobManager()
+    release = asyncio.Event()
+
+    async def runner(job):
+        await release.wait()
+        return {}
+
+    first, first_created = await manager.submit(
+        run_id="run-1",
+        user_id="user-1",
+        auth_type="none",
+        request_payload={"pass_number": 1},
+        progress={},
+        runner=runner,
+    )
+    same_pass, same_pass_created = await manager.submit(
+        run_id="run-1",
+        user_id="user-2",
+        auth_type="none",
+        request_payload={"pass_number": 1},
+        progress={},
+        runner=runner,
+    )
+    other_pass, other_pass_created = await manager.submit(
+        run_id="run-1",
+        user_id="user-2",
+        auth_type="none",
+        request_payload={"pass_number": 2},
+        progress={},
+        runner=runner,
+    )
+
+    assert first_created is True
+    assert same_pass_created is False
+    assert same_pass is first
+    assert other_pass_created is True
+    assert other_pass is not first
+    assert manager.active_for_run("run-1", 1) is first
+    assert manager.active_for_run("run-1", 2) is other_pass
+
+    manager.cancel(first.job_id)
+    manager.cancel(other_pass.job_id)
+    await asyncio.sleep(0)
+    await asyncio.sleep(0)

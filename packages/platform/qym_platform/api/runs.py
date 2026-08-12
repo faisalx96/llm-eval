@@ -38,6 +38,7 @@ from qym_platform.db.models import (
     RunEvent,
     RunItem,
     RunItemAttempt,
+    RunItemPassScore,
     RunItemScore,
     RunMetricSpec,
     RunTraceAggregate,
@@ -64,11 +65,13 @@ from qym_platform.services.repeat_passes import (
     delete_repeat_pass,
 )
 from qym_platform.services.root_cause_changes import (
+    PASS_ANALYSIS_META_KEY,
     apply_root_cause_change,
     lock_run_item,
     replace_metric_review_candidate,
 )
 from qym_platform.services.root_cause_categories import (
+    analysis_root_causes,
     normalize_category_taxonomy,
     normalize_root_causes,
 )
@@ -125,6 +128,96 @@ def _refresh_metric_analysis_error(meta: Dict[str, Any]) -> None:
         meta["analysis_error"] = "; ".join(errors)
     else:
         meta.pop("analysis_error", None)
+
+
+def _apply_metric_analysis_patch(
+    before_analysis: Dict[str, Any] | None,
+    patch: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Apply the editable diagnosis fields without touching other metadata."""
+    analysis = dict(before_analysis or {})
+
+    if "root_causes" in patch:
+        root_causes = normalize_root_causes(patch.get("root_causes"))
+        if root_causes:
+            analysis["root_causes"] = root_causes
+            analysis["root_cause"] = root_causes[0]
+        else:
+            for field in (
+                "root_causes",
+                "root_cause",
+                "root_cause_detail",
+                "root_cause_reason",
+                "root_cause_note",
+                "confidence",
+            ):
+                analysis.pop(field, None)
+    elif "root_cause" in patch:
+        root_cause = str(patch.get("root_cause") or "").strip()
+        if root_cause:
+            analysis["root_cause"] = root_cause
+            analysis["root_causes"] = [root_cause]
+        else:
+            for field in (
+                "root_causes",
+                "root_cause",
+                "root_cause_detail",
+                "root_cause_reason",
+                "root_cause_note",
+                "confidence",
+            ):
+                analysis.pop(field, None)
+    if "root_cause_detail" in patch:
+        detail = str(patch.get("root_cause_detail") or "").strip()
+        if detail:
+            analysis["root_cause_detail"] = detail
+        else:
+            analysis.pop("root_cause_detail", None)
+    if "root_cause_note" in patch:
+        note = str(patch.get("root_cause_note") or "").strip()
+        if note:
+            analysis["root_cause_note"] = note
+        else:
+            analysis.pop("root_cause_note", None)
+    if "category_taxonomy" in patch:
+        taxonomy = normalize_category_taxonomy(patch.get("category_taxonomy"))
+        if taxonomy:
+            analysis["category_taxonomy"] = taxonomy
+        else:
+            analysis.pop("category_taxonomy", None)
+    if "solution" in patch:
+        solution = str(patch.get("solution") or "").strip()
+        if solution:
+            analysis["solution"] = solution
+        else:
+            analysis.pop("solution", None)
+            analysis.pop("solution_note", None)
+    if "solution_note" in patch:
+        solution_note = str(patch.get("solution_note") or "").strip()
+        if solution_note:
+            analysis["solution_note"] = solution_note
+        else:
+            analysis.pop("solution_note", None)
+
+    if patch:
+        if normalize_root_causes(
+            analysis.get("root_causes") or analysis.get("root_cause")
+        ):
+            analysis.pop("error", None)
+        analysis.pop("confidence", None)
+        # A new human edit reopens review for this pass.  Keep the review
+        # state next to the pass diagnosis so an approved sample does not
+        # remain approved after its category or notes change.
+        analysis.pop("review_status", None)
+        analysis.pop("reviewed_at", None)
+        analysis["source"] = "human"
+
+    meaningful = {
+        key: value
+        for key, value in analysis.items()
+        if key != "source" and value not in (None, "", [])
+    }
+    return analysis if meaningful else {}
 
 
 def _median(values: List[Optional[float]]) -> float:
@@ -1721,6 +1814,7 @@ def legacy_list_runs(
             agg["avg_latency"] = attempt_summary["avg_latency_ms"]
             agg["median_latency"] = attempt_summary["median_latency_ms"]
     pass_summary_map: Dict[str, List[Dict[str, Any]]] = {}
+    pass_analysis_cause_totals: Dict[str, int] = {}
     if sampled_run_ids:
         from qym_platform.db.models import RunItemAttempt, RunItemPassScore
 
@@ -1772,6 +1866,31 @@ def legacy_list_runs(
             pass_attempts.setdefault(rid, {})[int(pass_number)] = int(n_attempts or 0)
             pass_errors.setdefault(rid, {})[int(pass_number)] = int(errs or 0)
 
+        # A repeat-run diagnosis is stored on the pass score, not on the
+        # reduced RunItem.  Keep the runs-list chip scoped to that pass so a
+        # diagnosis on one sample cannot appear on every sample row.
+        pass_analysis_rows = (
+            db.query(
+                RunItemPassScore.run_id,
+                RunItemPassScore.pass_number,
+                RunItemPassScore.meta,
+            )
+            .filter(RunItemPassScore.run_id.in_(sampled_run_ids))
+            .all()
+        )
+        pass_analysis_causes: Dict[str, Dict[int, set[str]]] = {}
+        for rid, pass_number, meta in pass_analysis_rows:
+            analysis = (
+                meta.get(PASS_ANALYSIS_META_KEY)
+                if isinstance(meta, dict)
+                else None
+            )
+            if not isinstance(analysis, dict):
+                continue
+            pass_analysis_causes.setdefault(rid, {}).setdefault(
+                int(pass_number), set()
+            ).update(analysis_root_causes(analysis))
+
         for r in runs:
             k = int(getattr(r, "samples", 1) or 1)
             if k <= 1:
@@ -1803,9 +1922,19 @@ def legacy_list_runs(
                         "status": p_status,
                         "primary_score": means.get(p),
                         "error_count": errors.get(p, 0),
+                        "analysis_cause_count": len(
+                            (pass_analysis_causes.get(r.id) or {}).get(p, set())
+                        ),
                     }
                 )
             pass_summary_map[r.id] = summaries
+            # The aggregate row represents the whole repeat run.  Its chip
+            # therefore totals each sample's diagnosis count, including the
+            # same category when it appears on multiple samples.
+            pass_analysis_cause_totals[r.id] = sum(
+                len((pass_analysis_causes.get(r.id) or {}).get(p, set()))
+                for p in range(1, k + 1)
+            )
 
     # --- Batch query: approvals ---
     approvals = db.query(Approval).filter(Approval.run_id.in_(run_ids)).all()
@@ -1995,7 +2124,12 @@ def legacy_list_runs(
             else None,
             "owner": owner_info,
             "approval": approval_info,
-            "analysis_cause_count": len(analysis_causes.get(r.id, ())),
+            "analysis_cause_count": (
+                pass_analysis_cause_totals[r.id]
+                if int(getattr(r, "samples", 1) or 1) > 1
+                and pass_analysis_cause_totals.get(r.id, 0) > 0
+                else len(analysis_causes.get(r.id, ()))
+            ),
             "trace_stats": r.run_metadata.get("trace_stats")
             if isinstance(r.run_metadata, dict)
             else None,
@@ -2450,10 +2584,9 @@ def _build_run_data(db: Session, run: Run) -> Dict[str, Any]:
     run_samples = int(getattr(run, "samples", 1) or 1)
     pass_scores_by_item: Dict[str, Dict[str, Dict[int, Optional[float]]]] = {}
     pass_meta_by_item: Dict[str, Dict[str, Dict[int, Dict[str, Any]]]] = {}
+    pass_analysis_by_item: Dict[str, Dict[str, Dict[int, Dict[str, Any]]]] = {}
     pass_attempts_by_item: Dict[str, Dict[int, Dict[str, Any]]] = {}
     if run_samples > 1:
-        from qym_platform.db.models import RunItemAttempt, RunItemPassScore
-
         for ps in (
             db.query(RunItemPassScore).filter(RunItemPassScore.run_id == run.id).all()
         ):
@@ -2462,6 +2595,11 @@ def _build_run_data(db: Session, run: Run) -> Dict[str, Any]:
             )[int(ps.pass_number)] = ps.score_numeric
             # Per-pass judge output, same shape as row-level metric_meta.
             ps_meta: dict[str, Any] = dict(ps.meta) if ps.meta else {}
+            pass_analysis = ps_meta.pop(PASS_ANALYSIS_META_KEY, None)
+            if isinstance(pass_analysis, dict):
+                pass_analysis_by_item.setdefault(ps.item_id, {}).setdefault(
+                    ps.metric_name, {}
+                )[int(ps.pass_number)] = pass_analysis
             if ps.label:
                 ps_meta.setdefault("label", ps.label)
             if ps.explanation:
@@ -2733,6 +2871,19 @@ def _build_run_data(db: Session, run: Run) -> Dict[str, Any]:
                         ).items()
                     }
                     if run_samples > 1 and pass_meta_by_item.get(it.item_id)
+                    else None
+                ),
+                # Repeat runs: metric -> [root-cause analysis per pass].  This
+                # is deliberately separate from item_metadata so the aggregate
+                # view can read it without presenting an editable item card.
+                "pass_metric_analyses": (
+                    {
+                        m: [by_pass.get(p) for p in range(1, run_samples + 1)]
+                        for m, by_pass in (
+                            pass_analysis_by_item.get(it.item_id) or {}
+                        ).items()
+                    }
+                    if run_samples > 1 and pass_analysis_by_item.get(it.item_id)
                     else None
                 ),
                 # Repeat runs: [attempt per pass, index 0 = pass 1] — each
@@ -3044,6 +3195,22 @@ def run_passes(
         )
         counts[int(pass_number)] = max(counts.get(int(pass_number), 0), int(cnt or 0))
 
+    pass_analysis_rows = (
+        db.query(RunItemPassScore.pass_number, RunItemPassScore.meta)
+        .filter(RunItemPassScore.run_id == run.id)
+        .all()
+    )
+    pass_analysis_causes: Dict[int, set[str]] = {}
+    for pass_number, meta in pass_analysis_rows:
+        analysis = (
+            meta.get(PASS_ANALYSIS_META_KEY) if isinstance(meta, dict) else None
+        )
+        if not isinstance(analysis, dict):
+            continue
+        pass_analysis_causes.setdefault(int(pass_number), set()).update(
+            analysis_root_causes(analysis)
+        )
+
     # Per-pass item state.  Final attempts are canonical; lifecycle events
     # cover the currently-running item and legacy outcomes that have no final
     # attempt row.
@@ -3213,6 +3380,7 @@ def run_passes(
                 "items_started": started_items_by_pass.get(p, 0),
                 "completed_count": completed_by_pass.get(p, 0),
                 "error_count": errors_by_pass.get(p, 0),
+                "analysis_cause_count": len(pass_analysis_causes.get(p, set())),
                 "running_count": (
                     running_by_pass.get(p, 0) if status == "running" else 0
                 ),
@@ -3606,12 +3774,12 @@ def update_metric(
     # per-pass detail (and pass-scoped pages can re-apply their lens).
     pass_scores: Optional[Dict[str, list]] = None
     pass_metric_meta: Optional[Dict[str, list]] = None
+    pass_metric_analyses: Optional[Dict[str, list]] = None
     pass_attempts: Optional[list] = None
     if run_samples > 1:
-        from qym_platform.db.models import RunItemAttempt, RunItemPassScore
-
         by_metric: Dict[str, Dict[int, Optional[float]]] = {}
         by_metric_meta: Dict[str, Dict[int, Dict[str, Any]]] = {}
+        by_metric_analysis: Dict[str, Dict[int, Dict[str, Any]]] = {}
         pass_score_rows = (
             db.query(RunItemPassScore)
             .filter(
@@ -3625,6 +3793,11 @@ def update_metric(
                 int(ps.pass_number)
             ] = ps.score_numeric
             ps_meta = dict(ps.meta) if ps.meta else {}
+            pass_analysis = ps_meta.pop(PASS_ANALYSIS_META_KEY, None)
+            if isinstance(pass_analysis, dict):
+                by_metric_analysis.setdefault(ps.metric_name, {})[
+                    int(ps.pass_number)
+                ] = pass_analysis
             if ps.label:
                 ps_meta.setdefault("label", ps.label)
             if ps.explanation:
@@ -3643,6 +3816,14 @@ def update_metric(
                 for m, by_pass in by_metric_meta.items()
             }
             if by_metric_meta
+            else None
+        )
+        pass_metric_analyses = (
+            {
+                m: [by_pass.get(p) for p in range(1, run_samples + 1)]
+                for m, by_pass in by_metric_analysis.items()
+            }
+            if by_metric_analysis
             else None
         )
         attempts_by_pass: Dict[int, Dict[str, Any]] = {}
@@ -3749,6 +3930,7 @@ def update_metric(
         else {},
         "pass_scores": pass_scores,
         "pass_metric_meta": pass_metric_meta,
+        "pass_metric_analyses": pass_metric_analyses,
         "pass_attempts": pass_attempts,
     }
 
@@ -3807,6 +3989,94 @@ def update_root_cause(
             field == "root_cause_note" and request.get(field) is not None
         ):
             patch[field] = request.get(field)
+
+    raw_pass_number = request.get("pass_number")
+    pass_number: Optional[int] = None
+    if raw_pass_number is not None:
+        try:
+            pass_number = int(raw_pass_number)
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail="Invalid pass_number") from exc
+        if pass_number < 1:
+            raise HTTPException(status_code=400, detail="pass_number must be positive")
+    run_samples = int(getattr(run, "samples", 1) or 1)
+    if run_samples > 1 and pass_number is None:
+        raise HTTPException(
+            status_code=400,
+            detail="pass_number is required when editing a repeat-run diagnosis",
+        )
+    if pass_number is not None and (
+        run_samples <= 1 or pass_number > run_samples
+    ):
+        raise HTTPException(status_code=400, detail="pass_number is outside this run")
+
+    if pass_number is not None:
+        raw_metric_name = request.get("metric_name")
+        metric_name = str(raw_metric_name or "").strip()
+        if not metric_name:
+            raise HTTPException(
+                status_code=400,
+                detail="metric_name is required for a repeat-run diagnosis",
+            )
+        known_metrics = {str(name) for name in (run.metrics or [])}
+        if metric_name not in known_metrics:
+            raise HTTPException(status_code=400, detail="Unknown metric_name")
+        pass_score = (
+            db.query(RunItemPassScore)
+            .filter(
+                RunItemPassScore.run_id == run.id,
+                RunItemPassScore.item_id == item.item_id,
+                RunItemPassScore.metric_name == metric_name,
+                RunItemPassScore.pass_number == pass_number,
+            )
+            .with_for_update()
+            .one_or_none()
+        )
+        if pass_score is None:
+            raise HTTPException(status_code=404, detail="Pass score not found")
+
+        pass_meta = dict(pass_score.meta) if isinstance(pass_score.meta, dict) else {}
+        before_analysis = (
+            dict(pass_meta.get(PASS_ANALYSIS_META_KEY))
+            if isinstance(pass_meta.get(PASS_ANALYSIS_META_KEY), dict)
+            else {}
+        )
+        after_analysis = _apply_metric_analysis_patch(before_analysis, patch)
+        if after_analysis:
+            after_analysis["review_status"] = "pending"
+            pass_meta[PASS_ANALYSIS_META_KEY] = after_analysis
+        else:
+            pass_meta.pop(PASS_ANALYSIS_META_KEY, None)
+        pass_score.meta = pass_meta
+
+        if before_analysis != after_analysis:
+            db.add(
+                AuditLog(
+                    actor_user_id=(
+                        principal.user.id if principal.auth_type != "none" else None
+                    ),
+                    action="metric_root_cause_change:human",
+                    entity_type="run_item_pass_metric_analysis",
+                    entity_id=(
+                        f"{run.id}:{item.item_id}:{pass_number}:{metric_name}"
+                    ),
+                    before=before_analysis,
+                    after=after_analysis,
+                    created_at=utc_now_naive(),
+                )
+            )
+        db.commit()
+        updated_snapshot = _build_run_data(db, run).get("snapshot", {})
+        updated_rows = (
+            updated_snapshot.get("rows", [])
+            if isinstance(updated_snapshot, dict)
+            else []
+        )
+        updated_row = next(
+            (row for row in updated_rows if row.get("item_id") == item.item_id),
+            None,
+        )
+        return {"ok": True, "row": updated_row}
 
     raw_metric_name = request.get("metric_name")
     if raw_metric_name is not None:

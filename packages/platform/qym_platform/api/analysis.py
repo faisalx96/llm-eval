@@ -17,7 +17,7 @@ from uuid import NAMESPACE_URL, uuid4, uuid5
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from anyio import CapacityLimiter, to_thread
 from fastapi.responses import JSONResponse, StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from qym_platform.auth import Principal, require_ui_principal
 from qym_platform.datetime_utils import to_api_timestamp, utc_now_naive
 from qym_platform.db.models import (
@@ -33,7 +33,10 @@ from qym_platform.db.models import (
     ReviewCorrection,
     RootCauseRevision,
     Run,
+    RunEvent,
     RunItem,
+    RunItemAttempt,
+    RunItemPassScore,
     RunItemScore,
     RunMetricSpec,
     User,
@@ -89,6 +92,7 @@ from qym_platform.services.llm_analyzer import (
     MAX_TOTAL_REFERENCE_DOCUMENT_CHARS,
 )
 from qym_platform.services.root_cause_changes import (
+    PASS_ANALYSIS_META_KEY,
     apply_root_cause_change,
     build_ai_state,
     build_item_metadata,
@@ -104,6 +108,7 @@ from qym_platform.services.root_cause_categories import (
     merge_category_taxonomies,
     normalize_category_taxonomy,
     normalize_root_causes,
+    taxonomy_is_complete,
 )
 from qym_platform.services.analysis_jobs import (
     AnalysisJob,
@@ -117,6 +122,21 @@ from sqlalchemy.orm import Session, object_session, sessionmaker
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["analysis"])
+
+
+def _normalize_max_root_cause_categories(
+    value: Any,
+    *,
+    default: Optional[int],
+) -> Optional[int]:
+    """Normalize category-count overrides at the API boundary."""
+    if value is None:
+        return default
+    try:
+        value = int(value)
+    except (TypeError, ValueError):
+        return default
+    return max(1, min(value, 10))
 
 # PDF extraction can wait on a resource-limited child process. Keep that wait
 # off the event loop and bound concurrent extraction work per application worker.
@@ -851,6 +871,12 @@ class PlaygroundConfig(BaseModel):
     max_root_cause_categories: Optional[int] = Field(
         default=None, ge=1, le=10
     )
+
+    @field_validator("max_root_cause_categories", mode="before")
+    @classmethod
+    def normalize_max_root_cause_categories(cls, value: Any) -> Optional[int]:
+        return _normalize_max_root_cause_categories(value, default=None)
+
     root_cause_details: Optional[List[str]] = Field(default=None, max_length=500)
     category_details_map: Optional[Dict[str, List[str]]] = None
     category_taxonomy: Optional[Dict[str, CategoryTaxonomyConfig]] = None
@@ -891,6 +917,7 @@ class AnalyzeRequest(BaseModel):
     concurrency: int = Field(default=20, ge=1, le=20)
     config: Optional[PlaygroundConfig] = None
     category_catalog_version_id: Optional[str] = Field(default=None, max_length=80)
+    pass_number: Optional[int] = Field(default=None, ge=1)
     connection_id: Optional[str] = (
         None  # which project LLM connection to use; default if omitted
     )
@@ -901,6 +928,7 @@ class AggregateAnalysisRequest(BaseModel):
 
     metric: Optional[str] = None
     category_catalog_version_id: Optional[str] = Field(default=None, max_length=80)
+    pass_number: Optional[int] = Field(default=None, ge=1)
     connection_id: Optional[str] = None
 
 
@@ -911,6 +939,7 @@ class PreviewRequest(BaseModel):
     metric: Optional[str] = None
     config: Optional[PlaygroundConfig] = None
     category_catalog_version_id: Optional[str] = Field(default=None, max_length=80)
+    pass_number: Optional[int] = Field(default=None, ge=1)
     connection_id: Optional[str] = None
 
 
@@ -921,6 +950,7 @@ class TestRequest(BaseModel):
     metric: Optional[str] = None
     config: Optional[PlaygroundConfig] = None
     category_catalog_version_id: Optional[str] = Field(default=None, max_length=80)
+    pass_number: Optional[int] = Field(default=None, ge=1)
     connection_id: Optional[str] = None
 
 
@@ -945,6 +975,16 @@ class CategoryCatalogUpdate(BaseModel):
     max_root_cause_categories: int = Field(
         default=DEFAULT_MAX_ROOT_CAUSE_CATEGORIES, ge=1, le=10
     )
+
+    @field_validator("max_root_cause_categories", mode="before")
+    @classmethod
+    def normalize_max_root_cause_categories(cls, value: Any) -> int:
+        return int(
+            _normalize_max_root_cause_categories(
+                value, default=DEFAULT_MAX_ROOT_CAUSE_CATEGORIES
+            )
+        )
+
     base_revision: Optional[int] = Field(default=None, ge=0)
     # Compatibility with clients that named the optimistic revision explicitly.
     expected_version: Optional[int] = Field(default=None, ge=0)
@@ -1205,9 +1245,9 @@ def _adapt_legacy_analyzer_inputs(
 
 
 def _load_run_items_and_scores(
-    db: Session, run: Run
-) -> tuple[list[RunItem], dict[str, dict[str, RunItemScore]]]:
-    """Load all items and scores for a run."""
+    db: Session, run: Run, pass_number: int | None = None
+) -> tuple[list[RunItem], dict[str, dict[str, Any]]]:
+    """Load run data, optionally projecting it onto one repeat-run pass."""
     all_items: list[RunItem] = (
         db.query(RunItem)
         .filter(RunItem.run_id == run.id)
@@ -1218,7 +1258,157 @@ def _load_run_items_and_scores(
     scores_by_item: dict[str, dict[str, RunItemScore]] = {}
     for s in all_scores:
         scores_by_item.setdefault(s.item_id, {})[s.metric_name] = s
-    return all_items, scores_by_item
+    if pass_number is None:
+        return all_items, scores_by_item
+
+    run_samples = int(getattr(run, "samples", 1) or 1)
+    if run_samples <= 1 or pass_number > run_samples:
+        raise HTTPException(status_code=400, detail="pass_number is outside this run")
+
+    pass_scores = (
+        db.query(RunItemPassScore)
+        .filter(
+            RunItemPassScore.run_id == run.id,
+            RunItemPassScore.pass_number == pass_number,
+        )
+        .all()
+    )
+    pass_scores_by_item: dict[str, dict[str, RunItemPassScore]] = {}
+    for score in pass_scores:
+        pass_scores_by_item.setdefault(score.item_id, {})[score.metric_name] = score
+
+    attempts = (
+        db.query(RunItemAttempt)
+        .filter(
+            RunItemAttempt.run_id == run.id,
+            RunItemAttempt.pass_number == pass_number,
+        )
+        .all()
+    )
+    attempt_by_item: dict[str, RunItemAttempt] = {}
+    for attempt in attempts:
+        previous = attempt_by_item.get(attempt.item_id)
+        if (
+            previous is None
+            or attempt.is_last_attempt
+            or (
+                not previous.is_last_attempt
+                and int(attempt.attempt_number or 0)
+                > int(previous.attempt_number or 0)
+            )
+        ):
+            attempt_by_item[attempt.item_id] = attempt
+
+    missing_output_items = {
+        attempt.item_id
+        for attempt in attempt_by_item.values()
+        if attempt.output is None
+    }
+    recovered_outputs: dict[str, Any] = {}
+    if missing_output_items:
+        completed_events = (
+            db.query(RunEvent.payload)
+            .filter(RunEvent.run_id == run.id, RunEvent.type == "item_completed")
+            .order_by(RunEvent.sequence.asc())
+            .all()
+        )
+        for (payload,) in completed_events:
+            if not isinstance(payload, dict):
+                continue
+            if str(payload.get("item_id") or "") not in missing_output_items:
+                continue
+            try:
+                event_pass_number = max(1, int(payload.get("pass_number") or 1))
+            except (TypeError, ValueError):
+                event_pass_number = 1
+            if event_pass_number == pass_number and "output" in payload:
+                recovered_outputs[str(payload.get("item_id"))] = payload.get("output")
+
+    scoped_items: list[RunItem] = []
+    scoped_scores: dict[str, dict[str, Any]] = {}
+    for item in all_items:
+        scoped_item = copy.copy(item)
+        metadata = dict(item.item_metadata) if isinstance(item.item_metadata, dict) else {}
+        for key in (
+            "root_cause",
+            "root_causes",
+            "root_cause_categories",
+            "root_cause_detail",
+            "root_cause_note",
+            "root_cause_reason",
+            "category_taxonomy",
+            "root_cause_source",
+            "root_cause_confidence",
+            "solution",
+            "solution_note",
+            "solution_source",
+            "analysis_error",
+            "analysis_warning",
+        ):
+            metadata.pop(key, None)
+        metric_analyses: dict[str, Any] = {}
+        for metric_name, pass_score in (
+            pass_scores_by_item.get(item.item_id) or {}
+        ).items():
+            pass_meta = pass_score.meta if isinstance(pass_score.meta, dict) else {}
+            analysis = pass_meta.get(PASS_ANALYSIS_META_KEY)
+            if isinstance(analysis, dict):
+                metric_analyses[metric_name] = dict(analysis)
+        if metric_analyses:
+            metadata["metric_analyses"] = metric_analyses
+        else:
+            metadata.pop("metric_analyses", None)
+        scoped_item.item_metadata = metadata
+
+        attempt = attempt_by_item.get(item.item_id)
+        if attempt is not None:
+            # Older SDKs emitted item_completed before item_attempt_finished,
+            # leaving the attempt output empty even though the event has it.
+            scoped_item.output = recovered_outputs.get(item.item_id, attempt.output)
+            scoped_item.error = attempt.error or None
+            scoped_item.latency_ms = attempt.latency_ms
+            scoped_item.trace_id = attempt.trace_id or ""
+            scoped_item.trace_url = attempt.trace_url or ""
+        else:
+            scoped_item.output = None
+            failed_pass = any(
+                str(score.label or "").lower() == "error"
+                for score in (pass_scores_by_item.get(item.item_id) or {}).values()
+            )
+            scoped_item.error = (item.error or "Pass execution failed") if failed_pass else None
+            scoped_item.latency_ms = None
+            scoped_item.trace_id = ""
+            scoped_item.trace_url = ""
+        scoped_items.append(scoped_item)
+
+        item_scores: dict[str, Any] = {}
+        for metric_name, pass_score in (
+            pass_scores_by_item.get(item.item_id) or {}
+        ).items():
+            scoped_score = copy.copy(pass_score)
+            # The analyzer expects the reduced-score interface.  A pass score
+            # has the same semantic fields, so expose them on this read-only
+            # projection without attaching it to the SQLAlchemy session.
+            scoped_score.score_raw = pass_score.score_numeric
+            scoped_meta = dict(pass_score.meta) if isinstance(pass_score.meta, dict) else {}
+            scoped_meta.pop(PASS_ANALYSIS_META_KEY, None)
+            scoped_score.meta = scoped_meta
+            item_scores[metric_name] = scoped_score
+        scoped_scores[item.item_id] = item_scores
+
+    return scoped_items, scoped_scores
+
+
+def _require_selected_pass_for_repeat_run(run: Run, pass_number: int | None) -> None:
+    """Keep all analyzer writes scoped to one sample on repeat runs."""
+    samples = int(getattr(run, "samples", 1) or 1)
+    if samples > 1 and pass_number is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Select a sample before running analysis for a repeat run",
+        )
+    if pass_number is not None and (samples <= 1 or pass_number > samples):
+        raise HTTPException(status_code=400, detail="pass_number is outside this run")
 
 
 def _ordered_unique(values: List[str]) -> List[str]:
@@ -1709,6 +1899,33 @@ def _catalog_request_values(
             for category, definition in request.category_taxonomy.items()
         }
     )
+    taxonomy_by_category = {label.casefold(): entry for label, entry in taxonomy.items()}
+    prior_taxonomy = normalize_category_taxonomy(prior_values.get("category_taxonomy"))
+    prior_taxonomy_by_category = {
+        label.casefold(): entry for label, entry in prior_taxonomy.items()
+    }
+    prior_category_folds = {
+        _catalog_label(category).casefold()
+        for category in prior_values.get("categories") or []
+    }
+    incomplete_taxonomy_categories = [
+        category for category in categories
+        if (
+            category.casefold() not in prior_category_folds
+            or taxonomy_by_category.get(category.casefold())
+            != prior_taxonomy_by_category.get(category.casefold())
+        )
+        and not taxonomy_is_complete(taxonomy_by_category.get(category.casefold()))
+    ]
+    if incomplete_taxonomy_categories:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "category_taxonomy_required",
+                "message": "Every newly added or edited diagnosis category requires both Description and Use when guidance before it can be saved.",
+                "categories": incomplete_taxonomy_categories,
+            },
+        )
     max_categories = max(1, min(int(request.max_root_cause_categories), 10))
     return {
         "categories": categories,
@@ -1915,6 +2132,47 @@ class _PersistedAnalysisBinding:
     original_category_taxonomy: dict[str, dict[str, str]] | None = None
 
 
+@dataclass
+class _PassPersistedAnalysisBinding:
+    score: RunItemPassScore
+    result: AnalysisResult
+    original_root_causes: tuple[str, ...]
+    original_root_cause_detail: str
+    original_solution: str
+    original_category_taxonomy: dict[str, dict[str, str]] | None = None
+
+
+def _is_protected_pass_analysis(analysis: dict[str, Any]) -> bool:
+    """Return whether a selected-pass diagnosis is owned by a reviewer."""
+    source = str(
+        analysis.get("source") or analysis.get("root_cause_source") or ""
+    ).strip().lower()
+    review_status = str(analysis.get("review_status") or "").strip().lower()
+    return source == "human" or review_status == "approved"
+
+
+def _approved_aggregation_binding_keys(
+    db: Session,
+    run: Run,
+    bindings: list[_PersistedAnalysisBinding],
+) -> set[tuple[str, str | None]]:
+    """Find active approved corrections before aggregation can rewrite labels."""
+    if not bindings:
+        return set()
+    item_ids = sorted({binding.item.item_id for binding in bindings})
+    approved = (
+        db.query(ReviewCorrection)
+        .filter(
+            ReviewCorrection.run_id == run.id,
+            ReviewCorrection.item_id.in_(item_ids),
+            ReviewCorrection.status == CorrectionStatus.APPROVED,
+            ReviewCorrection.is_active.is_(True),
+        )
+        .all()
+    )
+    return {(candidate.item_id, candidate.metric_name) for candidate in approved}
+
+
 def _persisted_ai_analysis_bindings(
     items: list[RunItem],
     analysis_targets: list[tuple[RunItem, str]],
@@ -2075,10 +2333,27 @@ def _persist_aggregated_bindings(
         else []
     )
     locked_by_id = {item.item_id: item for item in locked_items}
+    approved_candidates = (
+        db.query(ReviewCorrection)
+        .filter(
+            ReviewCorrection.run_id == run.id,
+            ReviewCorrection.item_id.in_(changed_item_ids),
+            ReviewCorrection.status == CorrectionStatus.APPROVED,
+            ReviewCorrection.is_active.is_(True),
+        )
+        .all()
+        if changed_item_ids
+        else []
+    )
+    approved_binding_keys = {
+        (candidate.item_id, candidate.metric_name)
+        for candidate in approved_candidates
+    }
     changed = [
         binding
         for binding in changed
         if binding.item.item_id in locked_by_id
+        and (binding.item.item_id, binding.metric_name) not in approved_binding_keys
         and not (
             binding.metric_name
             and is_human_metric_analysis(
@@ -2226,6 +2501,170 @@ def _persist_aggregated_bindings(
     return len(changed)
 
 
+async def _aggregate_pass_analysis_results(
+    *,
+    db: Session,
+    run: Run,
+    pass_number: int,
+    client: Any,
+    model: str,
+    analyzer_config: dict[str, Any] | None,
+    metric_scope: set[str] | None = None,
+) -> tuple[dict[str, int], int]:
+    """Canonicalize saved diagnoses for one pass without touching the run row."""
+    pass_scores = (
+        db.query(RunItemPassScore)
+        .filter(
+            RunItemPassScore.run_id == run.id,
+            RunItemPassScore.pass_number == pass_number,
+        )
+        .order_by(RunItemPassScore.item_id.asc(), RunItemPassScore.metric_name.asc())
+        .all()
+    )
+    bindings: list[_PassPersistedAnalysisBinding] = []
+    for score in pass_scores:
+        if metric_scope is not None and score.metric_name not in metric_scope:
+            continue
+        score_meta = score.meta if isinstance(score.meta, dict) else {}
+        analysis = score_meta.get(PASS_ANALYSIS_META_KEY)
+        if (
+            not isinstance(analysis, dict)
+            or analysis.get("error")
+            or not analysis_root_causes(analysis)
+            or _is_protected_pass_analysis(analysis)
+        ):
+            continue
+        root_causes = analysis_root_causes(analysis)
+        category_taxonomy = normalize_category_taxonomy(
+            analysis.get("category_taxonomy")
+        )
+        try:
+            confidence = float(analysis.get("confidence") or 0.0)
+        except (TypeError, ValueError):
+            confidence = 0.0
+        result = AnalysisResult(
+            item_id=score.item_id,
+            metric_name=score.metric_name,
+            root_cause=root_causes[0],
+            root_causes=root_causes,
+            category_taxonomy=category_taxonomy,
+            root_cause_detail=str(analysis.get("root_cause_detail") or "").strip(),
+            root_cause_reason=str(analysis.get("root_cause_reason") or "").strip(),
+            root_cause_note=str(analysis.get("root_cause_note") or "").strip(),
+            confidence=confidence,
+            solution=str(analysis.get("solution") or "").strip(),
+            solution_note=str(analysis.get("solution_note") or "").strip(),
+        )
+        bindings.append(
+            _PassPersistedAnalysisBinding(
+                score=score,
+                result=result,
+                original_root_causes=tuple(root_causes),
+                original_root_cause_detail=result.root_cause_detail,
+                original_solution=result.solution,
+                original_category_taxonomy=category_taxonomy,
+            )
+        )
+
+    if not bindings:
+        return {}, 0
+
+    try:
+        categories = await aggregate_analysis_categories(
+            client,
+            model,
+            [binding.result for binding in bindings],
+            known_categories=(analyzer_config or {}).get("root_cause_categories")
+            or ROOT_CAUSE_CATEGORIES,
+            known_details=(analyzer_config or {}).get("root_cause_details") or [],
+            known_category_details=(analyzer_config or {}).get("category_details_map")
+            or {},
+            system_prompt=(analyzer_config or {}).get("_aggregator_system_prompt"),
+        )
+    except AnalysisAggregationError:
+        for binding in bindings:
+            binding.result.root_causes = list(binding.original_root_causes)
+            binding.result.root_cause = (
+                binding.original_root_causes[0]
+                if binding.original_root_causes
+                else ""
+            )
+            binding.result.root_cause_detail = binding.original_root_cause_detail
+            binding.result.solution = binding.original_solution
+            binding.result.category_taxonomy = (
+                dict(binding.original_category_taxonomy)
+                if binding.original_category_taxonomy
+                else {}
+            )
+        raise
+
+    changed_bindings = [
+        binding
+        for binding in bindings
+        if (
+            tuple(
+                normalize_root_causes(
+                    getattr(binding.result, "root_causes", None)
+                    or binding.result.root_cause
+                )
+            )
+            != binding.original_root_causes
+            or binding.result.root_cause_detail != binding.original_root_cause_detail
+            or binding.result.solution != binding.original_solution
+            or normalize_category_taxonomy(
+                getattr(binding.result, "category_taxonomy", None)
+            )
+            != (binding.original_category_taxonomy or {})
+        )
+    ]
+    if not changed_bindings:
+        return categories, 0
+
+    locked_scores = (
+        db.query(RunItemPassScore)
+        .filter(
+            RunItemPassScore.run_id == run.id,
+            RunItemPassScore.pass_number == pass_number,
+        )
+        .with_for_update()
+        .all()
+    )
+    locked_by_key = {
+        (score.item_id, score.metric_name): score for score in locked_scores
+    }
+    changed = 0
+    for binding in changed_bindings:
+        score = locked_by_key.get((binding.score.item_id, binding.score.metric_name))
+        if score is None:
+            continue
+        score_meta = dict(score.meta) if isinstance(score.meta, dict) else {}
+        current_analysis = score_meta.get(PASS_ANALYSIS_META_KEY)
+        if (
+            not isinstance(current_analysis, dict)
+            or current_analysis.get("error")
+            or not analysis_root_causes(current_analysis)
+            or _is_protected_pass_analysis(current_analysis)
+        ):
+            continue
+        updated_analysis = dict(current_analysis)
+        updated_analysis["root_cause"] = binding.result.root_cause
+        updated_analysis["root_causes"] = normalize_root_causes(
+            getattr(binding.result, "root_causes", None)
+            or binding.result.root_cause
+        )
+        updated_analysis["root_cause_detail"] = binding.result.root_cause_detail
+        updated_analysis["root_cause_reason"] = binding.result.root_cause_reason
+        updated_analysis["category_taxonomy"] = normalize_category_taxonomy(
+            getattr(binding.result, "category_taxonomy", None)
+        )
+        updated_analysis["solution"] = binding.result.solution
+        score_meta[PASS_ANALYSIS_META_KEY] = updated_analysis
+        score.meta = score_meta
+        changed += 1
+
+    return categories, changed
+
+
 async def _aggregate_run_analysis_results(
     *,
     db: Session,
@@ -2248,6 +2687,12 @@ async def _aggregate_run_analysis_results(
         overwritten_item_ids=successful_item_ids,
         metric_scope=metric_scope,
     )
+    approved_binding_keys = _approved_aggregation_binding_keys(db, run, bindings)
+    bindings = [
+        binding
+        for binding in bindings
+        if (binding.item.item_id, binding.metric_name) not in approved_binding_keys
+    ]
     combined_results = [*new_results, *(binding.result for binding in bindings)]
     if not combined_results:
         if force:
@@ -2649,6 +3094,116 @@ def _save_analysis_results(
     return response_results, error_count
 
 
+def _save_pass_analysis_results(
+    db: Session,
+    run: Run,
+    results: list[AnalysisResult],
+    pass_number: int,
+    allow_human_overwrite: bool = False,
+    analyzer_connection_id: str | None = None,
+    analyzer_rule_version_id: str | None = None,
+    category_catalog_version: int | None = None,
+    category_catalog_version_id: str | None = None,
+) -> tuple[list[Dict[str, Any]], int]:
+    """Persist diagnoses on the selected pass score, never on the aggregate item."""
+    response_results: list[Dict[str, Any]] = []
+    error_count = 0
+    item_ids = sorted({result.item_id for result in results})
+    score_rows = (
+        db.query(RunItemPassScore)
+        .filter(
+            RunItemPassScore.run_id == run.id,
+            RunItemPassScore.pass_number == pass_number,
+            RunItemPassScore.item_id.in_(item_ids),
+        )
+        .with_for_update()
+        .all()
+        if item_ids
+        else []
+    )
+    scores_by_key = {
+        (score.item_id, score.metric_name): score for score in score_rows
+    }
+
+    for result in results:
+        payload = _analysis_result_payload(result)
+        payload["pass_number"] = pass_number
+        payload["persistence_status"] = (
+            "analysis_failed" if result.error else "persisted"
+        )
+        score = scores_by_key.get((result.item_id, result.metric_name))
+        if score is None:
+            payload["persistence_status"] = "analysis_failed"
+            payload["error"] = "Pass score not found"
+            error_count += 1
+            response_results.append(payload)
+            continue
+
+        score_meta = dict(score.meta) if isinstance(score.meta, dict) else {}
+        previous = score_meta.get(PASS_ANALYSIS_META_KEY)
+        previous_analysis = dict(previous) if isinstance(previous, dict) else {}
+        previous_source = str(previous_analysis.get("source") or "").lower()
+        if previous_source == "human" and not allow_human_overwrite:
+            payload["persistence_status"] = "skipped_human_protection"
+            response_results.append(payload)
+            continue
+
+        if result.error:
+            error_count += 1
+            analysis = {
+                "source": "ai",
+                "error": result.error,
+                "analyzer_model": result.analyzer_model,
+                "analyzer_connection_id": analyzer_connection_id,
+                "analyzer_rule_version_id": analyzer_rule_version_id,
+                "category_catalog_version": category_catalog_version,
+                "category_catalog_version_id": category_catalog_version_id,
+                "prompt_hash": result.prompt_hash,
+                "analyzed_at": to_api_timestamp(utc_now_naive()),
+            }
+        else:
+            analysis = {
+                "source": "ai",
+                "root_cause": result.root_cause,
+                "root_causes": normalize_root_causes(
+                    getattr(result, "root_causes", None) or result.root_cause
+                ),
+                "root_cause_detail": result.root_cause_detail,
+                "root_cause_reason": result.root_cause_reason,
+                "root_cause_note": result.root_cause_note,
+                "warning": result.warning or "",
+                "category_taxonomy": merge_category_taxonomies(
+                    previous_analysis.get("category_taxonomy"),
+                    getattr(result, "category_taxonomy", None),
+                ),
+                "confidence": result.confidence,
+                "solution": result.solution,
+                "solution_note": result.solution_note,
+                "analyzer_model": result.analyzer_model,
+                "analyzer_connection_id": analyzer_connection_id,
+                "analyzer_rule_version_id": analyzer_rule_version_id,
+                "category_catalog_version": category_catalog_version,
+                "category_catalog_version_id": category_catalog_version_id,
+                "prompt_hash": result.prompt_hash,
+                "provider_request_id": result.provider_request_id,
+                "prompt_tokens": result.prompt_tokens,
+                "completion_tokens": result.completion_tokens,
+                "total_tokens": result.total_tokens,
+                "analyzed_at": to_api_timestamp(utc_now_naive()),
+            }
+        if not result.error:
+            # Repeat-run diagnoses are reviewed independently per pass.  A
+            # fresh AI result is therefore a new pending review candidate,
+            # even when an earlier analysis for this pass was approved.
+            analysis["review_status"] = "pending"
+        score_meta[PASS_ANALYSIS_META_KEY] = analysis
+        score.meta = score_meta
+        response_results.append(payload)
+
+    db.commit()
+    return response_results, error_count
+
+
 def _load_metric_specs(db: Session, run: Run) -> dict[str, RunMetricSpec]:
     specs = (
         db.query(RunMetricSpec)
@@ -2770,6 +3325,10 @@ def _filter_analysis_targets(
 
         if request.root_cause is not None:
             item_categories = analysis_root_causes(md)
+            metric_analyses = md.get("metric_analyses")
+            if isinstance(metric_analyses, dict):
+                for analysis in metric_analyses.values():
+                    item_categories.extend(analysis_root_causes(analysis))
             if "__none__" in request.root_cause and not item_categories:
                 pass
             elif not any(category in request.root_cause for category in item_categories):
@@ -2892,7 +3451,9 @@ async def _run_analysis_job(
             raise RuntimeError("Analysis access is no longer available.")
 
         llm_config = _get_llm_config(db, run.project_id, request.connection_id)
-        all_items, scores_by_item = _load_run_items_and_scores(db, run)
+        all_items, scores_by_item = _load_run_items_and_scores(
+            db, run, request.pass_number
+        )
         metric_specs = _load_metric_specs(db, run)
         metric_scope = _requested_metric_scope(request)
         _validate_requested_metric(
@@ -2933,6 +3494,21 @@ async def _run_analysis_job(
         if not analysis_targets:
             if job.cancel_requested:
                 raise asyncio.CancelledError()
+            if request.pass_number is not None:
+                analysis_job_manager.update_progress(
+                    job,
+                    phase="completed",
+                    completed=0,
+                    total=0,
+                )
+                return {
+                    "total_analyzed": 0,
+                    "results": [],
+                    "categories": {},
+                    "aggregated": 0,
+                    "errors": 0,
+                    **_persistence_totals([]),
+                }
             try:
                 categories, aggregated = await _aggregate_run_analysis_results(
                     db=db,
@@ -3010,58 +3586,81 @@ async def _run_analysis_job(
             errors=progress_errors,
         )
         aggregation_error: str | None = None
-        try:
-            categories, aggregated = await _aggregate_run_analysis_results(
-                db=db,
-                run=run,
-                all_items=all_items,
-                analysis_targets=analysis_targets,
-                new_results=results,
-                client=client,
-                model=model,
-                analyzer_config=analyzer_config,
-                principal=principal,
-                metric_scope=metric_scope,
-            )
-        except AnalysisAggregationError as exc:
-            db.rollback()
-            _record_run_aggregation_status(
-                run,
-                status="failed",
-                metric_scope=metric_scope,
-                error=str(exc),
-            )
-            logger.warning("Analysis job aggregation failed for run %s: %s", job.run_id, exc)
-            categories = _raw_run_analysis_counts(
-                all_items,
-                analysis_targets,
-                results,
-                metric_scope=metric_scope,
-            )
+        if request.pass_number is not None:
+            categories = _category_counts(results)
             aggregated = 0
-            aggregation_error = str(exc)
+        else:
+            try:
+                categories, aggregated = await _aggregate_run_analysis_results(
+                    db=db,
+                    run=run,
+                    all_items=all_items,
+                    analysis_targets=analysis_targets,
+                    new_results=results,
+                    client=client,
+                    model=model,
+                    analyzer_config=analyzer_config,
+                    principal=principal,
+                    metric_scope=metric_scope,
+                )
+            except AnalysisAggregationError as exc:
+                db.rollback()
+                _record_run_aggregation_status(
+                    run,
+                    status="failed",
+                    metric_scope=metric_scope,
+                    error=str(exc),
+                )
+                logger.warning("Analysis job aggregation failed for run %s: %s", job.run_id, exc)
+                categories = _raw_run_analysis_counts(
+                    all_items,
+                    analysis_targets,
+                    results,
+                    metric_scope=metric_scope,
+                )
+                aggregated = 0
+                aggregation_error = str(exc)
 
         if job.cancel_requested:
             raise asyncio.CancelledError()
 
-        response_results, error_count = _save_analysis_results(
-            db,
-            run,
-            analysis_targets,
-            results,
-            principal,
-            analyzer_connection_id=llm_config.get("connection_id"),
-            analyzer_rule_version_id=(analyzer_config or {}).get(
-                "_analysis_rule_version_id"
-            ),
-            category_catalog_version=(analyzer_config or {}).get(
-                "category_catalog_version"
-            ),
-            category_catalog_version_id=(analyzer_config or {}).get(
-                "category_catalog_version_id"
-            ),
-            allow_human_overwrite=request.allow_human_overwrite,
-        )
+        if request.pass_number is not None:
+            response_results, error_count = _save_pass_analysis_results(
+                db,
+                run,
+                results,
+                request.pass_number,
+                allow_human_overwrite=request.allow_human_overwrite,
+                analyzer_connection_id=llm_config.get("connection_id"),
+                analyzer_rule_version_id=(analyzer_config or {}).get(
+                    "_analysis_rule_version_id"
+                ),
+                category_catalog_version=(analyzer_config or {}).get(
+                    "category_catalog_version"
+                ),
+                category_catalog_version_id=(analyzer_config or {}).get(
+                    "category_catalog_version_id"
+                ),
+            )
+        else:
+            response_results, error_count = _save_analysis_results(
+                db,
+                run,
+                analysis_targets,
+                results,
+                principal,
+                analyzer_connection_id=llm_config.get("connection_id"),
+                analyzer_rule_version_id=(analyzer_config or {}).get(
+                    "_analysis_rule_version_id"
+                ),
+                category_catalog_version=(analyzer_config or {}).get(
+                    "category_catalog_version"
+                ),
+                category_catalog_version_id=(analyzer_config or {}).get(
+                    "category_catalog_version_id"
+                ),
+                allow_human_overwrite=request.allow_human_overwrite,
+            )
         analysis_job_manager.update_progress(
             job,
             phase="completed",
@@ -3205,8 +3804,11 @@ async def aggregate_saved_analysis_results(
         raise HTTPException(status_code=404, detail="Run not found")
     if not _can_operate_analyzer(db, principal, run):
         raise HTTPException(status_code=403, detail="Access denied")
+    _require_selected_pass_for_repeat_run(run, request.pass_number)
 
-    all_items, scores_by_item = _load_run_items_and_scores(db, run)
+    all_items, scores_by_item = _load_run_items_and_scores(
+        db, run, request.pass_number
+    )
     _validate_requested_metric(run, scores_by_item, request.metric)
     metric_scope = {request.metric} if request.metric else None
     llm_config = _get_llm_config(db, run.project_id, request.connection_id)
@@ -3224,36 +3826,51 @@ async def aggregate_saved_analysis_results(
     )
 
     try:
-        category_counts, aggregated = await _aggregate_run_analysis_results(
-            db=db,
-            run=run,
-            all_items=all_items,
-            analysis_targets=[],
-            new_results=[],
-            client=build_client(llm_config),
-            model=llm_config.get("llm_model", "gpt-4o-mini"),
-            analyzer_config=analyzer_config,
-            principal=principal,
-            metric_scope=metric_scope,
-            force=True,
-        )
+        if request.pass_number is not None:
+            category_counts, aggregated = await _aggregate_pass_analysis_results(
+                db=db,
+                run=run,
+                pass_number=request.pass_number,
+                client=build_client(llm_config),
+                model=llm_config.get("llm_model", "gpt-4o-mini"),
+                analyzer_config=analyzer_config,
+                metric_scope=metric_scope,
+            )
+        else:
+            category_counts, aggregated = await _aggregate_run_analysis_results(
+                db=db,
+                run=run,
+                all_items=all_items,
+                analysis_targets=[],
+                new_results=[],
+                client=build_client(llm_config),
+                model=llm_config.get("llm_model", "gpt-4o-mini"),
+                analyzer_config=analyzer_config,
+                principal=principal,
+                metric_scope=metric_scope,
+                force=True,
+            )
         db.commit()
     except AnalysisAggregationError as exc:
         db.rollback()
-        aggregation_status = _record_run_aggregation_status(
-            run,
-            status="failed",
-            metric_scope=metric_scope,
-            error=str(exc),
-        )
-        db.commit()
+        if request.pass_number is None:
+            aggregation_status = _record_run_aggregation_status(
+                run,
+                status="failed",
+                metric_scope=metric_scope,
+                error=str(exc),
+            )
+            db.commit()
         logger.warning(
-            "Saved analysis aggregation failed for run %s: %s", run_id, exc
+            "Saved analysis aggregation failed for run %s%s: %s",
+            run_id,
+            f" pass {request.pass_number}" if request.pass_number is not None else "",
+            exc,
         )
         raise HTTPException(
             status_code=502,
             detail=str(exc),
-            headers={"X-Qym-Aggregation-Status": aggregation_status["status"]},
+            headers={"X-Qym-Aggregation-Status": "failed"},
         ) from exc
 
     return {
@@ -3261,6 +3878,7 @@ async def aggregate_saved_analysis_results(
         "categories": category_counts,
         "aggregated": aggregated,
         "metric": request.metric,
+        "pass_number": request.pass_number,
     }
 
 
@@ -3277,11 +3895,14 @@ async def start_analysis_job(
         raise HTTPException(status_code=404, detail="Run not found")
     if not _can_operate_analyzer(db, principal, run):
         raise HTTPException(status_code=403, detail="Access denied")
+    _require_selected_pass_for_repeat_run(run, request.pass_number)
 
     # Validate the request before creating a background task so malformed
     # filters and missing connections are reported to the initiating page.
     _get_llm_config(db, run.project_id, request.connection_id)
-    all_items, scores_by_item = _load_run_items_and_scores(db, run)
+    all_items, scores_by_item = _load_run_items_and_scores(
+        db, run, request.pass_number
+    )
     metric_specs = _load_metric_specs(db, run)
     _validate_requested_metric(
         run,
@@ -3326,6 +3947,7 @@ async def start_analysis_job(
 @router.get("/api/runs/{run_id:path}/analysis-jobs/active")
 def get_active_analysis_job(
     run_id: str,
+    pass_number: Optional[int] = Query(default=None, ge=1),
     db: Session = Depends(get_db),
     principal: Principal = Depends(require_ui_principal),
 ) -> Dict[str, Any]:
@@ -3335,7 +3957,11 @@ def get_active_analysis_job(
         raise HTTPException(status_code=404, detail="Run not found")
     if not _can_operate_analyzer(db, principal, run):
         raise HTTPException(status_code=403, detail="Access denied")
-    return {"job": _analysis_job_payload(analysis_job_manager.active_for_run(run.id))}
+    return {
+        "job": _analysis_job_payload(
+            analysis_job_manager.active_for_run(run.id, pass_number)
+        )
+    }
 
 
 @router.get("/api/runs/{run_id:path}/analysis-jobs/{job_id}")
@@ -3390,9 +4016,12 @@ async def analyze_run_items(
         raise HTTPException(status_code=404, detail="Run not found")
     if not _can_operate_analyzer(db, principal, run):
         raise HTTPException(status_code=403, detail="Access denied")
+    _require_selected_pass_for_repeat_run(run, request.pass_number)
     llm_config = _get_llm_config(db, run.project_id, request.connection_id)
 
-    all_items, scores_by_item = _load_run_items_and_scores(db, run)
+    all_items, scores_by_item = _load_run_items_and_scores(
+        db, run, request.pass_number
+    )
 
     metric_specs = _load_metric_specs(db, run)
     metric_scope = _requested_metric_scope(request)
@@ -3425,6 +4054,15 @@ async def analyze_run_items(
     model = llm_config.get("llm_model", "gpt-4o-mini")
 
     if not analysis_targets:
+        if request.pass_number is not None:
+            return {
+                "total_analyzed": 0,
+                "results": [],
+                "categories": {},
+                "aggregated": 0,
+                "errors": 0,
+                **_persistence_totals([]),
+            }
         try:
             categories, aggregated = await _aggregate_run_analysis_results(
                 db=db,
@@ -3464,56 +4102,80 @@ async def analyze_run_items(
         max_tokens=request.config.max_tokens if request.config else None,
     )
     aggregation_error: str | None = None
-    try:
-        categories, aggregated = await _aggregate_run_analysis_results(
-            db=db,
-            run=run,
-            all_items=all_items,
-            analysis_targets=analysis_targets,
-            new_results=results,
-            client=client,
-            model=model,
-            analyzer_config=analyzer_config,
-            principal=principal,
-            metric_scope=metric_scope,
-        )
-    except AnalysisAggregationError as exc:
-        db.rollback()
-        _record_run_aggregation_status(
+    if request.pass_number is not None:
+        categories = _category_counts(results)
+        aggregated = 0
+    else:
+        try:
+            categories, aggregated = await _aggregate_run_analysis_results(
+                db=db,
+                run=run,
+                all_items=all_items,
+                analysis_targets=analysis_targets,
+                new_results=results,
+                client=client,
+                model=model,
+                analyzer_config=analyzer_config,
+                principal=principal,
+                metric_scope=metric_scope,
+            )
+        except AnalysisAggregationError as exc:
+            db.rollback()
+            _record_run_aggregation_status(
+                run,
+                status="failed",
+                metric_scope=metric_scope,
+                error=str(exc),
+            )
+            logger.warning("Analysis aggregation failed for run %s: %s", run_id, exc)
+            categories = _raw_run_analysis_counts(
+                all_items,
+                analysis_targets,
+                results,
+                metric_scope=metric_scope,
+            )
+            aggregated = 0
+            aggregation_error = str(exc)
+
+    # Save pass diagnoses beside the selected pass score; aggregate diagnoses
+    # keep the legacy item-level persistence path.
+    if request.pass_number is not None:
+        response_results, error_count = _save_pass_analysis_results(
+            db,
             run,
-            status="failed",
-            metric_scope=metric_scope,
-            error=str(exc),
+            results,
+            request.pass_number,
+            allow_human_overwrite=request.allow_human_overwrite,
+            analyzer_connection_id=llm_config.get("connection_id"),
+            analyzer_rule_version_id=(analyzer_config or {}).get(
+                "_analysis_rule_version_id"
+            ),
+            category_catalog_version=(analyzer_config or {}).get(
+                "category_catalog_version"
+            ),
+            category_catalog_version_id=(analyzer_config or {}).get(
+                "category_catalog_version_id"
+            ),
         )
-        logger.warning("Analysis aggregation failed for run %s: %s", run_id, exc)
-        categories = _raw_run_analysis_counts(
-            all_items,
+    else:
+        response_results, error_count = _save_analysis_results(
+            db,
+            run,
             analysis_targets,
             results,
-            metric_scope=metric_scope,
+            principal,
+            analyzer_connection_id=llm_config.get("connection_id"),
+            analyzer_rule_version_id=(analyzer_config or {}).get(
+                "_analysis_rule_version_id"
+            ),
+            category_catalog_version=(analyzer_config or {}).get(
+                "category_catalog_version"
+            ),
+            category_catalog_version_id=(analyzer_config or {}).get(
+                "category_catalog_version_id"
+            ),
+            allow_human_overwrite=request.allow_human_overwrite,
         )
-        aggregated = 0
-        aggregation_error = str(exc)
-
-    # Save per-metric results plus one backwards-compatible item summary.
-    response_results, error_count = _save_analysis_results(
-        db,
-        run,
-        analysis_targets,
-        results,
-        principal,
-        analyzer_connection_id=llm_config.get("connection_id"),
-        analyzer_rule_version_id=(analyzer_config or {}).get(
-            "_analysis_rule_version_id"
-        ),
-        category_catalog_version=(analyzer_config or {}).get(
-            "category_catalog_version"
-        ),
-        category_catalog_version_id=(analyzer_config or {}).get(
-            "category_catalog_version_id"
-        ),
-        allow_human_overwrite=request.allow_human_overwrite,
-    )
 
     return {
         "total_analyzed": len(results),
@@ -3539,9 +4201,12 @@ async def analyze_run_items_stream(
         raise HTTPException(status_code=404, detail="Run not found")
     if not _can_operate_analyzer(db, principal, run):
         raise HTTPException(status_code=403, detail="Access denied")
+    _require_selected_pass_for_repeat_run(run, request.pass_number)
     llm_config = _get_llm_config(db, run.project_id, request.connection_id)
 
-    all_items, scores_by_item = _load_run_items_and_scores(db, run)
+    all_items, scores_by_item = _load_run_items_and_scores(
+        db, run, request.pass_number
+    )
     metric_specs = _load_metric_specs(db, run)
     metric_scope = _requested_metric_scope(request)
     _validate_requested_metric(
@@ -3596,6 +4261,19 @@ async def analyze_run_items_stream(
                     "errors": 0,
                 }
             )
+            if request.pass_number is not None:
+                yield encode(
+                    {
+                        "type": "done",
+                        "total_analyzed": 0,
+                        "results": [],
+                        "categories": {},
+                        "aggregated": 0,
+                        "errors": 0,
+                        **_persistence_totals([]),
+                    }
+                )
+                return
             try:
                 categories, aggregated = await _aggregate_run_analysis_results(
                     db=db,
@@ -3692,59 +4370,82 @@ async def analyze_run_items_stream(
                         }
                     )
                     aggregation_error: str | None = None
-                    try:
-                        categories, aggregated = await _aggregate_run_analysis_results(
-                            db=db,
-                            run=run,
-                            all_items=all_items,
-                            analysis_targets=analysis_targets,
-                            new_results=results,
-                            client=client,
-                            model=model,
-                            analyzer_config=analyzer_config,
-                            principal=principal,
-                            metric_scope=metric_scope,
-                        )
-                    except AnalysisAggregationError as exc:
-                        db.rollback()
-                        _record_run_aggregation_status(
-                            run,
-                            status="failed",
-                            metric_scope=metric_scope,
-                            error=str(exc),
-                        )
-                        logger.warning(
-                            "Analysis aggregation failed for run %s: %s",
-                            run_id,
-                            exc,
-                        )
-                        categories = _raw_run_analysis_counts(
-                            all_items,
-                            analysis_targets,
-                            results,
-                            metric_scope=metric_scope,
-                        )
+                    if request.pass_number is not None:
+                        categories = _category_counts(results)
                         aggregated = 0
-                        aggregation_error = str(exc)
+                    else:
+                        try:
+                            categories, aggregated = await _aggregate_run_analysis_results(
+                                db=db,
+                                run=run,
+                                all_items=all_items,
+                                analysis_targets=analysis_targets,
+                                new_results=results,
+                                client=client,
+                                model=model,
+                                analyzer_config=analyzer_config,
+                                principal=principal,
+                                metric_scope=metric_scope,
+                            )
+                        except AnalysisAggregationError as exc:
+                            db.rollback()
+                            _record_run_aggregation_status(
+                                run,
+                                status="failed",
+                                metric_scope=metric_scope,
+                                error=str(exc),
+                            )
+                            logger.warning(
+                                "Analysis aggregation failed for run %s: %s",
+                                run_id,
+                                exc,
+                            )
+                            categories = _raw_run_analysis_counts(
+                                all_items,
+                                analysis_targets,
+                                results,
+                                metric_scope=metric_scope,
+                            )
+                            aggregated = 0
+                            aggregation_error = str(exc)
                     try:
-                        response_results, error_count = _save_analysis_results(
-                            db,
-                            run,
-                            analysis_targets,
-                            results,
-                            principal,
-                            analyzer_connection_id=llm_config.get("connection_id"),
-                            analyzer_rule_version_id=(analyzer_config or {}).get(
-                                "_analysis_rule_version_id"
-                            ),
-                            category_catalog_version=(analyzer_config or {}).get(
-                                "category_catalog_version"
-                            ),
-                            category_catalog_version_id=(analyzer_config or {}).get(
-                                "category_catalog_version_id"
-                            ),
-                            allow_human_overwrite=request.allow_human_overwrite,
-                        )
+                        if request.pass_number is not None:
+                            response_results, error_count = _save_pass_analysis_results(
+                                db,
+                                run,
+                                results,
+                                request.pass_number,
+                                allow_human_overwrite=request.allow_human_overwrite,
+                                analyzer_connection_id=llm_config.get("connection_id"),
+                                analyzer_rule_version_id=(analyzer_config or {}).get(
+                                    "_analysis_rule_version_id"
+                                ),
+                                category_catalog_version=(analyzer_config or {}).get(
+                                    "category_catalog_version"
+                                ),
+                                category_catalog_version_id=(analyzer_config or {}).get(
+                                    "category_catalog_version_id"
+                                ),
+                            )
+                        else:
+                            response_results, error_count = _save_analysis_results(
+                                db,
+                                run,
+                                analysis_targets,
+                                results,
+                                principal,
+                                analyzer_connection_id=llm_config.get("connection_id"),
+                                analyzer_rule_version_id=(analyzer_config or {}).get(
+                                    "_analysis_rule_version_id"
+                                ),
+                                category_catalog_version=(analyzer_config or {}).get(
+                                    "category_catalog_version"
+                                ),
+                                category_catalog_version_id=(analyzer_config or {}).get(
+                                    "category_catalog_version_id"
+                                ),
+                                allow_human_overwrite=request.allow_human_overwrite,
+                            )
                     except Exception as exc:
                         db.rollback()
                         yield encode(
@@ -5367,21 +6068,19 @@ def analyze_preview(
         raise HTTPException(status_code=404, detail="Run not found")
     if not can_view_run(db, principal, run):
         raise HTTPException(status_code=403, detail="Access denied")
+    _require_selected_pass_for_repeat_run(run, request.pass_number)
 
-    item = (
-        db.query(RunItem)
-        .filter(RunItem.run_id == run.id, RunItem.item_id == request.item_id)
-        .first()
+    all_items, scores_by_item = _load_run_items_and_scores(
+        db, run, request.pass_number
+    )
+    item = next(
+        (candidate for candidate in all_items if candidate.item_id == request.item_id),
+        None,
     )
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
 
-    scores_list = (
-        db.query(RunItemScore)
-        .filter(RunItemScore.run_id == run.id, RunItemScore.item_id == request.item_id)
-        .all()
-    )
-    scores = {s.metric_name: s for s in scores_list}
+    scores = scores_by_item.get(request.item_id, {})
     _validate_requested_metric(run, {item.item_id: scores}, request.metric)
 
     preview_metric = request.metric
@@ -5392,6 +6091,7 @@ def analyze_preview(
             only_unanalyzed=False,
             allow_human_overwrite=True,
             item_ids=[item.item_id],
+            pass_number=request.pass_number,
         )
         preview_targets = _filter_analysis_targets(
             run,
@@ -5453,27 +6153,20 @@ async def analyze_test(
         raise HTTPException(status_code=404, detail="Run not found")
     if not _can_operate_analyzer(db, principal, run):
         raise HTTPException(status_code=403, detail="Access denied")
+    _require_selected_pass_for_repeat_run(run, request.pass_number)
     llm_config = _get_llm_config(db, run.project_id, request.connection_id)
 
-    items = (
-        db.query(RunItem)
-        .filter(RunItem.run_id == run.id, RunItem.item_id.in_(request.item_ids))
-        .all()
+    all_items, all_scores_by_item = _load_run_items_and_scores(
+        db, run, request.pass_number
     )
+    items = [item for item in all_items if item.item_id in request.item_ids]
     if not items:
         raise HTTPException(status_code=404, detail="No matching items found")
 
-    all_scores = (
-        db.query(RunItemScore)
-        .filter(
-            RunItemScore.run_id == run.id,
-            RunItemScore.item_id.in_(request.item_ids),
-        )
-        .all()
-    )
-    scores_by_item: dict[str, dict[str, RunItemScore]] = {}
-    for s in all_scores:
-        scores_by_item.setdefault(s.item_id, {})[s.metric_name] = s
+    scores_by_item = {
+        item_id: all_scores_by_item.get(item_id, {})
+        for item_id in request.item_ids
+    }
 
     analyzer_config = _analysis_config_with_project_context(
         db,
@@ -5498,6 +6191,7 @@ async def analyze_test(
         only_unanalyzed=False,
         allow_human_overwrite=True,
         item_ids=request.item_ids,
+        pass_number=request.pass_number,
     )
     targets = _filter_analysis_targets(
         run,
@@ -7534,6 +8228,55 @@ def approve_metric_analysis(
     )
     if not item:
         raise HTTPException(status_code=404, detail="Run item not found")
+
+    # Repeat-run analyses live on the selected pass score rather than on the
+    # reduced RunItem metadata.  Keep approval scoped to that exact sample so
+    # approving pass 1 cannot change the review state shown for pass 2 or for
+    # the aggregate run.
+    raw_pass_number = request.get("pass_number")
+    if raw_pass_number is not None:
+        try:
+            pass_number = int(raw_pass_number)
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail="Invalid pass_number") from exc
+        samples = int(getattr(run, "samples", 1) or 1)
+        if samples <= 1 or pass_number < 1 or pass_number > samples:
+            raise HTTPException(status_code=400, detail="pass_number is outside this run")
+
+        pass_score = (
+            db.query(RunItemPassScore)
+            .filter(
+                RunItemPassScore.run_id == run.id,
+                RunItemPassScore.item_id == item.item_id,
+                RunItemPassScore.metric_name == metric_name,
+                RunItemPassScore.pass_number == pass_number,
+            )
+            .with_for_update()
+            .one_or_none()
+        )
+        if pass_score is None:
+            raise HTTPException(status_code=404, detail="Pass score not found")
+
+        pass_meta = dict(pass_score.meta) if isinstance(pass_score.meta, dict) else {}
+        analysis = pass_meta.get(PASS_ANALYSIS_META_KEY)
+        if (
+            not isinstance(analysis, dict)
+            or not str(analysis.get("root_cause") or "").strip()
+        ):
+            raise HTTPException(status_code=404, detail="Metric analysis not found")
+
+        reviewed_at = utc_now_naive()
+        analysis = dict(analysis)
+        analysis["review_status"] = "approved"
+        analysis["reviewed_at"] = to_api_timestamp(reviewed_at)
+        pass_meta[PASS_ANALYSIS_META_KEY] = analysis
+        pass_score.meta = pass_meta
+        db.commit()
+        return {
+            "id": None,
+            "status": "approved",
+            "pass_number": pass_number,
+        }
 
     metric_analyses = (
         item.item_metadata.get("metric_analyses", {})

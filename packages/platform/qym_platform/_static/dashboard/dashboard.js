@@ -114,12 +114,16 @@
     return apiUrl(`projects/${encoded}${cleanSuffix ? `/${cleanSuffix}` : ''}`);
   }
 
-  function analyzerUrlForRun(run) {
+  function analyzerUrlForRun(run, passNumber = null) {
     const slug = state.currentProject && state.currentProject.slug;
     const runId = run && (run.file_path || run.run_id || '');
+    const parsedPass = Number(passNumber);
+    const passQuery = Number.isInteger(parsedPass) && parsedPass > 0
+      ? `&pass=${encodeURIComponent(parsedPass)}`
+      : '';
     return slug
-      ? projectUrl(slug, `analysis?run=${encodeURIComponent(runId)}`)
-      : apiUrl(`run/${encodeURIComponent(runId)}/analyzer`);
+      ? projectUrl(slug, `analysis?run=${encodeURIComponent(runId)}${passQuery}`)
+      : apiUrl(`run/${encodeURIComponent(runId)}/analyzer${passQuery.replace(/^&/, '?')}`);
   }
 
   function navigateTo(url) {
@@ -2919,12 +2923,12 @@
   // when the run has analysis data, a static Analyze action styled like the
   // run-detail inline actions when the run is eligible, and a dash while the
   // run is still live.
-  function renderAnalysisCell(run, status) {
-    const causeCount = Number(run.analysis_cause_count || 0);
-    const analyzerHref = projectUrl(
-      state.currentProject && state.currentProject.slug,
-      `analysis?run=${encodeURIComponent(run.run_id)}`,
-    );
+  function renderAnalysisCell(run, status, passNumber = null, analysisCauseCount = null) {
+    const isPassScoped = passNumber !== null && passNumber !== undefined;
+    const causeCount = isPassScoped
+      ? Number(analysisCauseCount || 0)
+      : Number(run.analysis_cause_count || 0);
+    const analyzerHref = analyzerUrlForRun(run, passNumber);
     if (causeCount > 0) {
       const label = `${causeCount} cause${causeCount === 1 ? '' : 's'}`;
       return `<a class="run-analysis-chip" href="${analyzerHref}" title="${label} found — open auto-analysis" aria-label="${label} found — open auto-analysis">${ANALYSIS_SPARK_ICON}${label}</a>`;
@@ -3610,6 +3614,7 @@
                   : {},
                 items_scored: null,
                 error_count: s.error_count,
+                analysis_cause_count: s.analysis_cause_count,
               })),
             },
             group: { metric: primary },
@@ -3701,6 +3706,7 @@
         const cell = row.querySelector(`td.${cls}`);
         return `<td class="${cls}">${cell ? cell.innerHTML : ''}</td>`;
       };
+      const parentRun = runs.find(candidate => candidate.run_id === runId) || { run_id: runId };
       const pending = allPasses.filter(p => String(p.status || '').toLowerCase() === 'pending');
       const passRows = allPasses.filter(p => String(p.status || '').toLowerCase() !== 'pending');
       const pendingWillNotRun = ['STOPPED', 'FAILED', 'CANCELED', 'CANCELLED']
@@ -3824,7 +3830,7 @@
           <td class="col-time">${passDate
             ? `<span class="timestamp" title="${escapeHtml(passDate.full)}"><span class="date">${passDate.date}</span><span class="timestamp-sep">·</span><span class="time">${passDate.time}</span></span>`
             : '<span class="metric-na">—</span>'}</td>
-          ${inherit('col-analysis')}
+          <td class="col-analysis" onclick="event.stopPropagation()">${renderAnalysisCell(parentRun, runStatus, firstPass, pass.analysis_cause_count)}</td>
           ${inherit('col-version')}
           ${metricCells}${visibleTraceMetrics.length > 0 ? '<td class="col-trace-separator"></td>' : ''}
           ${visibleSystemColumns.has('latency') ? latencyCell('col-latency', pass.avg_latency_ms, avgLatencyWinners) : ''}
@@ -3995,6 +4001,13 @@
         const passNumber = detail.dataset.passNumber;
         if (!passNumber) return;
         detail.addEventListener('click', event => {
+          const analysisLink = event.target.closest?.('.run-analysis-chip, .run-analysis-start');
+          if (analysisLink) {
+            event.preventDefault();
+            event.stopPropagation();
+            navigateTo(analysisLink.href);
+            return;
+          }
           event.stopPropagation();
           const filePath = decodeURIComponent(row.dataset.file || '');
           if (!filePath) return;

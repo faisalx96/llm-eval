@@ -38,6 +38,10 @@ MANAGED_ANALYSIS_KEYS = {
     "solution_source",
 }
 
+# Repeat runs keep one score row per sample/pass.  Store the diagnosis next to
+# that score so editing a selected sample cannot mutate the reduced item row.
+PASS_ANALYSIS_META_KEY = "root_cause_analysis"
+
 
 @dataclass
 class RootCauseChangeResult:

@@ -3718,6 +3718,12 @@
     .rdi-category-picker__clear {
       flex: 0 0 auto;
     }
+    .rdi-category-picker__footer-actions {
+      display: flex;
+      align-items: center;
+      flex: 0 0 auto;
+      gap: var(--space-sm);
+    }
     .rdi-analysis-warning {
       display: flex;
       align-items: flex-start;
@@ -5537,6 +5543,7 @@
           : root + '/run/' + encodeURIComponent(runId) + '/analyzer';
         const params = new URLSearchParams();
         if (CURRENT_PROJECT_SLUG) params.set('run', runId);
+        if (state.viewPass) params.set('pass', String(state.viewPass));
         if (state.selectedMetric) params.set('metric', state.selectedMetric);
         return path + (params.toString() ? '?' + params.toString() : '');
       }
@@ -5714,6 +5721,10 @@
         const existingLabel = known.find(value => String(value).trim().toLocaleLowerCase() === label.toLocaleLowerCase());
         const hasTaxonomyInput = taxonomyInput !== undefined;
         const taxonomy = normalizeCategoryTaxonomy(taxonomyInput);
+        if (!taxonomy.description || !taxonomy.when_to_use) {
+          showToast('error', 'Category guidance required', 'Add both Description and Use when guidance before saving this diagnosis category.');
+          return false;
+        }
         if (existingLabel && !hasTaxonomyInput) return true;
 
         const projectSlug = projectDiagnosisCatalogSlug();
@@ -6446,14 +6457,22 @@
         return scoped;
       }
 
-      function scopedPassItemMetadata(metadata) {
+      function scopedPassItemMetadata(metadata, row, metricNames, passNumber) {
         const scoped = { ...((metadata && typeof metadata === 'object') ? metadata : {}) };
         [
           'root_cause', 'root_cause_detail', 'root_cause_note',
           'root_cause_source', 'root_cause_confidence', 'root_cause_metric_name',
           'solution', 'solution_note', 'solution_source',
-          'metric_analyses', 'analysis_error',
+          'metric_analyses', 'analysis_error', 'analysis_warning',
         ].forEach(key => delete scoped[key]);
+        const passAnalyses = row?.pass_metric_analyses || {};
+        const selectedAnalyses = {};
+        (metricNames || []).forEach(metricName => {
+          const values = passAnalyses[metricName];
+          const analysis = Array.isArray(values) ? values[passNumber - 1] : null;
+          if (analysis && typeof analysis === 'object') selectedAnalyses[metricName] = analysis;
+        });
+        if (Object.keys(selectedAnalyses).length) scoped.metric_analyses = selectedAnalyses;
         return scoped;
       }
 
@@ -6487,14 +6506,25 @@
           ? 'error'
           : (rawStatus || (hasPassScore ? 'completed' : 'pending'));
         const latencyMs = Number(att?.latency_ms || 0);
+        const passReviewCorrections = {};
+        const passAnalyses = row.pass_metric_analyses || {};
+        metricNames.forEach(metricName => {
+          const values = passAnalyses[metricName];
+          const analysis = Array.isArray(values) ? values[passNumber - 1] : null;
+          if (!analysis || typeof analysis !== 'object') return;
+          passReviewCorrections[metricName] = {
+            id: null,
+            status: String(analysis.review_status || 'pending').toLowerCase(),
+          };
+        });
         return {
           ...row,
           metric_values: passValues,
           metric_meta: passMetricMeta,
-          item_metadata: scopedPassItemMetadata(row.item_metadata),
+          item_metadata: scopedPassItemMetadata(row.item_metadata, row, metricNames, passNumber),
           review_correction_id: null,
           review_correction_status: '',
-          review_corrections: {},
+          review_corrections: passReviewCorrections,
           status: status,
           error: att?.error || '',
           output: att ? (att.output ?? null) : null,
@@ -8581,8 +8611,39 @@
         });
       }
 
+      function isRepeatRun() {
+        return (parseInt(state.run?.samples, 10) || 1) > 1;
+      }
+
+      function isRepeatAggregateView() {
+        return isRepeatRun() && !state.viewPass;
+      }
+
       function getRowRootCauseAnalyses(row, metricFilter) {
         const md = row?.item_metadata || {};
+        if (isRepeatAggregateView()) {
+          const passAnalyses = row?.pass_metric_analyses;
+          if (passAnalyses && typeof passAnalyses === 'object' && Object.keys(passAnalyses).length) {
+            const entries = [];
+            Object.entries(passAnalyses).forEach(([metricName, values]) => {
+              if (!Array.isArray(values)) return;
+              values.forEach((analysis, index) => {
+                if (!analysis || typeof analysis !== 'object') return;
+                if (metricFilter !== 'all' && metricFilter !== metricName) return;
+                if (!analysis.error && rootCauseCategories(analysis).length) {
+                  entries.push({
+                    ...analysis,
+                    root_causes: rootCauseCategories(analysis),
+                    root_cause: rootCauseCategories(analysis)[0] || '',
+                    metric_name: metricName,
+                    pass_number: index + 1,
+                  });
+                }
+              });
+            });
+            return entries;
+          }
+        }
         const metricAnalyses = md.metric_analyses && typeof md.metric_analyses === 'object'
           ? md.metric_analyses
           : {};
@@ -8642,7 +8703,7 @@
       }
 
       function aggregateResultsButtonHtml() {
-        if (IS_EXPORT) return '';
+        if (IS_EXPORT || isRepeatAggregateView()) return '';
         const pending = state.aggregationRequestPending;
         return '<button type="button" class="aggregate-results-btn" id="aggregate-results-btn"' +
           (pending ? ' disabled aria-busy="true"' : '') +
@@ -8652,6 +8713,7 @@
       }
 
       function aggregationStatusHtml() {
+        if (isRepeatRun()) return '';
         const status = state.analysisAggregationStatus;
         if (!aggregationStatusMatchesCurrentMetric(status)) return '';
         if (status.status === 'pending') {
@@ -8672,6 +8734,31 @@
         const runId = state.run?.file_path || RUN_ID || '';
         if (!runId) return;
         const metric = state.rootCauseMetric === 'all' ? null : state.rootCauseMetric;
+        const passNumber = state.viewPass ? Number(state.viewPass) : null;
+        const scopeLabel = passNumber ? 'Sample ' + passNumber : 'this run';
+        const confirmation = window.QymShell?.openConfirmDialog
+          ? await window.QymShell.openConfirmDialog({
+              title: 'Aggregate saved results for ' + scopeLabel + '?',
+              description: [
+                'This sends the saved AI root-cause labels in ' + scopeLabel + ' through one consolidation pass.',
+                'It can change category and subcause labels for non-approved AI diagnoses; it does not rerun item analysis.',
+                passNumber
+                  ? 'Only this sample will be changed. Other samples and the run-level aggregate remain unchanged.'
+                  : 'Approved and human-edited diagnoses will be left unchanged.',
+              ],
+              note: passNumber
+                ? 'Approved or human-edited diagnoses in this sample will be left unchanged.'
+                : 'This action may change pending AI category and subcause labels, but approved or human-edited diagnoses will be left unchanged.',
+              cancelLabel: 'Cancel',
+              confirmLabel: 'Aggregate results',
+              confirmClass: 'shell-btn-primary',
+            })
+          : { confirmed: window.confirm(
+              'Aggregate saved results for ' + scopeLabel + '? This can change pending AI category and subcause labels. ' +
+              (passNumber ? 'Only this sample will be changed. ' : '') +
+              'Approved and human-edited diagnoses will be left unchanged.'
+            ) };
+        if (!confirmation || !confirmation.confirmed) return;
         state.aggregationRequestPending = true;
         state.analysisAggregationStatus = {
           status: 'pending',
@@ -8683,7 +8770,10 @@
           const response = await fetch(apiUrl('api/runs/' + runId + '/aggregate-analysis'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ metric: metric }),
+            body: JSON.stringify({
+              metric: metric,
+              ...(passNumber ? { pass_number: passNumber } : {}),
+            }),
           });
           const payload = await response.json().catch(() => ({}));
           if (!response.ok) throw new Error(payload.detail || 'Aggregation failed');
@@ -8703,7 +8793,9 @@
           showToast(
             'success',
             'Aggregation complete',
-            changed > 0 ? changed + ' saved labels consolidated.' : 'Saved labels were already canonical.'
+            changed > 0
+              ? changed + ' saved labels consolidated in ' + scopeLabel + '.'
+              : 'Saved labels in ' + scopeLabel + ' were already canonical.'
           );
         } catch (error) {
           state.aggregationRequestPending = false;
@@ -9446,10 +9538,6 @@
       function renderRootCauseSection() {
         const section = el('root-cause-section');
         if (!section) return;
-        // Root-cause/review annotations are stored once for the reduced run
-        // item, not per pass. Do not mislabel that aggregate analysis as a
-        // diagnosis of the selected execution.
-        if (state.viewPass) { section.innerHTML = ''; return; }
 
         const rows = state.snapshot.rows || [];
         const filteredItems = getFilteredItems();
@@ -10523,7 +10611,8 @@
             : '';
 
           // Detailed AI analysis for every failed metric on this item.
-          const metricAnalyses = row.item_metadata?.metric_analyses &&
+          const aggregateRepeatView = isRepeatAggregateView();
+          const metricAnalyses = !aggregateRepeatView && row.item_metadata?.metric_analyses &&
             typeof row.item_metadata.metric_analyses === 'object'
             ? row.item_metadata.metric_analyses
             : {};
@@ -10632,6 +10721,7 @@
               perMetricAnalysisHtml = '<div class="metric-analysis-list"><div class="metric-analysis-heading">Per-metric root cause analysis</div>' + analysisCards + '</div>';
             }
           }
+          if (aggregateRepeatView) perMetricAnalysisHtml = '';
 
 
           // The metrics strip: ONE row per metric doing all three jobs —
@@ -11042,6 +11132,7 @@
                     metric_name: metricName,
                     comment: '',
                   };
+              if (state.viewPass) approvalBody.pass_number = state.viewPass;
               const res = await fetch(apiUrl(approvalPath), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -11058,8 +11149,8 @@
               if (row) {
                 row.review_corrections = row.review_corrections || {};
                 row.review_corrections[metricName] = {
-                  id: data.id || reviewCorrectionId,
-                  status: 'approved',
+                  id: data.id || correctionId || null,
+                  status: String(data.status || 'approved').toLowerCase(),
                 };
               }
               renderItems();
@@ -11142,6 +11233,11 @@
         });
       }
 
+      function addCurrentPassToPayload(payload) {
+        if (state.viewPass) payload.pass_number = state.viewPass;
+        return payload;
+      }
+
       async function saveFeedback(itemId, note, metricName) {
         if (metricName) {
           await saveMetricAnalysisPatch(itemId, metricName, { root_cause_note: note });
@@ -11167,7 +11263,7 @@
           var res = await fetch(apiUrl('api/runs/update_root_cause'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ item_id: itemId, root_cause_note: note, run_id: runId }),
+            body: JSON.stringify(addCurrentPassToPayload({ item_id: itemId, root_cause_note: note, run_id: runId })),
           });
           var data = await res.json().catch(function() { return {}; });
           if (!res.ok || data.error) { console.error('Failed to save feedback:', data.error); return; }
@@ -11291,11 +11387,11 @@
           const res = await fetch(apiUrl('api/runs/update_root_cause'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(Object.assign({
+            body: JSON.stringify(addCurrentPassToPayload(Object.assign({
               item_id: itemId,
               metric_name: metricName,
               run_id: runId,
-            }, patch)),
+            }, patch))),
           });
           const data = await res.json().catch(() => ({}));
           if (!res.ok || data.detail || data.error) {
@@ -11339,8 +11435,8 @@
         picker.setAttribute('role', 'presentation');
         picker.innerHTML = '<div class="rdi-category-picker__panel" role="dialog" aria-modal="true" aria-labelledby="rdi-category-picker-title">' +
           '<div class="rdi-category-picker__header"><div><p class="rdi-category-picker__eyebrow">Diagnosis categories</p><h2 class="rdi-category-picker__title" id="rdi-category-picker-title">Change categories</h2><p class="rdi-category-picker__lead">Choose the categories that explain this item. Click a selected category again to remove it. Human selections are not limited by the analysis setting.</p></div><button type="button" class="rdi-category-picker__close qym-icon-action" aria-label="Close diagnosis categories" title="Close">×</button></div>' +
-          '<div class="rdi-category-picker__body"><div class="rdi-category-picker__toolbar"><input class="qym-control qym-input" type="search" placeholder="Search categories" aria-label="Search diagnosis categories" autocomplete="off" /><span class="rdi-category-picker__count" aria-live="polite"></span></div><div class="rdi-category-picker__list" role="listbox" aria-multiselectable="true"></div><div class="rdi-category-picker__add"><span class="rdi-category-picker__add-label">Add to project categories</span><div class="rdi-category-picker__add-row"><input class="qym-control qym-input" type="text" placeholder="New category" aria-label="New project diagnosis category" /><button type="button" class="rdi-category-picker__add-button qym-inline-action qym-inline-action--neutral">Add</button></div><div class="rdi-category-picker__taxonomy"><div class="rdi-category-picker__taxonomy-heading"><span class="rdi-category-picker__add-label">Category guidance</span><span class="rdi-category-picker__taxonomy-note">Optional · saved to the project</span></div><label class="rdi-category-picker__taxonomy-field"><span>Description</span><textarea class="qym-control qym-input" data-picker-taxonomy="description" rows="2" maxlength="2000" placeholder="What this category means..." spellcheck="true"></textarea></label><label class="rdi-category-picker__taxonomy-field"><span>Use when</span><textarea class="qym-control qym-input" data-picker-taxonomy="when_to_use" rows="2" maxlength="2000" placeholder="When the analyzer should use this category..." spellcheck="true"></textarea></label></div><p class="rdi-category-picker__status" role="status" aria-live="polite">New categories and guidance are saved to this project automatically.</p></div></div>' +
-          '<div class="rdi-category-picker__footer"><span class="rdi-category-picker__status" data-picker-save-status role="status" aria-live="polite">Selection saves as you click.</span><button type="button" class="rdi-category-picker__clear qym-inline-action qym-inline-action--neutral">Clear selection</button></div>' +
+          '<div class="rdi-category-picker__body"><div class="rdi-category-picker__toolbar"><input class="qym-control qym-input" type="search" placeholder="Search categories" aria-label="Search diagnosis categories" autocomplete="off" /><span class="rdi-category-picker__count" aria-live="polite"></span></div><div class="rdi-category-picker__list" role="listbox" aria-multiselectable="true"></div><div class="rdi-category-picker__add"><span class="rdi-category-picker__add-label">Add to project categories</span><div class="rdi-category-picker__add-row"><input class="qym-control qym-input" type="text" placeholder="New category" aria-label="New project diagnosis category" required aria-required="true" /><button type="button" class="rdi-category-picker__add-button qym-inline-action qym-inline-action--neutral">Add</button></div><div class="rdi-category-picker__taxonomy"><div class="rdi-category-picker__taxonomy-heading"><span class="rdi-category-picker__add-label">Category guidance</span><span class="rdi-category-picker__taxonomy-note">Required · saved to the project</span></div><label class="rdi-category-picker__taxonomy-field"><span>Description <abbr title="Required" aria-label="Required">*</abbr></span><textarea class="qym-control qym-input" data-picker-taxonomy="description" rows="2" maxlength="2000" placeholder="What this category means..." spellcheck="true" required aria-required="true"></textarea></label><label class="rdi-category-picker__taxonomy-field"><span>Use when <abbr title="Required" aria-label="Required">*</abbr></span><textarea class="qym-control qym-input" data-picker-taxonomy="when_to_use" rows="2" maxlength="2000" placeholder="When the analyzer should use this category..." spellcheck="true" required aria-required="true"></textarea></label></div><p class="rdi-category-picker__status" role="status" aria-live="polite">New categories and guidance are saved to this project automatically.</p></div></div>' +
+          '<div class="rdi-category-picker__footer"><span class="rdi-category-picker__status" data-picker-save-status role="status" aria-live="polite">Selection saves as you click.</span><div class="rdi-category-picker__footer-actions"><button type="button" class="rdi-category-picker__clear qym-inline-action qym-inline-action--neutral">Clear selection</button><button type="button" class="rdi-category-picker__done qym-inline-action qym-inline-action--accent">Done</button></div></div>' +
         '</div>';
         const panel = picker.querySelector('.rdi-category-picker__panel');
         const optionsContainer = picker.querySelector('.rdi-category-picker__list');
@@ -11417,8 +11513,19 @@
         });
         const addCategory = async () => {
           const value = String(addInput.value || '').trim();
-          if (!value) return;
+          if (!value) {
+            addInput.focus();
+            setStatus(addStatus, 'Enter a category name before adding it.', 'error');
+            return;
+          }
           const taxonomy = readTaxonomy();
+          const missingTaxonomyField = [taxonomyDescriptionInput, taxonomyWhenToUseInput]
+            .find(field => !String(field.value || '').trim());
+          if (missingTaxonomyField) {
+            missingTaxonomyField.focus();
+            setStatus(addStatus, 'Description and Use when guidance are required before adding a category.', 'error');
+            return;
+          }
           const existing = allOptions.find(option => sameCategory(option, value));
           if (existing) {
             addButton.disabled = true;
@@ -11462,6 +11569,7 @@
           addCategory();
         });
         picker.querySelector('.rdi-category-picker__close').addEventListener('click', () => cleanup());
+        picker.querySelector('.rdi-category-picker__done').addEventListener('click', () => cleanup());
         picker.addEventListener('click', event => {
           if (event.target === picker) cleanup();
         });
@@ -11638,7 +11746,7 @@
           const res = await fetch(apiUrl('api/runs/update_root_cause'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ item_id: itemId, root_causes: categories, root_cause_detail: existingDetail, run_id: runId }),
+            body: JSON.stringify(addCurrentPassToPayload({ item_id: itemId, root_causes: categories, root_cause_detail: existingDetail, run_id: runId })),
           });
           const data = await res.json().catch(() => ({}));
           if (!res.ok || data.error) {
@@ -11693,7 +11801,7 @@
           const res = await fetch(apiUrl('api/runs/update_root_cause'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ item_id: itemId, root_causes: existingCategories, root_cause_detail: detail, run_id: runId }),
+            body: JSON.stringify(addCurrentPassToPayload({ item_id: itemId, root_causes: existingCategories, root_cause_detail: detail, run_id: runId })),
           });
           const data = await res.json().catch(() => ({}));
           if (!res.ok || data.error) {
@@ -11831,7 +11939,7 @@
           const res = await fetch(apiUrl('api/runs/update_root_cause'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ item_id: itemId, root_causes: rootCauseCategories(row?.item_metadata), root_cause_detail: row?.item_metadata?.root_cause_detail || '', solution: solution, run_id: runId }),
+            body: JSON.stringify(addCurrentPassToPayload({ item_id: itemId, root_causes: rootCauseCategories(row?.item_metadata), root_cause_detail: row?.item_metadata?.root_cause_detail || '', solution: solution, run_id: runId })),
           });
           const data = await res.json().catch(() => ({}));
           if (!res.ok || data.error) {
