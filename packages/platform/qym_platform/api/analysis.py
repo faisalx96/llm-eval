@@ -93,6 +93,8 @@ from qym_platform.services.root_cause_changes import (
     build_ai_state,
     build_item_metadata,
     extract_analysis_state,
+    is_human_metric_analysis,
+    lock_run_item,
     replace_metric_review_candidate,
 )
 from qym_platform.services.root_cause_categories import (
@@ -1516,20 +1518,18 @@ def _synthetic_category_catalog(
     db: Session,
     project_id: str,
 ) -> dict[str, Any]:
-    """Expose pre-versioning project labels as a stable read-only v0."""
-    scope = _ProjectAnalysisScope(
-        id=_synthetic_category_catalog_id(project_id), project_id=project_id
-    )
-    legacy_items = (
-        db.query(RunItem)
-        .join(Run, Run.id == RunItem.run_id)
-        .filter(Run.project_id == project_id, Run.deleted_at.is_(None))
-        .all()
-    )
-    categories, details = _collect_task_root_cause_catalog(
-        db, scope, legacy_items
-    )
-    taxonomy = _collect_task_root_cause_taxonomy(db, scope, legacy_items)
+    """Expose a lightweight deterministic fallback for pre-migration reads.
+
+    Legacy labels are materialized by migration 0043.  Keeping this fallback
+    static avoids scanning every project RunItem on normal config/analyze
+    requests when a deployment has not run the migration yet.
+    """
+    categories = list(ROOT_CAUSE_CATEGORIES)
+    details: dict[str, list[str]] = {}
+    taxonomy = {
+        category: dict(DEFAULT_ROOT_CAUSE_TAXONOMY.get(category, {}))
+        for category in categories
+    }
     entries = _catalog_entries_for_categories(
         categories,
         prior_entries=[],
@@ -1865,6 +1865,26 @@ def _category_counts(results: List[AnalysisResult]) -> Dict[str, int]:
     return counts
 
 
+def _persistence_totals(results: list[dict[str, Any]]) -> dict[str, Any]:
+    """Summarize additive persistence outcomes for an analysis batch."""
+    counts = {
+        "total_attempted": len(results),
+        "total_persisted": 0,
+        "total_skipped_human": 0,
+        "total_analysis_failed": 0,
+    }
+    for result in results:
+        status = result.get("persistence_status")
+        if status == "persisted":
+            counts["total_persisted"] += 1
+        elif status == "skipped_human_protection":
+            counts["total_skipped_human"] += 1
+        elif status == "analysis_failed":
+            counts["total_analysis_failed"] += 1
+    counts["persistence_totals"] = dict(counts)
+    return counts
+
+
 def _sync_item_analysis_warning(meta: dict[str, Any]) -> dict[str, Any]:
     """Keep the item-level warning aligned with saved metric analyses."""
     warnings: list[str] = []
@@ -2037,6 +2057,87 @@ def _persist_aggregated_bindings(
             != (binding.original_category_taxonomy or {})
         )
     ]
+    # Aggregation itself is performed before this point.  Lock and reload all
+    # affected rows together only for the final canonical-label write, then
+    # re-check human ownership against the fresh metadata.
+    changed_item_ids = sorted({binding.item.item_id for binding in changed})
+    locked_items = (
+        db.query(RunItem)
+        .filter(
+            RunItem.run_id == run.id,
+            RunItem.item_id.in_(changed_item_ids),
+        )
+        .order_by(RunItem.item_id.asc())
+        .populate_existing()
+        .with_for_update()
+        .all()
+        if changed_item_ids
+        else []
+    )
+    locked_by_id = {item.item_id: item for item in locked_items}
+    changed = [
+        binding
+        for binding in changed
+        if binding.item.item_id in locked_by_id
+        and not (
+            binding.metric_name
+            and is_human_metric_analysis(
+                locked_by_id[binding.item.item_id].item_metadata,
+                binding.metric_name,
+            )
+        )
+        and not (
+            binding.metric_name is None
+            and str(
+                (locked_by_id[binding.item.item_id].item_metadata or {}).get(
+                    "root_cause_source"
+                )
+                if isinstance(locked_by_id[binding.item.item_id].item_metadata, dict)
+                else ""
+            ).lower()
+            == "human"
+        )
+    ]
+    for binding in changed:
+        binding.item = locked_by_id[binding.item.item_id]
+    changed_item_ids = sorted({binding.item.item_id for binding in changed})
+    changed_metric_names = sorted(
+        {str(binding.metric_name) for binding in changed if binding.metric_name}
+    )
+    score_rows = (
+        db.query(RunItemScore)
+        .filter(
+            RunItemScore.run_id == run.id,
+            RunItemScore.item_id.in_(changed_item_ids),
+        )
+        .all()
+        if changed_item_ids
+        else []
+    )
+    scores_by_item: dict[str, dict[str, Any]] = {}
+    for score in score_rows:
+        scores_by_item.setdefault(score.item_id, {})[score.metric_name] = (
+            score.score_numeric
+            if score.score_numeric is not None
+            else score.score_raw
+        )
+    active_candidates = (
+        db.query(ReviewCorrection)
+        .filter(
+            ReviewCorrection.run_id == run.id,
+            ReviewCorrection.item_id.in_(changed_item_ids),
+            ReviewCorrection.metric_name.in_(changed_metric_names),
+            ReviewCorrection.is_active.is_(True),
+        )
+        .all()
+        if changed_item_ids and changed_metric_names
+        else []
+    )
+    candidates_by_key: dict[tuple[str, str], list[ReviewCorrection]] = {}
+    for candidate in active_candidates:
+        candidates_by_key.setdefault(
+            (candidate.item_id, candidate.metric_name or ""), []
+        ).append(candidate)
     actor_user_id = principal.user.id if principal.auth_type != "none" else None
 
     for binding in changed:
@@ -2065,6 +2166,8 @@ def _persist_aggregated_bindings(
             actor_user_id=actor_user_id,
             actor_source="ai",
             next_state=state,
+            scores_snapshot=scores_by_item.get(binding.item.item_id, {}),
+            item_locked=True,
         )
 
     metric_changes_by_item: dict[str, list[_PersistedAnalysisBinding]] = {}
@@ -2113,6 +2216,11 @@ def _persist_aggregated_bindings(
                 analysis=metric_analyses[binding.metric_name],
                 actor_user_id=actor_user_id,
                 actor_source="ai",
+                active_candidates=candidates_by_key.get(
+                    (item.item_id, binding.metric_name or ""), []
+                ),
+                scores_snapshot=scores_by_item.get(item.item_id, {}),
+                item_locked=True,
             )
 
     return len(changed)
@@ -2275,20 +2383,89 @@ def _save_analysis_results(
     response_results: list[Dict[str, Any]] = []
     error_count = 0
 
-    items_by_id = {item.item_id: item for item, _ in analysis_targets}
     results_by_item: dict[str, list[AnalysisResult]] = {}
     for result in results:
         results_by_item.setdefault(result.item_id, []).append(result)
-        response_results.append(_analysis_result_payload(result))
+        payload = _analysis_result_payload(result)
+        payload["persistence_status"] = (
+            "analysis_failed" if result.error else "persisted"
+        )
+        response_results.append(payload)
 
-    for item_id, item_results in results_by_item.items():
+    # Acquire every affected item lock in a deterministic order only after all
+    # analyzer/aggregation work has completed.  The locked rows are reloaded
+    # from the database, so a concurrent reviewer edit is authoritative.
+    target_item_ids = sorted(results_by_item)
+    locked_items = (
+        db.query(RunItem)
+        .filter(
+            RunItem.run_id == run.id,
+            RunItem.item_id.in_(target_item_ids),
+        )
+        .order_by(RunItem.item_id.asc())
+        .populate_existing()
+        .with_for_update()
+        .all()
+        if target_item_ids
+        else []
+    )
+    items_by_id = {item.item_id: item for item in locked_items}
+    score_rows = (
+        db.query(RunItemScore)
+        .filter(
+            RunItemScore.run_id == run.id,
+            RunItemScore.item_id.in_(target_item_ids),
+        )
+        .all()
+        if target_item_ids
+        else []
+    )
+    scores_by_item: dict[str, dict[str, Any]] = {}
+    for score in score_rows:
+        scores_by_item.setdefault(score.item_id, {})[score.metric_name] = (
+            score.score_numeric
+            if score.score_numeric is not None
+            else score.score_raw
+        )
+    active_candidates = (
+        db.query(ReviewCorrection)
+        .filter(
+            ReviewCorrection.run_id == run.id,
+            ReviewCorrection.item_id.in_(target_item_ids),
+            ReviewCorrection.is_active.is_(True),
+        )
+        .all()
+        if target_item_ids
+        else []
+    )
+    candidates_by_key: dict[tuple[str, str], list[ReviewCorrection]] = {}
+    legacy_candidates_by_item: dict[str, list[ReviewCorrection]] = {}
+    for candidate in active_candidates:
+        if candidate.metric_name:
+            candidates_by_key.setdefault(
+                (candidate.item_id, candidate.metric_name), []
+            ).append(candidate)
+        else:
+            legacy_candidates_by_item.setdefault(candidate.item_id, []).append(candidate)
+
+    def set_status(result: AnalysisResult, status: str) -> None:
+        for payload in response_results:
+            if (
+                payload.get("item_id") == result.item_id
+                and payload.get("metric_name") == result.metric_name
+                and payload.get("persistence_status") != "skipped_human_protection"
+            ):
+                payload["persistence_status"] = status
+                return
+
+    for item_id in target_item_ids:
+        item_results = results_by_item[item_id]
         item = items_by_id.get(item_id)
         if item is None:
+            for result in item_results:
+                set_status(result, "analysis_failed")
             continue
 
-        # The LLM call can run for a long time. Refresh the row so the guard
-        # observes a human edit committed by another request during analysis.
-        db.refresh(item)
         original_meta = (
             dict(item.item_metadata) if isinstance(item.item_metadata, dict) else {}
         )
@@ -2296,15 +2473,20 @@ def _save_analysis_results(
         # happens before the LLM call, so a reviewer can add a human label
         # while analysis is running. Never let that late edit be overwritten
         # unless the request explicitly opted into human-label replacement.
-        persistable_results = [
-            result
-            for result in item_results
-            if not (
+        persistable_results = []
+        for result in item_results:
+            if (
                 result.metric_name
                 and not allow_human_overwrite
-                and _is_human_metric_analysis(original_meta, result.metric_name)
-            )
-        ]
+                and is_human_metric_analysis(original_meta, result.metric_name)
+            ):
+                set_status(result, "skipped_human_protection")
+            elif result.error:
+                set_status(result, "analysis_failed")
+                error_count += 1
+                persistable_results.append(result)
+            else:
+                persistable_results.append(result)
         successful = [result for result in persistable_results if not result.error]
 
         # Keep the legacy item-level summary for older consumers, but review
@@ -2362,7 +2544,6 @@ def _save_analysis_results(
             if not metric_name:
                 continue
             if result.error:
-                error_count += 1
                 item_errors.append(f"{metric_name}: {result.error}")
                 metric_analyses[metric_name] = {
                     "source": "ai",
@@ -2441,22 +2622,15 @@ def _save_analysis_results(
             # candidate. Leaving both active makes the review workflow appear
             # to have one shared diagnosis even though every metric now has an
             # independent category, root cause, and feedback.
-            legacy_candidates = (
-                db.query(ReviewCorrection)
-                .filter(
-                    ReviewCorrection.run_id == run.id,
-                    ReviewCorrection.item_id == item.item_id,
-                    ReviewCorrection.metric_name.is_(None),
-                    ReviewCorrection.is_active.is_(True),
-                )
-                .all()
-            )
+            legacy_candidates = legacy_candidates_by_item.get(item.item_id, [])
             for candidate in legacy_candidates:
                 candidate.is_active = False
                 candidate.status = CorrectionStatus.SUPERSEDED
         for result in successful:
+            set_status(result, "persisted")
             metric_name = str(result.metric_name or "").strip()
             if not metric_name:
+                set_status(result, "analysis_failed")
                 continue
             replace_metric_review_candidate(
                 db,
@@ -2466,6 +2640,9 @@ def _save_analysis_results(
                 analysis=metric_analyses[metric_name],
                 actor_user_id=actor_user_id,
                 actor_source="ai",
+                active_candidates=candidates_by_key.get((item.item_id, metric_name), []),
+                scores_snapshot=scores_by_item.get(item.item_id, {}),
+                item_locked=True,
             )
 
     db.commit()
@@ -2502,35 +2679,6 @@ def _metric_passed(
     return score.score_numeric >= threshold
 
 
-def _is_human_metric_analysis(
-    metadata: dict[str, Any] | None, metric_name: str
-) -> bool:
-    """Return whether a metric diagnosis is owned by a human reviewer.
-
-    Newer rows store the source inside ``metric_analyses``. Older rows may only
-    have the legacy item-level source, optionally tied to a metric by
-    ``root_cause_metric_name``. Keep both representations protected while
-    making the decision per metric rather than per item.
-    """
-    md = metadata if isinstance(metadata, dict) else {}
-    metric = str(metric_name or "").strip()
-    metric_analyses = md.get("metric_analyses")
-    if isinstance(metric_analyses, dict):
-        analysis = metric_analyses.get(metric)
-        if isinstance(analysis, dict):
-            source = str(
-                analysis.get("source") or analysis.get("root_cause_source") or ""
-            ).strip().lower()
-            if source == "human":
-                return True
-
-    legacy_source = str(md.get("root_cause_source") or "").strip().lower()
-    if legacy_source != "human":
-        return False
-    legacy_metric = str(md.get("root_cause_metric_name") or "").strip()
-    return not legacy_metric or legacy_metric == metric
-
-
 def _analysis_metric_names(
     run: Run,
     scores_by_item: dict[str, dict[str, RunItemScore]],
@@ -2546,6 +2694,13 @@ def _analysis_metric_names(
             if metric_name not in names:
                 names.append(metric_name)
     return names
+
+
+def _is_human_metric_analysis(
+    metadata: dict[str, Any] | None, metric_name: str
+) -> bool:
+    """Compatibility wrapper; ownership logic lives in the persistence service."""
+    return is_human_metric_analysis(metadata, metric_name)
 
 
 def _requested_metric_scope(request: AnalyzeRequest) -> set[str] | None:
@@ -2659,7 +2814,7 @@ def _filter_analysis_targets(
                         continue
 
             existing_analysis = metric_analyses.get(metric_name)
-            is_human_analysis = _is_human_metric_analysis(md, metric_name)
+            is_human_analysis = is_human_metric_analysis(md, metric_name)
             if is_human_analysis and not request.allow_human_overwrite:
                 continue
             if (
@@ -2710,7 +2865,9 @@ def _analysis_job_payload(job: AnalysisJob | None) -> dict[str, Any] | None:
     """Return a JSON-safe job snapshot for the UI status endpoints."""
     if job is None:
         return None
-    payload = job.snapshot()
+    payload = analysis_job_manager.snapshot(job)
+    if payload is None:
+        return None
     for key in ("created_at", "updated_at", "completed_at"):
         payload[key] = to_api_timestamp(payload.get(key))
     return payload
@@ -2774,6 +2931,8 @@ async def _run_analysis_job(
         )
 
         if not analysis_targets:
+            if job.cancel_requested:
+                raise asyncio.CancelledError()
             try:
                 categories, aggregated = await _aggregate_run_analysis_results(
                     db=db,
@@ -2787,6 +2946,8 @@ async def _run_analysis_job(
                     principal=principal,
                     metric_scope=metric_scope,
                 )
+                if job.cancel_requested:
+                    raise asyncio.CancelledError()
                 db.commit()
             except AnalysisAggregationError as exc:
                 db.rollback()
@@ -2803,6 +2964,7 @@ async def _run_analysis_job(
                 "categories": categories,
                 "aggregated": aggregated,
                 "errors": 0,
+                **_persistence_totals([]),
             }
 
         progress_errors = 0
@@ -2879,6 +3041,9 @@ async def _run_analysis_job(
             aggregated = 0
             aggregation_error = str(exc)
 
+        if job.cancel_requested:
+            raise asyncio.CancelledError()
+
         response_results, error_count = _save_analysis_results(
             db,
             run,
@@ -2911,6 +3076,7 @@ async def _run_analysis_job(
             "aggregated": aggregated,
             "aggregation_error": aggregation_error,
             "errors": error_count,
+            **_persistence_totals(response_results),
         }
 
 
@@ -3282,6 +3448,7 @@ async def analyze_run_items(
             "categories": categories,
             "aggregated": aggregated,
             "errors": 0,
+            **_persistence_totals([]),
         }
 
     # Run async LLM analysis
@@ -3355,6 +3522,7 @@ async def analyze_run_items(
         "aggregated": aggregated,
         "aggregation_error": aggregation_error,
         "errors": error_count,
+        **_persistence_totals(response_results),
     }
 
 
@@ -3454,6 +3622,7 @@ async def analyze_run_items_stream(
                     "categories": categories,
                     "aggregated": aggregated,
                     "errors": 0,
+                    **_persistence_totals([]),
                 }
             )
             return
@@ -3594,6 +3763,7 @@ async def analyze_run_items_stream(
                             "aggregated": aggregated,
                             "aggregation_error": aggregation_error,
                             "errors": error_count,
+                            **_persistence_totals(response_results),
                         }
                     )
                     break
@@ -6772,6 +6942,7 @@ def _delete_active_candidate(
     )
     if not item:
         raise HTTPException(status_code=404, detail="Run item not found")
+    item = lock_run_item(db, run=run, item=item)
 
     if correction.metric_name:
         meta = dict(item.item_metadata) if isinstance(item.item_metadata, dict) else {}
@@ -6801,6 +6972,7 @@ def _delete_active_candidate(
         actor_user_id=reviewer_id,
         actor_source="system",
         next_state={},
+        item_locked=True,
     )
 
     # Keep the row for review history, but deactivate it so it is deleted from
@@ -7152,6 +7324,7 @@ def update_correction(
     )
     if not item:
         raise HTTPException(status_code=404, detail="Run item not found")
+    item = lock_run_item(db, run=run, item=item)
 
     patch: Dict[str, Any] = {}
     for request_key, state_key in [
@@ -7253,6 +7426,7 @@ def update_correction(
                 principal.user.id if principal.auth_type != "none" else None
             ),
             actor_source="human",
+            item_locked=True,
         )
         db.commit()
         if target is None:
@@ -7266,6 +7440,7 @@ def update_correction(
         actor_user_id=principal.user.id if principal.auth_type != "none" else None,
         actor_source="human",
         human_patch=patch,
+        item_locked=True,
     )
     db.commit()
     target = (

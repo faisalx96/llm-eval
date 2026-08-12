@@ -31,6 +31,7 @@ from qym_platform.db.models import (
     Approval,
     ApprovalDecision,
     Project,
+    ProjectAnalysisCategoryCatalogVersion,
     ProjectAnalysisPromptSettings,
     ProjectAnalysisRuleVersion,
     ProjectMembership,
@@ -499,6 +500,66 @@ def test_new_project_starts_with_one_live_rule_version(client, session_factory):
         assert len(versions) == 1
         assert versions[0].version == 1
         assert versions[0].name == "v1"
+        catalogs = (
+            session.query(ProjectAnalysisCategoryCatalogVersion)
+            .filter(ProjectAnalysisCategoryCatalogVersion.project_id == project_id)
+            .all()
+        )
+        assert len(catalogs) == 1
+        assert catalogs[0].is_active is True
+        assert catalogs[0].version == 1
+
+
+def test_runless_project_deletion_removes_catalog_lineage_safely(
+    client, session_factory
+):
+    with session_factory() as session:
+        _seed_project_world(session)
+
+    response = client.post(
+        "/v1/projects",
+        headers=_headers("admin@example.com"),
+        json={"name": "Catalog Delete", "slug": "catalog-delete"},
+    )
+    assert response.status_code == 200
+    project_id = response.json()["id"]
+    with session_factory() as session:
+        first = (
+            session.query(ProjectAnalysisCategoryCatalogVersion)
+            .filter(ProjectAnalysisCategoryCatalogVersion.project_id == project_id)
+            .one()
+        )
+        historic = ProjectAnalysisCategoryCatalogVersion(
+            project_id=project_id,
+            version=2,
+            categories=["Legacy"],
+            category_entries=[
+                {"id": "legacy", "label": "Legacy", "status": "archived"}
+            ],
+            category_details_map={},
+            category_taxonomy={},
+            max_root_cause_categories=3,
+            content_hash="legacy",
+            source="manual",
+            parent_version_id=first.id,
+            restored_from_version_id=first.id,
+            is_active=False,
+        )
+        session.add(historic)
+        session.commit()
+
+    deleted = client.delete(
+        f"/v1/admin/projects/{project_id}", headers=_headers("admin@example.com")
+    )
+    assert deleted.status_code == 200
+    with session_factory() as session:
+        assert session.query(Project).filter(Project.id == project_id).count() == 0
+        assert (
+            session.query(ProjectAnalysisCategoryCatalogVersion)
+            .filter(ProjectAnalysisCategoryCatalogVersion.project_id == project_id)
+            .count()
+            == 0
+        )
 
 
 def test_analysis_prompts_are_restricted_and_persisted(client, session_factory):

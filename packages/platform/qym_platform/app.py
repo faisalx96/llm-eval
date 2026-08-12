@@ -19,10 +19,12 @@ from qym_platform.api.root_cause_dashboard import router as root_cause_dashboard
 from qym_platform.api.product_evals import router as product_evals_router
 from qym_platform.api.datasets import router as datasets_router
 from qym_platform.api.insights import router as insights_router
+from qym_platform.services.analysis_jobs import analysis_job_manager
 
 
 def create_app(settings: PlatformSettings | None = None) -> FastAPI:
     settings = settings or PlatformSettings()
+    analysis_job_manager.configure(max_workers=settings.analysis_job_max_workers)
 
     app = FastAPI(
         title="qym-platform",
@@ -88,5 +90,11 @@ def create_app(settings: PlatformSettings | None = None) -> FastAPI:
     app.include_router(insights_router)
     app.include_router(runs_router)
     app.include_router(ingest_router)
+
+    @app.on_event("shutdown")
+    def shutdown_analysis_jobs() -> None:
+        # The registry is in-memory by design for the current single-worker
+        # deployment; release its bounded executor with the application.
+        analysis_job_manager.shutdown(wait=True)
 
     return app

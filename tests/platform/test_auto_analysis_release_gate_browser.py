@@ -419,9 +419,6 @@ class _AnalyzerHandler(BaseHTTPRequestHandler):
                 else _dashboard_payload(populated=self.server.mode in {"dashboard_scale", "dashboard_filter"})
             )
             return
-        if path.endswith("/insights/relationships"):
-            self._json({"counts": {}, "policy": {}, "scope": {}, "categories": []})
-            return
         # Shell/auth helpers may probe endpoints. A stable empty JSON object is
         # preferable to a failed resource request that obscures page errors.
         self._json({})

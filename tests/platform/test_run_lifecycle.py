@@ -288,7 +288,7 @@ def test_corrections_list_limit_is_applied(client, session_factory) -> None:
     assert payload["total"] == 16
 
 
-def test_deleting_run_purges_root_cause_analysis_and_review_candidates(
+def test_deleting_run_preserves_analysis_for_restore(
     client, session_factory
 ) -> None:
     run_id = "00000000-0000-0000-0000-000000000105"
@@ -363,18 +363,8 @@ def test_deleting_run_purges_root_cause_analysis_and_review_candidates(
     with session_factory() as session:
         run = session.query(Run).filter(Run.id == run_id).one()
         assert run.deleted_at is not None
-        assert (
-            session.query(ReviewCorrection)
-            .filter(ReviewCorrection.run_id == run_id)
-            .count()
-            == 0
-        )
-        assert (
-            session.query(RootCauseRevision)
-            .filter(RootCauseRevision.run_id == run_id)
-            .count()
-            == 0
-        )
+        assert session.query(ReviewCorrection).filter(ReviewCorrection.run_id == run_id).count() == 1
+        assert session.query(RootCauseRevision).filter(RootCauseRevision.run_id == run_id).count() == 1
         assert (
             session.query(AuditLog)
             .filter(
@@ -382,14 +372,31 @@ def test_deleting_run_purges_root_cause_analysis_and_review_candidates(
                 AuditLog.entity_id == str(revision_id),
             )
             .count()
-            == 0
+            == 1
         )
         item = session.query(RunItem).filter(RunItem.run_id == run_id).one()
-        assert item.item_metadata == {"keep": "execution metadata"}
+        assert item.item_metadata["root_cause"] == "Context Missing"
+        assert item.item_metadata["metric_analyses"]["judge"]["source"] == "ai"
 
     after = client.get("/api/corrections", headers=_ui_headers("admin@example.com"))
     assert after.status_code == 200
     assert after.json()["total"] == 0
+
+    restored = client.post(
+        "/api/runs/restore",
+        headers=_ui_headers("admin@example.com"),
+        json={"run_id": run_id},
+    )
+    assert restored.status_code == 200
+
+    visible = client.get("/api/corrections", headers=_ui_headers("admin@example.com"))
+    assert visible.status_code == 200
+    assert visible.json()["total"] == 1
+    with session_factory() as session:
+        run = session.query(Run).filter(Run.id == run_id).one()
+        assert run.deleted_at is None
+        assert session.query(ReviewCorrection).filter(ReviewCorrection.run_id == run_id).count() == 1
+        assert session.query(RootCauseRevision).filter(RootCauseRevision.run_id == run_id).count() == 1
 
 
 def test_corrections_list_hides_orphaned_soft_deleted_run(

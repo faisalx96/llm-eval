@@ -20,9 +20,7 @@ REPEAT_PASSES_SERVICE = (
     / "services"
     / "repeat_passes.py"
 )
-OVERVIEW_HTML = DASHBOARD_DIR / "overview.html"
 ANALYZER_HTML = DASHBOARD_DIR / "analyzer.html"
-INSIGHTS_JS = DASHBOARD_DIR / "insights.js"
 
 
 def test_docs_page_switch_is_atomic_and_layout_stable() -> None:
@@ -64,26 +62,16 @@ def test_empty_dashboard_links_to_first_run_docs() -> None:
     assert "emptyDocsLink.href = apiUrl('docs-guide#get-started/first-run');" in source
 
 
-def test_analysis_dashboard_hides_candidate_relationships_for_now() -> None:
-    markup = ANALYZER_HTML.read_text(encoding="utf-8")
-    overview = OVERVIEW_HTML.read_text(encoding="utf-8")
-
-    assert 'id="candidate-relationships-card"' not in markup
-    assert 'id="candidate-relationships-title"' not in markup
-    assert 'data-candidate-direction=' not in markup
-    assert 'id="candidate-category-search"' not in markup
-    assert 'id="candidate-evidence-drawer"' not in markup
-    assert (
-        '<script src="/static/candidate_relationships.js'
-        not in markup
-    )
-    assert 'id="insights-card"' not in markup
-    assert 'Metric trends across runs' not in markup
-    assert 'id="candidate-relationships-card"' not in overview
-    # The legacy timeline remains available for later relocation.
-    assert "if (!el('insights-card')) return;" in INSIGHTS_JS.read_text(
-        encoding="utf-8"
-    )
+def test_run_and_compare_exports_keep_independent_scroll_containers() -> None:
+    """Regression guard for the two standalone export pages."""
+    for filename, selector in (
+        ("run.html", ".run-container"),
+        ("compare.html", ".compare-container"),
+    ):
+        markup = (DASHBOARD_DIR / filename).read_text(encoding="utf-8")
+        rule = _rule(markup, selector)
+        assert "height: calc(100vh - 100px);" in rule
+        assert "overflow-y: auto;" in rule
 
 
 def test_repeat_run_rows_are_ordinary_rows_with_pass_count_chip() -> None:
@@ -1864,8 +1852,8 @@ def test_clear_filter_control_has_aligned_label_and_soft_count_pill() -> None:
     for page in DASHBOARD_DIR.glob("*.html"):
         source = page.read_text(encoding="utf-8")
         if page.name == "analyzer.html":
-            assert "dashboard.css?v=auto-analysis-selectors-20260811-1" in source
-            assert "playground.js?v=auto-analysis-selectors-20260811-1" in source
+            assert "dashboard.css?v=auto-analysis-selectors-20260811-6" in source
+            assert "playground.js?v=auto-analysis-selectors-20260811-6" in source
             assert "ui_components.css?v=auto-analysis-selectors-20260811-1" in source
             assert "ui_components.js?v=auto-analysis-selectors-20260811-1" in source
             continue

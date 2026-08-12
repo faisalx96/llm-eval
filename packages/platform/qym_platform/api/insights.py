@@ -12,7 +12,6 @@ from datetime import timedelta
 from typing import Any, Iterable, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import JSONResponse
 from sqlalchemy import case, func
 from sqlalchemy.orm import Session
 
@@ -29,10 +28,6 @@ from qym_platform.db.models import (
 )
 from qym_platform.deps import get_db
 from qym_platform.permissions import has_project_access
-from qym_platform.services.candidate_relationships import (
-    build_relationship_analysis,
-    build_relationship_occurrences,
-)
 from qym_platform.settings import PlatformSettings
 
 
@@ -98,51 +93,6 @@ def _project(db: Session, principal: Principal, project_slug: str) -> Project:
     if not has_project_access(db, principal, project.id):
         raise HTTPException(status_code=403, detail="Access denied")
     return project
-
-
-@router.get("/api/projects/{project_slug}/insights/relationships")
-def project_relationships(
-    project_slug: str,
-    db: Session = Depends(get_db),
-    principal: Principal = Depends(require_ui_principal),
-) -> dict[str, Any]:
-    """Compute deterministic candidate relationships for the complete project."""
-
-    project = _project(db, principal, project_slug)
-    return build_relationship_analysis(db, project)
-
-
-@router.get("/api/projects/{project_slug}/insights/relationships/{relationship_id}/occurrences")
-def relationship_occurrences(
-    project_slug: str,
-    relationship_id: str,
-    limit: int = Query(default=100, ge=1, le=500),
-    offset: int = Query(default=0, ge=0),
-    db: Session = Depends(get_db),
-    principal: Principal = Depends(require_ui_principal),
-) -> Any:
-    """Return evidence for a current relationship or a stale-ID response."""
-
-    project = _project(db, principal, project_slug)
-    payload = build_relationship_occurrences(
-        db,
-        project,
-        relationship_id,
-        limit=limit,
-        offset=offset,
-    )
-    if payload is None:
-        return JSONResponse(
-            status_code=410,
-            content={
-                "stale": True,
-                "code": "stale_relationship",
-                "relationship_id": relationship_id,
-                "message": "This relationship is no longer present in the current project analysis.",
-                "refresh": f"/api/projects/{project_slug}/insights/relationships",
-            },
-        )
-    return payload
 
 
 @router.get("/api/projects/{project_slug}/insights")

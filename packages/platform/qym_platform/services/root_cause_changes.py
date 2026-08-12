@@ -48,6 +48,49 @@ class RootCauseChangeResult:
     after_state: dict[str, Any]
 
 
+def lock_run_item(db: Session, *, run: Run, item: RunItem) -> RunItem:
+    """Return the current item while holding its transaction row lock.
+
+    Every human and AI write goes through this helper at the final persistence
+    boundary.  ``with_for_update`` is ignored by SQLite, but remains useful in
+    production PostgreSQL deployments and keeps the ownership check and write
+    in one transaction.
+    """
+    locked = (
+        db.query(RunItem)
+        .filter(RunItem.run_id == run.id, RunItem.item_id == item.item_id)
+        .populate_existing()
+        .with_for_update()
+        .one_or_none()
+    )
+    if locked is None:
+        raise ValueError("Run item no longer exists")
+    return locked
+
+
+def is_human_metric_analysis(
+    metadata: dict[str, Any] | None, metric_name: str
+) -> bool:
+    """Return whether a metric diagnosis is currently owned by a reviewer."""
+    md = metadata if isinstance(metadata, dict) else {}
+    metric = str(metric_name or "").strip()
+    metric_analyses = md.get("metric_analyses")
+    if isinstance(metric_analyses, dict):
+        analysis = metric_analyses.get(metric)
+        if isinstance(analysis, dict):
+            source = str(
+                analysis.get("source") or analysis.get("root_cause_source") or ""
+            ).strip().lower()
+            if source == "human":
+                return True
+
+    legacy_source = str(md.get("root_cause_source") or "").strip().lower()
+    if legacy_source != "human":
+        return False
+    legacy_metric = str(md.get("root_cause_metric_name") or "").strip()
+    return not legacy_metric or legacy_metric == metric
+
+
 def extract_analysis_state(meta: dict[str, Any] | None) -> dict[str, Any]:
     md = meta if isinstance(meta, dict) else {}
     raw_root_causes = md.get("root_causes")
@@ -303,6 +346,9 @@ def replace_metric_review_candidate(
     actor_user_id: Optional[str],
     actor_source: str,
     created_at: Optional[datetime] = None,
+    active_candidates: Optional[list[ReviewCorrection]] = None,
+    scores_snapshot: Optional[dict[str, Any]] = None,
+    item_locked: bool = False,
 ) -> Optional[ReviewCorrection]:
     """Replace the active review candidate for one item/metric analysis."""
     if actor_source not in {"ai", "human", "system"}:
@@ -312,15 +358,21 @@ def replace_metric_review_candidate(
     if not metric_name:
         raise ValueError("metric_name is required")
 
-    active_candidates = (
-        db.query(ReviewCorrection)
-        .filter(
-            ReviewCorrection.run_id == run.id,
-            ReviewCorrection.item_id == item.item_id,
-            ReviewCorrection.metric_name == metric_name,
-            ReviewCorrection.is_active.is_(True),
-        )
-        .all()
+    # Lock and reload the item before inspecting or writing its review state.
+    # This is deliberately inside the service so all callers share the same
+    # ownership boundary.
+    if not item_locked:
+        item = lock_run_item(db, run=run, item=item)
+    if active_candidates is None:
+        active_candidates = (
+            db.query(ReviewCorrection)
+            .filter(
+                ReviewCorrection.run_id == run.id,
+                ReviewCorrection.item_id == item.item_id,
+                ReviewCorrection.metric_name == metric_name,
+                ReviewCorrection.is_active.is_(True),
+            )
+            .all()
     )
     ai_baseline = next(
         (
@@ -366,7 +418,11 @@ def replace_metric_review_candidate(
         input_snapshot=item.input,
         expected_snapshot=item.expected,
         output_snapshot=item.output,
-        scores_snapshot=_snapshot_scores(db, run.id, item.item_id),
+        scores_snapshot=(
+            dict(scores_snapshot)
+            if scores_snapshot is not None
+            else _snapshot_scores(db, run.id, item.item_id)
+        ),
         ai_root_cause=(
             root_cause if is_ai else (ai_baseline.ai_root_cause if ai_baseline else "")
         ),
@@ -378,7 +434,11 @@ def replace_metric_review_candidate(
                 if ai_baseline
                 else None
             )
-                or ([ai_baseline.ai_root_cause] if ai_baseline and ai_baseline.ai_root_cause else [])
+            or (
+                [ai_baseline.ai_root_cause]
+                if ai_baseline and ai_baseline.ai_root_cause
+                else []
+            )
         ),
         ai_category_taxonomy=(
             normalize_category_taxonomy(analysis.get("category_taxonomy"))
@@ -668,11 +728,18 @@ def apply_root_cause_change(
     next_state: dict[str, Any] | None = None,
     revision_created_at: Optional[datetime] = None,
     backfilled_from_legacy: bool = False,
+    scores_snapshot: Optional[dict[str, Any]] = None,
+    item_locked: bool = False,
 ) -> RootCauseChangeResult:
     if actor_source not in {"human", "ai", "system"}:
         raise ValueError(f"Unsupported actor_source: {actor_source}")
     if (human_patch is None) == (next_state is None):
         raise ValueError("Provide exactly one of human_patch or next_state")
+
+    # Human edits and AI aggregation both acquire the same deterministic row
+    # lock before reading metadata and creating revisions/candidates.
+    if not item_locked:
+        item = lock_run_item(db, run=run, item=item)
 
     before_state = extract_analysis_state(
         item.item_metadata if isinstance(item.item_metadata, dict) else {}
@@ -752,7 +819,11 @@ def apply_root_cause_change(
                 after_state=after_state,
                 actor_user_id=actor_user_id,
                 revision_id=revision.id,
-                scores_snapshot=_snapshot_scores(db, run.id, item.item_id),
+                scores_snapshot=(
+                    dict(scores_snapshot)
+                    if scores_snapshot is not None
+                    else _snapshot_scores(db, run.id, item.item_id)
+                ),
                 created_at=created_at,
                 status=(
                     CorrectionStatus.APPROVED
@@ -786,7 +857,11 @@ def apply_root_cause_change(
                 ai_state=after_state,
                 actor_user_id=actor_user_id,
                 revision_id=revision.id,
-                scores_snapshot=_snapshot_scores(db, run.id, item.item_id),
+                scores_snapshot=(
+                    dict(scores_snapshot)
+                    if scores_snapshot is not None
+                    else _snapshot_scores(db, run.id, item.item_id)
+                ),
                 created_at=created_at,
             )
             db.add(candidate)

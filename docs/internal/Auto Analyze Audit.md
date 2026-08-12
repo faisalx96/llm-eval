@@ -130,8 +130,8 @@ dialog, populated rules, no-connection/zero-target states, and wide layout.
   state, alert-style failure state, retry action, and canonical route redirects.
   Route redirect behavior is covered by
   [`tests/platform/test_analysis_routes.py`](../../tests/platform/test_analysis_routes.py).
-- [x] **Keyboard tab navigation.** The shared analysis controller handles
-  arrows, Home, and End for tabs.
+- [x] **Keyboard tab navigation.** The analyzer's inline tab handler and shared
+  component behavior handle arrows, Home, and End for tabs.
 - [x] **Browser release gate.** The deterministic Chromium fixture serves the
   actual analyzer and shared static assets at canonical project/run routes. It
   verifies project/run scope separation, target and direction copy, retryable
@@ -220,7 +220,7 @@ technology acceptance. They do not clear the unchecked gates below.
 
 ### 6. Architecture and performance
 
-- [x] Introduce a DOM-free analysis controller for route/view and tab-keyboard
+- [ ] Introduce a DOM-free analysis controller for route/view and tab-keyboard
   behavior.
 - [ ] Complete the separation into explicit dedicated-page and modal renderers;
   do not rely on private Playground DOM observation/reparenting for page layout.
@@ -302,8 +302,9 @@ information-architecture, and rendering-architecture observations remain open
 until the corresponding release gates have browser and accessibility evidence.
 
 The durable architectural direction remains a shared state model with explicit
-modal and dedicated-page renderers. The current controller is a useful step,
-not proof that the reparenting architecture is retired.
+modal and dedicated-page renderers. The current analyzer still owns route/view
+state inline; a controller can be introduced later if the architecture is
+refactored again.
 
 ## Required verification record before sign-off
 

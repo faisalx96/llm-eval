@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import re
 import secrets
 from typing import Any, Dict, Iterable, Optional
+from uuid import NAMESPACE_URL, uuid5
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -11,6 +14,7 @@ from qym_platform.datetime_utils import to_api_timestamp, utc_now_naive
 from qym_platform.db.models import (
     ApiKey,
     Project,
+    ProjectAnalysisCategoryCatalogVersion,
     ProjectAnalysisPromptSettings,
     ProjectAnalysisRuleAlias,
     ProjectAnalysisRuleVersion,
@@ -46,6 +50,7 @@ from qym_platform.services.analysis_prompts import (
     PROMPT_MAX_CHARS,
     serialize_analysis_prompt_settings,
 )
+from qym_platform.services.root_cause_categories import DEFAULT_ROOT_CAUSE_TAXONOMY
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -77,6 +82,57 @@ def _add_default_analysis_rule_version(
             name="v1",
             rules=[],
             source="manual",
+            created_by_user_id=actor_user_id,
+        )
+    )
+
+
+def _add_default_analysis_category_catalog(
+    db: Session,
+    *,
+    project_id: str,
+    actor_user_id: str,
+) -> None:
+    """Create the first active catalog without scanning any run items."""
+    categories = list(DEFAULT_ROOT_CAUSE_TAXONOMY)
+    entries = [
+        {
+            "id": str(
+                uuid5(NAMESPACE_URL, f"qym-category:{project_id}:{category.casefold()}")
+            ),
+            "label": category,
+            "status": "active",
+        }
+        for category in categories
+    ]
+    taxonomy = {
+        category: dict(DEFAULT_ROOT_CAUSE_TAXONOMY[category])
+        for category in categories
+    }
+    payload = {
+        "categories": categories,
+        "category_entries": entries,
+        "category_details_map": {},
+        "category_taxonomy": taxonomy,
+        "max_root_cause_categories": 3,
+    }
+    content_hash = hashlib.sha256(
+        json.dumps(
+            payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+        ).encode("utf-8")
+    ).hexdigest()
+    db.add(
+        ProjectAnalysisCategoryCatalogVersion(
+            project_id=project_id,
+            version=1,
+            categories=categories,
+            category_entries=entries,
+            category_details_map={},
+            category_taxonomy=taxonomy,
+            max_root_cause_categories=3,
+            content_hash=content_hash,
+            source="system",
+            is_active=True,
             created_by_user_id=actor_user_id,
         )
     )
@@ -739,6 +795,11 @@ def create_project_for_creator(
         project_id=project.id,
         actor_user_id=principal.user.id,
     )
+    _add_default_analysis_category_catalog(
+        db,
+        project_id=project.id,
+        actor_user_id=principal.user.id,
+    )
     db.commit()
     db.refresh(project)
     return _project_payload(db, project, principal)
@@ -992,6 +1053,11 @@ def create_project(
         project_id=project.id,
         actor_user_id=principal.user.id,
     )
+    _add_default_analysis_category_catalog(
+        db,
+        project_id=project.id,
+        actor_user_id=principal.user.id,
+    )
     db.commit()
     db.refresh(project)
     return _project_payload(db, project, principal)
@@ -1039,6 +1105,22 @@ def archive_project(
         db.commit()
         return {"ok": True, "project_id": project.id, "archived": True}
     db.query(ApiKey).filter(ApiKey.project_id == project.id).delete()
+    # Catalog versions reference one another (parent/restored lineage), so
+    # detach those self-references before deleting the project's rows.
+    db.query(ProjectAnalysisCategoryCatalogVersion).filter(
+        ProjectAnalysisCategoryCatalogVersion.project_id == project.id
+    ).update(
+        {
+            ProjectAnalysisCategoryCatalogVersion.parent_version_id: None,
+            ProjectAnalysisCategoryCatalogVersion.restored_from_version_id: None,
+        },
+        synchronize_session=False,
+    )
+    db.flush()
+    db.query(ProjectAnalysisCategoryCatalogVersion).filter(
+        ProjectAnalysisCategoryCatalogVersion.project_id == project.id
+    ).delete(synchronize_session=False)
+    db.flush()
     db.query(ProjectAnalysisRuleAlias).filter(
         ProjectAnalysisRuleAlias.project_id == project.id
     ).delete()

@@ -2647,6 +2647,88 @@ def test_save_analysis_results_preserves_human_metric_without_explicit_overwrite
     assert human_candidate.is_active is False
 
 
+def test_save_analysis_results_reloads_concurrent_human_metric_before_persisting(
+    db_session: Session,
+) -> None:
+    actor, _, run, item = _seed_run(db_session)
+    # Keep the AI session's item stale while a reviewer session commits a human
+    # diagnosis, matching the state transition that can happen during an LLM call.
+    assert item.item_metadata in (None, {})
+    reviewer_session = sessionmaker(bind=db_session.get_bind())()
+    try:
+        reviewer_item = (
+            reviewer_session.query(RunItem)
+            .filter(RunItem.run_id == run.id, RunItem.item_id == item.item_id)
+            .one()
+        )
+        human_analysis = {
+            "source": "human",
+            "root_cause": "Manual Category",
+            "root_cause_detail": "Reviewer diagnosis committed during analysis",
+        }
+        reviewer_item.item_metadata = {
+            "metric_analyses": {"accuracy": human_analysis}
+        }
+        reviewer_session.commit()
+    finally:
+        reviewer_session.close()
+
+    result = AnalysisResult(
+        item_id=item.item_id,
+        metric_name="accuracy",
+        root_cause="Fresh AI Category",
+        root_cause_detail="Fresh AI detail",
+        root_cause_note="Fresh AI note",
+        confidence=0.92,
+    )
+    payloads, errors = _save_analysis_results(
+        db_session,
+        run,
+        [(item, "accuracy")],
+        [result],
+        Principal(user=actor, auth_type="none"),
+    )
+    db_session.refresh(item)
+
+    assert errors == 0
+    assert payloads[0]["persistence_status"] == "skipped_human_protection"
+    assert item.item_metadata["metric_analyses"]["accuracy"] == human_analysis
+
+
+def test_save_analysis_results_does_not_replace_human_metric_with_ai_error(
+    db_session: Session,
+) -> None:
+    actor, _, run, item = _seed_run(db_session)
+    human_analysis = {
+        "source": "human",
+        "root_cause": "Manual Category",
+        "root_cause_detail": "Keep the reviewer diagnosis on analyzer failure",
+    }
+    item.item_metadata = {"metric_analyses": {"accuracy": human_analysis}}
+    db_session.commit()
+
+    result = AnalysisResult(
+        item_id=item.item_id,
+        metric_name="accuracy",
+        root_cause="",
+        root_cause_note="",
+        confidence=0.0,
+        error="Analyzer request timed out",
+    )
+    payloads, errors = _save_analysis_results(
+        db_session,
+        run,
+        [(item, "accuracy")],
+        [result],
+        Principal(user=actor, auth_type="none"),
+    )
+    db_session.refresh(item)
+
+    assert errors == 0
+    assert payloads[0]["persistence_status"] == "skipped_human_protection"
+    assert item.item_metadata["metric_analyses"]["accuracy"] == human_analysis
+
+
 def test_persisted_ai_labels_can_be_reaggregated_without_changing_feedback(
     db_session: Session,
 ) -> None:

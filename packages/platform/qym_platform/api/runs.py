@@ -59,13 +59,13 @@ from qym_platform.permissions import (
     has_project_access,
 )
 from qym_platform.services.run_lifecycle import reconcile_stale_running_run
-from qym_platform.services.root_cause_cleanup import purge_run_root_cause_analysis
 from qym_platform.services.repeat_passes import (
     RepeatPassDeletionError,
     delete_repeat_pass,
 )
 from qym_platform.services.root_cause_changes import (
     apply_root_cause_change,
+    lock_run_item,
     replace_metric_review_candidate,
 )
 from qym_platform.services.root_cause_categories import (
@@ -3790,6 +3790,7 @@ def update_root_cause(
     )
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
+    item = lock_run_item(db, run=run, item=item)
 
     editable_fields = (
         "root_cause",
@@ -3935,6 +3936,7 @@ def update_root_cause(
                     principal.user.id if principal.auth_type != "none" else None
                 ),
                 actor_source="human",
+                item_locked=True,
             )
             db.add(
                 AuditLog(
@@ -3969,6 +3971,7 @@ def update_root_cause(
         actor_user_id=principal.user.id if principal.auth_type != "none" else None,
         actor_source="human",
         human_patch=patch,
+        item_locked=True,
     )
 
     db.commit()
@@ -3999,12 +4002,8 @@ def delete_run(
     if not can_delete_run(db, principal, run):
         raise HTTPException(status_code=403, detail="Permission denied")
 
-    # Soft-delete the evaluation data, but remove its root-cause analysis at
-    # the same transaction boundary.  Otherwise review candidates remain
-    # visible while every review mutation rejects the deleted run.
-    analysis_cleanup = purge_run_root_cause_analysis(db, run.id)
-
-    # Soft-delete: mark as deleted instead of removing evaluation data.
+    # Soft-delete only. All evaluation, analysis, and review history remains
+    # available if an administrator restores the run.
     snapshot = run.audit_snapshot()
     run.deleted_at = utc_now_naive()
     run.deleted_by_user_id = principal.user.id
@@ -4017,7 +4016,6 @@ def delete_run(
         before=snapshot,
         after={
             "deleted_at": run.deleted_at.isoformat(),
-            "root_cause_analysis_cleanup": analysis_cleanup,
         },
     )
     db.add(audit)
