@@ -2938,6 +2938,71 @@ async def test_forced_aggregation_reprocesses_saved_labels_and_records_status(
 
 
 @pytest.mark.asyncio
+async def test_forced_aggregation_skips_active_approved_metric_labels(
+    db_session: Session,
+) -> None:
+    actor, reviewer, run, item = _seed_run(db_session)
+    item.item_metadata = {
+        "metric_analyses": {
+            "accuracy": {
+                "source": "ai",
+                "root_cause": "Reasoning Error",
+                "root_cause_detail": "Approved detail",
+            }
+        }
+    }
+    db_session.commit()
+
+    candidate = replace_metric_review_candidate(
+        db_session,
+        run=run,
+        item=item,
+        metric_name="accuracy",
+        analysis=item.item_metadata["metric_analyses"]["accuracy"],
+        actor_user_id=actor.id,
+        actor_source="ai",
+    )
+    assert candidate is not None
+    db_session.flush()
+    _approve_candidate(
+        db_session,
+        correction=candidate,
+        reviewer_id=reviewer.id,
+        comment="Keep approved diagnosis",
+        reviewed_at=datetime.utcnow(),
+    )
+    db_session.commit()
+
+    client = SimpleNamespace(
+        chat=SimpleNamespace(completions=SimpleNamespace(parse=AsyncMock()))
+    )
+    categories, changed = await _aggregate_run_analysis_results(
+        db=db_session,
+        run=run,
+        all_items=[item],
+        analysis_targets=[],
+        new_results=[],
+        client=client,
+        model="test-model",
+        analyzer_config=None,
+        principal=Principal(user=actor, auth_type="none"),
+        force=True,
+    )
+    db_session.commit()
+    db_session.refresh(item)
+    db_session.refresh(candidate)
+
+    assert categories == {}
+    assert changed == 0
+    assert item.item_metadata["metric_analyses"]["accuracy"]["root_cause_detail"] == (
+        "Approved detail"
+    )
+    assert candidate.status == CorrectionStatus.APPROVED
+    assert candidate.is_active is True
+    client.chat.completions.parse.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_failed_aggregation_restores_raw_new_labels(
     db_session: Session,
 ) -> None:

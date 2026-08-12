@@ -629,6 +629,8 @@ def test_project_diagnosis_catalog_restores_local_tools(analyzer_page: tuple[obj
     assert category.is_visible()
     assert page.locator("#analysis-diagnosis-view [data-taxonomy-field='description']").count() == 1
     assert page.locator("#analysis-diagnosis-view [data-taxonomy-field='when_to_use']").count() == 1
+    page.locator("#analysis-save-category-catalog").click()
+    assert page.locator("#analysis-category-save-status").inner_text() == "Taxonomy required"
     page.locator("[data-category-tab='details']").click()
     detail_selector = page.locator(".pg-detail-review-selector")
     assert detail_selector.is_visible()

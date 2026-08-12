@@ -20,6 +20,8 @@ window.QymPlayground = (function () {
   var _selectedTarget = null;
   var _customVars = [];
   var _configUnlocked = false;
+  var _DEFAULT_MAX_ROOT_CAUSE_CATEGORIES = 3;
+  var _MAX_ROOT_CAUSE_CATEGORIES = 10;
   var _referenceDocuments = [];
   var _selectedApprovedExampleIds = new Set();
   var _selectedApprovedExampleFields = new Set();
@@ -272,7 +274,10 @@ window.QymPlayground = (function () {
     if (!_getRunId()) return;
     var base = _opts.apiUrl || function (p) { return '/' + p; };
     var generation = ++_analysisPollGeneration;
-    fetch(base(_analysisJobsPath('active')))
+    var activePath = _analysisJobsPath('active');
+    var passNumber = _opts.getPassNumber ? _opts.getPassNumber() : null;
+    if (passNumber != null) activePath += '?pass_number=' + encodeURIComponent(passNumber);
+    fetch(base(activePath))
       .then(function (response) {
         if (!response.ok) throw new Error('Active analysis: HTTP ' + response.status);
         return response.json();
@@ -349,6 +354,10 @@ window.QymPlayground = (function () {
     if (_opts.getMetrics) {
       body.metric = null;
       body.metrics = _getSelectedMetrics();
+    }
+    if (_opts.getPassNumber) {
+      var passNumber = _opts.getPassNumber();
+      if (passNumber != null) body.pass_number = Number(passNumber);
     }
 
     _running = true;
@@ -686,9 +695,9 @@ window.QymPlayground = (function () {
     '</div>';
     html += '<div class="pg-category-content">';
     html += '<section class="pg-category-tab-panel pg-category-taxonomy" id="' + guidancePanelId + '" data-category-panel="guidance" role="tabpanel" aria-labelledby="pg-category-' + domKey + '-guidance-tab">' +
-      '<h4>Category guidance</h4><p class="pg-category-taxonomy-hint">Define the meaning of this label and the signal that should trigger it.</p>' +
-      '<label class="pg-category-taxonomy-field"><span>Description</span><textarea data-taxonomy-field="description" rows="3" placeholder="What this category means..." spellcheck="true">' + _esc(catTaxonomy.description || '') + '</textarea></label>' +
-      '<label class="pg-category-taxonomy-field"><span>Use when</span><textarea data-taxonomy-field="when_to_use" rows="3" placeholder="When the analyzer should use this category..." spellcheck="true">' + _esc(catTaxonomy.when_to_use || '') + '</textarea></label>' +
+      '<h4>Category guidance</h4><p class="pg-category-taxonomy-hint">Define the meaning of this label and the signal that should trigger it. Both fields are required.</p>' +
+      '<label class="pg-category-taxonomy-field"><span>Description <abbr title="Required" aria-label="Required">*</abbr></span><textarea data-taxonomy-field="description" rows="3" placeholder="What this category means..." spellcheck="true" required aria-required="true">' + _esc(catTaxonomy.description || '') + '</textarea></label>' +
+      '<label class="pg-category-taxonomy-field"><span>Use when <abbr title="Required" aria-label="Required">*</abbr></span><textarea data-taxonomy-field="when_to_use" rows="3" placeholder="When the analyzer should use this category..." spellcheck="true" required aria-required="true">' + _esc(catTaxonomy.when_to_use || '') + '</textarea></label>' +
     '</section>';
     html += '<section class="pg-category-tab-panel pg-category-details" id="' + detailsPanelId + '" data-category-panel="details" role="tabpanel" aria-labelledby="pg-category-' + domKey + '-details-tab" hidden>' +
       '<div class="pg-category-tab-heading"><div><h4>Category details</h4><p>Keep recurring issue patterns distinct enough for reliable diagnosis.</p></div><span class="qym-tag qym-tag--count pg-detail-total-count">' + catDetails.length + '</span></div>' +
@@ -1692,11 +1701,19 @@ window.QymPlayground = (function () {
     close();
   }
 
+  function _categoryLimitInputValue(input) {
+    if (!input) return null;
+    var rawValue = String(input.value == null ? '' : input.value).trim();
+    if (!rawValue) return null;
+    var value = Number(rawValue);
+    if (!Number.isFinite(value)) return null;
+    return Math.min(_MAX_ROOT_CAUSE_CATEGORIES, Math.max(1, Math.trunc(value)));
+  }
+
   function _normalizeCategoryLimitInput(input) {
-    if (!input) return 1;
-    var value = Number(input.value);
-    if (!Number.isFinite(value) || value <= 0) value = 1;
-    value = Math.min(10, Math.max(1, Math.trunc(value)));
+    if (!input) return _DEFAULT_MAX_ROOT_CAUSE_CATEGORIES;
+    var value = _categoryLimitInputValue(input);
+    if (value == null) value = _DEFAULT_MAX_ROOT_CAUSE_CATEGORIES;
     input.value = String(value);
     return value;
   }
@@ -2745,11 +2762,14 @@ window.QymPlayground = (function () {
     catDetBody += '<div class="pg-category-workspace" id="pg-category-workspace">';
     catDetBody += '<aside class="pg-category-sidebar" aria-labelledby="pg-category-sidebar-title"><div class="pg-category-sidebar-heading"><h3 id="pg-category-sidebar-title">Categories</h3></div><nav class="pg-category-nav" id="pg-category-nav" aria-label="Diagnosis categories"></nav>' +
       '<p class="pg-category-nav-empty" id="pg-category-nav-empty" hidden>No categories configured yet.</p><span class="pg-visually-hidden" id="pg-category-nav-count">0</span></aside>';
-    var maxCategories = Number((_config && _config.max_root_cause_categories) || 3);
-    if (!Number.isFinite(maxCategories) || maxCategories < 1) maxCategories = 3;
+    var maxCategories = Number(_config && _config.max_root_cause_categories);
+    if (!Number.isFinite(maxCategories) || maxCategories < 1) {
+      maxCategories = _DEFAULT_MAX_ROOT_CAUSE_CATEGORIES;
+    }
+    maxCategories = Math.min(_MAX_ROOT_CAUSE_CATEGORIES, Math.max(1, Math.trunc(maxCategories)));
     catDetBody += '<div class="pg-category-editor"><div class="pg-category-editor-toolbar"><div class="pg-category-editor-heading"><span class="pg-category-panel-kicker">Category catalog</span><strong id="pg-category-active-name">Select a category</strong><span>Changes apply to future analyses after you save the catalog.</span></div>' +
-      '<div class="pg-add-category-form"><label class="pg-visually-hidden" for="pg-new-category">New category</label><input type="text" id="pg-new-category" placeholder="New category..." class="pg-add-input qym-control qym-input" hidden /><button id="pg-add-category-btn" class="pg-add-btn qym-inline-action qym-inline-action--neutral" type="button">' + _icon('plus') + '<span>Add category</span></button></div>' +
-      '<div class="pg-category-limit-field" data-category-limit-field role="group" aria-labelledby="pg-max-root-cause-categories-label"><label class="pg-category-limit-label" id="pg-max-root-cause-categories-label" for="pg-max-root-cause-categories">Max categories per item</label><button class="qym-help-marker" type="button" aria-label="How the category limit works">i<span class="qym-help-tooltip" role="tooltip">Limits how many diagnosis categories the analyzer can return for each item. Higher values allow multiple independent causes.</span></button><input class="qym-control qym-input" id="pg-max-root-cause-categories" type="number" min="1" max="10" step="1" inputmode="numeric" value="' + Math.min(10, Math.max(1, Math.trunc(maxCategories))) + '" /></div></div>' +
+      '<div class="pg-add-category-form"><label class="pg-visually-hidden" for="pg-new-category">New category</label><input type="text" id="pg-new-category" placeholder="New category..." class="pg-add-input qym-control qym-input" required aria-required="true" hidden /><button id="pg-add-category-btn" class="pg-add-btn qym-inline-action qym-inline-action--neutral" type="button">' + _icon('plus') + '<span>Add category</span></button></div>' +
+      '<div class="pg-category-limit-field" data-category-limit-field role="group" aria-labelledby="pg-max-root-cause-categories-label"><label class="pg-category-limit-label" id="pg-max-root-cause-categories-label" for="pg-max-root-cause-categories">Max categories per item</label><button class="qym-help-marker" type="button" aria-label="How the category limit works">i<span class="qym-help-tooltip" role="tooltip">Limits how many diagnosis categories the analyzer can return for each item. Higher values allow multiple independent causes.</span></button><input class="qym-control qym-input" id="pg-max-root-cause-categories" type="number" min="1" max="10" step="1" inputmode="numeric" value="' + maxCategories + '" /></div></div>' +
       '<div id="pg-categories-list">';
     for (var i = 0; i < cats.length; i++) {
       var cat = cats[i];
@@ -3096,7 +3116,8 @@ window.QymPlayground = (function () {
     }
     var maxCategoriesEl = document.getElementById('pg-max-root-cause-categories');
     if (maxCategoriesEl) {
-      cfg.max_root_cause_categories = _normalizeCategoryLimitInput(maxCategoriesEl);
+      var categoryLimit = _categoryLimitInputValue(maxCategoriesEl);
+      if (categoryLimit != null) cfg.max_root_cause_categories = categoryLimit;
     }
 
     // Include fields
@@ -4597,10 +4618,9 @@ window.QymPlayground = (function () {
     var maxCategoriesInput = document.getElementById('pg-max-root-cause-categories');
     if (maxCategoriesInput) {
       maxCategoriesInput.addEventListener('input', function () {
-        if (maxCategoriesInput.value !== '') _normalizeCategoryLimitInput(maxCategoriesInput);
         _scheduleAutoPreview();
       });
-      maxCategoriesInput.addEventListener('change', function () {
+      maxCategoriesInput.addEventListener('blur', function () {
         _normalizeCategoryLimitInput(maxCategoriesInput);
         _scheduleAutoPreview();
       });
@@ -5073,7 +5093,7 @@ window.QymPlayground = (function () {
       fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ item_id: itemId, metric: metricName || null, config: cfg, connection_id: _connectionId }),
+        body: JSON.stringify({ item_id: itemId, metric: metricName || null, config: cfg, connection_id: _connectionId, pass_number: _opts.getPassNumber ? _opts.getPassNumber() : null }),
       })
       .then(function (r) {
         if (!r.ok) {
@@ -5161,7 +5181,7 @@ window.QymPlayground = (function () {
     fetch(base('api/runs/' + runId + '/analyze-test'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ item_ids: [testTarget.item_id], metric: testTarget.metric_name || null, config: cfg, connection_id: _connectionId }),
+      body: JSON.stringify({ item_ids: [testTarget.item_id], metric: testTarget.metric_name || null, config: cfg, connection_id: _connectionId, pass_number: _opts.getPassNumber ? _opts.getPassNumber() : null }),
     })
     .then(function (r) {
       if (!r.ok) return r.json().then(function (d) { throw new Error(d.detail || 'Test failed'); });

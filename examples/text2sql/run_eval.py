@@ -42,10 +42,8 @@ def main():
         metrics=[
             execution_accuracy,
             valid_sql,
-            "relevance",
-            "toxicity",
             ],
-        model="openai/gpt-5.6-luna-pro",
+        model="openai/gpt-4o-mini",
         config={
             "max_concurrency": 10,
             "run_name": "text2sql-eval",
@@ -53,7 +51,8 @@ def main():
         input_mapping={
             "sql_prompt": "question",
             "sql_context": "schema"
-        }
+        },
+        samples = 8
     )
 
     evaluator.run()

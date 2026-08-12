@@ -24,12 +24,19 @@ if "openai" not in sys.modules:
     sys.modules["openai"] = MagicMock()
 
 from qym_platform.app import create_app
+from qym_platform.api import analysis as analysis_api
 from qym_platform.api.runs import (
     _build_run_data,
     legacy_list_runs,
     run_group_metrics,
     run_passes,
     update_metric,
+    update_root_cause,
+)
+from qym_platform.api.analysis import (
+    _load_run_items_and_scores,
+    _save_pass_analysis_results,
+    approve_metric_analysis,
 )
 from qym_platform.auth import Principal
 from qym_platform.db.base import Base
@@ -51,6 +58,7 @@ from qym_platform.db.models import (
 )
 from qym_platform.deps import get_db
 from qym_platform.security import api_key_prefix, hash_api_key
+from qym_platform.services.llm_analyzer import AnalysisResult
 
 
 @pytest.fixture(autouse=True)
@@ -721,6 +729,222 @@ def test_update_metric_with_pass_number_edits_pass_and_rereduces_mean():
         assert getattr(exc.value, "status_code", None) == 400
 
 
+def test_pass_root_cause_analysis_is_scoped_to_the_selected_sample():
+    """Pass diagnosis reads, writes, and renders beside one pass score only."""
+    app, SessionLocal = _make_env()
+    with SessionLocal() as session:
+        _seed(session, token="test-token", samples=3)
+
+    with TestClient(app) as client:
+        _ingest(client, _sampled_run_events(), "test-token")
+
+    with SessionLocal() as session:
+        run = session.query(Run).filter(Run.id == RUN_ID).one()
+        item = session.query(RunItem).filter(RunItem.run_id == RUN_ID).one()
+        pass_one = (
+            session.query(RunItemPassScore)
+            .filter(
+                RunItemPassScore.run_id == RUN_ID,
+                RunItemPassScore.item_id == item.item_id,
+                RunItemPassScore.metric_name == "accuracy",
+                RunItemPassScore.pass_number == 1,
+            )
+            .one()
+        )
+        pass_one.meta = {
+            "verdict": "correct",
+            "root_cause_analysis": {
+                "source": "ai",
+                "root_cause": "Dataset Issue",
+                "root_causes": ["Dataset Issue"],
+                "root_cause_detail": "Wrong fixture",
+            },
+        }
+        session.commit()
+
+        payload = _build_run_data(session, run)
+        row = payload["snapshot"]["rows"][0]
+        assert row["pass_metric_analyses"]["accuracy"][0]["root_cause"] == "Dataset Issue"
+        assert "root_cause_analysis" not in row["pass_metric_meta"]["accuracy"][0]
+
+        response_results, error_count = _save_pass_analysis_results(
+            session,
+            run,
+            [
+                AnalysisResult(
+                    item_id=item.item_id,
+                    metric_name="accuracy",
+                    root_cause="Reasoning Error",
+                    root_cause_note="The selected pass was misinterpreted.",
+                    confidence=0.9,
+                )
+            ],
+            pass_number=1,
+        )
+        assert error_count == 0
+        assert response_results[0]["persistence_status"] == "persisted"
+
+        # Legacy SDK event ordering can leave the final attempt output empty;
+        # analysis should use the stored item_completed output in that case.
+        for attempt in session.query(RunItemAttempt).filter(
+            RunItemAttempt.run_id == RUN_ID
+        ):
+            attempt.output = None
+        session.commit()
+
+        scoped_items, scoped_scores = _load_run_items_and_scores(session, run, 1)
+        scoped_item = scoped_items[0]
+        scoped_score = scoped_scores[item.item_id]["accuracy"]
+        assert scoped_item.output == "out-pass-1"
+        assert scoped_score.score_numeric == pytest.approx(1.0)
+        assert scoped_item.item_metadata["metric_analyses"]["accuracy"]["root_cause"] == "Reasoning Error"
+
+        user = session.query(User).filter(User.id == "user-1").one()
+        principal = Principal(
+            user=user, auth_type="api_key", scopes=(), project_id="project-1"
+        )
+        result = update_root_cause(
+            request={
+                "run_id": RUN_ID,
+                "item_id": item.item_id,
+                "metric_name": "accuracy",
+                "pass_number": 1,
+                "root_cause_detail": "Correct fixture",
+            },
+            db=session,
+            principal=principal,
+        )
+        assert result["ok"] is True
+        session.refresh(item)
+        session.refresh(pass_one)
+        assert "metric_analyses" not in (item.item_metadata or {})
+        assert pass_one.meta["root_cause_analysis"]["root_cause_detail"] == "Correct fixture"
+        assert pass_one.meta["root_cause_analysis"]["review_status"] == "pending"
+
+        approved = approve_metric_analysis(
+            request={
+                "run_id": RUN_ID,
+                "item_id": item.item_id,
+                "metric_name": "accuracy",
+                "pass_number": 1,
+                "comment": "approved sample diagnosis",
+            },
+            db=session,
+            principal=principal,
+        )
+        assert approved["status"] == "approved"
+        session.refresh(pass_one)
+        assert pass_one.meta["root_cause_analysis"]["review_status"] == "approved"
+        payload = _build_run_data(session, run)
+        assert payload["snapshot"]["rows"][0]["pass_metric_analyses"]["accuracy"][0][
+            "review_status"
+        ] == "approved"
+
+        with pytest.raises(Exception) as exc:
+            update_root_cause(
+                request={
+                    "run_id": RUN_ID,
+                    "item_id": item.item_id,
+                    "metric_name": "accuracy",
+                    "root_cause": "Dataset Issue",
+                },
+                db=session,
+                principal=principal,
+            )
+        assert getattr(exc.value, "status_code", None) == 400
+
+
+def test_saved_pass_aggregation_stays_on_selected_sample_and_preserves_approved(
+    monkeypatch,
+):
+    app, SessionLocal = _make_env()
+    with SessionLocal() as session:
+        _seed(session, token="test-token", samples=3)
+
+    with TestClient(app) as client:
+        _ingest(client, _sampled_run_events(), "test-token")
+
+    with SessionLocal() as session:
+        pass_scores = (
+            session.query(RunItemPassScore)
+            .filter(RunItemPassScore.run_id == RUN_ID)
+            .order_by(RunItemPassScore.pass_number)
+            .all()
+        )
+        pass_scores[0].meta = {
+            "root_cause_analysis": {
+                "source": "ai",
+                "root_cause": "Dataset Issue",
+                "root_causes": ["Dataset Issue"],
+                "root_cause_detail": "Pass one detail",
+                "solution": "Keep the pass-specific solution",
+                "review_status": "pending",
+            }
+        }
+        pass_scores[1].meta = {
+            "root_cause_analysis": {
+                "source": "ai",
+                "root_cause": "Reasoning Error",
+                "root_causes": ["Reasoning Error"],
+                "root_cause_detail": "Approved pass detail",
+                "review_status": "approved",
+            }
+        }
+        session.commit()
+
+    async def fake_aggregate(_client, _model, results, **_kwargs):
+        for result in results:
+            result.root_cause_detail = "Canonical pass detail"
+        return {"Dataset Issue": 1}
+
+    monkeypatch.setattr(
+        analysis_api,
+        "_get_llm_config",
+        lambda *_args, **_kwargs: {"llm_model": "test-model"},
+    )
+    monkeypatch.setattr(analysis_api, "build_client", lambda *_args: object())
+    monkeypatch.setattr(
+        analysis_api, "aggregate_analysis_categories", fake_aggregate
+    )
+
+    with TestClient(app) as client:
+        response = client.post(
+            f"/api/runs/{RUN_ID}/aggregate-analysis",
+            headers={
+                "X-User-Email": "owner@example.com",
+                "Origin": "http://localhost:8000",
+            },
+            json={"pass_number": 1},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["pass_number"] == 1
+    assert response.json()["aggregated"] == 1
+
+    with SessionLocal() as session:
+        pass_scores = (
+            session.query(RunItemPassScore)
+            .filter(RunItemPassScore.run_id == RUN_ID)
+            .order_by(RunItemPassScore.pass_number)
+            .all()
+        )
+        assert pass_scores[0].meta["root_cause_analysis"]["root_cause_detail"] == (
+            "Canonical pass detail"
+        )
+        assert pass_scores[1].meta["root_cause_analysis"] == {
+            "source": "ai",
+            "root_cause": "Reasoning Error",
+            "root_causes": ["Reasoning Error"],
+            "root_cause_detail": "Approved pass detail",
+            "review_status": "approved",
+        }
+        item = session.query(RunItem).filter(RunItem.run_id == RUN_ID).one()
+        assert "metric_analyses" not in (item.item_metadata or {})
+        assert "root_cause" not in (item.item_metadata or {})
+        run = session.query(Run).filter(Run.id == RUN_ID).one()
+        assert "analysis_aggregation" not in (run.run_metadata or {})
+
+
 def test_runs_list_payload_includes_pass_summaries_for_dot_strip():
     """The list payload carries per-pass summaries so the runs-list pass-dot
     strip renders without a per-row /passes fetch."""
@@ -732,6 +956,36 @@ def test_runs_list_payload_includes_pass_summaries_for_dot_strip():
         _ingest(client, _sampled_run_events(), "test-token")
 
     with SessionLocal() as session:
+        pass_one = (
+            session.query(RunItemPassScore)
+            .filter(
+                RunItemPassScore.run_id == RUN_ID,
+                RunItemPassScore.pass_number == 1,
+            )
+            .one()
+        )
+        pass_two = (
+            session.query(RunItemPassScore)
+            .filter(
+                RunItemPassScore.run_id == RUN_ID,
+                RunItemPassScore.pass_number == 2,
+            )
+            .one()
+        )
+        pass_one.meta = {
+            "root_cause_analysis": {
+                "root_cause": "Dataset Issue",
+                "root_causes": ["Dataset Issue"],
+            }
+        }
+        pass_two.meta = {
+            "root_cause_analysis": {
+                "root_cause": "Reasoning Error",
+                "root_causes": ["Reasoning Error"],
+            }
+        }
+        session.commit()
+
         user = session.query(User).filter(User.id == "user-1").one()
         principal = Principal(
             user=user, auth_type="api_key", scopes=(), project_id="project-1"
@@ -769,6 +1023,17 @@ def test_runs_list_payload_includes_pass_summaries_for_dot_strip():
         # pass 3 failed via item_failed (no attempt row), so attempt-derived
         # error_count stays 0 — the zero-filled score already colors the dot
         assert [p["error_count"] for p in ps] == [0, 0, 0]
+        # Analysis is scoped to each sample, while the aggregate chip totals
+        # both sample diagnoses.
+        assert [p["analysis_cause_count"] for p in ps] == [1, 1, 0]
+        assert summary["analysis_cause_count"] == 2
+
+        pass_payload = run_passes(RUN_ID, db=session, principal=principal)
+        assert [p["analysis_cause_count"] for p in pass_payload["passes"]] == [
+            1,
+            1,
+            0,
+        ]
 
 
 def test_old_sdk_events_without_pass_number_still_ingest():

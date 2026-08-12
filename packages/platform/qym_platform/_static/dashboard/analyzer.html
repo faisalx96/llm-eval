@@ -103,6 +103,47 @@
       font-size: var(--font-base);
       line-height: 1.6;
     }
+    .analysis-pass-picker {
+      text-align: start;
+    }
+    .analysis-pass-picker-copy {
+      max-width: calc(var(--space-xl) * 24);
+      margin-right: auto;
+      margin-left: auto;
+      text-align: center;
+    }
+    .analysis-pass-picker-form {
+      display: flex;
+      align-items: end;
+      justify-content: center;
+      flex-wrap: wrap;
+      gap: var(--space-sm);
+      max-width: calc(var(--space-xl) * 18);
+      margin: 0 auto;
+    }
+    .analysis-pass-picker-field {
+      display: grid;
+      flex: 1 1 calc(var(--space-xl) * 10);
+      gap: var(--space-xs);
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+      font-weight: 650;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+    .analysis-pass-picker-field select {
+      width: 100%;
+      color: var(--text-primary);
+      font-family: var(--font-sans);
+      font-size: var(--font-base);
+      font-weight: 400;
+      letter-spacing: normal;
+      text-transform: none;
+    }
+    .analysis-pass-picker-form button:disabled {
+      cursor: not-allowed;
+      opacity: 0.55;
+    }
     .analysis-primary-link,
     .analysis-secondary-link,
     .analysis-mapping-open {
@@ -200,6 +241,27 @@
     }
     .analysis-run-heading h2 {
       overflow-wrap: anywhere;
+    }
+    .analysis-pass-selector {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: var(--space-sm);
+      margin-top: var(--space-md);
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+      font-weight: 650;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+    .analysis-pass-selector select {
+      min-width: calc(var(--space-xl) * 8);
+      color: var(--text-primary);
+      font-family: var(--font-sans);
+      font-size: var(--font-sm);
+      font-weight: 400;
+      letter-spacing: normal;
+      text-transform: none;
     }
     .analysis-run-context {
       display: flex;
@@ -3541,6 +3603,10 @@
       const projectSlug = decodeURIComponent((projectPageMatch && projectPageMatch[1]) || (projectRunMatch && projectRunMatch[1]) || '');
       const runId = decodeURIComponent(params.get('run') || (projectRunMatch && projectRunMatch[2]) || (legacyRunMatch && legacyRunMatch[1]) || '');
       const requestedMetric = params.get('metric') || '';
+      const requestedPassValue = parseInt(params.get('pass') || '', 10);
+      const requestedPass = Number.isFinite(requestedPassValue) && requestedPassValue > 0
+        ? requestedPassValue
+        : null;
       const requestedView = params.get('scope');
       const DASHBOARD_COMPARE_ALL_METRICS = '__all__';
       let inputMappingOpener = null;
@@ -3552,6 +3618,8 @@
           : (requestedView === 'project' ? 'rules' : (runId ? 'run' : 'dashboard')),
         contextRunId: '',
         data: null,
+        passNumber: null,
+        passSummaries: [],
         metric: '',
         metrics: [],
         selectedMetrics: [],
@@ -3595,6 +3663,30 @@
         return projectSlug
           ? projectUrl('runs/' + cleanId)
           : rootPath + '/run/' + cleanId + '/analyzer';
+      }
+
+      function selectedRunUrl(id) {
+        const base = runUrl(id);
+        if (!state.passNumber) return base;
+        return base + (base.includes('?') ? '&' : '?') + 'pass=' + encodeURIComponent(state.passNumber);
+      }
+
+      function passSummaryLabel(pass) {
+        const number = Number(pass.pass_number || 0);
+        const status = String(pass.status || 'pending').replace(/_/g, ' ');
+        const scored = Number(pass.items_scored || 0);
+        const total = Number(pass.items_total || 0);
+        const itemCopy = total ? ' · ' + scored + '/' + total + ' items scored' : '';
+        return 'Sample ' + number + ' · ' + status + itemCopy;
+      }
+
+      function navigateToPass(passNumber) {
+        const nextParams = new URLSearchParams(window.location.search);
+        if (projectSlug) nextParams.set('run', runId);
+        nextParams.set('pass', String(passNumber));
+        if (requestedMetric) nextParams.set('metric', requestedMetric);
+        nextParams.set('scope', 'run');
+        window.location.href = window.location.pathname + '?' + nextParams.toString();
       }
 
       function analysisViewUrl(view) {
@@ -3679,12 +3771,51 @@
         const metrics = snapshot.metric_names || [];
         const metricIndex = metrics.indexOf(state.metric);
         const specs = snapshot.metric_specs || {};
+        const repeatRun = Number(state.data?.run?.samples || 1) > 1;
+        const passNumber = repeatRun ? state.passNumber : null;
+
+        function passAttempt(row) {
+          const attempts = Array.isArray(row.pass_attempts) ? row.pass_attempts : [];
+          return attempts.find(candidate => candidate && Number(candidate.pass_number) === passNumber)
+            || attempts[passNumber - 1]
+            || null;
+        }
+
+        function passMetadata(row) {
+          const metadata = { ...((row.item_metadata && typeof row.item_metadata === 'object') ? row.item_metadata : {}) };
+          [
+            'root_cause', 'root_causes', 'root_cause_categories', 'root_cause_detail',
+            'root_cause_note', 'root_cause_reason', 'category_taxonomy',
+            'root_cause_source', 'root_cause_confidence', 'solution', 'solution_note',
+            'solution_source', 'analysis_error', 'analysis_warning', 'metric_analyses',
+          ].forEach(key => delete metadata[key]);
+          const analyses = {};
+          Object.entries(row.pass_metric_analyses || {}).forEach(([metricName, values]) => {
+            const analysis = Array.isArray(values) ? values[passNumber - 1] : null;
+            if (analysis && typeof analysis === 'object') analyses[metricName] = analysis;
+          });
+          if (Object.keys(analyses).length) metadata.metric_analyses = analyses;
+          return metadata;
+        }
+
         return (snapshot.rows || []).map(row => {
           const metricScores = {};
           const metricThresholds = {};
           const metricDirections = {};
+          const passAttemptValue = passNumber ? passAttempt(row) : null;
+          const passMetricMeta = passNumber ? {} : (row.metric_meta || {});
+          if (passNumber) {
+            Object.entries(row.pass_metric_meta || {}).forEach(([metricName, values]) => {
+              const value = Array.isArray(values) ? values[passNumber - 1] : null;
+              if (value && typeof value === 'object') passMetricMeta[metricName] = value;
+            });
+          }
           metrics.forEach((metricName, index) => {
-            metricScores[metricName] = window.QymMetrics.parseScoreValue((row.metric_values || [])[index]);
+            const passValues = (row.pass_scores || {})[metricName];
+            const rawValue = passNumber && Array.isArray(passValues)
+              ? passValues[passNumber - 1]
+              : (row.metric_values || [])[index];
+            metricScores[metricName] = window.QymMetrics.parseScoreValue(rawValue);
             metricThresholds[metricName] = specs[metricName] && specs[metricName].pass_threshold != null
               ? Number(specs[metricName].pass_threshold)
               : 0.8;
@@ -3695,14 +3826,14 @@
             index: row.index,
             input: row.input,
             input_full: row.input_full,
-            output: row.output,
-            output_full: row.output_full,
+            output: passNumber && passAttemptValue ? passAttemptValue.output : row.output,
+            output_full: passNumber && passAttemptValue ? passAttemptValue.output : row.output_full,
             expected: row.expected,
             expected_full: row.expected_full,
-            error: row.error,
-            item_metadata: row.item_metadata,
-            metric_metadata: state.metric ? ((row.metric_meta || {})[state.metric] || {}) : {},
-            metric_metadata_by_metric: row.metric_meta || {},
+            error: passNumber && passAttemptValue ? (passAttemptValue.error || '') : row.error,
+            item_metadata: passNumber ? passMetadata(row) : row.item_metadata,
+            metric_metadata: state.metric ? (passMetricMeta[state.metric] || {}) : {},
+            metric_metadata_by_metric: passMetricMeta,
             scores: metricScores,
             metric_scores: metricScores,
             metric_thresholds: metricThresholds,
@@ -4657,6 +4788,11 @@
 
       function createRunCard() {
         const run = state.data.run;
+        const passSelectorHtml = Number(run.samples || 1) > 1
+          ? '<label class="analysis-pass-selector">Sample<select id="analysis-pass-select" class="qym-control qym-select" aria-label="Analysis sample">' +
+            state.passSummaries.map(pass => '<option value="' + escapeAttr(pass.pass_number) + '"' + (Number(pass.pass_number) === state.passNumber ? ' selected' : '') + '>' + escapeHtml(passSummaryLabel(pass)) + '</option>').join('') +
+            '</select></label>'
+          : '';
         const card = document.createElement('section');
         card.className = 'analysis-run-card';
         card.innerHTML =
@@ -4667,8 +4803,8 @@
                 '<li class="analysis-run-context-item"><span class="analysis-run-context-label">Task</span><span class="analysis-run-context-value">' + runSummaryValue(run.task_name) + '</span></li>' +
                 '<li class="analysis-run-context-item"><span class="analysis-run-context-label">Model</span><span class="analysis-run-context-value">' + runSummaryValue(run.model_name) + '</span></li>' +
                 '<li class="analysis-run-context-item"><span class="analysis-run-context-label">Dataset</span><span class="analysis-run-context-value">' + runSummaryValue(run.dataset_name) + '</span></li>' +
-              '</ul></div>' +
-            '<a class="analysis-secondary-link qym-inline-action qym-inline-action--neutral" href="' + runUrl(runId) + '">View run</a></div>' +
+              '</ul>' + passSelectorHtml + '</div>' +
+            '<a class="analysis-secondary-link qym-inline-action qym-inline-action--neutral" href="' + selectedRunUrl(runId) + '">View run</a></div>' +
           '<div class="analysis-metrics"><div class="analysis-metric-heading"><span class="analysis-run-label">Metrics to analyze</span>' +
             '<span class="analysis-metric-actions"><button class="analysis-metric-action qym-inline-action qym-inline-action--neutral" id="analysis-metrics-all" type="button">Select all</button>' +
             '<button class="analysis-metric-action qym-inline-action qym-inline-action--neutral" id="analysis-metrics-none" type="button">Clear</button></span></div>' +
@@ -5174,6 +5310,7 @@
           const categories = [];
           const categoryDetails = {};
           const categoryTaxonomy = {};
+          const incompleteTaxonomyCategories = [];
           diagnosisBody.querySelectorAll('#pg-categories-list .pg-category-group').forEach(group => {
             const category = String(group.dataset.cat || '').trim();
             if (!category) return;
@@ -5186,27 +5323,46 @@
               const value = String(field.value || '').trim();
               if (value) taxonomy[field.dataset.taxonomyField] = value;
             });
+            if (!taxonomy.description || !taxonomy.when_to_use) {
+              incompleteTaxonomyCategories.push(category);
+            }
             if (Object.keys(taxonomy).length) categoryTaxonomy[category] = taxonomy;
           });
           return {
-            categories,
-            category_details_map: categoryDetails,
-            category_taxonomy: categoryTaxonomy,
-            max_root_cause_categories: Number.isFinite(projectMaxCategories)
-              ? Math.min(10, Math.max(1, Math.trunc(projectMaxCategories)))
-              : 3,
-            base_revision: categoryCatalogRevision,
+            payload: {
+              categories,
+              category_details_map: categoryDetails,
+              category_taxonomy: categoryTaxonomy,
+              max_root_cause_categories: Number.isFinite(projectMaxCategories)
+                ? Math.min(10, Math.max(1, Math.trunc(projectMaxCategories)))
+                : 3,
+              base_revision: categoryCatalogRevision,
+            },
+            incompleteTaxonomyCategories,
           };
         };
         if (categorySaveButton) categorySaveButton.addEventListener('click', async () => {
           if (!projectSlug || categorySaveButton.disabled) return;
           categorySaveButton.disabled = true;
           setCategorySaveState('info', 'Saving…');
+          const categoryCatalog = readCategoryCatalog();
+          if (categoryCatalog.incompleteTaxonomyCategories.length) {
+            const categories = categoryCatalog.incompleteTaxonomyCategories;
+            const categoryLabel = categories.length === 1 ? 'category' : 'categories';
+            categorySaveButton.disabled = !canManageCategoryCatalog;
+            setCategorySaveState('warning', 'Taxonomy required');
+            showStatus(
+              'error',
+              'Taxonomy required',
+              'Add both Description and Use when guidance for ' + categoryLabel + ': ' + categories.join(', ') + '.'
+            );
+            return;
+          }
           try {
             const response = await fetch(apiUrl('api/projects/' + encodeURIComponent(projectSlug) + '/analysis-category-catalog'), {
               method: 'PUT',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(readCategoryCatalog()),
+              body: JSON.stringify(categoryCatalog.payload),
             });
             const body = await response.json().catch(() => ({}));
             if (!response.ok) {
@@ -5365,11 +5521,9 @@
         (data.results || []).forEach(result => {
           const row = rows.find(candidate => candidate.item_id === result.item_id);
           if (!row) return;
-          if (!row.item_metadata || typeof row.item_metadata !== 'object') row.item_metadata = {};
-          if (!row.item_metadata.metric_analyses || typeof row.item_metadata.metric_analyses !== 'object') row.item_metadata.metric_analyses = {};
           if (result.metric_name) {
             const warning = String(result.warning || '').trim();
-            row.item_metadata.metric_analyses[result.metric_name] = {
+            const analysis = {
               source: 'ai',
               root_cause: result.root_cause,
               root_causes: Array.isArray(result.root_causes) ? result.root_causes : (result.root_cause ? [result.root_cause] : []),
@@ -5382,13 +5536,26 @@
               warning: warning,
               error: result.error || '',
             };
+            if (state.passNumber) {
+              if (!row.pass_metric_analyses || typeof row.pass_metric_analyses !== 'object') row.pass_metric_analyses = {};
+              if (!Array.isArray(row.pass_metric_analyses[result.metric_name])) {
+                row.pass_metric_analyses[result.metric_name] = [];
+              }
+              row.pass_metric_analyses[result.metric_name][state.passNumber - 1] = analysis;
+            } else {
+              if (!row.item_metadata || typeof row.item_metadata !== 'object') row.item_metadata = {};
+              if (!row.item_metadata.metric_analyses || typeof row.item_metadata.metric_analyses !== 'object') row.item_metadata.metric_analyses = {};
+              row.item_metadata.metric_analyses[result.metric_name] = analysis;
+            }
           }
         });
         if (data.aggregation_error) {
           showStatus(
             'warning',
             'Analysis saved; aggregation failed',
-            'Raw diagnoses were preserved. Open the run and use Aggregate results to retry.'
+            state.passNumber
+              ? 'The selected sample diagnosis was preserved.'
+              : 'Raw diagnoses were preserved. Open the run and use Aggregate results to retry.'
           );
         } else {
           showStatus('success', 'Analysis complete', 'Created ' + categoryCount + ' ' + categoryLabel + '. Open the run to review the results.');
@@ -5430,8 +5597,9 @@
             const runLink = document.querySelector('.analysis-run-header > .analysis-secondary-link');
             return runLink
               ? (runLink.getAttribute('href') || runLink.href)
-              : (state.contextRunId ? runUrl(state.contextRunId) : '');
+              : (state.contextRunId ? selectedRunUrl(state.contextRunId) : '');
           },
+          getPassNumber: projectScoped ? () => null : () => state.passNumber,
           getRows: projectScoped ? () => [] : analyzerRows,
           getMetric: projectScoped ? () => null : () => state.metric || null,
           getMetrics: projectScoped ? () => [] : () => state.selectedMetrics.slice(),
@@ -5442,6 +5610,45 @@
           escapeHtml: escapeHtml,
         });
         return window.QymPlayground.open();
+      }
+
+      function wirePassSelector() {
+        const select = document.getElementById('analysis-pass-select');
+        if (!select || select.dataset.wired === 'true') return;
+        select.dataset.wired = 'true';
+        select.addEventListener('change', event => {
+          const nextPass = parseInt(event.target.value || '', 10);
+          if (Number.isFinite(nextPass) && nextPass > 0) navigateToPass(nextPass);
+        });
+      }
+
+      function showPassPicker(data) {
+        const host = document.getElementById('analyzer-host');
+        if (!host) return;
+        const runName = data.run.run_name || data.run.external_run_id || runId;
+        const options = state.passSummaries.map(pass =>
+          '<option value="' + escapeAttr(pass.pass_number) + '">' + escapeHtml(passSummaryLabel(pass)) + '</option>'
+        ).join('');
+        host.innerHTML =
+          '<section class="analysis-landing analysis-pass-picker" aria-labelledby="analysis-pass-picker-title">' +
+            '<div class="analysis-pass-picker-copy">' +
+              '<h2 id="analysis-pass-picker-title">Choose a sample to analyze</h2>' +
+              '<p>Select one sample from <strong>' + escapeHtml(runName) + '</strong>. Auto-analysis will use that sample’s output, score, and execution context.</p>' +
+            '</div>' +
+            '<div class="analysis-pass-picker-form">' +
+              '<label class="analysis-pass-picker-field" for="analysis-pass-picker-select">Sample' +
+                '<select id="analysis-pass-picker-select" class="qym-control qym-select"><option value="">Select a sample…</option>' + options + '</select>' +
+              '</label>' +
+              '<button type="button" class="qym-inline-action qym-inline-action--accent" id="analysis-pass-picker-continue" disabled>Continue</button>' +
+            '</div>' +
+          '</section>';
+        const select = document.getElementById('analysis-pass-picker-select');
+        const button = document.getElementById('analysis-pass-picker-continue');
+        select.addEventListener('change', () => { button.disabled = !select.value; });
+        button.addEventListener('click', () => {
+          const nextPass = parseInt(select.value || '', 10);
+          if (Number.isFinite(nextPass) && nextPass > 0) navigateToPass(nextPass);
+        });
       }
 
       async function loadRun() {
@@ -5476,10 +5683,34 @@
         state.metrics = data.snapshot.metric_names || data.run.metric_names || [];
         state.selectedMetrics = requestedMetric && state.metrics.includes(requestedMetric) ? [requestedMetric] : state.metrics.slice();
         state.metric = state.selectedMetrics[0] || '';
+        const sampleCount = Number(data.run.samples || 1);
+        if (sampleCount > 1) {
+          const passesResponse = await fetch(apiUrl('api/runs/' + encodeURIComponent(runId) + '/passes'));
+          if (!passesResponse.ok) throw new Error('Could not load the run samples (HTTP ' + passesResponse.status + ').');
+          const passData = await passesResponse.json();
+          if (passData && passData.error) throw new Error(String(passData.error));
+          state.passSummaries = Array.isArray(passData && passData.passes) && passData.passes.length
+            ? passData.passes
+            : Array.from({ length: sampleCount }, (_, index) => ({ pass_number: index + 1, status: 'pending' }));
+          const hasRequestedPass = requestedPass && state.passSummaries.some(pass => Number(pass.pass_number) === requestedPass);
+          if (!hasRequestedPass) {
+            state.passNumber = null;
+            document.title = 'قيِّم • Choose sample • ' + (data.run.run_name || runId);
+            document.getElementById('analysis-loading').hidden = true;
+            document.getElementById('analyzer-host').hidden = false;
+            showPassPicker(data);
+            return;
+          }
+          state.passNumber = requestedPass;
+        } else {
+          state.passSummaries = [];
+          state.passNumber = null;
+        }
         document.title = 'قيِّم • Auto-analysis • ' + (data.run.run_name || runId);
         document.getElementById('analysis-loading').hidden = true;
         document.getElementById('analyzer-host').hidden = false;
         await initializePlayground(false);
+        wirePassSelector();
       }
 
       document.getElementById('analysis-error-retry').addEventListener('click', () => {

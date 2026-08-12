@@ -430,7 +430,19 @@ def test_run_page_supports_single_pass_scope() -> None:
     assert "const pass = state.viewPass ? state.passSummary : null;" in source
     assert "let runtimeMs = pass ? pass.duration_ms : run.duration_ms;" in source
     assert "? state.passSummary?.trace_stats" in source
-    assert "if (state.viewPass) { section.innerHTML = ''; return; }" in source
+    # A selected pass now has its own diagnosis scope; the aggregate page
+    # keeps the read-only root-cause summary visible instead of hiding it.
+    assert "function isRepeatAggregateView()" in source
+    assert "if (aggregateRepeatView) perMetricAnalysisHtml = '';" in source
+    assert "pass_metric_analyses" in source
+    assert "status: String(analysis.review_status || 'pending').toLowerCase()" in source
+    assert "const reviewStatus = hasStoredAnalysis" in source
+    assert "if (state.viewPass) approvalBody.pass_number = state.viewPass;" in source
+    assert "id: data.id || correctionId || null" in source
+    assert "if (IS_EXPORT || isRepeatAggregateView()) return '';" in source
+    assert "window.QymShell?.openConfirmDialog" in source
+    assert "Only this sample will be changed." in source
+    assert "...(passNumber ? { pass_number: passNumber } : {})" in source
 
     # the lens and its All/pass dot switcher are gone: expanded repeat items
     # use independently visible output cards and one synchronized detail band
@@ -2721,6 +2733,11 @@ def test_auto_analysis_is_a_first_class_project_page() -> None:
     assert "Production rules and Documents remain available" in analyzer
     assert "if (!runId) {" in analyzer
     assert "getRunId: () => state.contextRunId" in analyzer
+    assert "requestedPass" in analyzer
+    assert "Choose a sample to analyze" in analyzer
+    assert "id=\"analysis-pass-picker-select\"" in analyzer
+    assert "id=\"analysis-pass-select\"" in analyzer
+    assert "getPassNumber" in analyzer
     assert 'id="analyzer-host"' in analyzer
     assert "container: document.getElementById('analyzer-host')" in analyzer
     assert 'id="pg-project-description"' not in playground
@@ -2953,6 +2970,8 @@ def test_auto_analysis_is_a_first_class_project_page() -> None:
     assert 'id="analysis-metric-list"' in analyzer
     assert "getMetrics: projectScoped ? () => [] : () => state.selectedMetrics.slice()" in analyzer
     assert "body.metrics = _getSelectedMetrics()" in playground
+    assert "body.pass_number = Number(passNumber)" in playground
+    assert "pass_number: _opts.getPassNumber ? _opts.getPassNumber() : null" in playground
     assert "var _selectedTarget = null;" in playground
     assert 'data-metric-name="' in playground
     assert "function _resolveSelectedTarget(matchedItems)" in playground
@@ -3021,6 +3040,21 @@ def test_auto_analysis_is_a_first_class_project_page() -> None:
     assert ">Input mapping</button>" in analyzer
     assert "Advanced run configuration" not in analyzer
     assert "state.wizardStep" not in analyzer
+
+
+def test_repeat_pass_analysis_links_select_that_sample() -> None:
+    dashboard = DASHBOARD_JS.read_text(encoding="utf-8")
+
+    # The aggregate run intentionally omits pass= so the analyzer can ask the
+    # user which sample to inspect. Expanded pass rows carry their own pass
+    # query and therefore open directly in that sample's analyzer context.
+    assert "function analyzerUrlForRun(run, passNumber = null)" in dashboard
+    assert "const passQuery = Number.isInteger(parsedPass)" in dashboard
+    assert "analysis?run=${encodeURIComponent(runId)}${passQuery}" in dashboard
+    assert "renderAnalysisCell(parentRun, runStatus, firstPass, pass.analysis_cause_count)" in dashboard
+    assert "const analysisLink = event.target.closest?.('.run-analysis-chip, .run-analysis-start')" in dashboard
+    assert "if (analysisLink)" in dashboard
+    assert "navigateTo(analysisLink.href)" in dashboard
 
 
 def test_playground_pages_load_matching_asset_revisions() -> None:
@@ -3193,7 +3227,12 @@ def test_auto_analysis_page_uses_first_class_run_rules_and_document_tabs() -> No
     assert 'min="1"' in playground
     assert 'inputmode="numeric"' in playground
     assert "function _normalizeCategoryLimitInput" in playground
-    assert "cfg.max_root_cause_categories = _normalizeCategoryLimitInput(maxCategoriesEl);" in playground
+    assert "var _DEFAULT_MAX_ROOT_CAUSE_CATEGORIES = 3;" in playground
+    assert "if (value == null) value = _DEFAULT_MAX_ROOT_CAUSE_CATEGORIES;" in playground
+    assert "var categoryLimit = _categoryLimitInputValue(maxCategoriesEl);" in playground
+    assert "if (categoryLimit != null) cfg.max_root_cause_categories = categoryLimit;" in playground
+    assert "maxCategoriesInput.addEventListener('blur', function ()" in playground
+    assert "maxCategoriesInput.addEventListener('change', function ()" not in playground
     assert "MAXIMUM ROOT-CAUSE CATEGORIES" in playground
     assert 'pg-hl-category">$1$2</span>' in playground
     assert "diagnosisPanel.querySelector('#pg-max-root-cause-categories')" not in analyzer
@@ -3305,9 +3344,27 @@ def test_run_manual_diagnosis_uses_project_backed_modal_picker() -> None:
     assert "aria-selected" in run
     assert "selectedCategories.splice(index, 1)" in run
     assert "event.target === picker" in run
+    assert 'class="rdi-category-picker__done qym-inline-action qym-inline-action--accent"' in run
+    assert "rdi-category-picker__footer-actions" in run
+    assert "'.rdi-category-picker__done').addEventListener('click', () => cleanup());" in run
     assert "silent: true" in run
     assert "rdi-analysis-warning" in run
     assert "row.item_metadata.analysis_warning" not in analyzer
+
+
+def test_category_taxonomy_is_required_across_diagnosis_entry_points() -> None:
+    playground = (DASHBOARD_DIR / "playground.js").read_text(encoding="utf-8")
+    run = (DASHBOARD_DIR / "run.html").read_text(encoding="utf-8")
+    analyzer = ANALYZER_HTML.read_text(encoding="utf-8")
+
+    assert "Both fields are required." in playground
+    assert "required aria-required=\"true\"" in playground
+    assert "incompleteTaxonomyCategories" in analyzer
+    assert "Taxonomy required" in analyzer
+    assert "Required · saved to the project" in run
+    assert "missingTaxonomyField" in run
+    assert "Category guidance required" in run
+    assert "reportValidity" not in run
 
 
 def test_shell_and_run_detail_normalize_trailing_slashes_before_route_parsing() -> None:
@@ -3352,8 +3409,10 @@ def test_runs_table_analysis_column_shows_state_or_static_action() -> None:
     # Cell renderer: chip for analyzed, static action for eligible, dash for
     # live. The action mirrors the run-detail Auto-Analyze recipe at table
     # scale and carries the sparkle icon.
-    assert "function renderAnalysisCell(run, status)" in dashboard_js
+    assert "function renderAnalysisCell(run, status, passNumber = null, analysisCauseCount = null)" in dashboard_js
     assert "run.analysis_cause_count" in dashboard_js
+    assert "analysisCauseCount = null" in dashboard_js
+    assert "renderAnalysisCell(parentRun, runStatus, firstPass, pass.analysis_cause_count)" in dashboard_js
     assert 'class="run-analysis-chip"' in dashboard_js
     assert 'class="run-analysis-start"' in dashboard_js
     assert "ANALYSIS_SPARK_ICON" in dashboard_js

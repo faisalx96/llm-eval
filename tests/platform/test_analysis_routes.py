@@ -12,6 +12,11 @@ from sqlalchemy.pool import StaticPool
 os.environ.setdefault("QYM_DATABASE_URL", "sqlite:///:memory:")
 os.environ.setdefault("QYM_AUTH_MODE", "proxy_headers")
 
+from qym_platform.api.analysis import (  # noqa: E402
+    CategoryCatalogUpdate,
+    PlaygroundConfig,
+    _catalog_request_values,
+)
 from qym_platform.app import create_app
 from qym_platform.db.base import Base
 from qym_platform.db.models import (
@@ -212,6 +217,15 @@ def test_category_catalog_version_aliases_and_conflict_contract(
     assert initial.status_code == 200
     assert initial.json()["version"] == 0
 
+    incomplete = analysis_route_client.put(
+        base,
+        headers=_headers(),
+        json={"categories": ["Custom Failure"], "base_revision": 0},
+    )
+    assert incomplete.status_code == 422
+    assert incomplete.json()["detail"]["code"] == "category_taxonomy_required"
+    assert incomplete.json()["detail"]["categories"] == ["Custom Failure"]
+
     saved = analysis_route_client.put(
         base,
         headers=_headers(),
@@ -261,6 +275,50 @@ def test_category_catalog_version_aliases_and_conflict_contract(
     assert restored.json()["catalog"]["category_entries"][0]["id"] == catalog["category_entries"][0]["id"]
 
 
+def test_category_limit_models_normalize_out_of_range_values() -> None:
+    assert PlaygroundConfig(max_root_cause_categories=0).max_root_cause_categories == 1
+    assert PlaygroundConfig(max_root_cause_categories=11).max_root_cause_categories == 10
+    assert PlaygroundConfig(max_root_cause_categories="").max_root_cause_categories is None
+    assert CategoryCatalogUpdate(max_root_cause_categories=0).max_root_cause_categories == 1
+    assert CategoryCatalogUpdate(max_root_cause_categories=11).max_root_cause_categories == 10
+    assert CategoryCatalogUpdate(max_root_cause_categories="").max_root_cause_categories == 3
+
+
+def test_category_catalog_add_does_not_require_taxonomy_for_untouched_legacy_categories() -> None:
+    request = CategoryCatalogUpdate(
+        categories=["Legacy Category", "New Category"],
+        category_taxonomy={
+            "Legacy Category": {"description": "A legacy definition."},
+            "New Category": {
+                "description": "A newly added diagnosis category.",
+                "when_to_use": "Use when this new failure is the best fit.",
+            }
+        },
+        max_root_cause_categories=3,
+    )
+    values = _catalog_request_values(
+        None,
+        "analysis-project",
+        request,
+        {
+            "categories": ["Legacy Category"],
+            "category_entries": [],
+            "category_details_map": {},
+            "category_taxonomy": {"Legacy Category": {"description": "A legacy definition."}},
+            "max_root_cause_categories": 3,
+        },
+    )
+
+    assert values["categories"] == ["Legacy Category", "New Category"]
+    assert values["category_taxonomy"] == {
+        "Legacy Category": {"description": "A legacy definition."},
+        "New Category": {
+            "description": "A newly added diagnosis category.",
+            "when_to_use": "Use when this new failure is the best fit.",
+        }
+    }
+
+
 def test_category_catalog_http_access_requires_manager_for_mutations(
     analysis_route_client: TestClient,
 ) -> None:
@@ -279,7 +337,16 @@ def test_category_catalog_http_access_requires_manager_for_mutations(
     manager_save = analysis_route_client.put(
         base,
         headers=_headers(),
-        json={"categories": ["Manager Category"], "base_revision": 0},
+        json={
+            "categories": ["Manager Category"],
+            "category_taxonomy": {
+                "Manager Category": {
+                    "description": "A manager-defined diagnosis category.",
+                    "when_to_use": "Use when the manager-defined failure is the best fit.",
+                }
+            },
+            "base_revision": 0,
+        },
     )
     assert manager_save.status_code == 200
     version_id = manager_save.json()["catalog"]["id"]
