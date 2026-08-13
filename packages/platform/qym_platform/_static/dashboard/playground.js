@@ -3676,7 +3676,7 @@ window.QymPlayground = (function () {
       return Promise.resolve();
     }
     return window.QymShell.openConfirmDialog({
-      mount: _overlay || document.body,
+      mount: document.body,
       title: 'Delete v' + version.version + ' permanently?',
       description: [
         'This permanently removes this rules version and its rules.',

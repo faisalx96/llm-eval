@@ -2863,6 +2863,10 @@ def test_auto_analysis_is_a_first_class_project_page() -> None:
     assert "data-compare-rule-version" in playground
     assert "data-delete-rule-version" in playground
     assert "_confirmRuleVersionDeletion" in playground
+    delete_version_confirmation = playground.split(
+        "function _confirmRuleVersionDeletion", 1
+    )[1].split("function _confirmAnalysisRuleDeletion", 1)[0]
+    assert "mount: document.body" in delete_version_confirmation
     assert "Delete version" in playground
     assert "confirmClass: 'shell-btn-danger'" in playground
     assert "window.confirm('Delete this rule version?" not in playground
