@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import codecs
 import csv
 import io
 import json
@@ -655,7 +656,10 @@ def _parse_cell(raw: Any) -> Any:
     text = str(raw)
     stripped = text.lstrip()
     if stripped[:1] in {"{", "["}:
-        return json.loads(stripped)
+        try:
+            return json.loads(stripped)
+        except json.JSONDecodeError:
+            return text
     return text
 
 
@@ -669,6 +673,35 @@ def _combine_columns(row: Dict[str, Any], cols: list[str]) -> Any:
     return {col: _parse_cell(row.get(col, "")) for col in cols}
 
 
+def _decode_csv(raw: bytes) -> str:
+    if not raw:
+        raise HTTPException(status_code=400, detail="CSV file is empty")
+    if raw.startswith((codecs.BOM_UTF32_LE, codecs.BOM_UTF32_BE)):
+        encodings = ["utf-32"]
+    elif raw.startswith((codecs.BOM_UTF16_LE, codecs.BOM_UTF16_BE)):
+        encodings = ["utf-16"]
+    else:
+        encodings = ["utf-8-sig", "cp1252"]
+    for encoding in encodings:
+        try:
+            return raw.decode(encoding)
+        except UnicodeDecodeError:
+            continue
+    raise HTTPException(
+        status_code=400,
+        detail="Unsupported CSV encoding; export as UTF-8, UTF-16, or Windows-1252",
+    )
+
+
+def _csv_reader(raw: bytes) -> csv.DictReader:
+    text = _decode_csv(raw)
+    try:
+        dialect = csv.Sniffer().sniff(text[:65536], delimiters=",;\t|")
+    except csv.Error:
+        dialect = csv.excel
+    return csv.DictReader(io.StringIO(text, newline=""), dialect=dialect)
+
+
 def _items_from_csv(
     raw: bytes,
     *,
@@ -678,14 +711,37 @@ def _items_from_csv(
     metadata_cols: list[str],
     label_cols: list[str],
 ) -> list[Dict[str, Any]]:
-    reader = csv.DictReader(io.StringIO(raw.decode("utf-8-sig")))
-    fields = list(reader.fieldnames or [])
+    reader = _csv_reader(raw)
+    raw_fields = list(reader.fieldnames or [])
+    fields = [field.strip() if field is not None else "" for field in raw_fields]
+    if not fields:
+        raise HTTPException(status_code=400, detail="CSV has no header row")
+    if any(not field for field in fields):
+        raise HTTPException(status_code=400, detail="CSV contains an empty column header")
+    duplicate_fields = sorted({field for field in fields if fields.count(field) > 1})
+    if duplicate_fields:
+        raise HTTPException(
+            status_code=400,
+            detail=f"CSV contains duplicate column headers: {', '.join(duplicate_fields)}",
+        )
+    reader.fieldnames = fields
     if not input_cols:
         raise HTTPException(status_code=400, detail="At least one input column is required")
-    for col in [c for c in input_cols + expected_cols + metadata_cols + label_cols if c and c not in fields]:
+    selected_cols = input_cols + expected_cols + metadata_cols + label_cols
+    if id_col:
+        selected_cols.append(id_col)
+    for col in [c for c in selected_cols if c and c not in fields]:
         raise HTTPException(status_code=400, detail=f"Missing column: {col}")
     items: list[Dict[str, Any]] = []
-    for row in reader:
+    for row_number, row in enumerate(reader, start=2):
+        extra_values = row.pop(None, None)
+        if extra_values and any(str(value or "").strip() for value in extra_values):
+            raise HTTPException(
+                status_code=400,
+                detail=f"CSV row {row_number} has more values than the header",
+            )
+        if not any(str(value or "").strip() for value in row.values()):
+            continue
         metadata = {col: _parse_cell(row.get(col, "")) for col in metadata_cols}
         labels: list[str] = []
         for col in label_cols:

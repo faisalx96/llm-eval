@@ -1360,7 +1360,7 @@
       const newBtn = el('button', { className: 'shell-btn shell-btn-primary qym-inline-action', 'aria-haspopup': 'menu', style: { flex: 'none' } }, '+ New dataset');
       newBtn.addEventListener('click', e => { e.stopPropagation(); openContextMenu(newBtn, [
         { label: 'Start blank', onClick: openNewDatasetWizard },
-        { label: 'Import CSV / JSONL', onClick: () => openUploadWizard({ mode: 'new' }) },
+        { label: 'Import CSV / TSV / JSONL', onClick: () => openUploadWizard({ mode: 'new' }) },
       ]); });
       controls.appendChild(dsxSearchControl(search));
       controls.appendChild(sortSel);
@@ -1428,7 +1428,7 @@
             const firstBtn = el('button', { className: 'shell-btn shell-btn-primary', 'aria-haspopup': 'menu' }, '+ Create your first dataset');
             firstBtn.addEventListener('click', e => { e.stopPropagation(); openContextMenu(firstBtn, [
               { label: 'Start blank', onClick: openNewDatasetWizard },
-              { label: 'Import CSV / JSONL', onClick: () => openUploadWizard({ mode: 'new' }) },
+              { label: 'Import CSV / TSV / JSONL', onClick: () => openUploadWizard({ mode: 'new' }) },
             ]); });
             acts.appendChild(firstBtn);
             empty.appendChild(acts);
@@ -1509,7 +1509,7 @@
     async function openNewDatasetWizard(){
       const res = await Shell.openFormDialog({
         title: 'New dataset',
-        description: 'Create an empty dataset. You can add items or upload a CSV/JSONL later.',
+        description: 'Create an empty dataset. You can add items or upload a CSV, TSV, or JSONL later.',
         confirmLabel: 'Create',
         fields: [
           { type: 'text', name: 'name', label: 'Name', placeholder: 'e.g. Customer Support QA', required: true },
@@ -1541,6 +1541,7 @@
         step: 1,
         file: null,
         format: null,           // 'csv' | 'jsonl'
+        csvDelimiter: ',',
         csvHeaders: [],
         csvRows: [],            // first 100 rows for preview
         jsonlRows: [],
@@ -1562,7 +1563,7 @@
       const header = el('div', { className: 'shell-modal-header' });
       const titleWrap = el('div');
       titleWrap.appendChild(el('div', { className: 'shell-modal-title', id: 'dsx-wiz-title' }, mode === 'new' ? 'Upload dataset' : 'Add items to draft'));
-      titleWrap.appendChild(el('div', { className: 'shell-modal-subtitle', id: 'dsx-wiz-subtitle' }, 'Upload a CSV or JSONL file.'));
+      titleWrap.appendChild(el('div', { className: 'shell-modal-subtitle', id: 'dsx-wiz-subtitle' }, 'Upload a CSV, TSV, or JSONL file.'));
       header.appendChild(titleWrap);
       const closeBtn = el('button', { className: 'shell-modal-close', onclick: close }, '×');
       header.appendChild(closeBtn);
@@ -1641,9 +1642,9 @@
         }
 
         const fileField = el('div', { className: 'shell-form-field' });
-        fileField.appendChild(el('label', { className: 'shell-form-label' }, 'File (CSV or JSONL) *'));
+        fileField.appendChild(el('label', { className: 'shell-form-label' }, 'File (CSV, TSV, or JSONL) *'));
         const drop = el('div', { className: 'dsx-file-drop' });
-        const fileInput = el('input', { type: 'file', accept: '.csv,.jsonl,.json,text/csv,application/json' });
+        const fileInput = el('input', { type: 'file', accept: '.csv,.tsv,.txt,.jsonl,.json,text/csv,text/tab-separated-values,text/plain,application/json' });
         const dropMsg = el('div', { html: '<strong>Drag & drop</strong> or <span style="color:var(--accent-primary)">click to browse</span>' });
         drop.appendChild(fileInput);
         drop.appendChild(dropMsg);
@@ -1670,7 +1671,7 @@
           else { wstate.format = 'csv'; parseCSV(file); }
           fmtNote.innerHTML = 'Detected format: <strong>' + wstate.format.toUpperCase() + '</strong>';
           if (mode === 'new' && !wstate.name) {
-            wstate.name = file.name.replace(/\.(csv|jsonl|json)$/i, '');
+            wstate.name = file.name.replace(/\.(csv|tsv|txt|jsonl|json)$/i, '');
             const nameInp = wrap.querySelector('input.shell-form-input');
             if (nameInp) nameInp.value = wstate.name;
           }
@@ -1680,14 +1681,17 @@
       function parseCSV(file){
         const reader = new FileReader();
         reader.onload = () => {
-          const text = String(reader.result || '');
-          const rows = csvParseLite(text);
-          wstate.csvHeaders = rows.length ? rows[0].slice() : [];
+          const text = decodeCSVBuffer(reader.result);
+          wstate.csvDelimiter = detectCSVDelimiter(text);
+          const rows = csvParseLite(text, wstate.csvDelimiter);
+          wstate.csvHeaders = rows.length
+            ? rows[0].map((header, index) => index === 0 ? header.replace(/^\uFEFF/, '').trim() : header.trim())
+            : [];
           wstate.csvRows = rows.slice(1, 101);
           // auto-map
           autoMap();
         };
-        reader.readAsText(file);
+        reader.readAsArrayBuffer(file);
       }
       function parseJSONL(file){
         const reader = new FileReader();
@@ -1698,8 +1702,38 @@
         };
         reader.readAsText(file);
       }
-      function csvParseLite(text){
+      function decodeCSVBuffer(buffer){
+        const bytes = new Uint8Array(buffer || new ArrayBuffer(0));
+        if (bytes[0] === 0xff && bytes[1] === 0xfe) {
+          return new TextDecoder('utf-16le').decode(bytes);
+        }
+        if (bytes[0] === 0xfe && bytes[1] === 0xff) {
+          return new TextDecoder('utf-16be').decode(bytes);
+        }
+        try {
+          return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+        } catch (_) {
+          return new TextDecoder('windows-1252').decode(bytes);
+        }
+      }
+      function detectCSVDelimiter(text){
+        const candidates = [',', ';', '\t', '|'];
+        let best = { delimiter: ',', score: -1 };
+        candidates.forEach(delimiter => {
+          const rows = csvParseLite(text.slice(0, 65536), delimiter)
+            .filter(row => row.some(cell => String(cell || '').trim()))
+            .slice(0, 20);
+          if (!rows.length || rows[0].length < 2) return;
+          const width = rows[0].length;
+          const matching = rows.filter(row => row.length === width).length;
+          const score = matching * 100 - (rows.length - matching) * 100 + width;
+          if (score > best.score) best = { delimiter, score };
+        });
+        return best.delimiter;
+      }
+      function csvParseLite(text, delimiter){
         // Minimal RFC-4180-ish CSV parser
+        delimiter = delimiter || ',';
         const rows = []; let row = []; let cell = ''; let inQ = false;
         for (let i = 0; i < text.length; i++) {
           const ch = text[i];
@@ -1709,7 +1743,7 @@
             else { cell += ch; }
           } else {
             if (ch === '"') { inQ = true; }
-            else if (ch === ',') { row.push(cell); cell = ''; }
+            else if (ch === delimiter) { row.push(cell); cell = ''; }
             else if (ch === '\n') { row.push(cell); rows.push(row); row = []; cell = ''; }
             else if (ch === '\r') { /* skip */ }
             else { cell += ch; }

@@ -333,6 +333,81 @@ def test_csv_upload_single_column_input_stays_scalar(client_and_session, tmp_pat
     assert row["expected_output"] is None
 
 
+def test_csv_upload_preserves_json_like_text_and_parses_valid_json(client_and_session, tmp_path):
+    client, _ = client_and_session
+    csv_path = tmp_path / "mixed-cells.csv"
+    csv_path.write_text(
+        'question,answer\nhello,[not valid JSON]\nstructured,"[""yes"", ""ok""]"\n',
+        encoding="utf-8",
+    )
+
+    with csv_path.open("rb") as fh:
+        upload = client.post(
+            "/v1/datasets:upload",
+            headers=_bearer(),
+            data={
+                "name": "Mixed Cells",
+                "input_cols": "question",
+                "expected_cols": "answer",
+            },
+            files={"file": ("mixed-cells.csv", fh, "text/csv")},
+        )
+
+    assert upload.status_code == 200, upload.text
+    items = client.get("/v1/datasets/mixed-cells/versions/v1/items", headers=_bearer())
+    rows = items.json()["items"]
+    assert rows[0]["expected_output"] == "[not valid JSON]"
+    assert rows[1]["expected_output"] == ["yes", "ok"]
+
+
+def test_csv_upload_detects_semicolon_and_windows_1252(client_and_session, tmp_path):
+    client, _ = client_and_session
+    csv_path = tmp_path / "excel.csv"
+    csv_path.write_bytes("question;answer\nCafé?;Crème brûlée\n".encode("cp1252"))
+
+    with csv_path.open("rb") as fh:
+        upload = client.post(
+            "/v1/datasets:upload",
+            headers=_bearer(),
+            data={
+                "name": "Excel Export",
+                "input_cols": "question",
+                "expected_cols": "answer",
+            },
+            files={"file": ("excel.csv", fh, "text/csv")},
+        )
+
+    assert upload.status_code == 200, upload.text
+    items = client.get("/v1/datasets/excel-export/versions/v1/items", headers=_bearer())
+    row = items.json()["items"][0]
+    assert row["input"] == "Café?"
+    assert row["expected_output"] == "Crème brûlée"
+
+
+def test_csv_upload_detects_utf16_tab_export(client_and_session, tmp_path):
+    client, _ = client_and_session
+    csv_path = tmp_path / "spreadsheet.tsv"
+    csv_path.write_bytes("question\tanswer\nمرحبا\tأهلاً\n".encode("utf-16"))
+
+    with csv_path.open("rb") as fh:
+        upload = client.post(
+            "/v1/datasets:upload",
+            headers=_bearer(),
+            data={
+                "name": "Spreadsheet Export",
+                "input_cols": "question",
+                "expected_cols": "answer",
+            },
+            files={"file": ("spreadsheet.tsv", fh, "text/tab-separated-values")},
+        )
+
+    assert upload.status_code == 200, upload.text
+    items = client.get("/v1/datasets/spreadsheet-export/versions/v1/items", headers=_bearer())
+    row = items.json()["items"][0]
+    assert row["input"] == "مرحبا"
+    assert row["expected_output"] == "أهلاً"
+
+
 def test_generated_item_edit_count_follows_index_across_lineage(client_and_session):
     client, _ = client_and_session
 
