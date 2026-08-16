@@ -96,10 +96,12 @@ class AnalysisJobManager:
         *,
         max_retained_jobs: int = 100,
         max_workers: Optional[int] = None,
+        job_id_prefix: str = "analysis",
     ) -> None:
         self._jobs: Dict[str, AnalysisJob] = {}
         self._max_retained_jobs = max(10, int(max_retained_jobs))
         self._max_workers = max(1, int(max_workers or _configured_worker_count()))
+        self._job_id_prefix = str(job_id_prefix or "analysis")
         self._lock = threading.RLock()
         self._executor: Optional[ThreadPoolExecutor] = None
         self._shutdown = False
@@ -173,6 +175,7 @@ class AnalysisJobManager:
                 request_payload=dict(request_payload),
                 progress=dict(progress or {}),
             )
+            job.job_id = f"{self._job_id_prefix}_{uuid4().hex}"
             self._jobs[job.job_id] = job
             executor = self._ensure_executor()
             # A tiny caller-loop heartbeat makes thread-originated progress
@@ -340,6 +343,7 @@ class AnalysisJobManager:
 
 
 analysis_job_manager = AnalysisJobManager()
+rule_inference_job_manager = AnalysisJobManager(job_id_prefix="rule_inference")
 
 
 __all__ = [
@@ -348,4 +352,5 @@ __all__ = [
     "AnalysisJob",
     "AnalysisJobManager",
     "analysis_job_manager",
+    "rule_inference_job_manager",
 ]

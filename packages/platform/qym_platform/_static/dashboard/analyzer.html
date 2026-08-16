@@ -5,13 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>قيِّم • Auto-analysis</title>
   <link rel="icon" type="image/png" href="/static/qym_icon.png">
-  <link rel="stylesheet" href="/static/dashboard.css?v=auto-analysis-selectors-20260811-6">
+  <link rel="stylesheet" href="/static/dashboard.css?v=rule-action-design-20260816-1">
   <link rel="stylesheet" href="/static/shell.css">
   <script src="/static/auth.js"></script>
   <script src="/static/shell.js?v=accessibility-responsive-20260806"></script>
   <script src="/static/metrics.js"></script>
   <script src="/static/qym_table.js"></script>
-  <script src="/static/playground.js?v=auto-analysis-selectors-20260811-6"></script>
+  <script src="/static/playground.js?v=rule-action-design-20260816-1"></script>
   <style>
     /* Typography and color roles follow docs/DESIGN_LANGUAGE.md. */
     .analysis-page {
@@ -1139,7 +1139,7 @@
     }
     .analysis-project-shell .pg-rule-item-head {
       display: grid;
-      grid-template-columns: auto minmax(0, 1fr) auto;
+      grid-template-columns: auto auto minmax(0, 1fr) auto;
       align-items: center;
       gap: var(--space-sm);
       padding: var(--space-sm);
@@ -1308,6 +1308,13 @@
     .analysis-project-shell .pg-rule-source-actions {
       flex-wrap: wrap;
     }
+    .analysis-project-shell .pg-rule-inference-progress-host {
+      display: block;
+      min-width: 0;
+    }
+    .analysis-project-shell .pg-rule-inference-progress-host[hidden] {
+      display: none;
+    }
     .analysis-project-footer .pg-rule-source-actions {
       margin-bottom: 0;
     }
@@ -1364,14 +1371,8 @@
       width: 1px;
       background: var(--border-default);
     }
-    .analysis-project-footer .pg-context-actions button {
-      display: inline-flex;
-      width: calc(var(--space-xl) * 4);
-      height: calc(var(--space-lg) * 2);
-      flex: 0 0 calc(var(--space-xl) * 4);
-      align-items: center;
-      justify-content: center;
-      padding: 0 var(--space-md);
+    .analysis-project-footer .pg-context-actions > .pg-context-action-group > .qym-inline-action {
+      flex: 0 0 auto;
     }
     .analysis-project-footer .pg-context-actions .pg-example-source-control {
       width: auto;
@@ -1383,22 +1384,6 @@
       border: 0;
       border-radius: 0;
       background: transparent;
-    }
-    .analysis-project-footer #pg-create-rule-version {
-      border-color: var(--accent-tertiary);
-      background: var(--bg-elevated);
-      color: var(--accent-tertiary-soft);
-    }
-    .analysis-project-footer #pg-infer-rules {
-      border-color: var(--accent-tertiary);
-      background: var(--accent-tertiary);
-      color: var(--bg-void);
-    }
-    .analysis-project-footer #pg-infer-rules:disabled {
-      border-color: var(--border-default);
-      background: var(--bg-elevated);
-      color: var(--text-muted);
-      opacity: 1;
     }
     .analysis-project-shell .pg-rule-compare {
       margin: var(--space-lg);
@@ -3038,7 +3023,7 @@
       .analysis-project-footer .pg-context-action-group {
         flex-direction: column;
       }
-      .analysis-project-footer .pg-context-actions button {
+      .analysis-project-footer .pg-context-actions > .pg-context-action-group > .qym-inline-action {
         width: 100%;
       }
       .analysis-project-footer .pg-context-actions .pg-example-source-control {
@@ -3061,7 +3046,7 @@
         text-align: right;
       }
       .analysis-project-shell .pg-rule-item-head {
-        grid-template-columns: auto minmax(0, 1fr) auto;
+        grid-template-columns: auto auto minmax(0, 1fr) auto;
       }
       .analysis-project-shell .pg-rule-toggle {
         grid-template-columns: minmax(0, 1fr) auto;
@@ -3096,7 +3081,7 @@
 
     .analysis-project-shell .pg-rule-filters {
       display: grid;
-      grid-template-columns: minmax(0, 1fr);
+      grid-template-columns: minmax(0, 1fr) auto;
       gap: var(--space-sm);
       padding: var(--space-md) var(--space-lg) 0;
     }
@@ -3125,7 +3110,7 @@
 
     .analysis-project-shell .pg-rule-item-head {
       display: grid;
-      grid-template-columns: auto minmax(0, 1fr) auto;
+      grid-template-columns: auto auto minmax(0, 1fr) auto;
       gap: var(--space-sm);
       padding: var(--space-md) 0;
     }
@@ -3271,34 +3256,6 @@
       padding: var(--space-md) 0;
       border-bottom: 1px solid var(--border-subtle);
       background: transparent;
-    }
-
-    .analysis-project-shell .analysis-project-footer #pg-create-rule-version.pg-context-primary,
-    .analysis-project-shell .analysis-project-footer #pg-infer-rules.pg-context-primary {
-      border-color: var(--accent-tertiary);
-      background: var(--accent-tertiary);
-      color: var(--bg-void);
-    }
-
-    .analysis-project-shell .analysis-project-footer #pg-create-rule-version:not(.pg-context-primary),
-    .analysis-project-shell .analysis-project-footer #pg-infer-rules:not(.pg-context-primary) {
-      border-color: var(--border-default);
-      background: var(--bg-elevated);
-      color: var(--text-secondary);
-    }
-
-    .analysis-project-shell .analysis-project-footer #pg-create-rule-version.pg-context-primary:hover:not(:disabled),
-    .analysis-project-shell .analysis-project-footer #pg-infer-rules.pg-context-primary:hover:not(:disabled) {
-      background: var(--accent-tertiary-soft);
-      color: var(--bg-void);
-    }
-
-    .analysis-project-shell .analysis-project-footer #pg-infer-rules.pg-context-primary:disabled {
-      border-color: var(--border-default);
-      background: var(--bg-elevated);
-      color: var(--text-muted);
-      cursor: not-allowed;
-      opacity: 1;
     }
 
     .analysis-version-history-host[hidden] {
@@ -3609,6 +3566,8 @@
         : null;
       const requestedView = params.get('scope');
       const DASHBOARD_COMPARE_ALL_METRICS = '__all__';
+      const ANALYSIS_RUN_PICKER_PARAM = 'qym_analysis_run_picker';
+      const ANALYSIS_RUN_PICKER_VALUE = '1';
       let inputMappingOpener = null;
       let inputMappingEscapeHandler = null;
       const canonicalRequestedView = requestedView === 'diagnosis' ? 'categories' : requestedView;
@@ -3656,6 +3615,13 @@
         if (!projectSlug) return rootPath + '/';
         const clean = String(suffix || '').replace(/^\/+/, '');
         return rootPath + '/projects/' + encodeURIComponent(projectSlug) + (clean ? '/' + clean : '');
+      }
+
+      function analysisRunsPickerUrl() {
+        const base = projectUrl();
+        if (!projectSlug) return base;
+        const separator = base.includes('?') ? '&' : '?';
+        return base + separator + ANALYSIS_RUN_PICKER_PARAM + '=' + ANALYSIS_RUN_PICKER_VALUE;
       }
 
       function runUrl(id) {
@@ -5013,6 +4979,7 @@
         runPanel.setAttribute('aria-labelledby', 'analysis-run-tab');
 
         const inference = parts.content.querySelector('.pg-rule-source-actions');
+        const inferenceProgressHost = parts.content.querySelector('#pg-rule-inference-progress-host');
         const inferenceEmpty = parts.content.querySelector('#pg-infer-source-empty');
         const inferencePrevious = inference && inference.previousElementSibling;
         const rulesHint = inferencePrevious && inferencePrevious.classList.contains('pg-instructions-hint') ? inferencePrevious : null;
@@ -5108,6 +5075,7 @@
         const rulesWorkspaceBody = document.createElement('div');
         rulesWorkspaceBody.className = 'analysis-target-body';
         if (rulesHint) rulesWorkspaceBody.append(rulesHint);
+        if (inferenceProgressHost) rulesWorkspaceBody.append(inferenceProgressHost);
         if (inferenceEmpty) rulesWorkspaceBody.append(inferenceEmpty);
         rulesWorkspaceBody.append(rulesLayout);
         rulesWorkspaceBody.append(versionHistoryHost);
@@ -5482,6 +5450,7 @@
         runPanel.append(resultsCard);
         const syncResultsCard = () => {
           const hasContent = resultNodes.some(node => {
+            if (node.parentNode !== resultsBody) return false;
             const computed = window.getComputedStyle(node);
             if (computed.display === 'none' || computed.visibility === 'hidden') return false;
             return Boolean((node.textContent || '').trim());
@@ -5664,7 +5633,7 @@
           if (!projectSlug) {
             throw new Error('Open Auto-analysis from a project or choose a run first.');
           }
-          document.getElementById('analysis-go-runs').href = projectSlug ? projectUrl() : rootPath + '/';
+          document.getElementById('analysis-go-runs').href = projectSlug ? analysisRunsPickerUrl() : rootPath + '/';
           state.contextRunId = '';
           document.getElementById('analysis-loading').hidden = true;
           document.getElementById('analyzer-host').hidden = false;

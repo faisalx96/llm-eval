@@ -1,7 +1,15 @@
 from typing import Optional
 
 from qym_platform.db.base import Base
-from qym_platform.db.models import Run, RunItem, RunItemScore, RunMetricSpec, Span
+from qym_platform.db.models import (
+    CorrectionStatus,
+    ReviewCorrection,
+    Run,
+    RunItem,
+    RunItemScore,
+    RunMetricSpec,
+    Span,
+)
 from qym_platform.services.insights_engine import (
     DEFAULT_MIN_CATEGORY_ITEMS,
     DEFAULT_MIN_ROOT_CAUSE_OCCURRENCES,
@@ -120,6 +128,23 @@ def _seed_engine_data(session: Session) -> Run:
                 ),
             ]
         )
+        session.add(
+            ReviewCorrection(
+                run_id=run.id,
+                item_id=item_id,
+                metric_name="accuracy",
+                task=run.task,
+                ai_root_cause="Reasoning-Error",
+                ai_root_causes=["Reasoning-Error"],
+                human_root_cause="Reasoning-Error",
+                human_root_causes=["Reasoning-Error"],
+                human_root_cause_detail=detail,
+                status=(
+                    CorrectionStatus.APPROVED if index < 3 else CorrectionStatus.PENDING
+                ),
+                is_active=True,
+            )
+        )
 
     _add_tool_span(
         session,
@@ -186,17 +211,12 @@ def test_engine_applies_thresholds_and_populates_both_data_levels() -> None:
 
     assert [insight.category for insight in insights] == ["Reasoning-Error"]
     insight = insights[0]
-    assert insight.models == {"model-a": 1}
-    assert insight.datasets == {"support": 1}
-    assert insight.tasks == {"qa": 1}
-    assert insight.metrics == {
-        "accuracy": {"success": 0, "fail": 1},
-        "latency": {"success": 1, "fail": 0},
-    }
-    assert insight.tools == {"calculator": 1}
-    assert insight.extra_data == {
-        "runs": {run.id: {"deployment": "production", "team": "search"}}
-    }
+    assert insight.models == {}
+    assert insight.datasets == {}
+    assert insight.tasks == {}
+    assert insight.metrics == {}
+    assert insight.tools == {}
+    assert insight.extra_data == {}
 
     assert list(insight.root_causes) == ["Common cause"]
     root_cause = insight.root_causes["Common cause"]
@@ -209,7 +229,9 @@ def test_engine_applies_thresholds_and_populates_both_data_levels() -> None:
     }
     assert root_cause.tools == {"search": 3}
     assert "judge_tool" not in root_cause.tools
-    assert root_cause.extra_data == insight.extra_data
+    assert root_cause.extra_data == {
+        "runs": {run.id: {"deployment": "production", "team": "search"}}
+    }
 
 
 def test_default_thresholds_route_small_root_causes_to_the_category() -> None:
@@ -222,8 +244,8 @@ def test_default_thresholds_route_small_root_causes_to_the_category() -> None:
     assert DEFAULT_MIN_ROOT_CAUSE_OCCURRENCES == 5
     assert len(insights) == 1
     assert insights[0].root_causes == {}
-    assert insights[0].models == {"model-a": 4}
-    assert insights[0].tools == {"search": 3, "calculator": 1}
+    assert insights[0].models == {"model-a": 3}
+    assert insights[0].tools == {"search": 3}
 
 
 def test_engine_validates_thresholds_and_empty_run_selection() -> None:

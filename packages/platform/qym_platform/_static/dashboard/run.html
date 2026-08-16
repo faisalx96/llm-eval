@@ -8558,16 +8558,26 @@
 
       }
 
-      function getApprovalState(row) {
+      function getApprovalState(row, metricName) {
         if (!row) return '';
-        const reviewStatus = String(row.review_correction_status || '').toLowerCase();
-        if (reviewStatus === 'approved') return 'approved';
+        const itemStatus = String(row.review_correction_status || '').toLowerCase();
+        const metricReviews = (row.review_corrections && typeof row.review_corrections === 'object')
+          ? row.review_corrections : {};
+        if (metricName) {
+          const metricStatus = String(metricReviews[metricName]?.status || '').toLowerCase();
+          if (metricStatus) return metricStatus === 'approved' ? 'approved' : 'not_approved';
+          if (itemStatus) return itemStatus === 'approved' ? 'approved' : 'not_approved';
+          return 'not_approved';
+        }
+        if (itemStatus === 'approved') return 'approved';
+        if (Object.values(metricReviews).some(review =>
+          String(review?.status || '').toLowerCase() === 'approved')) return 'approved';
         return 'not_approved';
       }
 
-      function matchesApprovalFilter(row, approvalSelection) {
+      function matchesApprovalFilter(row, approvalSelection, metricName) {
         if (!approvalSelection) return true;
-        const approvalState = getApprovalState(row);
+        const approvalState = getApprovalState(row, metricName);
         if (!approvalState) return false;
         // Support string (simple select) or array (legacy)
         if (typeof approvalSelection === 'string') {
@@ -9735,7 +9745,7 @@
         });
         defs.push({ id: 'approval', label: 'Approval', group: 'Item', kind: 'enum',
           values: ['approved', 'not_approved'],
-          get: row => (matchesApprovalFilter(row, 'approved') ? 'approved' : 'not_approved') });
+          get: row => (matchesApprovalFilter(row, 'approved', state.selectedMetric) ? 'approved' : 'not_approved') });
         defs.push({ id: 'output', label: 'Output text', group: 'Item', kind: 'text',
           get: row => stringify(row.output_full || row.output || '') });
         defs.push({ id: 'error', label: 'Has error', group: 'State', kind: 'bool',
@@ -10043,7 +10053,7 @@
             if (!matchesNamed && !matchesNone) continue;
           }
           if (state.approvalFilter !== null) {
-            if (!matchesApprovalFilter(row, state.approvalFilter)) continue;
+            if (!matchesApprovalFilter(row, state.approvalFilter, state.selectedMetric)) continue;
           }
           // Custom category filters
           let customFilterFail = false;
@@ -12074,7 +12084,7 @@
         const rows = state.snapshot.rows || [];
         for (const row of rows) {
           if (category === 'approval') {
-            const approvalState = getApprovalState(row);
+            const approvalState = getApprovalState(row, state.selectedMetric);
             if (approvalState) {
               if (itemCounts.approved !== undefined && approvalState === 'approved') itemCounts.approved++;
               if (itemCounts.not_approved !== undefined && approvalState === 'not_approved') itemCounts.not_approved++;

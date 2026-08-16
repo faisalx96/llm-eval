@@ -34,6 +34,7 @@ window.QymPlayground = (function () {
   var _analysisRulesPage = 1;
   var _RULES_PAGE_SIZE = 10;
   var _editingRuleIndex = null;
+  var _selectedAnalysisRuleKeys = new Set();
   var _analysisRuleSearch = '';
   var _ruleVersions = [];
   var _selectedRuleVersionId = null;
@@ -49,6 +50,13 @@ window.QymPlayground = (function () {
   var _analysisPollTimer = null;
   var _analysisPollGeneration = 0;
   var _analysisCancelRequested = false;
+  var _ruleInferenceProgressTimer = null;
+  var _ruleInferenceProgressGeneration = 0;
+  var _ruleInferenceRunning = false;
+  var _ruleInferenceJobId = null;
+  var _ruleInferencePollTimer = null;
+  var _ruleInferencePollGeneration = 0;
+  var _analysisProgressHome = null;
 
   // Keep the examples picker on the same field-toggle convention used by
   // Variable Mapping. These are the fields already projected into the writer
@@ -81,11 +89,21 @@ window.QymPlayground = (function () {
   function _analysisProgressNodes() {
     return {
       progress: document.getElementById('pg-runall-progress'),
+      bar: document.getElementById('pg-runall-progress-bar'),
       fill: document.getElementById('pg-runall-progress-fill'),
       progressText: document.getElementById('pg-runall-progress-text'),
       subtext: document.getElementById('pg-runall-progress-subtext'),
       button: document.getElementById('pg-runall-btn'),
     };
+  }
+
+  function _setAnalysisProgressValue(nodes, percentage, valueText) {
+    var pct = Math.max(0, Math.min(100, Math.round(Number(percentage) || 0)));
+    if (nodes.fill) nodes.fill.style.width = pct + '%';
+    if (nodes.bar) {
+      nodes.bar.setAttribute('aria-valuenow', String(pct));
+      if (valueText) nodes.bar.setAttribute('aria-valuetext', valueText);
+    }
   }
 
   function _analysisCategoryCount(data) {
@@ -112,9 +130,13 @@ window.QymPlayground = (function () {
     if (nodes.progress) nodes.progress.style.display = 'block';
     if (nodes.fill) {
       nodes.fill.style.transition = 'width 0.25s ease-out';
-      nodes.fill.style.width = pct + '%';
       if (state.phase !== 'failed') nodes.fill.style.background = '';
     }
+    _setAnalysisProgressValue(
+      nodes,
+      pct,
+      total > 0 ? completed + ' of ' + total + ' items analyzed (' + pct + '%)' : 'Preparing analysis'
+    );
     if (state.phase === 'aggregating') {
       if (nodes.button) nodes.button.textContent = 'Aggregating…';
       if (nodes.progressText) nodes.progressText.textContent = 'Aggregating root causes…';
@@ -154,8 +176,8 @@ window.QymPlayground = (function () {
     }
     if (nodes.fill) {
       nodes.fill.style.transition = 'width 0.3s ease-out';
-      nodes.fill.style.width = '100%';
     }
+    _setAnalysisProgressValue(nodes, 100, aggregationError ? 'Analysis saved with an aggregation error' : 'Analysis complete');
     if (nodes.progressText) {
       nodes.progressText.textContent = aggregationError
         ? 'Analysis saved; aggregation failed'
@@ -201,9 +223,9 @@ window.QymPlayground = (function () {
     if (nodes.subtext) nodes.subtext.textContent = errorMessage;
     if (nodes.fill) {
       nodes.fill.style.transition = 'width 0.3s ease-out';
-      nodes.fill.style.width = '0%';
       nodes.fill.style.background = 'var(--error)';
     }
+    _setAnalysisProgressValue(nodes, 0, 'Analysis failed');
     if (_opts.showToast) _opts.showToast('error', 'Analysis Failed', errorMessage);
   }
 
@@ -216,6 +238,7 @@ window.QymPlayground = (function () {
       nodes.fill.style.transition = 'width 0.3s ease-out';
       nodes.fill.style.background = 'var(--warning)';
     }
+    _setAnalysisProgressValue(nodes, 0, 'Analysis cancelled');
     if (_opts.showToast) _opts.showToast('warning', 'Analysis Cancelled', 'The background analysis was stopped.');
   }
 
@@ -367,11 +390,11 @@ window.QymPlayground = (function () {
     if (nodes.progress) nodes.progress.style.display = 'block';
     if (nodes.fill) {
       nodes.fill.style.transition = 'none';
-      nodes.fill.style.width = '0%';
       nodes.fill.style.background = '';
       void nodes.fill.offsetWidth;
       nodes.fill.style.transition = 'width 0.25s ease-out';
     }
+    _setAnalysisProgressValue(nodes, 0, 'Preparing analysis');
     if (nodes.progressText) nodes.progressText.textContent = 'Preparing analysis…';
     if (nodes.subtext) nodes.subtext.textContent = 'Starting a background analysis job…';
     _syncActionAvailability();
@@ -405,12 +428,21 @@ window.QymPlayground = (function () {
   function init(opts) {
     if (_analysisPollTimer) clearTimeout(_analysisPollTimer);
     if (_analysisRuleSaveTimer) clearTimeout(_analysisRuleSaveTimer);
+    if (_ruleInferenceProgressTimer) clearTimeout(_ruleInferenceProgressTimer);
+    if (_ruleInferencePollTimer) clearTimeout(_ruleInferencePollTimer);
     _analysisPollGeneration += 1;
+    _ruleInferenceProgressGeneration += 1;
+    _ruleInferencePollGeneration += 1;
     _analysisPollTimer = null;
     _analysisRuleSaveTimer = null;
+    _ruleInferenceProgressTimer = null;
+    _ruleInferencePollTimer = null;
     _analysisJobId = null;
     _analysisCancelRequested = false;
     _running = false;
+    _ruleInferenceRunning = false;
+    _ruleInferenceJobId = null;
+    _analysisProgressHome = null;
     _opts = opts || {};
   }
 
@@ -460,6 +492,7 @@ window.QymPlayground = (function () {
       _approvedExampleCharacterById = {};
       _examplePickerOverlay = null;
       _examplePickerState = null;
+      _clearSelectedAnalysisRules();
       _analysisRules = (_config && _config.analysis_rules) || [];
       _analysisRuleSearch = '';
       _editingRuleIndex = null;
@@ -477,6 +510,7 @@ window.QymPlayground = (function () {
       _createModal();
       _overlay.style.display = _opts.dedicatedPage ? 'block' : 'flex';
       _resumeActiveAnalysis();
+      _resumeActiveRuleInferenceJob();
     }).catch(function (err) {
       console.error('Playground: failed to load config', err);
       if (_opts.showToast) _opts.showToast('error', 'Playground Error', 'Failed to load configuration');
@@ -501,6 +535,11 @@ window.QymPlayground = (function () {
 
   function _analysisJobsPath(suffix) {
     var path = _analysisContextPath('analysis-jobs');
+    return suffix ? path + '/' + suffix : path;
+  }
+
+  function _analysisRuleJobsPath(suffix) {
+    var path = _analysisContextPath('analysis-rule-jobs');
     return suffix ? path + '/' + suffix : path;
   }
 
@@ -1806,6 +1845,24 @@ window.QymPlayground = (function () {
     button.classList.toggle('pg-example-source-control--selected', selectedCount > 0);
   }
 
+  function _renderInferenceSourceCounts(state) {
+    var counts = [
+      { id: 'pg-infer-documents-count', value: state.selectedDocuments, noun: 'document' },
+      { id: 'pg-infer-examples-count', value: state.selectedExamples, noun: 'approved example' },
+    ];
+    counts.forEach(function (entry) {
+      var badge = document.getElementById(entry.id);
+      if (!badge) return;
+      var count = Number(entry.value || 0);
+      var noun = entry.noun + (count === 1 ? '' : 's');
+      var message = count + ' ' + noun + ' will be used to generate rules';
+      badge.textContent = String(count);
+      badge.setAttribute('aria-label', message);
+      badge.title = message;
+      badge.classList.toggle('qym-tag--accent', count > 0);
+    });
+  }
+
   function _inferenceSourceState() {
     var documentsInput = document.getElementById('pg-infer-use-documents');
     var documentsAvailable = _enabledReferenceDocumentCount();
@@ -1883,6 +1940,73 @@ window.QymPlayground = (function () {
     if (search && search.value !== _analysisRuleSearch) search.value = _analysisRuleSearch;
   }
 
+  function _analysisRuleSelectionKey(rule, index) {
+    return rule && rule.id ? 'id:' + String(rule.id) : 'index:' + String(index);
+  }
+
+  function _clearSelectedAnalysisRules() {
+    _selectedAnalysisRuleKeys.clear();
+  }
+
+  function _selectedAnalysisRuleIndexes() {
+    return _analysisRules.reduce(function (indexes, rule, index) {
+      if (_selectedAnalysisRuleKeys.has(_analysisRuleSelectionKey(rule, index))) indexes.push(index);
+      return indexes;
+    }, []);
+  }
+
+  function _renderRuleSelectionControls() {
+    var selected = _ruleVersions.find(function (version) { return version.id === _selectedRuleVersionId; });
+    var editable = !!selected && selected.status === 'draft';
+    var availableKeys = new Set(_analysisRules.map(function (rule, index) {
+      return _analysisRuleSelectionKey(rule, index);
+    }));
+    _selectedAnalysisRuleKeys.forEach(function (key) {
+      if (!availableKeys.has(key)) _selectedAnalysisRuleKeys.delete(key);
+    });
+    if (!editable) _clearSelectedAnalysisRules();
+
+    var entries = _filteredAnalysisRuleEntries();
+    var selectedCount = _selectedAnalysisRuleKeys.size;
+    var selectedVisibleCount = entries.reduce(function (count, entry) {
+      return count + (_selectedAnalysisRuleKeys.has(_analysisRuleSelectionKey(entry.rule, entry.index)) ? 1 : 0);
+    }, 0);
+    var selectAll = document.getElementById('pg-rule-select-all');
+    if (selectAll) {
+      selectAll.disabled = !editable || entries.length === 0;
+      selectAll.checked = entries.length > 0 && selectedVisibleCount === entries.length;
+      selectAll.indeterminate = selectedVisibleCount > 0 && selectedVisibleCount < entries.length;
+      selectAll.setAttribute('aria-label', entries.length > 0 ? 'Select all filtered rules' : 'No rules to select');
+    }
+    var count = document.getElementById('pg-rule-selection-count');
+    if (count) {
+      count.textContent = selectedCount ? selectedCount + ' selected' : '';
+    }
+    var deleteSelected = document.getElementById('pg-delete-selected-rules');
+    if (deleteSelected) {
+      deleteSelected.disabled = !editable || selectedCount === 0;
+      var deleteLabel = deleteSelected.querySelector('[data-rule-selection-delete-label]');
+      if (deleteLabel) {
+        deleteLabel.textContent = selectedCount
+          ? 'Delete ' + selectedCount + (selectedCount === 1 ? ' rule' : ' rules')
+          : 'Delete selected';
+      }
+      deleteSelected.setAttribute('aria-label', selectedCount
+        ? 'Delete ' + selectedCount + (selectedCount === 1 ? ' selected rule' : ' selected rules')
+        : 'Delete selected rules');
+    }
+    var list = document.getElementById('pg-rule-list');
+    if (!list) return;
+    list.querySelectorAll('.pg-rule-item').forEach(function (item) {
+      var index = parseInt(item.dataset.ruleIndex, 10);
+      var rule = Number.isNaN(index) ? null : _analysisRules[index];
+      var isSelected = !!rule && _selectedAnalysisRuleKeys.has(_analysisRuleSelectionKey(rule, index));
+      item.classList.toggle('pg-rule-item-selected', isSelected);
+      var checkbox = item.querySelector('[data-select-rule]');
+      if (checkbox && checkbox.checked !== isSelected) checkbox.checked = isSelected;
+    });
+  }
+
   function _analysisRulesPageCount() {
     return Math.max(1, Math.ceil(_filteredAnalysisRuleEntries().length / _RULES_PAGE_SIZE));
   }
@@ -1922,11 +2046,17 @@ window.QymPlayground = (function () {
       var editing = _editingRuleIndex === index;
       var ruleName = rule.title || 'rule ' + (index + 1);
       var instruction = rule.instruction || 'No instruction yet.';
+      var selected = _selectedAnalysisRuleKeys.has(_analysisRuleSelectionKey(rule, index));
+      var selectionDisabled = readOnly ? ' disabled' : '';
       var deleteAction = !readOnly
         ? '<button class="qym-icon-action qym-icon-action--danger pg-rule-remove" type="button" data-delete-rule="' + index + '" title="Delete ' + _escAttr(ruleName) + '" aria-label="Delete ' + _escAttr(ruleName) + '">' + _icon('trash') + '</button>'
         : '';
-      return '<div class="pg-rule-item' + (editing ? ' pg-rule-item-editing' : '') + '" data-rule-index="' + index + '" data-rule-id="' + _escAttr(rule.id || '') + '">' +
+      return '<div class="pg-rule-item' + (editing ? ' pg-rule-item-editing' : '') + (selected ? ' pg-rule-item-selected' : '') + '" data-rule-index="' + index + '" data-rule-id="' + _escAttr(rule.id || '') + '">' +
         '<div class="pg-rule-item-head" role="group" aria-label="' + _escAttr(ruleName) + '">' +
+          '<label class="pg-rule-source-checkbox pg-rule-select" title="Select ' + _escAttr(ruleName) + '">' +
+            '<input class="pg-rule-selection-input" type="checkbox" data-select-rule="' + index + '" aria-label="Select ' + _escAttr(ruleName) + '"' + (selected ? ' checked' : '') + selectionDisabled + ' />' +
+            '<span class="pg-document-check" aria-hidden="true"></span>' +
+          '</label>' +
           '<span class="pg-rule-item-number" aria-label="Rule ' + (index + 1) + '">' + (index + 1) + '</span>' +
           '<button class="pg-rule-toggle" data-toggle-rule="' + index + '" type="button" aria-expanded="' + (editing ? 'true' : 'false') + '" aria-controls="pg-rule-fields-' + index + '" aria-label="' + (editing ? 'Collapse ' : 'Expand ') + _escAttr(ruleName) + '">' +
             '<span class="pg-rule-item-summary"><strong title="' + _escAttr(rule.title || 'Untitled rule') + '">' + _esc(rule.title || 'Untitled rule') + '</strong><span title="' + _escAttr(instruction) + '" dir="auto">' + _esc(instruction) + '</span></span>' +
@@ -2700,11 +2830,23 @@ window.QymPlayground = (function () {
           '<span class="pg-document-check" aria-hidden="true"></span>' +
           '<span>Add documents</span>' +
         '</label>' +
+        '<span class="qym-tag qym-tag--count pg-rule-source-count" id="pg-infer-documents-count" role="status" aria-live="polite">0</span>' +
         '<button class="pg-example-source-control" id="pg-add-examples" type="button" aria-haspopup="dialog" aria-expanded="false" aria-label="Add approved examples">Add examples</button>' +
+        '<span class="qym-tag qym-tag--count pg-rule-source-count" id="pg-infer-examples-count" role="status" aria-live="polite">0</span>' +
       '</div>' +
+      '<div class="pg-rule-inference-progress-host" id="pg-rule-inference-progress-host" hidden></div>' +
       '<div class="pg-rule-empty pg-rule-inference-empty" id="pg-infer-source-empty" role="alert" hidden></div>' +
       '<div class="pg-rule-filters" id="pg-rule-filters" role="search" aria-label="Filter rules">' +
         '<label class="pg-rule-filter-field pg-rule-filter-search"><span class="pg-visually-hidden">Search rules</span><input class="qym-control qym-input qym-search" id="pg-rule-search" type="search" placeholder="Search rules" autocomplete="off" /></label>' +
+        '<div class="pg-rule-selection-actions" role="group" aria-label="Rule selection actions">' +
+          '<label class="pg-rule-source-checkbox pg-rule-select-all">' +
+            '<input class="pg-rule-selection-input" id="pg-rule-select-all" type="checkbox" aria-label="Select all filtered rules" disabled />' +
+            '<span class="pg-document-check" aria-hidden="true"></span>' +
+            '<span>Select all filtered</span>' +
+          '</label>' +
+          '<span class="pg-rule-selection-count" id="pg-rule-selection-count" role="status" aria-live="polite"></span>' +
+          '<button class="shell-btn shell-btn-danger qym-inline-action pg-rule-delete-selected" id="pg-delete-selected-rules" type="button" disabled>' + _icon('trash') + '<span data-rule-selection-delete-label>Delete selected</span></button>' +
+        '</div>' +
       '</div>' +
       '<div class="pg-rule-list" id="pg-rule-list">' + _buildAnalysisRulesEditor() + '</div>' +
       '<div class="qym-pagination" id="pg-rule-pagination" role="navigation" aria-label="Rule list pagination"></div>' +
@@ -2721,11 +2863,11 @@ window.QymPlayground = (function () {
       '<h2 class="pg-context-title" id="pg-context-title">Analysis rules</h2>' + rulesBody +
       '<div class="pg-context-actions">' +
         '<div class="pg-context-action-group pg-context-action-group-manual" aria-label="Manual rule actions">' +
-          '<button class="pg-context-secondary" id="pg-create-rule-version" type="button">Create draft</button>' +
+          '<button class="qym-inline-action qym-inline-action--neutral" id="pg-create-rule-version" type="button">Create draft</button>' +
         '</div>' +
         '<span class="pg-context-action-divider" aria-hidden="true"></span>' +
         '<div class="pg-context-action-group pg-context-action-group-generation" aria-label="Rule generation actions">' +
-          '<button class="pg-context-primary" id="pg-infer-rules" type="button"' + inferenceDisabled + ' title="Generate additional non-redundant rules from the selected sources">Generate rules</button>' +
+          '<button class="qym-inline-action qym-inline-action--accent" id="pg-infer-rules" type="button"' + inferenceDisabled + ' title="Generate additional non-redundant rules from the selected sources">Generate rules</button>' +
         '</div>' +
       '</div>' +
       '<div class="pg-context-status" id="pg-context-status" role="status" aria-live="polite"></div>' +
@@ -2838,7 +2980,7 @@ window.QymPlayground = (function () {
       '<div class="pg-progress-icon-container"><div class="pg-progress-icon">✨</div></div>' +
       '<div class="pg-progress-text" id="pg-runall-progress-text">Analyzing items…</div>' +
       '<div class="pg-progress-subtext" id="pg-runall-progress-subtext">This might take a moment depending on batch size.</div>' +
-      '<div class="pg-progress-bar"><div class="pg-progress-fill" id="pg-runall-progress-fill"></div></div>' +
+      '<div class="pg-progress-bar" id="pg-runall-progress-bar" role="progressbar" aria-label="LLM analysis progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="Preparing analysis"><div class="pg-progress-fill" id="pg-runall-progress-fill"></div></div>' +
     '</div>';
     html += '<div id="pg-runall-results" class="pg-runall-results"></div>';
 
@@ -3495,6 +3637,7 @@ window.QymPlayground = (function () {
     _renderRuleFilterControls();
     if (list) list.innerHTML = _buildAnalysisRulesEditor();
     _renderAnalysisRulePagination();
+    _renderRuleSelectionControls();
     var count = document.getElementById('pg-rule-count');
     if (count) count.textContent = _formatRuleCount();
     var selected = _ruleVersions.find(function (version) { return version.id === _selectedRuleVersionId; });
@@ -3510,13 +3653,13 @@ window.QymPlayground = (function () {
     }
     if (createButton) {
       createButton.hidden = false;
-      createButton.classList.remove('pg-context-primary');
-      createButton.classList.add('pg-context-secondary');
+      createButton.classList.remove('qym-inline-action--accent');
+      createButton.classList.add('qym-inline-action--neutral');
     }
     var generateButton = document.getElementById('pg-infer-rules');
     if (generateButton) {
-      generateButton.classList.remove('pg-context-secondary');
-      generateButton.classList.add('pg-context-primary');
+      generateButton.classList.remove('qym-inline-action--neutral');
+      generateButton.classList.add('qym-inline-action--accent');
     }
     var viewState = document.getElementById('pg-rule-view-state');
     if (viewState) {
@@ -3555,6 +3698,7 @@ window.QymPlayground = (function () {
 
   function _syncInferenceSourceAvailability() {
     var state = _inferenceSourceState();
+    _renderInferenceSourceCounts(state);
     _renderApprovedExampleSourceControl();
     var empty = document.getElementById('pg-infer-source-empty');
     if (empty) {
@@ -3563,9 +3707,15 @@ window.QymPlayground = (function () {
     }
     var generateButton = document.getElementById('pg-infer-rules');
     if (generateButton) {
-      generateButton.disabled = !state.hasUsableSource;
-      generateButton.title = state.hasUsableSource ? 'Generate additional non-redundant rules from the selected sources' : state.message;
+      generateButton.disabled = _ruleInferenceRunning || !state.hasUsableSource;
+      generateButton.title = _ruleInferenceRunning
+        ? 'Rule generation is in progress'
+        : (state.hasUsableSource ? 'Generate additional non-redundant rules from the selected sources' : state.message);
     }
+    var documentsInput = document.getElementById('pg-infer-use-documents');
+    if (documentsInput) documentsInput.disabled = _ruleInferenceRunning;
+    var addExamplesButton = document.getElementById('pg-add-examples');
+    if (addExamplesButton) addExamplesButton.disabled = _ruleInferenceRunning;
     var documentBudget = document.getElementById('pg-document-budget');
     if (documentBudget) {
       var documentCharacters = Number(state.selectedDocumentCharacters || 0);
@@ -3591,6 +3741,12 @@ window.QymPlayground = (function () {
     });
     var addButton = document.getElementById('pg-add-rule');
     if (addButton) addButton.disabled = isBusy;
+    var selectAll = document.getElementById('pg-rule-select-all');
+    var deleteSelected = document.getElementById('pg-delete-selected-rules');
+    if (isBusy) {
+      if (selectAll) selectAll.disabled = true;
+      if (deleteSelected) deleteSelected.disabled = true;
+    }
     var pagination = document.getElementById('pg-rule-pagination');
     if (pagination) {
       if (isBusy) {
@@ -3599,6 +3755,7 @@ window.QymPlayground = (function () {
         });
       } else {
         _renderAnalysisRulePagination();
+        _renderRuleSelectionControls();
       }
     }
   }
@@ -3633,6 +3790,7 @@ window.QymPlayground = (function () {
           _analysisRules = selected ? selected.rules : [];
           _analysisRulesPage = 1;
           _editingRuleIndex = null;
+          _clearSelectedAnalysisRules();
           if (_config) _config.analysis_rules = _analysisRules;
           _renderAnalysisRulesEditor();
         }
@@ -3713,6 +3871,7 @@ window.QymPlayground = (function () {
       if (!result || !result.confirmed) return false;
       _analysisRules = _readAnalysisRuleDraftsFromEditor();
       _analysisRules.splice(index, 1);
+      _clearSelectedAnalysisRules();
       _editingRuleIndex = null;
       _renderAnalysisRulesEditor();
       _setRuleEditorBusy(true);
@@ -3729,6 +3888,48 @@ window.QymPlayground = (function () {
     });
   }
 
+  function _confirmSelectedAnalysisRuleDeletion() {
+    _analysisRules = _readAnalysisRuleDraftsFromEditor();
+    var indexes = _selectedAnalysisRuleIndexes();
+    if (indexes.length === 0) return Promise.resolve(false);
+    if (!window.QymShell || typeof window.QymShell.openConfirmDialog !== 'function') {
+      _setContextStatus('The confirmation dialog is unavailable. Reload the page and try again.', true);
+      return Promise.resolve(false);
+    }
+    var count = indexes.length;
+    return window.QymShell.openConfirmDialog({
+      mount: _overlay || document.body,
+      title: 'Delete ' + count + (count === 1 ? ' rule?' : ' rules?'),
+      description: [
+        'Delete the selected rules from the current draft.',
+        'This can\'t be undone.',
+      ],
+      cancelLabel: 'Keep rules',
+      confirmLabel: 'Delete ' + (count === 1 ? 'rule' : 'rules'),
+      confirmClass: 'shell-btn-danger',
+    }).then(function (result) {
+      if (!result || !result.confirmed) return false;
+      _analysisRules = _readAnalysisRuleDraftsFromEditor();
+      _selectedAnalysisRuleIndexes().sort(function (a, b) { return b - a; }).forEach(function (index) {
+        _analysisRules.splice(index, 1);
+      });
+      _clearSelectedAnalysisRules();
+      _editingRuleIndex = null;
+      _renderAnalysisRulesEditor();
+      _setRuleEditorBusy(true);
+      _setContextStatus('Removing ' + count + (count === 1 ? ' rule' : ' rules') + ' from the current version…', false);
+      return _saveAnalysisContext().then(function () {
+        _setContextStatus(count === 1 ? 'Rule deleted.' : count + ' rules deleted.', false);
+        return true;
+      }).catch(function (error) {
+        _setContextStatus(error.message || 'The rules were removed locally but could not be saved.', true);
+        return false;
+      }).finally(function () {
+        _setRuleEditorBusy(false);
+      });
+    });
+  }
+
   function _openRuleVersion(versionId) {
     var version = _ruleVersions.find(function (candidate) { return candidate.id === versionId; });
     if (!version) return;
@@ -3736,6 +3937,7 @@ window.QymPlayground = (function () {
     _analysisRules = (version.rules || []).slice();
     _analysisRulesPage = 1;
     _editingRuleIndex = null;
+    _clearSelectedAnalysisRules();
     if (_config) _config.analysis_rules = _analysisRules;
     _renderAnalysisRulesEditor();
     _renderRuleVersionHistory();
@@ -4196,6 +4398,7 @@ window.QymPlayground = (function () {
       _selectedRuleVersionId = data.rule_version && data.rule_version.id;
       _analysisRules = data.analysis_rules || [];
       _analysisRulesPage = 1;
+      if (createNewVersion) _clearSelectedAnalysisRules();
       if (_config) {
         _config.analysis_rules = _analysisRules;
       }
@@ -4220,8 +4423,259 @@ window.QymPlayground = (function () {
     });
   }
 
+  function _clearRuleInferenceProgressTimer() {
+    if (_ruleInferenceProgressTimer) clearTimeout(_ruleInferenceProgressTimer);
+    _ruleInferenceProgressTimer = null;
+    _ruleInferenceProgressGeneration += 1;
+  }
+
+  function _restoreAnalysisProgressHome() {
+    var nodes = _analysisProgressNodes();
+    var host = document.getElementById('pg-rule-inference-progress-host');
+    if (host) host.hidden = true;
+    if (nodes.progress && _analysisProgressHome && _analysisProgressHome.isConnected) {
+      _analysisProgressHome.appendChild(nodes.progress);
+    }
+    _analysisProgressHome = null;
+  }
+
+  function _moveAnalysisProgressToRules() {
+    var nodes = _analysisProgressNodes();
+    var host = document.getElementById('pg-rule-inference-progress-host');
+    if (!nodes.progress || !host) return;
+    if (nodes.progress.parentNode !== host) {
+      _analysisProgressHome = nodes.progress.parentNode;
+      host.appendChild(nodes.progress);
+    }
+    host.hidden = false;
+  }
+
+  function _setRuleInferenceProgress(percentage, title, subtext, tone) {
+    var nodes = _analysisProgressNodes();
+    if (nodes.progress) nodes.progress.style.display = 'block';
+    if (nodes.fill) {
+      nodes.fill.style.transition = 'width 0.3s ease-out';
+      nodes.fill.style.background = tone === 'error' ? 'var(--error)' : '';
+    }
+    if (nodes.progressText) nodes.progressText.textContent = title;
+    if (nodes.subtext) nodes.subtext.textContent = subtext;
+    _setAnalysisProgressValue(nodes, percentage, title + ' ' + Math.round(Number(percentage) || 0) + '%');
+  }
+
+  function _startRuleInferenceProgress(sourceState) {
+    _clearRuleInferenceProgressTimer();
+    _restoreAnalysisProgressHome();
+    _moveAnalysisProgressToRules();
+    var documents = Number(sourceState && sourceState.selectedDocuments || 0);
+    var examples = Number(sourceState && sourceState.selectedExamples || 0);
+    _setRuleInferenceProgress(
+      5,
+      'Queueing rule generation…',
+      documents + ' document' + (documents === 1 ? '' : 's') + ' · ' + examples + ' approved example' + (examples === 1 ? '' : 's') + ' selected.'
+    );
+  }
+
+  function _updateRuleInferenceProgress(progressState) {
+    var state = progressState || {};
+    var phase = String(state.phase || 'queued');
+    var completed = Math.max(0, Number(state.completed || 0));
+    var total = Math.max(0, Number(state.total || 0));
+    var percentage = 5;
+    var title = 'Queueing rule generation…';
+    var subtext = 'The rule-generation job is waiting to start.';
+    if (phase === 'completed') {
+      percentage = 100;
+      title = 'Rules generation complete';
+      subtext = 'The generated rules are ready to review.';
+    } else if (phase === 'running' || phase === 'preparing') {
+      percentage = 12;
+      title = 'Preparing rule sources…';
+      subtext = 'Splitting the selected sources into LLM-safe requests.';
+    } else if (phase === 'generating' || phase === 'generated') {
+      percentage = total > 0 ? 18 + Math.round((completed / total) * 64) : 22;
+      title = total > 0
+        ? 'Generating rules: ' + completed + '/' + total + ' patches'
+        : 'Generating rules…';
+      subtext = 'The LLM is reviewing the selected documents and approved examples.';
+    } else if (phase === 'persisting') {
+      percentage = 92;
+      title = 'Saving generated rules…';
+      subtext = 'Checking for new non-redundant rules and updating the draft.';
+    }
+    _setRuleInferenceProgress(percentage, title, subtext);
+  }
+
+  function _releaseRuleInferenceProgress(generation) {
+    if (generation !== _ruleInferenceProgressGeneration) return;
+    var nodes = _analysisProgressNodes();
+    if (nodes.progress) nodes.progress.style.display = 'none';
+    _ruleInferenceProgressTimer = null;
+    _restoreAnalysisProgressHome();
+    _ruleInferenceRunning = false;
+    var button = document.getElementById('pg-infer-rules');
+    if (button) button.textContent = 'Generate rules';
+    _setRuleEditorBusy(false);
+    _syncInferenceSourceAvailability();
+    _syncActionAvailability();
+  }
+
+  function _finishRuleInferenceProgress(data, addedCount) {
+    _clearRuleInferenceProgressTimer();
+    var generation = _ruleInferenceProgressGeneration;
+    var documents = Number(data && data.documents_used || 0);
+    var examples = Number(data && data.examples_used || 0);
+    var generated = Number(addedCount || 0);
+    var resultText = generated > 0
+      ? 'Added ' + generated + ' new ' + (generated === 1 ? 'rule' : 'rules') + '.'
+      : 'No new non-redundant rules were found.';
+    _setRuleInferenceProgress(
+      100,
+      'Rules generation complete',
+      resultText + ' Used ' + documents + ' document' + (documents === 1 ? '' : 's') + ' and ' + examples + ' approved example' + (examples === 1 ? '' : 's') + '.'
+    );
+    _ruleInferenceProgressTimer = setTimeout(function () {
+      _releaseRuleInferenceProgress(generation);
+    }, 2600);
+  }
+
+  function _failRuleInferenceProgress(message) {
+    _clearRuleInferenceProgressTimer();
+    var generation = _ruleInferenceProgressGeneration;
+    _setRuleInferenceProgress(0, 'Rule generation failed', message || 'Could not generate rules.', 'error');
+    _ruleInferenceProgressTimer = setTimeout(function () {
+      _releaseRuleInferenceProgress(generation);
+    }, 3000);
+  }
+
+  function _resetRuleInferenceControls() {
+    var button = document.getElementById('pg-infer-rules');
+    if (button) button.textContent = 'Generate rules';
+    _setRuleEditorBusy(false);
+    _syncInferenceSourceAvailability();
+    _syncActionAvailability();
+  }
+
+  function _applyRuleInferenceResult(data) {
+    data = data || {};
+    _analysisRules = data.analysis_rules || [];
+    _analysisRulesPage = 1;
+    _clearSelectedAnalysisRules();
+    _selectedRuleVersionId = data.rule_version && data.rule_version.id;
+    if (_config) {
+      _config.analysis_rules = _analysisRules;
+    }
+    _renderAnalysisRulesEditor();
+    return _refreshRuleVersions(false).then(function () {
+      var inferenceStats = data.inference_stats || {};
+      var addedCount = data.changes && Number.isFinite(Number(data.changes.added))
+        ? Number(data.changes.added)
+        : Number(data.generated_rule_count || 0);
+      var patchText = inferenceStats.writer_calls
+        ? ' · ' + inferenceStats.writer_calls + ' writer call' + (inferenceStats.writer_calls === 1 ? '' : 's') +
+          (inferenceStats.patching_used ? ' across bounded patches' : '')
+        : '';
+      var version = data.rule_version || {};
+      var versionText;
+      if (addedCount === 0) {
+        versionText = 'No new non-redundant rules were found; v' + version.version + ' is unchanged.';
+      } else if (data.created_new_version) {
+        versionText = 'Created draft v' + version.version + ' with ' + addedCount + ' additional ' + (addedCount === 1 ? 'rule' : 'rules') + '.';
+      } else {
+        versionText = 'Added ' + addedCount + ' new ' + (addedCount === 1 ? 'rule' : 'rules') + ' to draft v' + version.version + '.';
+      }
+      _setContextStatus(
+        versionText + patchText + (addedCount > 0 ? ' Review and publish when ready.' : ''),
+        false
+      );
+      _scheduleAutoPreview(0);
+      _finishRuleInferenceProgress(data, addedCount);
+    });
+  }
+
+  function _pollRuleInferenceJob(job, generation) {
+    if (!job || !job.job_id || generation !== _ruleInferencePollGeneration) return;
+    _ruleInferenceJobId = job.job_id;
+    if (job.status === 'queued' || job.status === 'running' || job.status === 'cancelling') {
+      _ruleInferenceRunning = true;
+    }
+    _updateRuleInferenceProgress(job.progress);
+    _syncInferenceSourceAvailability();
+    _syncActionAvailability();
+    if (job.status === 'completed') {
+      _ruleInferenceJobId = null;
+      _applyRuleInferenceResult(job.result || {}).then(function () {
+        _resetRuleInferenceControls();
+      }).catch(function (error) {
+        _setContextStatus(error.message || 'Could not refresh generated rules.', true);
+        _failRuleInferenceProgress(error.message);
+        _resetRuleInferenceControls();
+        if (_opts.showToast) _opts.showToast('error', 'Rule Generation Failed', error.message);
+      });
+      return;
+    }
+    if (job.status === 'cancelled') {
+      _ruleInferenceJobId = null;
+      _failRuleInferenceProgress('Rule generation was cancelled.');
+      _resetRuleInferenceControls();
+      return;
+    }
+    if (job.status === 'failed') {
+      _ruleInferenceJobId = null;
+      var failure = job.error || 'Could not generate rules.';
+      _setContextStatus(failure, true);
+      _failRuleInferenceProgress(failure);
+      _resetRuleInferenceControls();
+      if (_opts.showToast) _opts.showToast('error', 'Rule Generation Failed', failure);
+      return;
+    }
+    var base = _opts.apiUrl || function (p) { return '/' + p; };
+    _ruleInferencePollTimer = setTimeout(function () {
+      fetch(base(_analysisRuleJobsPath(encodeURIComponent(job.job_id))))
+        .then(function (response) {
+          if (!response.ok) throw new Error('Rule-generation status: HTTP ' + response.status);
+          return response.json();
+        })
+        .then(function (nextJob) { _pollRuleInferenceJob(nextJob, generation); })
+        .catch(function (error) {
+          if (generation !== _ruleInferencePollGeneration) return;
+          var nodes = _analysisProgressNodes();
+          if (nodes.subtext) nodes.subtext.textContent = 'Reconnecting to rule generation…';
+          _ruleInferencePollTimer = setTimeout(function () {
+            _pollRuleInferenceJob(job, generation);
+          }, 1000);
+          console.warn('Rule-generation status polling interrupted:', error.message);
+        });
+    }, 600);
+  }
+
+  function _resumeActiveRuleInferenceJob() {
+    if (!_hasAnalysisContext()) return;
+    if (_ruleInferencePollTimer) clearTimeout(_ruleInferencePollTimer);
+    var base = _opts.apiUrl || function (p) { return '/' + p; };
+    var generation = ++_ruleInferencePollGeneration;
+    fetch(base(_analysisRuleJobsPath('active')))
+      .then(function (response) {
+        if (!response.ok) throw new Error('Active rule-generation job: HTTP ' + response.status);
+        return response.json();
+      })
+      .then(function (data) {
+        if (generation !== _ruleInferencePollGeneration || !data || !data.job) return;
+        _ruleInferenceRunning = true;
+        _setRuleEditorBusy(true);
+        _startRuleInferenceProgress(_inferenceSourceState());
+        _pollRuleInferenceJob(data.job, generation);
+      })
+      .catch(function (error) {
+        console.warn('Could not resume background rule generation:', error.message);
+      });
+  }
+
   function _inferAnalysisRules() {
     var mode = 'generate';
+    if (_running || _ruleInferenceRunning) {
+      _setContextStatus('Wait for the current LLM operation to finish before generating rules.', true);
+      return;
+    }
     if (!_hasAnalysisContext()) {
       _setContextStatus('Could not determine the analysis context.', true);
       return;
@@ -4241,13 +4695,19 @@ window.QymPlayground = (function () {
       _setContextStatus(sourceState.message, true);
       return;
     }
+    _ruleInferenceRunning = true;
+    _setRuleEditorBusy(true);
+    _startRuleInferenceProgress(sourceState);
     var button = document.getElementById('pg-infer-rules');
     if (button) {
       button.disabled = true;
       button.textContent = 'Generating…';
     }
     _setContextStatus('Generating rules from the selected sources…', false);
-    fetch(base(_analysisContextPath('analysis-rules/infer')), {
+    _syncInferenceSourceAvailability();
+    _syncActionAvailability();
+    var generation = ++_ruleInferencePollGeneration;
+    fetch(base(_analysisRuleJobsPath()), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -4260,48 +4720,19 @@ window.QymPlayground = (function () {
         connection_id: _connectionId,
       }),
     }).then(function (response) {
-      if (!response.ok) return response.json().then(function (data) { throw new Error(_responseErrorMessage(data, 'Could not generate rules')); });
-      return response.json();
-    }).then(function (data) {
-      _analysisRules = data.analysis_rules || [];
-      _analysisRulesPage = 1;
-      _selectedRuleVersionId = data.rule_version && data.rule_version.id;
-      if (_config) {
-        _config.analysis_rules = _analysisRules;
-      }
-      _renderAnalysisRulesEditor();
-      return _refreshRuleVersions(false).then(function () {
-        var inferenceStats = data.inference_stats || {};
-        var addedCount = data.changes && Number.isFinite(Number(data.changes.added))
-          ? Number(data.changes.added)
-          : Number(data.generated_rule_count || 0);
-        var patchText = inferenceStats.writer_calls
-          ? ' · ' + inferenceStats.writer_calls + ' writer call' + (inferenceStats.writer_calls === 1 ? '' : 's') +
-            (inferenceStats.patching_used ? ' across bounded patches' : '')
-          : '';
-        var version = data.rule_version || {};
-        var versionText;
-        if (addedCount === 0) {
-          versionText = 'No new non-redundant rules were found; v' + version.version + ' is unchanged.';
-        } else if (data.created_new_version) {
-          versionText = 'Created draft v' + version.version + ' with ' + addedCount + ' additional ' + (addedCount === 1 ? 'rule' : 'rules') + '.';
-        } else {
-          versionText = 'Added ' + addedCount + ' new ' + (addedCount === 1 ? 'rule' : 'rules') + ' to draft v' + version.version + '.';
-        }
-        _setContextStatus(
-          versionText + patchText + (addedCount > 0 ? ' Review and publish when ready.' : ''),
-          false
-        );
-        _scheduleAutoPreview(0);
+      return response.json().catch(function () { return {}; }).then(function (data) {
+        if (!response.ok) throw new Error(_responseErrorMessage(data, 'Could not start rule generation'));
+        if (!data.job_id) throw new Error('Rule generation did not return a job id.');
+        return data;
       });
+    }).then(function (job) {
+      _pollRuleInferenceJob(job, generation);
     }).catch(function (error) {
-      _setContextStatus(error.message || 'Could not generate rules.', true);
+      _ruleInferenceJobId = null;
+      _setContextStatus(error.message || 'Could not start rule generation.', true);
+      _failRuleInferenceProgress(error.message);
       if (_opts.showToast) _opts.showToast('error', 'Rule Generation Failed', error.message);
-    }).finally(function () {
-      if (button) {
-        button.textContent = 'Generate rules';
-      }
-      _syncInferenceSourceAvailability();
+      _resetRuleInferenceControls();
     });
   }
 
@@ -4331,10 +4762,22 @@ window.QymPlayground = (function () {
     var ruleList = document.getElementById('pg-rule-list');
     if (ruleList) {
       ruleList.addEventListener('input', function (event) {
-        if (event.target) event.target.classList.remove('pg-field-invalid');
+        if (!event.target || !event.target.matches('.pg-rule-title, .pg-rule-instruction')) return;
+        event.target.classList.remove('pg-field-invalid');
         _analysisRules = _readAnalysisRuleDraftsFromEditor();
         _scheduleAnalysisRuleAutoSave();
         _scheduleAutoPreview();
+      });
+      ruleList.addEventListener('change', function (event) {
+        var selection = event.target.closest('[data-select-rule]');
+        if (!selection) return;
+        _analysisRules = _readAnalysisRuleDraftsFromEditor();
+        var selectionIndex = parseInt(selection.dataset.selectRule, 10);
+        if (Number.isNaN(selectionIndex) || !_analysisRules[selectionIndex]) return;
+        var selectionKey = _analysisRuleSelectionKey(_analysisRules[selectionIndex], selectionIndex);
+        if (selection.checked) _selectedAnalysisRuleKeys.add(selectionKey);
+        else _selectedAnalysisRuleKeys.delete(selectionKey);
+        _renderRuleSelectionControls();
       });
       ruleList.addEventListener('click', function (event) {
         var remove = event.target.closest('[data-delete-rule]');
@@ -4344,7 +4787,7 @@ window.QymPlayground = (function () {
           return;
         }
         var row = event.target.closest('.pg-rule-item');
-        if (row && !event.target.closest('button, input, select, textarea')) {
+        if (row && !event.target.closest('button, input, select, textarea, .pg-rule-select')) {
           var rowToggle = row.querySelector('[data-toggle-rule]');
           if (rowToggle) rowToggle.click();
           return;
@@ -4364,6 +4807,21 @@ window.QymPlayground = (function () {
         toggle.click();
       });
     }
+    var selectAllRules = document.getElementById('pg-rule-select-all');
+    if (selectAllRules) selectAllRules.addEventListener('change', function () {
+      if (selectAllRules.disabled) return;
+      _analysisRules = _readAnalysisRuleDraftsFromEditor();
+      _filteredAnalysisRuleEntries().forEach(function (entry) {
+        var key = _analysisRuleSelectionKey(_analysisRules[entry.index], entry.index);
+        if (selectAllRules.checked) _selectedAnalysisRuleKeys.add(key);
+        else _selectedAnalysisRuleKeys.delete(key);
+      });
+      _renderRuleSelectionControls();
+    });
+    var deleteSelectedRules = document.getElementById('pg-delete-selected-rules');
+    if (deleteSelectedRules) deleteSelectedRules.addEventListener('click', function () {
+      if (!deleteSelectedRules.disabled) _confirmSelectedAnalysisRuleDeletion();
+    });
     var ruleSearch = document.getElementById('pg-rule-search');
     if (ruleSearch) ruleSearch.addEventListener('input', function () {
       _analysisRules = _readAnalysisRuleDraftsFromEditor();
@@ -4992,14 +5450,14 @@ window.QymPlayground = (function () {
     );
     if (runAllBtn) {
       runAllBtn.textContent = _formatAnalyzeItemCount(analysisItemCount);
-      runAllBtn.disabled = !ready || analysisItemCount === 0 || _running;
+      runAllBtn.disabled = !ready || analysisItemCount === 0 || _running || _ruleInferenceRunning;
       var footer = runAllBtn.closest('.playground-footer');
       if (footer) {
         footer.dataset.noTargets = analysisItemCount === 0 ? 'true' : 'false';
         footer.hidden = analysisItemCount === 0;
       }
     }
-    if (testBtn) testBtn.disabled = !ready || !selectedTarget || analysisItemCount === 0 || _running;
+    if (testBtn) testBtn.disabled = !ready || !selectedTarget || analysisItemCount === 0 || _running || _ruleInferenceRunning;
     if (cancelBtn) {
       cancelBtn.hidden = !_analysisJobId;
       cancelBtn.disabled = !_analysisJobId || _analysisCancelRequested;

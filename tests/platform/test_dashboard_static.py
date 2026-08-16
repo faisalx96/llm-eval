@@ -74,6 +74,25 @@ def test_run_and_compare_exports_keep_independent_scroll_containers() -> None:
         assert "overflow-y: auto;" in rule
 
 
+def test_approval_filters_include_metric_scoped_reviews() -> None:
+    """Metric approvals must participate in both dashboard filter views."""
+    run_source = (DASHBOARD_DIR / "run.html").read_text(encoding="utf-8")
+    compare_source = (DASHBOARD_DIR / "compare.html").read_text(encoding="utf-8")
+
+    assert "row.review_corrections" in run_source
+    assert (
+        "matchesApprovalFilter(row, state.approvalFilter, state.selectedMetric)"
+        in run_source
+    )
+    assert "getApprovalState(row, state.selectedMetric)" in run_source
+    assert "row.review_corrections" in compare_source
+    assert (
+        "matchesApprovalFilter(r, state.approvalFilter, state.selectedItemsMetric)"
+        in compare_source
+    )
+    assert "getApprovalState(r, state.selectedItemsMetric)" in compare_source
+
+
 def test_repeat_run_rows_are_ordinary_rows_with_pass_count_chip() -> None:
     """×k rows read as ordinary data rows: no special surface, no dot
     strip — the chevron and the pass-count chip carry the signal."""
@@ -1864,8 +1883,8 @@ def test_clear_filter_control_has_aligned_label_and_soft_count_pill() -> None:
     for page in DASHBOARD_DIR.glob("*.html"):
         source = page.read_text(encoding="utf-8")
         if page.name == "analyzer.html":
-            assert "dashboard.css?v=auto-analysis-selectors-20260811-6" in source
-            assert "playground.js?v=auto-analysis-selectors-20260811-6" in source
+            assert "dashboard.css?v=rule-action-design-20260816-1" in source
+            assert "playground.js?v=rule-action-design-20260816-1" in source
             assert "ui_components.css?v=auto-analysis-selectors-20260811-1" in source
             assert "ui_components.js?v=auto-analysis-selectors-20260811-1" in source
             continue
@@ -2713,6 +2732,7 @@ def test_shell_form_dialog_supports_structured_details() -> None:
 
 def test_auto_analysis_is_a_first_class_project_page() -> None:
     run = (DASHBOARD_DIR / "run.html").read_text(encoding="utf-8")
+    dashboard = DASHBOARD_JS.read_text(encoding="utf-8")
     analyzer = (DASHBOARD_DIR / "analyzer.html").read_text(encoding="utf-8")
     compare = (DASHBOARD_DIR / "compare.html").read_text(encoding="utf-8")
     playground = (DASHBOARD_DIR / "playground.js").read_text(encoding="utf-8")
@@ -2730,6 +2750,11 @@ def test_auto_analysis_is_a_first_class_project_page() -> None:
     assert "api/runs?limit=1&project_slug=" not in analyzer
     assert "Select a run to start analysis" in analyzer
     assert "Select a run from Runs" in analyzer
+    assert "qym_analysis_run_picker" in analyzer
+    assert "analysisRunsPickerUrl" in analyzer
+    assert "consumeAnalysisRunPickerContext" in dashboard
+    assert "analysisRunPickerContext && run" in dashboard
+    assert "openUrl(analyzerUrlForRun(run), e);" in dashboard
     assert "Production rules and Documents remain available" in analyzer
     assert "if (!runId) {" in analyzer
     assert "getRunId: () => state.contextRunId" in analyzer

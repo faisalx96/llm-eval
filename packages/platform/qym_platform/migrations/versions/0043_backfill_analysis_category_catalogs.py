@@ -165,69 +165,21 @@ def _legacy_project_catalog(
         _merge_taxonomy(taxonomy, prior_catalog.get("category_taxonomy"))
         prior_entries = prior_catalog.get("category_entries") or []
 
-    item_query = sa.text(
-        """
-        SELECT ri.item_metadata
-        FROM run_items ri
-        JOIN runs r ON r.id = ri.run_id
-        WHERE r.project_id = :project_id
-        """
-    )
-    result = bind.execute(
-        item_query,
-        {"project_id": project_id},
-        execution_options={"stream_results": True},
-    )
-    while True:
-        rows = result.fetchmany(500)
-        if not rows:
-            break
-        for (raw_metadata,) in rows:
-            metadata = _json(raw_metadata)
-            if not isinstance(metadata, dict):
-                continue
-            raw_root_causes = metadata.get("root_causes") or metadata.get("root_cause")
-            _add_categories(categories, details, raw_root_causes)
-            primary = (
-                raw_root_causes[0]
-                if isinstance(raw_root_causes, list) and raw_root_causes
-                else raw_root_causes
-            )
-            _add_detail(details, primary, metadata.get("root_cause_detail"))
-            _add_categories(categories, details, metadata.get("category_details_map"))
-            _merge_taxonomy(taxonomy, metadata.get("category_taxonomy"))
-            metric_analyses = metadata.get("metric_analyses")
-            if isinstance(metric_analyses, dict):
-                for analysis in metric_analyses.values():
-                    if isinstance(analysis, dict):
-                        raw_metric_categories = analysis.get("root_causes") or analysis.get(
-                            "root_cause"
-                        )
-                        _add_categories(categories, details, raw_metric_categories)
-                        metric_primary = (
-                            raw_metric_categories[0]
-                            if isinstance(raw_metric_categories, list) and raw_metric_categories
-                            else raw_metric_categories
-                        )
-                        _add_detail(
-                            details,
-                            metric_primary,
-                            analysis.get("root_cause_detail"),
-                        )
-                        _merge_taxonomy(taxonomy, analysis.get("category_taxonomy"))
-    result.close()
-
     # Review candidates can contain human labels that were not copied back to
-    # item metadata in older releases.
+    # item metadata in older releases. Only active approved candidates are
+    # allowed to seed the project vocabulary; pending AI labels are not
+    # reviewer-approved diagnosis categories.
     correction_query = sa.text(
         """
-        SELECT rc.ai_root_cause, rc.ai_root_causes, rc.ai_category_taxonomy,
-               rc.ai_root_cause_detail, rc.human_root_cause,
-               rc.human_root_causes, rc.human_category_taxonomy,
-               rc.human_root_cause_detail
+        SELECT rc.human_root_cause, rc.human_root_causes,
+               rc.human_category_taxonomy, rc.human_root_cause_detail,
+               rc.ai_root_cause, rc.ai_root_causes,
+               rc.ai_category_taxonomy, rc.ai_root_cause_detail
         FROM review_corrections rc
         JOIN runs r ON r.id = rc.run_id
         WHERE r.project_id = :project_id
+          AND rc.status = 'approved'
+          AND rc.is_active = TRUE
         """
     )
     result = bind.execute(
@@ -240,12 +192,18 @@ def _legacy_project_catalog(
         if not rows:
             break
         for row in rows:
-            for raw_categories in (row[0], row[1], row[4], row[5]):
-                _add_categories(categories, details, raw_categories)
-            _merge_taxonomy(taxonomy, row[2])
-            _add_detail(details, row[0], row[3])
-            _merge_taxonomy(taxonomy, row[6])
-            _add_detail(details, row[4], row[7])
+            human_categories = row[1] or row[0]
+            ai_categories = row[5] or row[4]
+            raw_categories = human_categories or ai_categories
+            _add_categories(categories, details, raw_categories)
+            _merge_taxonomy(taxonomy, row[2] or row[6])
+            detail = row[3] or row[7]
+            parsed_categories = _json(raw_categories)
+            if isinstance(parsed_categories, list):
+                for category in parsed_categories:
+                    _add_detail(details, category, detail)
+            else:
+                _add_detail(details, parsed_categories, detail)
     result.close()
 
     prior_by_fold = {

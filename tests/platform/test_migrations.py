@@ -6,7 +6,6 @@ from typing import Any
 from alembic.config import Config
 from alembic.script import ScriptDirectory
 
-
 ROOT = Path(__file__).resolve().parents[2]
 MIGRATIONS_DIR = ROOT / "packages" / "platform" / "qym_platform" / "migrations"
 
@@ -27,9 +26,7 @@ def test_alembic_revision_ids_fit_default_version_column() -> None:
     revisions = list(ScriptDirectory.from_config(config).walk_revisions())
 
     oversized = [
-        revision.revision
-        for revision in revisions
-        if len(revision.revision) > 32
+        revision.revision for revision in revisions if len(revision.revision) > 32
     ]
 
     assert oversized == []
@@ -41,7 +38,7 @@ def test_alembic_has_one_upgrade_head() -> None:
     config.set_main_option("script_location", str(MIGRATIONS_DIR))
     heads = ScriptDirectory.from_config(config).get_heads()
 
-    assert heads == ["0043"]
+    assert heads == ["0044"]
 
 
 def test_catalog_backfill_scopes_streaming_to_select_statements() -> None:
@@ -75,7 +72,4 @@ def test_catalog_backfill_scopes_streaming_to_select_statements() -> None:
     connection = FakeConnection()
     migration._legacy_project_catalog(connection, "project-1")
 
-    assert connection.execute_options == [
-        {"stream_results": True},
-        {"stream_results": True},
-    ]
+    assert connection.execute_options == [{"stream_results": True}]

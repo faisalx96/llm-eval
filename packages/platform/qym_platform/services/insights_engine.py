@@ -10,8 +10,8 @@ from dataclasses import dataclass, field
 from typing import Any, Optional, Union
 
 from qym_platform.db.models import Run, RunItem, RunItemScore, RunMetricSpec, Span
+from qym_platform.services.approved_diagnoses import load_approved_diagnoses
 from qym_platform.services.insights_data import InsightData, RootCauseData
-from qym_platform.services.root_cause_categories import analysis_root_causes
 from sqlalchemy.orm import Session
 
 DEFAULT_MIN_ROOT_CAUSE_OCCURRENCES = 5
@@ -49,29 +49,26 @@ def _model_name(value: Any) -> str:
     return name.split("/", 1)[-1] if "/" in name else name
 
 
-def _analysis_entries(item: RunItem) -> list[tuple[str, str]]:
-    """Return current (category, root-cause detail) pairs for one item."""
-    metadata = item.item_metadata if isinstance(item.item_metadata, dict) else {}
-    metric_analyses = metadata.get("metric_analyses")
-    if isinstance(metric_analyses, dict) and metric_analyses:
-        entries: list[tuple[str, str]] = []
-        for analysis in metric_analyses.values():
-            if not isinstance(analysis, dict) or analysis.get("error"):
-                continue
-            detail = _clean_label(analysis.get("root_cause_detail"))
-            entries.extend(
-                (category, detail) for category in analysis_root_causes(analysis)
-            )
-        return entries
-
-    if _clean_label(metadata.get("analysis_error")):
-        return []
-    detail = _clean_label(metadata.get("root_cause_detail"))
-    return [(category, detail) for category in analysis_root_causes(metadata)]
+def _analysis_entries(
+    item: RunItem,
+    approved_entries: Sequence[Mapping[str, Any]] = (),
+) -> list[tuple[str, str]]:
+    """Return category/detail pairs from reviewer-approved diagnoses only."""
+    del item  # The entries have already been resolved against this item.
+    return [
+        (
+            _clean_label(entry.get("category")),
+            _clean_label(entry.get("detail")),
+        )
+        for entry in approved_entries
+        if _clean_label(entry.get("category"))
+    ]
 
 
 def _group_items(
-    runs: Sequence[Run], items: Sequence[RunItem]
+    runs: Sequence[Run],
+    items: Sequence[RunItem],
+    approved_diagnoses: Mapping[tuple[str, str], Sequence[Mapping[str, Any]]],
 ) -> tuple[dict[str, _CategoryGroup], dict[_ItemKey, RunItem]]:
     runs_by_id = {run.id: run for run in runs}
     items_by_key: dict[_ItemKey, RunItem] = {}
@@ -82,7 +79,10 @@ def _group_items(
             continue
         item_key = (item.run_id, item.item_id)
         items_by_key[item_key] = item
-        for category, root_cause in _analysis_entries(item):
+        for category, root_cause in _analysis_entries(
+            item,
+            approved_diagnoses.get(item_key, ()),
+        ):
             category_key = _label_key(category)
             if not category_key:
                 continue
@@ -318,7 +318,8 @@ def build_insight_data(
         .order_by(RunItem.run_id.asc(), RunItem.index.asc(), RunItem.id.asc())
         .all()
     )
-    categories, items_by_key = _group_items(runs, items)
+    approved_diagnoses = load_approved_diagnoses(db, loaded_run_ids, items)
+    categories, items_by_key = _group_items(runs, items, approved_diagnoses)
     qualifying_categories = [
         group
         for group in categories.values()

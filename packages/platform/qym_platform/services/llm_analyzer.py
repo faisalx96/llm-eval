@@ -915,6 +915,7 @@ async def _run_rule_writer_pipeline(
     stats: dict[str, Any] | None,
     append_only: bool = False,
     include_fields: dict[str, bool] | None = None,
+    progress_callback: Callable[[int, int, str], None] | None = None,
 ) -> list[dict[str, Any]]:
     document_patches = _writer_reference_patches(reference_documents)
     example_patches = _writer_example_patches(corrections, include_fields)
@@ -935,6 +936,7 @@ async def _run_rule_writer_pipeline(
             {
                 "document_patches": len(document_patches),
                 "approved_example_patches": len(example_patches),
+                "total_patches": len(document_patches) + len(example_patches),
                 "document_characters": sum(
                     len(str(document.get("content") or ""))
                     for document in reference_documents
@@ -954,9 +956,15 @@ async def _run_rule_writer_pipeline(
             }
         )
 
+    total_patches = len(document_patches) + len(example_patches)
+    if progress_callback is not None:
+        progress_callback(0, total_patches, "preparing")
     rules = list(existing_rules)
     completed_patch = False
+    completed_patches = 0
     for document_patch in document_patches:
+        if progress_callback is not None:
+            progress_callback(completed_patches, total_patches, "generating")
         patch_rules = await _run_rule_writer_patch(
             client,
             model,
@@ -977,7 +985,12 @@ async def _run_rule_writer_pipeline(
         else:
             rules = patch_rules
         completed_patch = True
+        completed_patches += 1
+        if progress_callback is not None:
+            progress_callback(completed_patches, total_patches, "generating")
     for example_patch in example_patches:
+        if progress_callback is not None:
+            progress_callback(completed_patches, total_patches, "generating")
         patch_rules = await _run_rule_writer_patch(
             client,
             model,
@@ -998,8 +1011,13 @@ async def _run_rule_writer_pipeline(
         else:
             rules = patch_rules
         completed_patch = True
+        completed_patches += 1
+        if progress_callback is not None:
+            progress_callback(completed_patches, total_patches, "generating")
     if stats is not None:
         stats["patching_used"] = len(document_patches) + len(example_patches) > 1
+    if progress_callback is not None:
+        progress_callback(completed_patches, total_patches, "generated")
     return rules
 
 
@@ -1013,6 +1031,7 @@ async def infer_analysis_rules(
     system_prompt: str | None = None,
     stats: dict[str, Any] | None = None,
     include_fields: dict[str, bool] | None = None,
+    progress_callback: Callable[[int, int, str], None] | None = None,
 ) -> list[dict[str, Any]]:
     """Generate additional rules without changing the supplied ruleset."""
     return await generate_analysis_rules(
@@ -1024,6 +1043,7 @@ async def infer_analysis_rules(
         system_prompt=system_prompt,
         stats=stats,
         include_fields=include_fields,
+        progress_callback=progress_callback,
     )
 
 
@@ -1037,6 +1057,7 @@ async def generate_analysis_rules(
     system_prompt: str | None = None,
     stats: dict[str, Any] | None = None,
     include_fields: dict[str, bool] | None = None,
+    progress_callback: Callable[[int, int, str], None] | None = None,
 ) -> list[dict[str, Any]]:
     """Generate a ruleset by appending only distinct rules to ``existing_rules``."""
     return await _run_rule_writer_pipeline(
@@ -1050,6 +1071,7 @@ async def generate_analysis_rules(
         append_only=True,
         stats=stats,
         include_fields=include_fields,
+        progress_callback=progress_callback,
     )
 
 
@@ -1062,6 +1084,7 @@ async def update_analysis_rules(
     corrections: list[ReviewCorrection],
     system_prompt: str | None = None,
     stats: dict[str, Any] | None = None,
+    progress_callback: Callable[[int, int, str], None] | None = None,
 ) -> list[dict[str, Any]]:
     """Revise an existing ruleset using bounded document/example patches."""
     return await _run_rule_writer_pipeline(
@@ -1073,6 +1096,7 @@ async def update_analysis_rules(
         system_prompt=system_prompt,
         start_in_update_mode=True,
         stats=stats,
+        progress_callback=progress_callback,
     )
 
 
