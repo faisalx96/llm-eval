@@ -52,7 +52,7 @@ MAX_RULE_WRITER_PROMPT_CHARS = 320_000
 MAX_RULE_WRITER_PATCHES = 128
 # The item analyzer has a separate, authoritative prompt budget.  It is
 # enforced after every section is assembled, including custom prompts.
-MAX_ANALYSIS_PROMPT_CHARS = 120_000
+MAX_ANALYSIS_PROMPT_CHARS = 320_000
 MAX_ITEM_FIELD_CHARS = 20_000
 MAX_ITEM_CONTEXT_CHARS = 100_000
 MAX_TRACE_CHARS = 40_000
@@ -132,7 +132,6 @@ DEFAULT_SYSTEM_PROMPT = (
     "repeat the trace narrative, root_cause_detail, root_cause_note, or score explanation. "
     "This field must answer 'Why does this category apply?' rather than 'What happened?' "
     "When there are multiple categories, give a distinct rationale for each one.\n\n"
-    "{details_section}"
     "The detail must name a reusable failure mechanism and not restate this item's "
     "specific table, column, entity, date, function, class, or literal value. Abstract it "
     "into the underlying issue so equivalent failures receive the same detail.\n\n"
@@ -2096,31 +2095,34 @@ def build_analysis_prompt(
     cat_details_map: dict[str, list[str]] | None = cfg.get("category_details_map")
     flat_details: list[str] = cfg.get("root_cause_details") or []
 
-    if cat_details_map is not None:
-        # Build details section grouped by category
-        lines: list[str] = [
-            "2. root_cause_detail — the reusable failure mechanism. "
-            "Use the exact known detail when it covers the mechanism:"
-        ]
-        for cat in categories:
-            dets = cat_details_map.get(cat, [])
-            if dets:
-                lines.append(f"  {cat}:")
-                for d in dets:
-                    lines.append(f"    - {d}")
-        details_section = "\n".join(lines) + "\n\n"
-    elif flat_details:
-        details_section = (
-            "2. root_cause_detail — the reusable failure mechanism. "
-            "Prefer these exact known values when applicable:\n"
-            + "\n".join(f"- {d}" for d in flat_details)
-            + "\n\n"
-        )
-    else:
-        details_section = (
-            "2. root_cause_detail — a reusable 2-6 word failure mechanism within "
-            "that category, with item-specific names left to root_cause_note.\n\n"
-        )
+    # if cat_details_map is not None:
+    #     # Build details section grouped by category
+    #     lines: list[str] = [
+    #         "2. root_cause_detail — the reusable failure mechanism. "
+    #         "Use the exact known detail when it covers the mechanism:"
+    #     ]
+    #     for cat in categories:
+    #         dets = cat_details_map.get(cat, [])
+    #         if dets:
+    #             lines.append(f"  {cat}:")
+    #             for d in dets:
+    #                 lines.append(f"    - {d}")
+    #     details_section = "\n".join(lines) + "\n\n"
+    # elif flat_details:
+    #     details_section = (
+    #         "2. root_cause_detail — the reusable failure mechanism. "
+    #         "Prefer these exact known values when applicable:\n"
+    #         + "\n".join(f"- {d}" for d in flat_details)
+    #         + "\n\n"
+    #     )
+    # else:
+    #     details_section = (
+    #         "2. root_cause_detail — a reusable 2-6 word failure mechanism within "
+    #         "that category, with item-specific names left to root_cause_note.\n\n"
+    #     )
+
+
+    # gemma it v5 data v1 160 260815 0019
 
     raw_prompt = str(cfg.get("system_prompt") or DEFAULT_SYSTEM_PROMPT)
 
@@ -2235,15 +2237,15 @@ def build_analysis_prompt(
         )
 
     rendered_categories = categories_text
-    if "{details_section}" not in raw_prompt:
-        rendered_categories += (
-            "\n\nKnown root-cause detail guidance:\n" + details_section.strip()
-        )
+    # if "{details_section}" not in raw_prompt:
+    #     rendered_categories += (
+    #         "\n\nKnown root-cause detail guidance:\n" + details_section.strip()
+    #     )
     prompt_values = {
         "categories": rendered_categories,
         "max_root_cause_categories": str(max_root_cause_categories),
         "category_taxonomy": category_taxonomy_text,
-        "details_section": details_section,
+        # "details_section": details_section,
         "analysis_rules": _format_analysis_rules(cfg.get("analysis_rules")),
         "item_context": item_context,
     }
