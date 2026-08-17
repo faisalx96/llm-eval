@@ -51,7 +51,8 @@ def main():
         input_mapping={
             "sql_prompt": "question",
             "sql_context": "schema"
-        }
+        },
+        samples = 8
     )
 
     evaluator.run()
