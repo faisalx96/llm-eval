@@ -117,8 +117,11 @@ DEFAULT_SYSTEM_PROMPT = (
     "multiple independent causes at the same time, but return no more than "
     "{max_root_cause_categories} categories. You can choose from:\n"
     "{categories}\n\n"
-    "Each listed category includes its description, when to use it, and its "
-    "approved-example count directly under the category name. Use a custom "
+    "Each listed category appears by name. Categories with complete taxonomy "
+    "include their description and when-to-use guidance directly under the "
+    "category name; categories without taxonomy are intentionally shown without "
+    "taxonomy guidance. An approved-example count may also appear under the "
+    "category. Use a custom "
     "category only when no listed category "
     "fits. Any new category should be accompanied by one complete entry in "
     "category_taxonomy with its description and when_to_use guidance when possible. "
@@ -132,6 +135,7 @@ DEFAULT_SYSTEM_PROMPT = (
     "repeat the trace narrative, root_cause_detail, root_cause_note, or score explanation. "
     "This field must answer 'Why does this category apply?' rather than 'What happened?' "
     "When there are multiple categories, give a distinct rationale for each one.\n\n"
+    "{details_section}"
     "The detail must name a reusable failure mechanism and not restate this item's "
     "specific table, column, entity, date, function, class, or literal value. Abstract it "
     "into the underlying issue so equivalent failures receive the same detail.\n\n"
@@ -251,11 +255,13 @@ RULE_WRITER_CLASSIFICATION_CONTRACT = (
 
 
 RULE_WRITER_SYSTEM_PROMPT = (
-    "You create project-specific diagnostic rules for a downstream LLM analyzer. The "
+    "You create reusable, project-specific diagnostic rules for a downstream LLM analyzer. The "
     "downstream analyzer's only job is to find and explain root causes of evaluation-item "
     "and metric failures. Extract durable, project-specific knowledge such as business "
     "requirements, invariants, decision logic, causal relationships, failure signatures, "
-    "and disambiguating evidence when it helps explain an observed metric result."
+    "and disambiguating evidence when it helps explain an observed metric result. Every "
+    "generated rule must be reusable across multiple evaluation items and must not be "
+    "item-specific."
 )
 
 
@@ -275,6 +281,20 @@ RULE_WRITER_OUTPUT_CONTRACT = (
     "Return non-overlapping rules with one diagnostic insight per rule. Give each rule a "
     "short title and a self-contained instruction. Omit vague advice, standalone labels, "
     "copied examples, and source material that cannot improve root-cause analysis.\n"
+    "Every rule must be reusable across multiple evaluation items and must not be "
+    "item-specific; it must be generalizable beyond the supplied examples. Write its "
+    "title and instruction as a project-wide requirement, invariant, decision pattern, "
+    "recurring failure signature, or reusable diagnostic signal. Do not make a "
+    "rule item-specific by copying an item ID, example number, person or entity name, "
+    "exact prompt or answer, "
+    "literal value, date, URL, one-off column or function, or quoted output. Preserve a "
+    "domain term only when it expresses a project-wide concept or invariant.\n"
+    "Before returning each rule, ask whether the analyzer could apply it to another item "
+    "with different names and values. If not, abstract the example into its underlying "
+    "condition, relationship, property, or failure mechanism; if no reusable lesson is "
+    "supported, omit the rule. Concrete source details may appear in inferred_from or "
+    "explanation as reviewer evidence, but never as the operational rule itself. Return "
+    "{\"rules\":[]} when the supplied data supports no generalizable rule.\n"
     "Every rule must include inferred_from with supporting project data or a concise source "
     "excerpt, and explanation stating why that evidence supports the rule and helps the "
     "analyzer. These are reviewer metadata and are never inserted into the downstream "
@@ -2097,16 +2117,9 @@ def build_analysis_prompt(
     for category in categories:
         entry = taxonomy_by_fold.get(category.casefold())
         category_lines.append(f"- {category}")
-        if entry and entry.get("description"):
+        if taxonomy_is_complete(entry):
             category_lines.append(f"  Description: {entry['description']}")
-        else:
-            category_lines.append("  Description: No definition has been configured.")
-        if entry and entry.get("when_to_use"):
             category_lines.append(f"  Use when: {entry['when_to_use']}")
-        else:
-            category_lines.append(
-                "  Use when: Add a precise definition before treating this as a known category."
-            )
         category_lines.append(
             "  Approved examples: "
             + str(example_counts_by_fold.get(category.casefold(), 0))
@@ -2116,34 +2129,42 @@ def build_analysis_prompt(
     # default prompt renders these definitions inline under each category.
     category_taxonomy_text = categories_text
 
-    cat_details_map: dict[str, list[str]] | None = cfg.get("category_details_map")
-    flat_details: list[str] = cfg.get("root_cause_details") or []
+    # Only reviewer-approved details may be named in the prompt. The editable
+    # catalog map (category_details_map) is intentionally not read here; the
+    # aggregator still consolidates whatever the analyzer returns afterwards.
+    raw_approved_details = cfg.get("approved_category_details")
+    approved_by_fold: dict[str, list[str]] = {}
+    if isinstance(raw_approved_details, dict):
+        for raw_category, raw_values in raw_approved_details.items():
+            if not isinstance(raw_values, (list, tuple)):
+                continue
+            category_key = str(raw_category).strip().casefold()
+            if not category_key:
+                continue
+            approved_by_fold[category_key] = [
+                str(value).strip() for value in raw_values if str(value).strip()
+            ]
 
-    # if cat_details_map is not None:
-    #     # Build details section grouped by category
-    #     lines: list[str] = [
-    #         "2. root_cause_detail — the reusable failure mechanism. "
-    #         "Use the exact known detail when it covers the mechanism:"
-    #     ]
-    #     for cat in categories:
-    #         dets = cat_details_map.get(cat, [])
-    #         if dets:
-    #             lines.append(f"  {cat}:")
-    #             for d in dets:
-    #                 lines.append(f"    - {d}")
-    #     details_section = "\n".join(lines) + "\n\n"
-    # elif flat_details:
-    #     details_section = (
-    #         "2. root_cause_detail — the reusable failure mechanism. "
-    #         "Prefer these exact known values when applicable:\n"
-    #         + "\n".join(f"- {d}" for d in flat_details)
-    #         + "\n\n"
-    #     )
-    # else:
-    #     details_section = (
-    #         "2. root_cause_detail — a reusable 2-6 word failure mechanism within "
-    #         "that category, with item-specific names left to root_cause_note.\n\n"
-    #     )
+    detail_lines: list[str] = []
+    for category in categories:
+        approved_values = approved_by_fold.get(category.casefold()) or []
+        if not approved_values:
+            continue
+        detail_lines.append(f"  {category}:")
+        detail_lines.extend(f"    - {value}" for value in approved_values)
+
+    if detail_lines:
+        details_section = (
+            "2. root_cause_detail — the reusable failure mechanism. "
+            "Use the exact approved detail when it covers the mechanism:\n"
+            + "\n".join(detail_lines)
+            + "\n\n"
+        )
+    else:
+        details_section = (
+            "2. root_cause_detail — a reusable 2-6 word failure mechanism within "
+            "that category, with item-specific names left to root_cause_note.\n\n"
+        )
 
 
     # gemma it v5 data v1 160 260815 0019
@@ -2261,15 +2282,15 @@ def build_analysis_prompt(
         )
 
     rendered_categories = categories_text
-    # if "{details_section}" not in raw_prompt:
-    #     rendered_categories += (
-    #         "\n\nKnown root-cause detail guidance:\n" + details_section.strip()
-    #     )
+    if "{details_section}" not in raw_prompt:
+        rendered_categories += (
+            "\n\nApproved root-cause detail guidance:\n" + details_section.strip()
+        )
     prompt_values = {
         "categories": rendered_categories,
         "max_root_cause_categories": str(max_root_cause_categories),
         "category_taxonomy": category_taxonomy_text,
-        # "details_section": details_section,
+        "details_section": details_section,
         "analysis_rules": _format_analysis_rules(cfg.get("analysis_rules")),
         "item_context": item_context,
     }

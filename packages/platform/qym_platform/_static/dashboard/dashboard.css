@@ -8077,7 +8077,7 @@ body.chart-col-resize-active {
   border: 1px solid rgba(255, 255, 255, 0.05);
   border-radius: 10px;
   padding: 10px 12px;
-  cursor: pointer;
+  cursor: default;
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 .pg-item-card:hover {
@@ -8089,6 +8089,48 @@ body.chart-col-resize-active {
 .pg-item-card:focus-visible {
   outline: 2px solid var(--accent-primary);
   outline-offset: 2px;
+}
+.pg-item-targets {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  margin-top: var(--space-sm);
+}
+.pg-item-target-row {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--control-radius);
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+.pg-item-target-row:hover {
+  border-color: var(--border-default);
+  background: var(--bg-hover);
+}
+.pg-item-target-row:focus-visible {
+  outline: 1px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+.pg-item-target-row.pg-item-selected {
+  border-color: var(--accent-primary);
+  background: color-mix(in srgb, var(--accent-primary) 10%, var(--bg-elevated));
+}
+.pg-item-target-row .pg-item-metric {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pg-item-target-status {
+  flex: 0 0 auto;
+  margin-left: auto;
 }
 .pg-item-selected {
   border-color: rgba(168, 85, 247, 0.6) !important;

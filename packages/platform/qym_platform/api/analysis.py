@@ -105,6 +105,7 @@ from qym_platform.services.root_cause_categories import (
     DEFAULT_MAX_ROOT_CAUSE_CATEGORIES,
     DEFAULT_ROOT_CAUSE_TAXONOMY,
     analysis_root_causes,
+    category_taxonomy_for_categories,
     merge_category_taxonomies,
     normalize_category_taxonomy,
     normalize_root_causes,
@@ -1447,11 +1448,11 @@ def _category_example_counts(
     return counts
 
 
-def _approved_category_example_counts(
+def _approved_corrections(
     db: Session,
     run: Run | _ProjectAnalysisScope,
-) -> dict[str, int]:
-    """Load the active approved-example counts for a run or project scope."""
+) -> list[ReviewCorrection]:
+    """Load the active approved corrections for a run or project scope."""
     corrections_query = (
         db.query(ReviewCorrection)
         .join(Run, Run.id == ReviewCorrection.run_id)
@@ -1466,7 +1467,43 @@ def _approved_category_example_counts(
         corrections_query = corrections_query.filter(
             ReviewCorrection.task == run.task
         )
-    return _category_example_counts(corrections_query.all())
+    return corrections_query.all()
+
+
+def _approved_category_example_counts(
+    db: Session,
+    run: Run | _ProjectAnalysisScope,
+) -> dict[str, int]:
+    """Load the active approved-example counts for a run or project scope."""
+    return _category_example_counts(_approved_corrections(db, run))
+
+
+def _approved_category_details(
+    db: Session,
+    run: Run | _ProjectAnalysisScope,
+) -> dict[str, list[str]]:
+    """Map each category to the details carried by its approved examples.
+
+    Shares the approved-correction source with the example counts so the
+    analyzer prompt can only ever surface details reviewers have approved.
+    The editable catalog map is deliberately not consulted here.
+    """
+    details: dict[str, list[str]] = {}
+    seen_by_category: dict[str, set[str]] = {}
+    for correction in _approved_corrections(db, run):
+        detail = _catalog_label(
+            correction.human_root_cause_detail or correction.ai_root_cause_detail or ""
+        )
+        if not detail:
+            continue
+        key = detail.casefold()
+        for category in _approved_correction_categories(correction):
+            seen = seen_by_category.setdefault(category, set())
+            if key in seen:
+                continue
+            seen.add(key)
+            details.setdefault(category, []).append(detail)
+    return details
 
 
 def _collect_task_root_cause_catalog(
@@ -1787,25 +1824,35 @@ def _category_catalog_values(
     catalog: ProjectAnalysisCategoryCatalogVersion | dict[str, Any],
 ) -> dict[str, Any]:
     if isinstance(catalog, dict):
+        categories = normalize_root_causes(catalog.get("categories"))
         return {
             "id": catalog.get("id"),
             "version": int(catalog.get("version") or 0),
-            "categories": list(catalog.get("categories") or []),
+            "categories": categories,
             "category_entries": list(catalog.get("category_entries") or []),
-            "category_details_map": dict(catalog.get("category_details_map") or {}),
-            "category_taxonomy": dict(catalog.get("category_taxonomy") or {}),
+            "category_details_map": _normalize_category_details_map(
+                catalog.get("category_details_map"), categories
+            ),
+            "category_taxonomy": category_taxonomy_for_categories(
+                catalog.get("category_taxonomy"), categories
+            ),
             "max_root_cause_categories": int(
                 catalog.get("max_root_cause_categories")
                 or DEFAULT_MAX_ROOT_CAUSE_CATEGORIES
             ),
         }
+    categories = normalize_root_causes(catalog.categories)
     return {
         "id": catalog.id,
         "version": int(catalog.version),
-        "categories": list(catalog.categories or []),
+        "categories": categories,
         "category_entries": list(catalog.category_entries or []),
-        "category_details_map": dict(catalog.category_details_map or {}),
-        "category_taxonomy": dict(catalog.category_taxonomy or {}),
+        "category_details_map": _normalize_category_details_map(
+            catalog.category_details_map, categories
+        ),
+        "category_taxonomy": category_taxonomy_for_categories(
+            catalog.category_taxonomy, categories
+        ),
         "max_root_cause_categories": int(
             catalog.max_root_cause_categories or DEFAULT_MAX_ROOT_CAUSE_CATEGORIES
         ),
@@ -1983,7 +2030,7 @@ def _analysis_config_with_category_catalog(
     analyzer_config: dict[str, Any] | None,
     catalog_reference: Any = None,
 ) -> dict[str, Any] | None:
-    """Add the active project category catalog without overriding explicit edits."""
+    """Apply the active project catalog as the analyzer's category boundary."""
     config = dict(analyzer_config or {})
     reference = catalog_reference
     if reference is None:
@@ -1992,14 +2039,32 @@ def _analysis_config_with_category_catalog(
         reference = config.get("category_catalog_version")
     catalog = _category_catalog_reference(db, run.project_id, reference)
     values = _category_catalog_values(catalog)
-    if "root_cause_categories" not in config:
+    catalog_categories = list(values["categories"])
+    catalog_by_fold = {
+        category.casefold(): category for category in catalog_categories
+    }
+    requested_categories = config.get("root_cause_categories")
+    if requested_categories is None:
+        config["root_cause_categories"] = catalog_categories
+    else:
         config["root_cause_categories"] = _ordered_unique(
-            list(values["categories"]) + list(values["category_taxonomy"].keys())
-        )
+            [
+                catalog_by_fold[category.casefold()]
+                for category in normalize_root_causes(requested_categories)
+                if category.casefold() in catalog_by_fold
+            ]
+        ) or catalog_categories
     if "category_details_map" not in config:
         config["category_details_map"] = values["category_details_map"]
+    else:
+        config["category_details_map"] = _normalize_category_details_map(
+            config.get("category_details_map"), catalog_categories
+        )
     config["category_taxonomy"] = merge_category_taxonomies(
-        values["category_taxonomy"], config.get("category_taxonomy")
+        values["category_taxonomy"],
+        category_taxonomy_for_categories(
+            config.get("category_taxonomy"), catalog_categories
+        ),
     )
     if "max_root_cause_categories" not in config:
         config["max_root_cause_categories"] = values["max_root_cause_categories"]
@@ -2007,6 +2072,9 @@ def _analysis_config_with_category_catalog(
         config["category_example_counts"] = _approved_category_example_counts(
             db, run
         )
+    # Server-owned: never sourced from the editable catalog or the request body,
+    # so an unapproved detail cannot reach the analyzer prompt.
+    config["approved_category_details"] = _approved_category_details(db, run)
     config["category_catalog_version"] = values["version"]
     config["category_catalog_version_id"] = values["id"]
     return config or None

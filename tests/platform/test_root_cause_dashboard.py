@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from qym_platform.app import create_app
 from qym_platform.auth import Principal, require_ui_principal
+from qym_platform.api.root_cause_dashboard import router as root_cause_dashboard_router
 from qym_platform.db.base import Base
 from qym_platform.db.models import (
     CorrectionStatus,
@@ -332,7 +333,7 @@ def test_compare_scopes_aggregate_statistics_to_selected_metric() -> None:
         session.close()
 
 
-def test_dashboard_routes_are_project_scoped_and_read_only() -> None:
+def test_root_cause_dashboard_routes_are_temporarily_disabled() -> None:
     engine = create_engine(
         "sqlite://",
         connect_args={"check_same_thread": False},
@@ -351,15 +352,21 @@ def test_dashboard_routes_are_project_scoped_and_read_only() -> None:
         )
         with TestClient(app) as client:
             response = client.get(f"/api/projects/{project.slug}/root-cause-dashboard")
-            assert response.status_code == 200
-            assert response.json()["summary"]["diagnosis_occurrences"] == 2
+            assert response.status_code == 404
+            occurrences = client.get(
+                f"/api/projects/{project.slug}/root-cause-dashboard/occurrences"
+            )
+            assert occurrences.status_code == 404
             compare = client.get(
                 f"/api/projects/{project.slug}/root-cause-dashboard/compare",
                 params=[("run_id", "run-1"), ("run_id", "run-2")],
             )
-            assert compare.status_code == 200
-            assert (
-                compare.json()["score_comparison"][1]["comparison_status"] == "improved"
+            assert compare.status_code == 404
+            # Newer FastAPI versions keep included routers as deferred route
+            # entries, so inspect the original router instead of flattened paths.
+            assert any(
+                getattr(route, "original_router", None) is root_cause_dashboard_router
+                for route in app.routes
             )
         assert session.query(RunItem).count() == 2
     finally:

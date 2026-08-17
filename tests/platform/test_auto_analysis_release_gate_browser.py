@@ -61,11 +61,23 @@ def _analysis_config(*, llm: bool = True) -> dict[str, Any]:
         "default_connection_id": "conn-1" if llm else None,
         "analysis_rules": [],
         "analysis_rule_version": None,
-        "default_categories": ["Reasoning Error"],
+        "default_categories": ["Reasoning Error", "Pending Category"],
         "category_details_map": {},
         "category_taxonomy": {},
-        "category_examples": {},
-        "category_example_counts": {},
+        "category_examples": {
+            "Reasoning Error": [
+                {
+                    "item_id": "approved-item",
+                    "metric_name": "quality",
+                    "run_name": "Approved run",
+                    "input": {"question": "demo"},
+                    "expected": {"answer": "expected"},
+                    "output": {"answer": "actual"},
+                }
+            ],
+            "Pending Category": [],
+        },
+        "category_example_counts": {"Reasoning Error": 1, "Pending Category": 0},
         "existing_details": [],
         "max_root_cause_categories": 3,
         "can_manage_analysis_rules": True,
@@ -543,14 +555,12 @@ def test_project_route_keeps_analyze_run_tab(analyzer_page: tuple[object, _Analy
     page.goto(_url(server, "/projects/demo/analysis"))
     _wait_ready(page)
     tabs = page.locator("#analysis-tabs [role=tab]:visible")
-    assert tabs.evaluate_all("tabs => tabs.map(tab => tab.dataset.analysisView)") == ["dashboard", "run", "categories", "rules", "documents"]
+    assert tabs.evaluate_all("tabs => tabs.map(tab => tab.dataset.analysisView)") == ["run", "categories", "rules", "documents"]
     assert page.locator("#analysis-run-tab").is_visible()
-    assert page.locator("#analysis-dashboard").is_visible()
-    dashboard_selectors = page.locator("#analysis-dashboard-filters .qym-review-selector")
-    assert dashboard_selectors.count() == 9
-    assert dashboard_selectors.evaluate_all(
-        "wrappers => wrappers.every(wrapper => wrapper.getBoundingClientRect().width >= 240 && wrapper.querySelector('.multi-select-btn').getBoundingClientRect().width === wrapper.getBoundingClientRect().width)"
-    )
+    assert page.locator("#analysis-dashboard-tab").count() == 1
+    assert page.locator("#analysis-dashboard-tab").is_hidden()
+    assert page.locator("#analysis-dashboard-view").count() == 1
+    assert page.locator("#analysis-dashboard-view").is_hidden()
 
 
 def test_project_rules_render_selected_version_on_initial_load(analyzer_page: tuple[object, _AnalyzerServer]) -> None:
@@ -625,6 +635,10 @@ def test_project_diagnosis_catalog_restores_local_tools(analyzer_page: tuple[obj
     diagnosis_tab = page.locator("#analysis-diagnosis-tab")
     assert diagnosis_tab.is_enabled()
     assert page.locator("#analysis-category-count").inner_text() == "1"
+    approved_nav = page.locator("#analysis-diagnosis-view .pg-category-nav-item")
+    assert approved_nav.count() == 1
+    assert approved_nav.first.inner_text().startswith("Reasoning Error")
+    assert "Pending Category" not in approved_nav.all_inner_texts()
     category = page.locator("#analysis-diagnosis-view .pg-category-nav-item", has_text="Reasoning Error")
     assert category.is_visible()
     assert page.locator("#analysis-diagnosis-view [data-taxonomy-field='description']").count() == 1
@@ -654,9 +668,14 @@ def test_run_route_targets_direction_copy_and_command(analyzer_page: tuple[objec
     page, server = analyzer_page
     page.goto(_url(server, "/projects/demo/runs/run-1/analyzer"))
     _wait_ready(page)
-    assert page.locator("#analysis-tabs [role=tab]:visible").count() == 5
+    assert page.locator("#analysis-tabs [role=tab]:visible").count() == 4
     page.wait_for_selector("#analyzer-host .pg-item-card")
-    assert "quality" in page.locator("#analyzer-host .pg-item-card").first.inner_text()
+    target_card = page.locator("#analyzer-host .pg-item-card").first
+    assert target_card.locator(".pg-item-target-row").count() == 2
+    target_text = target_card.inner_text()
+    assert "quality" in target_text
+    assert "latency" in target_text
+    assert "2 metric targets" in target_text
     assert page.locator("#pg-max-score-direction-note").inner_text().lower() == "(applies only to higher-is-better metrics)"
     footer = page.locator("#analyzer-host .playground-footer.analysis-run-footer")
     footer.wait_for(state="visible")
@@ -696,10 +715,28 @@ def test_retry_and_tab_keyboard_focus(analyzer_page: tuple[object, _AnalyzerServ
     _wait_ready(page)
     page.goto(_url(server, "/projects/demo/analysis"))
     _wait_ready(page)
-    first = page.locator("#analysis-dashboard-tab")
+    first = page.locator("#analysis-run-tab")
     first.focus()
     page.keyboard.press("End")
     assert page.locator("#analysis-documents-tab").evaluate("el => document.activeElement === el")
+
+
+def test_dashboard_scope_is_redirected_to_analyze_run_without_dashboard_requests(
+    analyzer_page: tuple[object, _AnalyzerServer],
+) -> None:
+    page, server = analyzer_page
+    page.goto(_url(server, "/projects/demo/analysis?scope=dashboard"))
+    _wait_ready(page)
+
+    assert "scope=run" in page.url
+    assert page.locator("#analysis-dashboard-tab").count() == 1
+    assert page.locator("#analysis-dashboard-tab").is_hidden()
+    assert page.locator("#analysis-dashboard-view").count() == 1
+    assert page.locator("#analysis-dashboard-view").is_hidden()
+    assert page.locator("#analysis-run-tab").get_attribute("aria-selected") == "true"
+    assert server.dashboard_queries == []
+    assert server.occurrence_queries == []
+    assert server.compare_queries == []
 
 
 def test_mobile_rtl_no_body_overflow_and_discoverable_controls(analyzer_page: tuple[object, _AnalyzerServer]) -> None:
@@ -712,133 +749,6 @@ def test_mobile_rtl_no_body_overflow_and_discoverable_controls(analyzer_page: tu
     assert page.locator("#pg-runall-btn").is_visible()
     page.evaluate("() => document.documentElement.setAttribute('dir', 'auto')")
     assert page.evaluate("() => document.documentElement.getAttribute('dir')") == "auto"
-
-
-def test_dashboard_filter_emits_selected_category_query(analyzer_page: tuple[object, _AnalyzerServer]) -> None:
-    page, server = analyzer_page
-    server.mode = "dashboard_filter"
-    page.goto(_url(server, "/projects/demo/analysis"))
-    _wait_ready(page)
-    category_filter = page.locator('[data-dashboard-filter="category"]')
-    category_filter.locator("button.multi-select-btn").wait_for(state="visible")
-    category_filter.locator("button.multi-select-btn").click()
-    category_filter.locator("label", has_text="Retrieval Error").click()
-    page.wait_for_function(
-        """() => document.querySelector('[data-dashboard-filter=\"category\"] button.multi-select-btn')?.textContent.includes('1 selected')"""
-    )
-    assert any(query.get("category") == ["Reasoning Error"] for query in server.dashboard_queries)
-
-
-def test_dashboard_compare_refreshes_when_target_runs_change(analyzer_page: tuple[object, _AnalyzerServer]) -> None:
-    page, server = analyzer_page
-    server.mode = "dashboard_compare"
-    page.goto(_url(server, "/projects/demo/analysis"))
-    _wait_ready(page)
-
-    page.get_by_role("checkbox", name="Select Run One for comparison").check()
-    page.get_by_role("checkbox", name="Select Run Two for comparison").check()
-    page.get_by_role("button", name="Compare selected", exact=True).click()
-    page.get_by_role("heading", name="Run comparison · quality").wait_for()
-    assert "Run One" in page.locator("#analysis-dashboard-compare-view").inner_text()
-    assert "Run Two" in page.locator("#analysis-dashboard-compare-view").inner_text()
-
-    # Once a comparison is open, replacing one target should invalidate the
-    # previous payload and keep the compare panel on the new pair.
-    page.get_by_role("checkbox", name="Select Run Two for comparison").uncheck()
-    page.get_by_role("checkbox", name="Select Run Three for comparison").check()
-    page.wait_for_function(
-        """() => {
-          const host = document.getElementById('analysis-dashboard-compare-view');
-          const text = host?.textContent || '';
-          return Boolean(host && !host.hidden && text.includes('Run Three') && !text.includes('Run Two'));
-        }"""
-    )
-    compare_text = page.locator("#analysis-dashboard-compare-view").inner_text()
-    assert "Run One" in compare_text
-    assert "Run Three" in compare_text
-    assert "Run Two" not in compare_text
-    assert server.compare_queries[-1].get("run_id") == ["run-1", "run-3"]
-
-
-def test_dashboard_run_filter_does_not_change_compare_targets(analyzer_page: tuple[object, _AnalyzerServer]) -> None:
-    page, server = analyzer_page
-    server.mode = "dashboard_compare"
-    page.goto(_url(server, "/projects/demo/analysis"))
-    _wait_ready(page)
-
-    page.get_by_role("checkbox", name="Select Run One for comparison").check()
-    page.get_by_role("checkbox", name="Select Run Two for comparison").check()
-    page.get_by_role("button", name="Compare selected", exact=True).click()
-    page.get_by_role("heading", name="Run comparison · quality").wait_for()
-
-    run_filter = page.locator('[data-dashboard-filter="run_id"]')
-    run_filter.locator(".multi-select-btn").click()
-    run_filter.locator('input[value="run-1"]').uncheck()
-    page.wait_for_function(
-        """() => {
-          const host = document.getElementById('analysis-dashboard-compare-view');
-          const text = host?.textContent || '';
-          return Boolean(host && !host.hidden && text.includes('Run One') && text.includes('Run Two') && !text.includes('Run Three'));
-        }"""
-    )
-    compare_text = page.locator("#analysis-dashboard-compare-view").inner_text()
-    assert "Run One" in compare_text
-    assert "Run Two" in compare_text
-    assert "Run Three" not in compare_text
-    assert server.dashboard_queries[-1].get("run_id") == ["run-2", "run-3"]
-    assert server.compare_queries[-1].get("run_id") == ["run-1", "run-2"]
-
-
-def test_dashboard_run_filter_allows_empty_scope(analyzer_page: tuple[object, _AnalyzerServer]) -> None:
-    page, server = analyzer_page
-    server.mode = "dashboard_compare"
-    page.goto(_url(server, "/projects/demo/analysis"))
-    _wait_ready(page)
-    dashboard_request_count = len(server.dashboard_queries)
-
-    run_filter = page.locator('[data-dashboard-filter="run_id"]')
-    run_filter.locator(".multi-select-btn").click()
-    run_filter.get_by_role("button", name="Clear", exact=True).click()
-
-    page.get_by_text("No runs match the current controls.", exact=True).first.wait_for()
-    assert run_filter.locator(".multi-select-btn").inner_text() == "No Runs"
-    assert page.locator("#analysis-dashboard-filter-count").inner_text() == "1"
-    assert len(server.dashboard_queries) == dashboard_request_count
-
-
-def test_dashboard_heatmap_hover_shows_category_occurrence_count(analyzer_page: tuple[object, _AnalyzerServer]) -> None:
-    page, server = analyzer_page
-    server.mode = "dashboard_scale"
-    page.goto(_url(server, "/projects/demo/analysis"))
-    _wait_ready(page)
-    segment = page.locator('[data-dashboard-tooltip-category="Reasoning Error"]').first
-    segment.wait_for(state="visible")
-    segment.hover()
-    tooltip = page.locator("#analysis-dashboard-stacked-tooltip")
-    tooltip.wait_for(state="visible")
-    assert tooltip.locator(".analysis-dashboard-stacked-tooltip-category").inner_text() == "Reasoning Error"
-    assert tooltip.locator(".analysis-dashboard-stacked-tooltip-count").inner_text() == "500 occurrences"
-
-
-def test_dashboard_occurrence_map_loads_in_bounded_server_pages(analyzer_page: tuple[object, _AnalyzerServer]) -> None:
-    page, server = analyzer_page
-    server.mode = "dashboard_scale"
-    page.goto(_url(server, "/projects/demo/analysis"))
-    _wait_ready(page)
-    page.locator("#analysis-dashboard-occurrence-count").get_by_text("650 occurrences").wait_for()
-    dots = page.locator("#analysis-dashboard-occurrences [data-dashboard-occurrence-index]")
-    dots.first.wait_for()
-    assert dots.count() == 650
-    assert any(
-        query.get("limit") == ["500"]
-        and query.get("offset") == ["0"]
-        for query in server.occurrence_queries
-    )
-    assert any(
-        query.get("limit") == ["500"]
-        and query.get("offset") == ["500"]
-        for query in server.occurrence_queries
-    )
 
 
 def test_auto_analysis_has_no_serious_or_critical_axe_violations(analyzer_page: tuple[object, _AnalyzerServer]) -> None:

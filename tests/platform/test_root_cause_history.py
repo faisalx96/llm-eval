@@ -1435,7 +1435,7 @@ def test_build_analysis_prompt_omits_redundant_system_contexts(
         config={
             "project_description": "A regulated financial support assistant.",
             "root_cause_categories": ["Reasoning Error"],
-            "category_details_map": {"Reasoning Error": ["Join mismatch"]},
+            "approved_category_details": {"Reasoning Error": ["Join mismatch"]},
             "reference_documents": [
                 {"name": "policy.md", "content": "Always cite the account policy."}
             ],
@@ -3285,14 +3285,27 @@ def test_analysis_rules_are_normalized_and_included_in_prompt() -> None:
     assert "business requirements" in RULE_WRITER_SYSTEM_PROMPT
     assert "decision logic" in RULE_WRITER_SYSTEM_PROMPT
     assert "downstream LLM analyzer" in RULE_WRITER_SYSTEM_PROMPT
+    assert (
+        "must be reusable across multiple evaluation items" in RULE_WRITER_SYSTEM_PROMPT
+    )
+    assert "must not be item-specific" in RULE_WRITER_SYSTEM_PROMPT
     complete_writer_prompt = llm_analyzer_service._writer_system_instructions(None)
     assert "DIAGNOSTIC CLASSIFICATION CONTRACT" in complete_writer_prompt
     assert "classify the root cause" in complete_writer_prompt
     assert "conditional root-cause category" in complete_writer_prompt
     assert "make the analyzer the grammatical subject" in complete_writer_prompt
     assert "Do not write scoring criteria" in complete_writer_prompt
-    assert "operating instructions for the evaluated agent/model" in complete_writer_prompt
+    assert (
+        "operating instructions for the evaluated agent/model" in complete_writer_prompt
+    )
     assert "remediation and prevention advice" in complete_writer_prompt
+    assert "generalizable beyond the supplied examples" in complete_writer_prompt
+    assert "must not be item-specific" in complete_writer_prompt
+    assert "title and instruction" in complete_writer_prompt
+    assert (
+        "Return {\"rules\":[]} when the supplied data supports no generalizable rule."
+        in complete_writer_prompt
+    )
 
     more_than_twenty = normalize_analysis_rules(
         [

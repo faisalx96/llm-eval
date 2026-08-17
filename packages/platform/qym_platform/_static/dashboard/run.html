@@ -3418,10 +3418,18 @@
       border: 1px solid var(--border-default);
       border-radius: 6px;
       padding: var(--space-sm);
-      min-width: 220px;
+      min-width: min(220px, calc(100vw - var(--space-lg)));
+      max-width: calc(100vw - var(--space-lg));
       max-height: 320px;
-      overflow-y: auto;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
       box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+    }
+    .root-cause-dropdown .rc-options {
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow-y: auto;
     }
     .root-cause-dropdown .rc-option {
       display: flex;
@@ -3454,9 +3462,10 @@
     .rc-option:hover .rc-delete-btn { opacity: 1; }
     .rc-delete-btn:hover { background: rgba(239, 68, 68, 0.2); color: #ef4444; }
     .root-cause-dropdown .rc-divider { height: 1px; background: var(--border-subtle); margin: 4px 0; }
-    .root-cause-dropdown .rc-custom-input { display: flex; gap: 4px; padding: 6px; }
+    .root-cause-dropdown .rc-custom-input { display: flex; flex: 0 0 auto; gap: 4px; padding: 6px; }
     .root-cause-dropdown .rc-custom-input input {
       flex: 1;
+      min-width: 0;
       background: var(--bg-surface);
       border: 1px solid var(--border-default);
       border-radius: 3px;
@@ -5628,19 +5637,20 @@
         const source = payload && typeof payload === 'object' && payload.catalog && typeof payload.catalog === 'object'
           ? payload.catalog
           : (payload && typeof payload === 'object' ? payload : {});
+        const categories = normalizeCategoryLabels([
+          ...(Array.isArray(source.categories) ? source.categories : []),
+          ...(Array.isArray(source.root_cause_categories) ? source.root_cause_categories : []),
+        ]);
+        const categoryKeys = new Set(categories.map(category => category.toLocaleLowerCase()));
         const rawTaxonomy = source.category_taxonomy && typeof source.category_taxonomy === 'object'
           ? source.category_taxonomy
           : {};
         const taxonomy = {};
         Object.entries(rawTaxonomy).forEach(([category, definition]) => {
+          if (!categoryKeys.has(String(category || '').trim().toLocaleLowerCase())) return;
           const normalized = normalizeCategoryTaxonomy(definition);
           if (Object.keys(normalized).length) taxonomy[category] = normalized;
         });
-        const categories = normalizeCategoryLabels([
-          ...(Array.isArray(source.categories) ? source.categories : []),
-          ...(Array.isArray(source.root_cause_categories) ? source.root_cause_categories : []),
-          ...Object.keys(taxonomy),
-        ]);
         state.categoryCatalog = {
           categories: categories,
           category_entries: Array.isArray(source.category_entries) ? source.category_entries : [],
@@ -5709,7 +5719,6 @@
           options.push(label);
         };
         (state.categoryCatalog?.categories || []).forEach(add);
-        state.rootCauseValues.forEach(add);
         if (options.length === 0) ROOT_CAUSE_PRESETS.forEach(add);
         return options;
       }
@@ -10642,9 +10651,6 @@
           const itemAnalysisWarningHtml = itemAnalysisWarning
             ? '<div class="rdi-analysis-warning" role="status"><span class="rdi-analysis-warning__label">' + itemAnalysisWarningLabel + '</span><span>' + escapeHtml(itemAnalysisWarning) + '</span></div>'
             : '';
-          const itemAnalysisWarningMarker = itemAnalysisWarning
-            ? '<span class="qym-tag qym-tag--warning" title="' + escapeAttr(itemAnalysisWarning) + '">' + escapeHtml(itemAnalysisWarningLabel) + '</span>'
-            : '';
           let perMetricAnalysisHtml = '';
           {
             const analysisCards = state.allMetrics.map((metricName, metricIndex) => {
@@ -10812,7 +10818,6 @@
             '<span class="item-chevron' + (isExpanded ? ' open' : '') + '"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m5.5 3.5 5 4.5-5 4.5"/></svg></span>' +
             '<span class="item-index" title="ID: ' + escapeHtml(itemId) + '">#' + (row.index + 1) + '</span>' +
             (!isExpanded && !isRepeatItem ? statusIndicator : '') +
-            itemAnalysisWarningMarker +
             (isExpanded
               ? '<span class="item-header-spacer"></span>'
               : '<span class="item-title" title="' + escapeAttr(displayItemId) + '">' + escapeHtml(titleText) + '</span>') +
@@ -11602,6 +11607,30 @@
         setTimeout(() => searchInput.focus(), 0);
       }
 
+      function positionRootCauseDropdown(dropdown, anchorEl) {
+        const viewportPadding = 8;
+        const anchorGap = 4;
+        const rect = anchorEl.getBoundingClientRect();
+        const spaceBelow = Math.max(0, window.innerHeight - rect.bottom - anchorGap - viewportPadding);
+        const spaceAbove = Math.max(0, rect.top - anchorGap - viewportPadding);
+        const naturalHeight = dropdown.offsetHeight;
+        const opensBelow = spaceBelow >= naturalHeight || spaceBelow >= spaceAbove;
+        const availableHeight = Math.max(1, opensBelow ? spaceBelow : spaceAbove);
+
+        // Apply the final height before measuring. Otherwise a taller menu can
+        // grow after its top was calculated and extend beyond the viewport.
+        dropdown.style.maxHeight = availableHeight + 'px';
+        const dropH = dropdown.offsetHeight;
+        const minLeft = viewportPadding;
+        const maxLeft = Math.max(minLeft, window.innerWidth - dropdown.offsetWidth - viewportPadding);
+        dropdown.style.left = Math.min(Math.max(rect.left, minLeft), maxLeft) + 'px';
+
+        const top = opensBelow
+          ? Math.min(rect.bottom + anchorGap, window.innerHeight - dropH - viewportPadding)
+          : Math.max(viewportPadding, rect.top - dropH - anchorGap);
+        dropdown.style.top = Math.max(viewportPadding, top) + 'px';
+      }
+
       function showRcDetailDropdown(itemId, anchorEl, metricName) {
         document.querySelectorAll('.root-cause-dropdown').forEach(d => d.remove());
         const rows = state.snapshot.rows || [];
@@ -11626,7 +11655,7 @@
 
         const dropdown = document.createElement('div');
         dropdown.className = 'root-cause-dropdown rc-detail-dropdown';
-        let html = '<div class="rc-option" data-rcdetail-value=""><span class="rc-dot" style="background:var(--text-muted);"></span> None (clear)</div>';
+        let html = '<div class="rc-options"><div class="rc-option" data-rcdetail-value=""><span class="rc-dot" style="background:var(--text-muted);"></span> None (clear)</div>';
         if (detailValues.length > 0) {
           html += '<div class="rc-divider"></div>';
           for (const dv of detailValues) {
@@ -11635,22 +11664,13 @@
             '</div>';
           }
         }
+        html += '</div>';
         html += '<div class="rc-divider"></div>';
         html += '<div class="rc-custom-input"><input class="qym-control qym-input" type="text" placeholder="Describe the specific issue..." value="' + escapeAttr(currentDetail) + '" /><button class="qym-inline-action">Save</button></div>';
         dropdown.innerHTML = html;
 
         document.body.appendChild(dropdown);
-        const rect = anchorEl.getBoundingClientRect();
-        const dropH = dropdown.offsetHeight;
-        const spaceBelow = window.innerHeight - rect.bottom - 8;
-        const spaceAbove = rect.top - 8;
-        if (spaceBelow >= dropH || spaceBelow >= spaceAbove) {
-          dropdown.style.top = (rect.bottom + 4) + 'px';
-        } else {
-          dropdown.style.top = Math.max(4, rect.top - dropH - 4) + 'px';
-        }
-        dropdown.style.left = Math.min(rect.left, window.innerWidth - dropdown.offsetWidth - 8) + 'px';
-        dropdown.style.maxHeight = Math.max(spaceBelow, spaceAbove) + 'px';
+        positionRootCauseDropdown(dropdown, anchorEl);
 
         // Delete buttons — clear detail from all items that have it
         dropdown.querySelectorAll('.rc-delete-btn').forEach(btn => {
@@ -11856,28 +11876,19 @@
 
         const dropdown = document.createElement('div');
         dropdown.className = 'root-cause-dropdown solution-dropdown';
-        let html = '<div class="rc-option ' + (!currentSol ? 'active' : '') + '" data-sol-value=""><span class="rc-dot" style="background:var(--text-muted);"></span> None (clear)</div>';
+        let html = '<div class="rc-options"><div class="rc-option ' + (!currentSol ? 'active' : '') + '" data-sol-value=""><span class="rc-dot" style="background:var(--text-muted);"></span> None (clear)</div>';
         html += '<div class="rc-divider"></div>';
         for (const opt of allOptions) {
           const color = SOLUTION_COLORS[opt] || '#60a5fa';
           html += '<div class="rc-option ' + (opt === currentSol ? 'active' : '') + '" data-sol-value="' + escapeAttr(opt) + '"><span class="rc-dot" style="background:' + color + ';"></span> ' + escapeHtml(opt) + '</div>';
         }
+        html += '</div>';
         html += '<div class="rc-divider"></div>';
         html += '<div class="rc-custom-input"><input class="qym-control qym-input" type="text" placeholder="Custom solution..." /><button class="qym-inline-action">Add</button></div>';
         dropdown.innerHTML = html;
 
         document.body.appendChild(dropdown);
-        const rect = anchorEl.getBoundingClientRect();
-        const dropH = dropdown.offsetHeight;
-        const spaceBelow = window.innerHeight - rect.bottom - 8;
-        const spaceAbove = rect.top - 8;
-        if (spaceBelow >= dropH || spaceBelow >= spaceAbove) {
-          dropdown.style.top = (rect.bottom + 4) + 'px';
-        } else {
-          dropdown.style.top = Math.max(4, rect.top - dropH - 4) + 'px';
-        }
-        dropdown.style.left = Math.min(rect.left, window.innerWidth - dropdown.offsetWidth - 8) + 'px';
-        dropdown.style.maxHeight = Math.max(spaceBelow, spaceAbove) + 'px';
+        positionRootCauseDropdown(dropdown, anchorEl);
 
         dropdown.querySelectorAll('.rc-option').forEach(opt => {
           opt.addEventListener('click', async () => {

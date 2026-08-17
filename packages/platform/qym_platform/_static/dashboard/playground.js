@@ -566,8 +566,11 @@ window.QymPlayground = (function () {
 
   function _targetMatchesRow(target, row) {
     if (!target || !row || target.item_id == null || row.item_id == null) return false;
-    return String(target.item_id) === String(row.item_id) &&
-      String(target.metric_name || '') === String(_getPrimaryMetric(row) || '');
+    if (String(target.item_id) !== String(row.item_id)) return false;
+    var metricNames = row && Array.isArray(row._matched_metric_names)
+      ? row._matched_metric_names : [];
+    if (target.metric_name) return metricNames.indexOf(target.metric_name) !== -1;
+    return metricNames.length === 0;
   }
 
   function _resolveSelectedTarget(matchedItems) {
@@ -658,6 +661,26 @@ window.QymPlayground = (function () {
     return entry && typeof entry === 'object' ? entry : {};
   }
 
+  function _categoryMapValue(map, category) {
+    if (!map || typeof map !== 'object') return null;
+    var target = String(category || '').trim().toLocaleLowerCase();
+    var key = Object.keys(map).find(function (candidate) {
+      return String(candidate || '').trim().toLocaleLowerCase() === target;
+    });
+    return key == null ? null : map[key];
+  }
+
+  function _categoryExamplesFor(categoryExamples, category) {
+    var value = _categoryMapValue(categoryExamples, category);
+    return Array.isArray(value) ? value : [];
+  }
+
+  function _approvedExampleCountFor(categoryExampleCounts, category, fallback) {
+    var value = Number(_categoryMapValue(categoryExampleCounts, category));
+    if (!Number.isFinite(value)) value = Number(fallback) || 0;
+    return Math.max(0, Math.trunc(value));
+  }
+
   function _categoryDomKey(category) {
     var encoded = encodeURIComponent(String(category || '').trim())
       .replace(/%/g, '-')
@@ -709,16 +732,20 @@ window.QymPlayground = (function () {
       _esc(label) + (countLabel ? '<span class="qym-tag qym-tag--count pg-category-tab-count">' + _esc(countLabel) + '</span>' : '') + '</button>';
   }
 
-  function _buildCategoryGroup(category, details, examples, taxonomy, categoryKey) {
+  function _buildCategoryGroup(category, details, examples, taxonomy, categoryKey, approvedExampleCount) {
     var cat = String(category || '').trim();
     var catDetails = Array.isArray(details) ? details : [];
     var catExamples = Array.isArray(examples) ? examples : [];
+    var approvedCount = Number(approvedExampleCount);
+    if (!Number.isFinite(approvedCount)) approvedCount = catExamples.length;
+    approvedCount = Math.max(0, Math.trunc(approvedCount));
+    approvedCount = Math.max(approvedCount, catExamples.length);
     var catTaxonomy = _categoryTaxonomyFor(taxonomy, cat);
     var domKey = categoryKey || _categoryDomKey(cat);
     var guidancePanelId = 'pg-category-' + domKey + '-guidance-panel';
     var detailsPanelId = 'pg-category-' + domKey + '-details-panel';
     var examplesPanelId = 'pg-category-' + domKey + '-examples-panel';
-    var html = '<article class="pg-category-group" data-cat="' + _escAttr(cat) + '" data-category-key="' + _escAttr(domKey) + '" data-example-count="' + catExamples.length + '" hidden aria-hidden="true">';
+    var html = '<article class="pg-category-group" data-cat="' + _escAttr(cat) + '" data-category-key="' + _escAttr(domKey) + '" data-example-count="' + approvedCount + '" data-approved="' + (approvedCount > 0 ? 'true' : 'false') + '" hidden aria-hidden="true">';
     html += '<div class="pg-category-panel-heading">' +
       '<div class="pg-category-panel-copy"><h3 class="pg-category-panel-name" dir="auto">' + _esc(cat) + '</h3></div>' +
     '</div>';
@@ -761,6 +788,15 @@ window.QymPlayground = (function () {
     return categoryList
       ? Array.prototype.slice.call(categoryList.querySelectorAll('.pg-category-group'))
       : [];
+  }
+
+  function _approvedCategoryGroups() {
+    // Keep pending catalog entries in the editor state for full-snapshot saves,
+    // but do not expose them in the diagnosis tab until an approved example
+    // exists for the category.
+    return _categoryGroups().filter(function (group) {
+      return group.dataset.approved === 'true';
+    });
   }
 
   function _setCategoryTab(group, tab, focus) {
@@ -897,7 +933,7 @@ window.QymPlayground = (function () {
     var nav = document.getElementById('pg-category-nav');
     var empty = document.getElementById('pg-category-nav-empty');
     var count = document.getElementById('pg-category-nav-count');
-    var groups = _categoryGroups();
+    var groups = _approvedCategoryGroups();
     if (count) count.textContent = String(groups.length);
     if (!nav) return;
     var query = String(_categoryNavigationQuery || '').trim().toLocaleLowerCase();
@@ -906,7 +942,7 @@ window.QymPlayground = (function () {
     });
     if (empty) {
       empty.hidden = matchingGroups.length > 0;
-      empty.textContent = query ? 'No categories match this search.' : 'No categories configured yet.';
+      empty.textContent = query ? 'No approved categories match this search.' : 'No approved categories yet.';
     }
     nav.innerHTML = matchingGroups.map(function (group) {
       var category = group.dataset.cat || '';
@@ -926,7 +962,7 @@ window.QymPlayground = (function () {
 
   function _filterCategoryNavigation(query) {
     _categoryNavigationQuery = String(query || '').trim();
-    var active = _categoryGroups().find(function (group) { return !group.hidden; });
+    var active = _approvedCategoryGroups().find(function (group) { return !group.hidden; });
     _renderCategoryNavigation(active && active.dataset.cat);
   }
 
@@ -954,9 +990,15 @@ window.QymPlayground = (function () {
   }
 
   function _selectCategory(category, focus) {
-    var groups = _categoryGroups();
+    var allGroups = _categoryGroups();
+    var groups = _approvedCategoryGroups();
     if (!groups.length) {
       _renderCategoryNavigation(null);
+      allGroups.forEach(function (group) {
+        group.hidden = true;
+        group.setAttribute('aria-hidden', 'true');
+        group.classList.remove('pg-category-group--active');
+      });
       var emptyActiveName = document.getElementById('pg-category-active-name');
       if (emptyActiveName) emptyActiveName.textContent = 'Select a category';
       return null;
@@ -964,7 +1006,7 @@ window.QymPlayground = (function () {
     var target = groups.find(function (group) {
       return String(group.dataset.cat || '') === String(category == null ? '' : category);
     }) || groups[0];
-    groups.forEach(function (group) {
+    allGroups.forEach(function (group) {
       var selected = group === target;
       group.hidden = !selected;
       group.setAttribute('aria-hidden', selected ? 'false' : 'true');
@@ -991,7 +1033,8 @@ window.QymPlayground = (function () {
       _filterCategoryDetails(group);
       _filterCategoryExamples(group);
     });
-    _selectCategory(groups[0] && groups[0].dataset.cat, false);
+    var approvedGroups = _approvedCategoryGroups();
+    _selectCategory(approvedGroups[0] && approvedGroups[0].dataset.cat, false);
   }
 
   function _icon(name) {
@@ -2899,11 +2942,12 @@ window.QymPlayground = (function () {
     var detailsMap = (_config && _config.category_details_map) || {};
     var categoryTaxonomy = (_config && (_config.category_taxonomy || _config.category_taxonomies)) || {};
     var categoryExamples = (_config && _config.category_examples) || {};
+    var categoryExampleCounts = (_config && _config.category_example_counts) || {};
     var totalDetails = 0;
     var catDetBody = '';
     catDetBody += '<div class="pg-category-workspace" id="pg-category-workspace">';
-    catDetBody += '<aside class="pg-category-sidebar" aria-labelledby="pg-category-sidebar-title"><div class="pg-category-sidebar-heading"><h3 id="pg-category-sidebar-title">Categories</h3></div><nav class="pg-category-nav" id="pg-category-nav" aria-label="Diagnosis categories"></nav>' +
-      '<p class="pg-category-nav-empty" id="pg-category-nav-empty" hidden>No categories configured yet.</p><span class="pg-visually-hidden" id="pg-category-nav-count">0</span></aside>';
+    catDetBody += '<aside class="pg-category-sidebar" aria-labelledby="pg-category-sidebar-title"><div class="pg-category-sidebar-heading"><h3 id="pg-category-sidebar-title">Categories</h3></div><nav class="pg-category-nav" id="pg-category-nav" aria-label="Approved diagnosis categories"></nav>' +
+      '<p class="pg-category-nav-empty" id="pg-category-nav-empty" hidden>No approved categories yet.</p><span class="pg-visually-hidden" id="pg-category-nav-count">0</span></aside>';
     var maxCategories = Number(_config && _config.max_root_cause_categories);
     if (!Number.isFinite(maxCategories) || maxCategories < 1) {
       maxCategories = _DEFAULT_MAX_ROOT_CAUSE_CATEGORIES;
@@ -2916,8 +2960,10 @@ window.QymPlayground = (function () {
     for (var i = 0; i < cats.length; i++) {
       var cat = cats[i];
       var catDets = detailsMap[cat] || [];
+      var catExamples = _categoryExamplesFor(categoryExamples, cat);
+      var approvedExampleCount = _approvedExampleCountFor(categoryExampleCounts, cat, catExamples.length);
       totalDetails += catDets.length;
-      catDetBody += _buildCategoryGroup(cat, catDets, categoryExamples[cat] || [], categoryTaxonomy, 'category-' + i + '-' + _categoryDomKey(cat));
+      catDetBody += _buildCategoryGroup(cat, catDets, catExamples, categoryTaxonomy, 'category-' + i + '-' + _categoryDomKey(cat), approvedExampleCount);
     }
     catDetBody += '</div>';
     catDetBody += '</div></div>';
@@ -3125,15 +3171,11 @@ window.QymPlayground = (function () {
     _matchedPage = Math.min(pageCount - 1, Math.max(0, _matchedPage));
     var pageStart = _matchedPage * _PAGE_SIZE;
     var pageEnd = Math.min(matched.length, pageStart + _PAGE_SIZE);
-    html += '<div class="pg-items-list" role="listbox" aria-label="Matching analysis targets">';
+    html += '<div class="pg-items-list" role="list" aria-label="Matching analysis targets">';
     for (var i = pageStart; i < pageEnd; i++) {
       var r = matched[i];
       var failedMetricNames = Array.isArray(r._matched_metric_names) ? r._matched_metric_names : [];
-      var primaryMetric = _getPrimaryMetric(r);
-      var scoreNum = primaryMetric && r.metric_scores ? r.metric_scores[primaryMetric] : r.metric_score;
-      var scoreStr = scoreNum != null ? scoreNum.toFixed(2) : '\u2014';
-      var status = r.error ? 'error' : (scoreNum != null ? (scoreNum < threshold ? 'failed' : 'passed') : 'none');
-      var isSelected = _targetMatchesRow(_selectedTarget, r);
+      var targetMetricNames = failedMetricNames.length ? failedMetricNames : [_getPrimaryMetric(r) || 'metric'];
       var md = r.item_metadata && typeof r.item_metadata === 'object' ? r.item_metadata : {};
       var rcCategories = _rootCauseCategories(md);
       var rc = rcCategories.join(', ');
@@ -3142,17 +3184,31 @@ window.QymPlayground = (function () {
       var rcConfidence = md.root_cause_confidence;
       var isAi = rcSource === 'ai';
       var rcColor = _rootCauseColor(rcCategories[0] || rc);
-      var targetLabel = 'Target #' + (r.index != null ? r.index : i) + ', ' + (primaryMetric || 'all metrics') + ', ' + status;
-      html += '<div class="pg-item-card' + (isSelected ? ' pg-item-selected' : '') + '" role="option" tabindex="0" aria-selected="' + (isSelected ? 'true' : 'false') + '" aria-label="' + _escAttr(targetLabel) + '" data-item-id="' + _escAttr(r.item_id) + '" data-metric-name="' + _escAttr(primaryMetric) + '">';
+      var itemLabel = 'Item #' + (r.index != null ? r.index : i) + ', ' + targetMetricNames.length + ' metric ' + (targetMetricNames.length === 1 ? 'target' : 'targets');
+      html += '<div class="pg-item-card" role="listitem" aria-label="' + _escAttr(itemLabel) + '" data-item-id="' + _escAttr(r.item_id) + '">';
 
-      // Top row: index, score, status
+      // Top row: item index and complete target count.
       html += '<div class="pg-item-top">';
       html += '<span class="pg-item-idx">#' + (r.index != null ? r.index : i) + '</span>';
-      if (primaryMetric) html += '<span class="pg-item-metric qym-tag qym-tag--data">' + _esc(primaryMetric) + '</span>';
-      if (scoreNum != null) html += '<span class="pg-item-score pg-status-' + status + '">' + scoreStr + '</span>';
-      var statusTone = status === 'passed' ? 'success' : (status === 'failed' ? 'danger' : (status === 'error' ? 'warning' : 'neutral'));
-      html += '<span class="qym-badge qym-badge--' + statusTone + '">' + (status === 'none' ? 'no score' : status) + '</span>';
-      if (failedMetricNames.length > 1) html += '<span class="pg-item-target-count qym-tag qym-tag--count">+' + (failedMetricNames.length - 1) + ' metric target' + (failedMetricNames.length === 2 ? '' : 's') + '</span>';
+      html += '<span class="pg-item-target-count qym-tag qym-tag--count">' + targetMetricNames.length + ' metric ' + (targetMetricNames.length === 1 ? 'target' : 'targets') + '</span>';
+      html += '</div>';
+
+      html += '<div class="pg-item-targets" role="group" aria-label="Metric targets">';
+      for (var metricIndex = 0; metricIndex < targetMetricNames.length; metricIndex++) {
+        var metricName = targetMetricNames[metricIndex];
+        var scoreNum = metricName && r.metric_scores ? r.metric_scores[metricName] : r.metric_score;
+        var scoreStr = scoreNum != null ? scoreNum.toFixed(2) : '\u2014';
+        var status = r.error ? 'error' : (scoreNum != null ? 'failed' : 'none');
+        var isSelected = _selectedTarget && String(_selectedTarget.item_id) === String(r.item_id) &&
+          String(_selectedTarget.metric_name || '') === String(metricName || '');
+        var statusTone = status === 'passed' ? 'success' : (status === 'failed' ? 'danger' : (status === 'error' ? 'warning' : 'neutral'));
+        var targetLabel = 'Item #' + (r.index != null ? r.index : i) + ', ' + metricName + ', ' + status;
+        html += '<button class="pg-item-target-row' + (isSelected ? ' pg-item-selected' : '') + '" type="button" aria-pressed="' + (isSelected ? 'true' : 'false') + '" aria-label="' + _escAttr(targetLabel) + '" data-item-id="' + _escAttr(r.item_id) + '" data-metric-name="' + _escAttr(metricName) + '">' +
+          '<span class="pg-item-metric qym-tag qym-tag--data">' + _esc(metricName) + '</span>' +
+          (scoreNum != null ? '<span class="pg-item-score pg-status-' + status + '">' + scoreStr + '</span>' : '') +
+          '<span class="pg-item-target-status qym-badge qym-badge--' + statusTone + '">' + (status === 'none' ? 'no score' : status) + '</span>' +
+          '</button>';
+      }
       html += '</div>';
 
       // Root cause row (matching item-by-item style)
@@ -4450,8 +4506,24 @@ window.QymPlayground = (function () {
     host.hidden = false;
   }
 
+  function _setRuleInferencePatchCount(completed, total) {
+    var count = document.getElementById('analysis-rule-inference-patch-count');
+    if (!count) return;
+    var completedCount = Math.max(0, Number(completed) || 0);
+    var totalCount = Math.max(0, Number(total) || 0);
+    if (totalCount > 0) {
+      count.textContent = completedCount + ' / ' + totalCount;
+      count.setAttribute('aria-label', completedCount + ' of ' + totalCount + ' LLM patches');
+    } else {
+      count.textContent = 'Preparing…';
+      count.setAttribute('aria-label', 'Preparing LLM patches');
+    }
+  }
+
   function _setRuleInferenceProgress(percentage, title, subtext, tone) {
     var nodes = _analysisProgressNodes();
+    var card = document.getElementById('analysis-rule-inference-card');
+    if (card) card.hidden = false;
     if (nodes.progress) nodes.progress.style.display = 'block';
     if (nodes.fill) {
       nodes.fill.style.transition = 'width 0.3s ease-out';
@@ -4466,6 +4538,7 @@ window.QymPlayground = (function () {
     _clearRuleInferenceProgressTimer();
     _restoreAnalysisProgressHome();
     _moveAnalysisProgressToRules();
+    _setRuleInferencePatchCount(0, 0);
     var documents = Number(sourceState && sourceState.selectedDocuments || 0);
     var examples = Number(sourceState && sourceState.selectedExamples || 0);
     _setRuleInferenceProgress(
@@ -4502,6 +4575,7 @@ window.QymPlayground = (function () {
       title = 'Saving generated rules…';
       subtext = 'Checking for new non-redundant rules and updating the draft.';
     }
+    _setRuleInferencePatchCount(completed, total);
     _setRuleInferenceProgress(percentage, title, subtext);
   }
 
@@ -4509,6 +4583,8 @@ window.QymPlayground = (function () {
     if (generation !== _ruleInferenceProgressGeneration) return;
     var nodes = _analysisProgressNodes();
     if (nodes.progress) nodes.progress.style.display = 'none';
+    var card = document.getElementById('analysis-rule-inference-card');
+    if (card) card.hidden = true;
     _ruleInferenceProgressTimer = null;
     _restoreAnalysisProgressHome();
     _ruleInferenceRunning = false;
@@ -5347,7 +5423,7 @@ window.QymPlayground = (function () {
 
   function _wireRowSelection() {
     if (!_overlay) return;
-    _overlay.querySelectorAll('.pg-item-card').forEach(function (card) {
+    _overlay.querySelectorAll('.pg-item-target-row').forEach(function (card) {
       card.addEventListener('click', function () {
         _selectTarget(card.dataset.itemId, card.dataset.metricName || null);
       });
@@ -5383,12 +5459,12 @@ window.QymPlayground = (function () {
 
   function _highlightSelectedRow() {
     if (!_overlay) return;
-    _overlay.querySelectorAll('.pg-item-card').forEach(function (card) {
+    _overlay.querySelectorAll('.pg-item-target-row').forEach(function (card) {
       var sameItem = _selectedTarget && String(card.dataset.itemId) === String(_selectedTarget.item_id);
       var sameMetric = _selectedTarget && String(card.dataset.metricName || '') === String(_selectedTarget.metric_name || '');
       var selected = !!(sameItem && sameMetric);
       card.classList.toggle('pg-item-selected', selected);
-      card.setAttribute('aria-selected', selected ? 'true' : 'false');
+      card.setAttribute('aria-pressed', selected ? 'true' : 'false');
     });
   }
 

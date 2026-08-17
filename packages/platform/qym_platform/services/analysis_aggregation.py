@@ -78,8 +78,9 @@ class AggregationResponse(BaseModel):
 
 
 AGGREGATION_SYSTEM_PROMPT = (
-    "You an aggregation expert, your task is to consolidate two label taxonomies: broad root-cause categories and "
-    "specific root-cause details."
+    "You are an aggregation expert. Your task is to consolidate two label taxonomies: "
+    "broad root-cause categories and specific root-cause details. Find recurring "
+    "mechanisms, not item-specific wording."
     "\n\n"
     "MERGE AGGRESSIVELY when labels imply the same diagnosis."
     "Abstract away entity names, table names, column names, dates, function names, "

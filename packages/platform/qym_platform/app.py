@@ -88,6 +88,8 @@ def create_app(settings: PlatformSettings | None = None) -> FastAPI:
     app.include_router(web_router)
     app.include_router(projects_router)
     app.include_router(analysis_router)  # before runs_router (its {run_id:path} is a catch-all)
+    # Keep the dashboard route family registered so the feature can be restored
+    # without rebuilding the application; its handlers are feature-gated.
     app.include_router(root_cause_dashboard_router)
     app.include_router(product_evals_router)
     app.include_router(datasets_router)

@@ -784,7 +784,13 @@ def _canonical_legacy_analyzer_redirect(
     project = db.get(Project, run.project_id)
     if project is None:
         return None
-    query = _analysis_query(request)
+    requested_scope = dict(parse_qsl(request.url.query, keep_blank_values=True)).get(
+        "scope"
+    )
+    query = _analysis_query(
+        request,
+        scope="run" if requested_scope == "dashboard" else None,
+    )
     return RedirectResponse(
         url=_analysis_project_url(
             request,
@@ -821,7 +827,7 @@ def _canonical_project_analysis_redirect(
             status_code=307,
         )
 
-    aliases = {"diagnosis": "categories", "project": "rules", "run": "dashboard"}
+    aliases = {"diagnosis": "categories", "project": "rules", "dashboard": "run"}
     requested_scope = params.get("scope")
     canonical_scope = aliases.get(requested_scope or "")
     if canonical_scope is not None:
@@ -852,10 +858,20 @@ def _canonical_project_run_analyzer_redirect(
                 ),
                 status_code=307,
             )
-    aliases = {"diagnosis": "categories", "project": "rules"}
     requested_scope = dict(parse_qsl(request.url.query, keep_blank_values=True)).get(
         "scope"
     )
+    if requested_scope == "dashboard":
+        return RedirectResponse(
+            url=_analysis_project_url(
+                request,
+                project_slug,
+                "runs/" + quote(run_id, safe="") + "/analyzer",
+                _analysis_query(request, remove={"scope"}, scope="run"),
+            ),
+            status_code=307,
+        )
+    aliases = {"diagnosis": "categories", "project": "rules"}
     canonical_scope = aliases.get(requested_scope or "")
     if canonical_scope is not None:
         return RedirectResponse(

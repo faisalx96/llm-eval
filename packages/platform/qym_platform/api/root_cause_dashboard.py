@@ -21,6 +21,19 @@ from sqlalchemy.orm import Session
 
 router = APIRouter(tags=["root-cause-dashboard"])
 
+# Temporary kill switch.  Keep the route module and service implementation in
+# place so the dashboard can be restored by changing one value, while ensuring
+# no dashboard query or payload builder can run in the disabled state.
+ROOT_CAUSE_DASHBOARD_ENABLED = False
+
+
+def _require_dashboard_enabled() -> None:
+    if not ROOT_CAUSE_DASHBOARD_ENABLED:
+        raise HTTPException(
+            status_code=404,
+            detail="Root-cause dashboard is temporarily disabled",
+        )
+
 
 def _values(values: Iterable[str] | None) -> tuple[str, ...]:
     """Accept both repeated query values and comma-separated UI values."""
@@ -120,6 +133,7 @@ def root_cause_dashboard(
     db: Session = Depends(get_db),
     principal: Principal = Depends(require_ui_principal),
 ) -> dict[str, Any]:
+    _require_dashboard_enabled()
     project = _project(db, principal, project_slug)
     return build_dashboard_payload(
         db,
@@ -162,6 +176,7 @@ def root_cause_dashboard_occurrences(
     db: Session = Depends(get_db),
     principal: Principal = Depends(require_ui_principal),
 ) -> dict[str, Any]:
+    _require_dashboard_enabled()
     project = _project(db, principal, project_slug)
     return build_occurrences_payload(
         db,
@@ -205,6 +220,7 @@ def root_cause_dashboard_compare(
     db: Session = Depends(get_db),
     principal: Principal = Depends(require_ui_principal),
 ) -> dict[str, Any]:
+    _require_dashboard_enabled()
     project = _project(db, principal, project_slug)
     selected_ids = _values(run_id)
     if len(selected_ids) < 2 or len(selected_ids) > 8:
