@@ -1435,7 +1435,7 @@ def test_build_analysis_prompt_omits_redundant_system_contexts(
         config={
             "project_description": "A regulated financial support assistant.",
             "root_cause_categories": ["Reasoning Error"],
-            "category_details_map": {"Reasoning Error": ["Join mismatch"]},
+            "approved_category_details": {"Reasoning Error": ["Join mismatch"]},
             "reference_documents": [
                 {"name": "policy.md", "content": "Always cite the account policy."}
             ],
@@ -2508,6 +2508,206 @@ def test_approve_metric_analysis_materializes_legacy_metric_candidate(
     ]
 
 
+@pytest.mark.asyncio
+async def test_approved_metric_analysis_is_immutable_to_new_ai_analysis(
+    db_session: Session,
+) -> None:
+    actor, reviewer, run, item = _seed_run(db_session)
+    approved_analysis = {
+        "source": "ai",
+        "root_cause": "Reasoning Error",
+        "root_causes": ["Reasoning Error"],
+        "root_cause_detail": "Approved detail",
+        "root_cause_note": "Keep the reviewed diagnosis.",
+    }
+    item.item_metadata = {"metric_analyses": {"accuracy": approved_analysis}}
+    db_session.commit()
+
+    candidate = replace_metric_review_candidate(
+        db_session,
+        run=run,
+        item=item,
+        metric_name="accuracy",
+        analysis=approved_analysis,
+        actor_user_id=actor.id,
+        actor_source="ai",
+    )
+    assert candidate is not None
+    _approve_candidate(
+        db_session,
+        correction=candidate,
+        reviewer_id=reviewer.id,
+        comment="Keep reviewed diagnosis",
+        reviewed_at=datetime.utcnow(),
+    )
+    db_session.commit()
+
+    approved_keys = analysis_api._active_approved_review_keys(
+        db_session, run, {item.item_id}
+    )
+    score = (
+        db_session.query(RunItemScore)
+        .filter(
+            RunItemScore.run_id == run.id,
+            RunItemScore.item_id == item.item_id,
+            RunItemScore.metric_name == "accuracy",
+        )
+        .one()
+    )
+    targets = _filter_analysis_targets(
+        run,
+        AnalyzeRequest(
+            metrics=["accuracy"],
+            item_filter="failed",
+            only_unanalyzed=False,
+        ),
+        [item],
+        {item.item_id: {"accuracy": score}},
+        {},
+        approved_review_keys=approved_keys,
+    )
+    assert targets == []
+
+    fresh_result = AnalysisResult(
+        item_id=item.item_id,
+        metric_name="accuracy",
+        root_cause="Dataset Issue",
+        root_cause_detail="Fresh AI detail",
+        root_cause_note="This must not replace the review snapshot.",
+        confidence=0.95,
+    )
+    payloads, errors = _save_analysis_results(
+        db_session,
+        run,
+        [(item, "accuracy")],
+        [fresh_result],
+        Principal(user=actor, auth_type="none"),
+    )
+    assert errors == 0
+    assert payloads[0]["persistence_status"] == "skipped_approved_protection"
+
+    db_session.refresh(item)
+    db_session.refresh(candidate)
+    assert item.item_metadata["metric_analyses"]["accuracy"] == approved_analysis
+    assert candidate.status == CorrectionStatus.APPROVED
+    assert candidate.is_active is True
+    assert [
+        correction.id
+        for correction in get_few_shot_examples(
+            db_session, run.task, run.project_id, limit=10
+        )
+    ] == [candidate.id]
+    picker = _list_analysis_examples(
+        scope_id=run.id,
+        page=1,
+        page_size=50,
+        task=None,
+        dataset=None,
+        model=None,
+        run_name=None,
+        user_id=None,
+        source=None,
+        conf_min=0,
+        conf_max=100,
+        search=None,
+        selected_ids=None,
+        selected_only=False,
+        db=db_session,
+        principal=Principal(user=reviewer, auth_type="none"),
+    )
+    assert picker["matching_ids"] == [candidate.id]
+
+    # The service-level guard protects direct AI writes as well as the API
+    # persistence boundary.
+    returned_candidate = replace_metric_review_candidate(
+        db_session,
+        run=run,
+        item=item,
+        metric_name="accuracy",
+        analysis={
+            "source": "ai",
+            "root_cause": "Another AI category",
+            "root_cause_detail": "Another AI detail",
+        },
+        actor_user_id=actor.id,
+        actor_source="ai",
+    )
+    assert returned_candidate is candidate
+
+    parse = AsyncMock()
+    client = SimpleNamespace(
+        chat=SimpleNamespace(completions=SimpleNamespace(parse=parse))
+    )
+    categories, changed = await _aggregate_run_analysis_results(
+        db=db_session,
+        run=run,
+        all_items=[item],
+        analysis_targets=[(item, "accuracy")],
+        new_results=[fresh_result],
+        client=client,
+        model="test-model",
+        analyzer_config=None,
+        principal=Principal(user=actor, auth_type="none"),
+    )
+    assert categories == {}
+    assert changed == 0
+    parse.assert_not_awaited()
+
+
+def test_ai_root_cause_change_cannot_supersede_approved_item_candidate(
+    db_session: Session,
+) -> None:
+    actor, reviewer, run, item = _seed_run(db_session)
+    human_change = apply_root_cause_change(
+        db_session,
+        run=run,
+        item=item,
+        actor_user_id=actor.id,
+        actor_source="human",
+        human_patch={
+            "root_cause": "Context Missing",
+            "root_cause_detail": "Approved item detail",
+            "root_cause_note": "Approved item note",
+        },
+    )
+    candidate = human_change.candidate
+    assert candidate is not None
+    _approve_candidate(
+        db_session,
+        correction=candidate,
+        reviewer_id=reviewer.id,
+        comment="Approve item diagnosis",
+        reviewed_at=datetime.utcnow(),
+    )
+    db_session.commit()
+    revision_count = db_session.query(RootCauseRevision).count()
+
+    ai_change = apply_root_cause_change(
+        db_session,
+        run=run,
+        item=item,
+        actor_user_id=actor.id,
+        actor_source="ai",
+        next_state=build_ai_state(
+            root_cause="Dataset Issue",
+            root_cause_detail="Fresh AI item detail",
+            root_cause_note="Fresh AI item note",
+            confidence=0.99,
+        ),
+    )
+    db_session.commit()
+    db_session.refresh(item)
+    db_session.refresh(candidate)
+
+    assert ai_change.changed is False
+    assert ai_change.candidate is candidate
+    assert item.item_metadata["root_cause"] == "Context Missing"
+    assert item.item_metadata["root_cause_detail"] == "Approved item detail"
+    assert candidate.status == CorrectionStatus.APPROVED
+    assert candidate.is_active is True
+    assert db_session.query(RootCauseRevision).count() == revision_count
+
+
 def test_new_analysis_overwrites_old_item_and_metric_analysis(
     db_session: Session,
 ) -> None:
@@ -3085,14 +3285,27 @@ def test_analysis_rules_are_normalized_and_included_in_prompt() -> None:
     assert "business requirements" in RULE_WRITER_SYSTEM_PROMPT
     assert "decision logic" in RULE_WRITER_SYSTEM_PROMPT
     assert "downstream LLM analyzer" in RULE_WRITER_SYSTEM_PROMPT
+    assert (
+        "must be reusable across multiple evaluation items" in RULE_WRITER_SYSTEM_PROMPT
+    )
+    assert "must not be item-specific" in RULE_WRITER_SYSTEM_PROMPT
     complete_writer_prompt = llm_analyzer_service._writer_system_instructions(None)
     assert "DIAGNOSTIC CLASSIFICATION CONTRACT" in complete_writer_prompt
     assert "classify the root cause" in complete_writer_prompt
     assert "conditional root-cause category" in complete_writer_prompt
     assert "make the analyzer the grammatical subject" in complete_writer_prompt
     assert "Do not write scoring criteria" in complete_writer_prompt
-    assert "operating instructions for the evaluated agent/model" in complete_writer_prompt
+    assert (
+        "operating instructions for the evaluated agent/model" in complete_writer_prompt
+    )
     assert "remediation and prevention advice" in complete_writer_prompt
+    assert "generalizable beyond the supplied examples" in complete_writer_prompt
+    assert "must not be item-specific" in complete_writer_prompt
+    assert "title and instruction" in complete_writer_prompt
+    assert (
+        "Return {\"rules\":[]} when the supplied data supports no generalizable rule."
+        in complete_writer_prompt
+    )
 
     more_than_twenty = normalize_analysis_rules(
         [
@@ -4883,7 +5096,7 @@ def test_build_analysis_prompt_never_exceeds_final_character_budget(
         {},
         [],
         config={
-            "system_prompt": "System guidance " * 10_000,
+            "system_prompt": "System guidance " * 21_000,
             "reference_documents": [
                 {"name": "large.md", "content": "reference " * 20_000}
             ],

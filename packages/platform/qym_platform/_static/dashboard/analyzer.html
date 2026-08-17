@@ -5,13 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>قيِّم • Auto-analysis</title>
   <link rel="icon" type="image/png" href="/static/qym_icon.png">
-  <link rel="stylesheet" href="/static/dashboard.css?v=auto-analysis-selectors-20260811-6">
+  <link rel="stylesheet" href="/static/dashboard.css?v=rule-history-bottom-20260816-1">
   <link rel="stylesheet" href="/static/shell.css">
   <script src="/static/auth.js"></script>
   <script src="/static/shell.js?v=accessibility-responsive-20260806"></script>
   <script src="/static/metrics.js"></script>
   <script src="/static/qym_table.js"></script>
-  <script src="/static/playground.js?v=auto-analysis-selectors-20260811-6"></script>
+  <script src="/static/playground.js?v=rule-history-bottom-20260816-1"></script>
   <style>
     /* Typography and color roles follow docs/DESIGN_LANGUAGE.md. */
     .analysis-page {
@@ -1139,7 +1139,7 @@
     }
     .analysis-project-shell .pg-rule-item-head {
       display: grid;
-      grid-template-columns: auto minmax(0, 1fr) auto;
+      grid-template-columns: auto auto minmax(0, 1fr) auto;
       align-items: center;
       gap: var(--space-sm);
       padding: var(--space-sm);
@@ -1308,8 +1308,45 @@
     .analysis-project-shell .pg-rule-source-actions {
       flex-wrap: wrap;
     }
+    .analysis-project-shell .pg-rule-inference-progress-host {
+      display: block;
+      min-width: 0;
+    }
+    .analysis-project-shell .pg-rule-inference-progress-host[hidden] {
+      display: none;
+    }
     .analysis-project-footer .pg-rule-source-actions {
       margin-bottom: 0;
+    }
+    .analysis-rule-inference-card {
+      margin-bottom: var(--space-lg);
+    }
+    .analysis-rule-inference-card .analysis-section-header {
+      align-items: center;
+    }
+    .analysis-rule-inference-patch-stat {
+      display: flex;
+      flex: 0 0 auto;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: var(--space-xs);
+      text-align: right;
+    }
+    .analysis-rule-inference-patch-label {
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+      font-weight: 650;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+    .analysis-rule-inference-patch-count {
+      color: var(--text-primary);
+      font-family: var(--font-mono);
+      font-size: var(--font-lg);
+      font-variant-numeric: tabular-nums;
+    }
+    .analysis-rule-inference-card .pg-runall-progress {
+      margin: 0;
     }
     .analysis-project-shell .pg-document-list {
       display: grid;
@@ -1364,14 +1401,8 @@
       width: 1px;
       background: var(--border-default);
     }
-    .analysis-project-footer .pg-context-actions button {
-      display: inline-flex;
-      width: calc(var(--space-xl) * 4);
-      height: calc(var(--space-lg) * 2);
-      flex: 0 0 calc(var(--space-xl) * 4);
-      align-items: center;
-      justify-content: center;
-      padding: 0 var(--space-md);
+    .analysis-project-footer .pg-context-actions > .pg-context-action-group > .qym-inline-action {
+      flex: 0 0 auto;
     }
     .analysis-project-footer .pg-context-actions .pg-example-source-control {
       width: auto;
@@ -1383,22 +1414,6 @@
       border: 0;
       border-radius: 0;
       background: transparent;
-    }
-    .analysis-project-footer #pg-create-rule-version {
-      border-color: var(--accent-tertiary);
-      background: var(--bg-elevated);
-      color: var(--accent-tertiary-soft);
-    }
-    .analysis-project-footer #pg-infer-rules {
-      border-color: var(--accent-tertiary);
-      background: var(--accent-tertiary);
-      color: var(--bg-void);
-    }
-    .analysis-project-footer #pg-infer-rules:disabled {
-      border-color: var(--border-default);
-      background: var(--bg-elevated);
-      color: var(--text-muted);
-      opacity: 1;
     }
     .analysis-project-shell .pg-rule-compare {
       margin: var(--space-lg);
@@ -1564,6 +1579,55 @@
     .analysis-preview-card > .analysis-section-header {
       border-bottom: 1px solid var(--border-subtle);
     }
+    .analysis-preview-header {
+      position: relative;
+    }
+    .analysis-preview-settings-toggle {
+      flex: 0 0 auto;
+    }
+    .analysis-preview-settings {
+      position: absolute;
+      top: calc(100% + var(--space-xs));
+      right: var(--space-lg);
+      z-index: 4;
+      width: min(calc(var(--space-xl) * 13), calc(100% - (2 * var(--space-lg))));
+      padding: var(--space-md);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-md);
+      background: var(--bg-elevated);
+      box-shadow: 0 var(--space-sm) var(--space-xl) color-mix(in srgb, var(--bg-void) 40%, transparent);
+    }
+    .analysis-preview-settings[hidden] {
+      display: none;
+    }
+    .analysis-preview-settings-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-md);
+      padding-bottom: var(--space-sm);
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    .analysis-preview-settings-header h3 {
+      margin: 0;
+      color: var(--text-primary);
+      font-size: var(--font-md);
+      font-weight: 600;
+    }
+    .analysis-preview-settings-description {
+      margin: var(--space-sm) 0 0;
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+      line-height: 1.5;
+    }
+    .analysis-preview-settings .analysis-context-toggles {
+      grid-template-columns: minmax(0, 1fr);
+      padding: var(--space-md) 0 0;
+    }
+    .analysis-preview-settings .analysis-context-toggle {
+      padding: var(--space-sm) var(--space-md);
+      background: var(--bg-surface);
+    }
     .analysis-main-preview {
       border: 0;
       border-radius: 0;
@@ -1719,148 +1783,8 @@
       font-size: var(--font-sm);
       text-decoration: none;
     }
-    .analysis-dashboard {
-      display: grid;
-      gap: var(--space-lg);
-    }
-    .analysis-dashboard[hidden] {
-      display: none !important;
-    }
-    .analysis-dashboard-selected[hidden],
-    .analysis-dashboard-compare[hidden],
     .analysis-page .playground-footer[hidden] {
       display: none !important;
-    }
-    .analysis-dashboard-commandbar,
-    .analysis-dashboard-selected,
-    .analysis-dashboard-compare {
-      display: flex;
-      align-items: center;
-      flex-wrap: wrap;
-      gap: var(--space-sm);
-      padding: var(--space-md);
-      border: 1px solid var(--border-default);
-      border-radius: var(--radius-md);
-      background: var(--bg-surface);
-    }
-    .analysis-dashboard-commandbar {
-      align-items: flex-start;
-      justify-content: space-between;
-    }
-    .analysis-dashboard-filter-row,
-    .analysis-dashboard-quick-filters,
-    .analysis-dashboard-control-group,
-    .analysis-dashboard-selected-runs,
-    .analysis-dashboard-compare-actions {
-      display: flex;
-      align-items: center;
-      flex-wrap: wrap;
-      gap: var(--space-xs);
-    }
-    .analysis-dashboard-filter-row {
-      flex: 1 1 600px;
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-      align-items: start;
-      gap: var(--space-sm);
-    }
-    .analysis-dashboard-quick-filters {
-      flex: 0 0 auto;
-    }
-    .analysis-dashboard-filter-label,
-    .analysis-dashboard-control-label,
-    .analysis-dashboard-selected-label {
-      color: var(--text-muted);
-      font-size: var(--font-sm);
-      font-weight: 650;
-      letter-spacing: 0.05em;
-      text-transform: uppercase;
-    }
-    .analysis-dashboard-filter {
-      min-width: 0;
-    }
-    .analysis-dashboard-filter > .multi-select-btn {
-      width: 100%;
-    }
-    .analysis-dashboard-filter .multi-select-dropdown {
-      width: max(100%, min(360px, calc(100vw - (2 * var(--space-lg)))));
-    }
-    .analysis-dashboard-filter .multi-select-option:has(input:checked) {
-      background: color-mix(in srgb, var(--accent-primary) 10%, var(--bg-surface));
-      color: var(--text-primary);
-    }
-    .analysis-dashboard-filter .ms-option-main input {
-      width: var(--space-md);
-      height: var(--space-md);
-      margin: 0;
-      accent-color: var(--accent-primary);
-    }
-    .analysis-dashboard-filter-empty {
-      padding: var(--space-md);
-      color: var(--text-muted);
-      font-size: var(--font-sm);
-      text-align: center;
-    }
-    .analysis-dashboard-selected {
-      justify-content: space-between;
-      border-color: var(--accent-secondary);
-      background: color-mix(in srgb, var(--accent-secondary) 8%, var(--bg-surface));
-    }
-    .analysis-dashboard-kpis {
-      display: grid;
-      grid-template-columns: repeat(5, minmax(0, 1fr));
-      gap: 0;
-    }
-    .analysis-dashboard-card {
-      min-width: 0;
-      border: 1px solid var(--border-default);
-      border-radius: var(--radius-md);
-      background: var(--bg-surface);
-    }
-    .analysis-dashboard-context-card {
-      display: flex;
-      align-self: start;
-      height: 340px;
-      flex-direction: column;
-    }
-    .analysis-dashboard-context-card .analysis-dashboard-card-header {
-      flex: 0 0 auto;
-    }
-    .analysis-dashboard-context-body {
-      flex: 1 1 auto;
-      min-height: 0;
-      overflow-y: auto;
-      scrollbar-gutter: stable;
-    }
-    .analysis-dashboard-grid {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: var(--space-lg);
-    }
-    .analysis-dashboard-card-wide {
-      grid-column: 1 / -1;
-    }
-    .analysis-dashboard-card-header {
-      display: flex;
-      align-items: flex-start;
-      justify-content: space-between;
-      gap: var(--space-md);
-      padding: var(--space-md) var(--space-lg);
-      border-bottom: 1px solid var(--border-subtle);
-    }
-    .analysis-dashboard-card-header h2 {
-      margin: 0;
-      color: var(--text-primary);
-      font-size: var(--font-lg);
-      font-weight: 600;
-    }
-    .analysis-dashboard-card-header p {
-      margin: var(--space-xs) 0 0;
-      color: var(--text-muted);
-      font-size: var(--font-sm);
-    }
-    .analysis-dashboard-card-body {
-      padding: var(--space-lg);
     }
     .insights-card {
       overflow: visible;
@@ -2205,6 +2129,771 @@
     }
     .insights-error {
       color: var(--error);
+    }
+    @media (max-width: 900px) {
+      .analysis-context-toggles,
+      .analysis-rules-layout,
+      #analysis-diagnosis-view .pg-category-workspace {
+        grid-template-columns: minmax(0, 1fr);
+      }
+      .analysis-diagnosis-main-toolbar {
+        align-items: stretch;
+        flex-direction: column;
+      }
+      .analysis-diagnosis-action-row {
+        justify-content: flex-start;
+      }
+      .analysis-diagnosis-save-status {
+        text-align: left;
+      }
+      #analysis-diagnosis-view .pg-category-sidebar {
+        position: static;
+        display: block;
+        min-height: 0;
+        max-height: none;
+        height: auto;
+        overflow: visible;
+      }
+      #analysis-diagnosis-view .pg-category-nav {
+        display: grid;
+        min-height: 0;
+        flex: none;
+        height: auto;
+        max-height: none;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        padding: var(--space-md);
+        overflow: visible;
+      }
+      #analysis-diagnosis-view .pg-category-editor {
+        padding-left: 0;
+        border-left: 0;
+      }
+      #analysis-diagnosis-view .pg-category-editor-toolbar {
+        position: static;
+        align-items: stretch;
+        flex-direction: column;
+      }
+      #analysis-diagnosis-view .pg-add-category-form,
+      #analysis-diagnosis-view .pg-category-details-tools {
+        grid-template-columns: minmax(0, 1fr) max-content;
+        width: 100%;
+      }
+      #analysis-diagnosis-view .pg-category-details-tools .pg-detail-result-count {
+        grid-column: 1 / -1;
+      }
+      #analysis-diagnosis-view .pg-category-panel-heading {
+        align-items: flex-start;
+      }
+      #analysis-diagnosis-view .pg-category-tabs-row {
+        gap: var(--space-sm);
+      }
+      #analysis-diagnosis-view .pg-category-panel-actions {
+        align-items: center;
+        flex-direction: row;
+      }
+      #analysis-diagnosis-view .pg-category-example-data {
+        grid-template-columns: minmax(0, 1fr);
+      }
+      .analysis-page .pg-filter-row {
+        grid-template-columns: minmax(220px, 260px) minmax(0, 1fr);
+      }
+      .analysis-page .pg-filter-limit {
+        grid-column: 1 / -1;
+      }
+      .insights-stats {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+      .insights-comparison {
+        grid-template-columns: minmax(0, 1fr);
+      }
+      .insights-reset {
+        margin-left: 0;
+      }
+      .analysis-project-shell .pg-document-list,
+      .analysis-project-shell .pg-rule-merge-sides {
+        grid-template-columns: minmax(0, 1fr);
+      }
+      .analysis-mapping-dialog {
+        width: calc(100vw - (2 * var(--space-lg)));
+        height: calc(100vh - (2 * var(--space-lg)));
+      }
+    }
+    @media (max-width: 720px) {
+      .analysis-page {
+        padding: var(--space-lg) var(--space-md);
+      }
+      .analysis-tabs {
+        gap: var(--space-md);
+        overflow-x: auto;
+      }
+      .analysis-page .pg-filter-row {
+        grid-template-columns: minmax(0, 1fr);
+      }
+      .analysis-page .pg-filter-limit {
+        grid-column: auto;
+      }
+      .insights-toolbar,
+      .insights-chart-header {
+        align-items: stretch;
+        flex-direction: column;
+      }
+      .insights-filter .qym-control,
+      .insights-metric-trigger {
+        width: 100%;
+      }
+      .insights-chart-meta {
+        text-align: left;
+      }
+      .analysis-target-tools,
+      .analysis-diagnosis-main-toolbar,
+      .analysis-project-footer,
+      .analysis-run-footer {
+        align-items: stretch;
+        flex-direction: column;
+      }
+      .analysis-target-tool-actions {
+        width: 100%;
+        justify-content: flex-start;
+      }
+      .analysis-run-footer {
+        position: relative;
+      }
+      .analysis-action-copy {
+        margin-right: 0;
+      }
+      .analysis-run-footer .pg-connection,
+      .analysis-run-footer .pg-footer-btn {
+        width: 100%;
+        box-sizing: border-box;
+        justify-content: center;
+      }
+      .analysis-run-footer .pg-connection {
+        flex: 0 1 auto;
+        max-width: none;
+      }
+      .analysis-project-footer .pg-context-status {
+        min-width: 0;
+      }
+      .analysis-rule-toolbar {
+        align-items: stretch;
+        flex-direction: column;
+      }
+      .analysis-rule-toolbar-title {
+        width: 100%;
+      }
+      .analysis-rule-toolbar-actions {
+        width: 100%;
+        justify-content: flex-start;
+        flex-wrap: wrap;
+      }
+      .analysis-rule-toolbar-actions .analysis-rule-version-actions {
+        flex: 1 1 auto;
+      }
+      .analysis-rule-toolbar #pg-add-rule {
+        align-self: center;
+        margin-left: auto;
+      }
+      .analysis-project-footer .pg-context-actions,
+      .analysis-project-footer .pg-context-action-group {
+        width: 100%;
+      }
+      .analysis-project-footer .pg-context-actions {
+        align-items: stretch;
+        flex-direction: column;
+      }
+      .analysis-project-footer .pg-context-action-group {
+        flex-direction: column;
+      }
+      .analysis-project-footer .pg-context-actions > .pg-context-action-group > .qym-inline-action {
+        width: 100%;
+      }
+      .analysis-project-footer .pg-context-actions .pg-example-source-control {
+        width: auto;
+        min-width: 0;
+        flex-basis: auto;
+      }
+      .analysis-project-footer .pg-context-action-divider {
+        width: 100%;
+        height: 1px;
+      }
+      .analysis-project-shell .pg-rule-version-list {
+        padding-left: calc(var(--space-xl) * 2 + var(--space-md));
+      }
+      .analysis-rule-pagination-footer {
+        justify-content: flex-start;
+      }
+      .analysis-subheading .analysis-run-label {
+        white-space: normal;
+        text-align: right;
+      }
+      .analysis-project-shell .pg-rule-item-head {
+        grid-template-columns: auto auto minmax(0, 1fr) auto;
+      }
+      .analysis-project-shell .pg-rule-toggle {
+        grid-template-columns: minmax(0, 1fr) auto;
+      }
+      .analysis-project-shell .pg-rule-compare-picker {
+        width: auto;
+        padding: var(--space-md);
+      }
+      .analysis-project-shell .pg-rule-compare-picker .pg-rule-compare-dialog {
+        width: 100%;
+      }
+      .analysis-project-shell .pg-rule-compare-picker .pg-rule-operation-field {
+        grid-template-columns: minmax(0, 1fr);
+        gap: var(--space-xs);
+      }
+    }
+    .analysis-rules-layout {
+      display: block;
+    }
+
+    .analysis-project-shell .analysis-rule-column,
+    .analysis-project-shell .analysis-version-column {
+      overflow: visible;
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+    }
+
+    .analysis-project-shell .analysis-rule-column > .analysis-rule-toolbar {
+      border-top: 1px solid var(--border-subtle);
+    }
+
+    .analysis-project-shell .pg-rule-filters {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: var(--space-sm);
+      padding: var(--space-md) var(--space-lg) 0;
+    }
+
+    .analysis-project-shell .pg-rule-filter-field {
+      display: block;
+      min-width: 0;
+    }
+
+    .analysis-project-shell .pg-rule-filter-field .qym-control {
+      width: 100%;
+      box-sizing: border-box;
+    }
+
+    .analysis-project-shell .pg-rule-list {
+      padding: var(--space-md) var(--space-lg) 0;
+      gap: 0;
+    }
+
+    .analysis-project-shell .pg-rule-item {
+      border-width: 0 0 1px;
+      border-radius: 0;
+      background: transparent;
+      overflow: visible;
+    }
+
+    .analysis-project-shell .pg-rule-item-head {
+      display: grid;
+      grid-template-columns: auto auto minmax(0, 1fr) auto;
+      gap: var(--space-sm);
+      padding: var(--space-md) 0;
+    }
+
+    .analysis-project-shell .pg-rule-item-head:hover {
+      background: var(--bg-hover);
+    }
+
+    .analysis-project-shell .pg-rule-item-number {
+      align-self: center;
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+      font-size: var(--font-sm);
+      font-variant-numeric: tabular-nums;
+      text-align: center;
+    }
+
+    .analysis-project-shell .pg-rule-toggle {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      min-width: 0;
+      align-items: center;
+      gap: var(--space-sm);
+    }
+
+    .analysis-project-shell .pg-rule-item-summary {
+      display: grid;
+      grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+      min-width: 0;
+      align-items: baseline;
+      gap: var(--space-lg);
+    }
+
+    .analysis-project-shell .pg-rule-item-summary strong,
+    .analysis-project-shell .pg-rule-item-summary span {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .analysis-project-shell .pg-rule-item-summary strong {
+      color: var(--text-primary);
+      font-size: var(--font-base);
+      font-weight: 600;
+    }
+
+    .analysis-project-shell .pg-rule-item-summary span {
+      color: var(--text-secondary);
+      font-size: var(--font-base);
+    }
+
+    .analysis-project-shell .pg-rule-disclosure {
+      color: var(--text-muted);
+    }
+
+    .analysis-project-shell .pg-rule-version-overflow {
+      position: relative;
+      align-self: center;
+    }
+
+    .analysis-project-shell .pg-rule-version-menu-toggle {
+      color: var(--text-muted);
+    }
+
+    .analysis-project-shell .pg-rule-version-menu-toggle:hover,
+    .analysis-project-shell .pg-rule-version-menu-toggle[aria-expanded="true"] {
+      color: var(--accent-primary);
+    }
+
+    .analysis-project-shell .pg-rule-version-menu {
+      z-index: 30;
+    }
+
+    .analysis-project-shell .pg-rule-version-menu[hidden] {
+      display: none;
+    }
+
+    .analysis-project-shell .pg-rule-remove {
+      align-self: center;
+    }
+
+    .analysis-project-shell .pg-rule-fields {
+      padding: var(--space-md) 0 var(--space-lg) calc(var(--space-xl) + var(--space-lg));
+    }
+
+    .analysis-project-shell .pg-rule-field {
+      display: grid;
+      gap: var(--space-xs);
+    }
+
+    .analysis-project-shell .pg-rule-field-label {
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+      font-weight: 600;
+    }
+
+    .analysis-project-shell .pg-rule-version-list {
+      max-height: none;
+      padding: 0 var(--space-lg);
+      overflow: visible;
+    }
+
+    .analysis-project-shell .pg-rule-version {
+      min-height: calc(var(--space-xl) + var(--space-md));
+      padding: var(--space-md) 0;
+      border-width: 0 0 1px;
+      border-radius: 0;
+      background: transparent;
+    }
+
+    .analysis-project-shell .pg-rule-version:hover {
+      border-color: var(--border-subtle);
+      background: var(--bg-hover);
+    }
+
+    .analysis-project-shell .pg-rule-version-selected {
+      border-color: var(--accent-primary);
+      background: var(--bg-active);
+    }
+
+    .analysis-project-shell .pg-rule-version-open {
+      width: 100%;
+    }
+
+    .analysis-project-shell .pg-rule-version-heading {
+      gap: var(--space-sm);
+    }
+
+    .analysis-project-shell .pg-rule-version-summary {
+      gap: var(--space-sm);
+    }
+
+    .analysis-project-shell .pg-rule-version-created {
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+      font-size: var(--font-sm);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .analysis-project-shell .analysis-version-heading {
+      min-height: 0;
+      padding: var(--space-md) 0;
+      border-bottom: 1px solid var(--border-subtle);
+      background: transparent;
+    }
+
+    .analysis-version-history-host[hidden] {
+      display: none;
+    }
+
+    .analysis-version-history-popup-content {
+      display: flex;
+      flex: 1 1 auto;
+      min-width: 0;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    .analysis-version-history-popup-content .analysis-version-column {
+      display: flex;
+      flex: 1 1 auto;
+      min-height: 0;
+      flex-direction: column;
+      min-width: 0;
+      overflow: hidden;
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--control-radius);
+      background: var(--bg-surface);
+    }
+
+    .analysis-version-history-popup-content .analysis-version-heading {
+      min-height: 0;
+      padding: var(--space-md) var(--space-lg);
+    }
+
+    .analysis-version-history-popup-content .analysis-version-legend {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: var(--space-md);
+      margin-top: var(--space-xs);
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+      line-height: 1.4;
+    }
+
+    .analysis-version-history-popup-content .analysis-version-node-key {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-xs);
+      white-space: nowrap;
+    }
+
+    .analysis-version-history-popup-content .analysis-version-node {
+      display: inline-block;
+      width: var(--space-sm);
+      height: var(--space-sm);
+      flex: 0 0 var(--space-sm);
+      border: 1px solid var(--border-strong);
+      border-radius: 50%;
+      background: var(--bg-surface);
+    }
+
+    .analysis-version-history-popup-content .analysis-version-node-live {
+      border-color: var(--success);
+      background: var(--success);
+    }
+
+    .analysis-version-history-popup-content .pg-rule-version-list {
+      --analysis-history-graph-rail: clamp(calc(var(--space-xl) * 4), 30%, calc(var(--space-xl) * 8));
+      display: flex;
+      flex: 1 1 auto;
+      min-height: 0;
+      flex-direction: column;
+      justify-content: flex-end;
+      position: relative;
+      max-height: none;
+      padding: var(--space-md) var(--space-md) var(--space-lg) var(--analysis-history-graph-rail);
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      scrollbar-color: var(--border-default) transparent;
+      scrollbar-width: thin;
+    }
+
+    .analysis-version-history-popup-content .pg-rule-version-list::before {
+      position: absolute;
+      inset: 0 auto 0 var(--analysis-history-graph-rail);
+      z-index: 0;
+      width: 1px;
+      background: var(--border-subtle);
+      content: "";
+      pointer-events: none;
+    }
+
+    .analysis-version-history-popup-content .analysis-rule-graph {
+      position: absolute;
+      inset: 0 auto 0 0;
+      z-index: 1;
+      width: var(--analysis-history-graph-rail);
+      height: 100%;
+      pointer-events: none;
+    }
+
+    .analysis-version-history-popup-content .analysis-rule-graph circle {
+      pointer-events: all;
+    }
+
+    .analysis-version-history-popup-content .pg-rule-version {
+      position: relative;
+      z-index: 0;
+      min-height: calc(var(--space-xl) + var(--space-md));
+      margin: 0;
+      padding: var(--space-sm) var(--space-md);
+      border-color: var(--border-subtle);
+      background: var(--bg-elevated);
+    }
+
+    .analysis-version-history-popup-content .pg-rule-version-menu-open {
+      z-index: 20;
+    }
+
+    .analysis-version-history-popup-content .pg-rule-version-selected {
+      border-color: var(--accent-primary);
+      background: var(--bg-active);
+    }
+
+    .analysis-version-history-popup-content .pg-rule-version-open {
+      display: grid;
+      width: 100%;
+      grid-template-columns: minmax(0, 1fr);
+      align-items: center;
+      gap: var(--space-xs);
+    }
+
+    .analysis-version-history-popup-content .pg-rule-version-copy {
+      display: grid;
+      min-width: 0;
+      grid-template-columns: calc(var(--space-xl) * 4 + var(--space-lg)) minmax(0, 1fr);
+      align-items: center;
+      gap: var(--space-lg);
+    }
+
+    .analysis-version-history-popup-content .pg-rule-version-heading,
+    .analysis-version-history-popup-content .pg-rule-version-summary {
+      display: flex;
+      align-items: center;
+      min-width: 0;
+      flex-wrap: nowrap;
+      gap: var(--space-sm);
+      white-space: nowrap;
+    }
+
+    .analysis-version-history-popup-content .pg-rule-version-summary {
+      flex: 0 1 auto;
+      overflow: hidden;
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+    }
+
+    .analysis-version-history-popup-content .pg-rule-version-rule-count {
+      flex: 0 0 auto;
+    }
+
+    .analysis-version-history-popup-content .pg-rule-version-rule-count,
+    .analysis-version-history-popup-content .pg-rule-version-created {
+      font-family: var(--font-mono);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .analysis-version-history-popup-content .pg-rule-version-created {
+      min-width: 0;
+      overflow: hidden;
+      color: var(--text-muted);
+      text-overflow: ellipsis;
+    }
+
+    .analysis-version-history-popup-content .pg-rule-version-created::before {
+      margin-right: var(--space-sm);
+      color: var(--text-dim);
+      content: "·";
+    }
+
+    @media (max-width: 720px) {
+      .analysis-version-history-popup-content .pg-rule-version-copy {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--space-sm);
+      }
+
+      .analysis-version-history-popup-content .pg-rule-version-heading,
+      .analysis-version-history-popup-content .pg-rule-version-summary {
+        flex-wrap: wrap;
+        white-space: normal;
+      }
+
+      .analysis-version-history-popup-content .pg-rule-version-summary {
+        overflow: visible;
+      }
+
+      .analysis-project-shell .pg-rule-filters {
+        grid-template-columns: minmax(0, 1fr);
+      }
+
+      .analysis-project-shell .pg-rule-item-summary {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        gap: var(--space-xs);
+      }
+
+      .analysis-project-shell .pg-rule-item-summary strong,
+      .analysis-project-shell .pg-rule-item-summary span {
+        max-width: none;
+      }
+
+      .analysis-project-shell .pg-rule-fields {
+        padding-left: 0;
+      }
+    }
+    /* Temporarily hidden dashboard styles retained for the reversible feature flag. */
+    .analysis-dashboard {
+      display: grid;
+      gap: var(--space-lg);
+    }
+    .analysis-dashboard[hidden] {
+      display: none !important;
+    }
+    .analysis-dashboard-selected[hidden],
+    .analysis-dashboard-compare[hidden],
+    .analysis-page .playground-footer[hidden] {
+      display: none !important;
+    }
+    .analysis-dashboard-commandbar,
+    .analysis-dashboard-selected,
+    .analysis-dashboard-compare {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: var(--space-sm);
+      padding: var(--space-md);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-md);
+      background: var(--bg-surface);
+    }
+    .analysis-dashboard-commandbar {
+      align-items: flex-start;
+      justify-content: space-between;
+    }
+    .analysis-dashboard-filter-row,
+    .analysis-dashboard-quick-filters,
+    .analysis-dashboard-control-group,
+    .analysis-dashboard-selected-runs,
+    .analysis-dashboard-compare-actions {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: var(--space-xs);
+    }
+    .analysis-dashboard-filter-row {
+      flex: 1 1 600px;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      align-items: start;
+      gap: var(--space-sm);
+    }
+    .analysis-dashboard-quick-filters {
+      flex: 0 0 auto;
+    }
+    .analysis-dashboard-filter-label,
+    .analysis-dashboard-control-label,
+    .analysis-dashboard-selected-label {
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+      font-weight: 650;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+    .analysis-dashboard-filter {
+      min-width: 0;
+    }
+    .analysis-dashboard-filter > .multi-select-btn {
+      width: 100%;
+    }
+    .analysis-dashboard-filter .multi-select-dropdown {
+      width: max(100%, min(360px, calc(100vw - (2 * var(--space-lg)))));
+    }
+    .analysis-dashboard-filter .multi-select-option:has(input:checked) {
+      background: color-mix(in srgb, var(--accent-primary) 10%, var(--bg-surface));
+      color: var(--text-primary);
+    }
+    .analysis-dashboard-filter .ms-option-main input {
+      width: var(--space-md);
+      height: var(--space-md);
+      margin: 0;
+      accent-color: var(--accent-primary);
+    }
+    .analysis-dashboard-filter-empty {
+      padding: var(--space-md);
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+      text-align: center;
+    }
+    .analysis-dashboard-selected {
+      justify-content: space-between;
+      border-color: var(--accent-secondary);
+      background: color-mix(in srgb, var(--accent-secondary) 8%, var(--bg-surface));
+    }
+    .analysis-dashboard-kpis {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 0;
+    }
+    .analysis-dashboard-card {
+      min-width: 0;
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-md);
+      background: var(--bg-surface);
+    }
+    .analysis-dashboard-context-card {
+      display: flex;
+      align-self: start;
+      height: 340px;
+      flex-direction: column;
+    }
+    .analysis-dashboard-context-card .analysis-dashboard-card-header {
+      flex: 0 0 auto;
+    }
+    .analysis-dashboard-context-body {
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow-y: auto;
+      scrollbar-gutter: stable;
+    }
+    .analysis-dashboard-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: var(--space-lg);
+    }
+    .analysis-dashboard-card-wide {
+      grid-column: 1 / -1;
+    }
+    .analysis-dashboard-card-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: var(--space-md);
+      padding: var(--space-md) var(--space-lg);
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    .analysis-dashboard-card-header h2 {
+      margin: 0;
+      color: var(--text-primary);
+      font-size: var(--font-lg);
+      font-weight: 600;
+    }
+    .analysis-dashboard-card-header p {
+      margin: var(--space-xs) 0 0;
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+    }
+    .analysis-dashboard-card-body {
+      padding: var(--space-lg);
     }
     .analysis-dashboard-bars {
       display: grid;
@@ -2800,705 +3489,55 @@
       font-weight: 700;
     }
     @media (max-width: 900px) {
-      .analysis-context-toggles,
-      .analysis-rules-layout,
-      #analysis-diagnosis-view .pg-category-workspace {
-        grid-template-columns: minmax(0, 1fr);
-      }
-      .analysis-diagnosis-main-toolbar {
-        align-items: stretch;
-        flex-direction: column;
-      }
-      .analysis-diagnosis-action-row {
-        justify-content: flex-start;
-      }
-      .analysis-diagnosis-save-status {
-        text-align: left;
-      }
-      #analysis-diagnosis-view .pg-category-sidebar {
-        position: static;
-        display: block;
-        min-height: 0;
-        max-height: none;
-        height: auto;
-        overflow: visible;
-      }
-      #analysis-diagnosis-view .pg-category-nav {
-        display: grid;
-        min-height: 0;
-        flex: none;
-        height: auto;
-        max-height: none;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        padding: var(--space-md);
-        overflow: visible;
-      }
-      #analysis-diagnosis-view .pg-category-editor {
-        padding-left: 0;
-        border-left: 0;
-      }
-      #analysis-diagnosis-view .pg-category-editor-toolbar {
-        position: static;
-        align-items: stretch;
-        flex-direction: column;
-      }
-      #analysis-diagnosis-view .pg-add-category-form,
-      #analysis-diagnosis-view .pg-category-details-tools {
-        grid-template-columns: minmax(0, 1fr) max-content;
-        width: 100%;
-      }
-      #analysis-diagnosis-view .pg-category-details-tools .pg-detail-result-count {
-        grid-column: 1 / -1;
-      }
-      #analysis-diagnosis-view .pg-category-panel-heading {
-        align-items: flex-start;
-      }
-      #analysis-diagnosis-view .pg-category-tabs-row {
-        gap: var(--space-sm);
-      }
-      #analysis-diagnosis-view .pg-category-panel-actions {
-        align-items: center;
-        flex-direction: row;
-      }
-      #analysis-diagnosis-view .pg-category-example-data {
-        grid-template-columns: minmax(0, 1fr);
-      }
-      .analysis-page .pg-filter-row {
-        grid-template-columns: minmax(220px, 260px) minmax(0, 1fr);
-      }
-      .analysis-page .pg-filter-limit {
-        grid-column: 1 / -1;
-      }
-      .analysis-dashboard-grid {
-        grid-template-columns: minmax(0, 1fr);
-      }
-      .insights-stats {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-      }
-      .insights-comparison {
-        grid-template-columns: minmax(0, 1fr);
-      }
-      .insights-reset {
-        margin-left: 0;
-      }
-      .analysis-dashboard-distribution {
-        grid-template-columns: minmax(130px, 0.7fr) minmax(0, 1.3fr);
-        gap: var(--space-lg);
-      }
-      .analysis-dashboard-score-row,
-      .analysis-dashboard-stacked-row,
-      .analysis-dashboard-compare-category {
-        grid-template-columns: 160px minmax(0, 1fr) 140px;
-      }
-      .analysis-dashboard-score-row .analysis-dashboard-run-select-label {
-        grid-column: 1 / -1;
-      }
-      .analysis-dashboard-score-row .analysis-dashboard-bar-track {
-        grid-column: 2;
-      }
-      .analysis-project-shell .pg-document-list,
-      .analysis-project-shell .pg-rule-merge-sides {
-        grid-template-columns: minmax(0, 1fr);
-      }
-      .analysis-mapping-dialog {
-        width: calc(100vw - (2 * var(--space-lg)));
-        height: calc(100vh - (2 * var(--space-lg)));
-      }
+            .analysis-dashboard-grid {
+              grid-template-columns: minmax(0, 1fr);
+            }
+            .analysis-dashboard-distribution {
+              grid-template-columns: minmax(130px, 0.7fr) minmax(0, 1.3fr);
+              gap: var(--space-lg);
+            }
+            .analysis-dashboard-compare-category {
+              grid-template-columns: 160px minmax(0, 1fr) 140px;
+            }
+            .analysis-dashboard-score-row .analysis-dashboard-run-select-label {
+              grid-column: 1 / -1;
+            }
+            .analysis-dashboard-score-row .analysis-dashboard-bar-track {
+              grid-column: 2;
+            }
     }
     @media (max-width: 720px) {
-      .analysis-page {
-        padding: var(--space-lg) var(--space-md);
-      }
-      .analysis-tabs {
-        gap: var(--space-md);
-        overflow-x: auto;
-      }
-      .analysis-page .pg-filter-row {
-        grid-template-columns: minmax(0, 1fr);
-      }
-      .analysis-page .pg-filter-limit {
-        grid-column: auto;
-      }
-      .analysis-dashboard-kpis {
-        grid-template-columns: repeat(5, minmax(calc(10 * var(--space-md)), 1fr));
-        overflow-x: auto;
-      }
-      .analysis-dashboard-distribution {
-        grid-template-columns: minmax(0, 1fr);
-      }
-      .analysis-dashboard-ring {
-        width: 150px;
-      }
-      .analysis-dashboard-stacked-row,
-      .analysis-dashboard-compare-category {
-        grid-template-columns: minmax(0, 1fr) max-content;
-      }
-      .analysis-dashboard-stacked-track,
-      .analysis-dashboard-compare-track {
-        grid-column: 1 / -1;
-        grid-row: 2;
-      }
-      .analysis-dashboard-stacked-total,
-      .analysis-dashboard-compare-category-values {
-        grid-column: 2;
-        grid-row: 1;
-      }
-      .analysis-dashboard-commandbar,
-      .analysis-dashboard-selected,
-      .analysis-dashboard-compare {
-        align-items: stretch;
-        flex-direction: column;
-      }
-      .insights-toolbar,
-      .insights-chart-header {
-        align-items: stretch;
-        flex-direction: column;
-      }
-      .insights-filter .qym-control,
-      .insights-metric-trigger {
-        width: 100%;
-      }
-      .insights-chart-meta {
-        text-align: left;
-      }
-      .analysis-dashboard-filter-row,
-      .analysis-dashboard-quick-filters,
-      .analysis-dashboard-control-group,
-      .analysis-dashboard-selected-runs,
-      .analysis-dashboard-compare-actions {
-        width: 100%;
-      }
-      .analysis-dashboard-filter-row,
-      .analysis-dashboard-compare-toolbar,
-      .analysis-dashboard-compare-visual,
-      .analysis-dashboard-compare > .analysis-dashboard-card-body,
-      .analysis-action-copy {
-        flex: 0 1 auto;
-      }
-      .analysis-dashboard-compare-copy {
-        min-width: 0;
-      }
-      .analysis-target-tools,
-      .analysis-diagnosis-main-toolbar,
-      .analysis-project-footer,
-      .analysis-run-footer {
-        align-items: stretch;
-        flex-direction: column;
-      }
-      .analysis-target-tool-actions {
-        width: 100%;
-        justify-content: flex-start;
-      }
-      .analysis-run-footer {
-        position: relative;
-      }
-      .analysis-action-copy {
-        margin-right: 0;
-      }
-      .analysis-run-footer .pg-connection,
-      .analysis-run-footer .pg-footer-btn {
-        width: 100%;
-        box-sizing: border-box;
-        justify-content: center;
-      }
-      .analysis-run-footer .pg-connection {
-        flex: 0 1 auto;
-        max-width: none;
-      }
-      .analysis-project-footer .pg-context-status {
-        min-width: 0;
-      }
-      .analysis-rule-toolbar {
-        align-items: stretch;
-        flex-direction: column;
-      }
-      .analysis-rule-toolbar-title {
-        width: 100%;
-      }
-      .analysis-rule-toolbar-actions {
-        width: 100%;
-        justify-content: flex-start;
-        flex-wrap: wrap;
-      }
-      .analysis-rule-toolbar-actions .analysis-rule-version-actions {
-        flex: 1 1 auto;
-      }
-      .analysis-rule-toolbar #pg-add-rule {
-        align-self: center;
-        margin-left: auto;
-      }
-      .analysis-project-footer .pg-context-actions,
-      .analysis-project-footer .pg-context-action-group {
-        width: 100%;
-      }
-      .analysis-project-footer .pg-context-actions {
-        align-items: stretch;
-        flex-direction: column;
-      }
-      .analysis-project-footer .pg-context-action-group {
-        flex-direction: column;
-      }
-      .analysis-project-footer .pg-context-actions button {
-        width: 100%;
-      }
-      .analysis-project-footer .pg-context-actions .pg-example-source-control {
-        width: auto;
-        min-width: 0;
-        flex-basis: auto;
-      }
-      .analysis-project-footer .pg-context-action-divider {
-        width: 100%;
-        height: 1px;
-      }
-      .analysis-project-shell .pg-rule-version-list {
-        padding-left: calc(var(--space-xl) * 2 + var(--space-md));
-      }
-      .analysis-rule-pagination-footer {
-        justify-content: flex-start;
-      }
-      .analysis-subheading .analysis-run-label {
-        white-space: normal;
-        text-align: right;
-      }
-      .analysis-project-shell .pg-rule-item-head {
-        grid-template-columns: auto minmax(0, 1fr) auto;
-      }
-      .analysis-project-shell .pg-rule-toggle {
-        grid-template-columns: minmax(0, 1fr) auto;
-      }
-      .analysis-project-shell .pg-rule-compare-picker {
-        width: auto;
-        padding: var(--space-md);
-      }
-      .analysis-project-shell .pg-rule-compare-picker .pg-rule-compare-dialog {
-        width: 100%;
-      }
-      .analysis-project-shell .pg-rule-compare-picker .pg-rule-operation-field {
-        grid-template-columns: minmax(0, 1fr);
-        gap: var(--space-xs);
-      }
-    }
-    .analysis-rules-layout {
-      display: block;
-    }
-
-    .analysis-project-shell .analysis-rule-column,
-    .analysis-project-shell .analysis-version-column {
-      overflow: visible;
-      border: 0;
-      border-radius: 0;
-      background: transparent;
-    }
-
-    .analysis-project-shell .analysis-rule-column > .analysis-rule-toolbar {
-      border-top: 1px solid var(--border-subtle);
-    }
-
-    .analysis-project-shell .pg-rule-filters {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr);
-      gap: var(--space-sm);
-      padding: var(--space-md) var(--space-lg) 0;
-    }
-
-    .analysis-project-shell .pg-rule-filter-field {
-      display: block;
-      min-width: 0;
-    }
-
-    .analysis-project-shell .pg-rule-filter-field .qym-control {
-      width: 100%;
-      box-sizing: border-box;
-    }
-
-    .analysis-project-shell .pg-rule-list {
-      padding: var(--space-md) var(--space-lg) 0;
-      gap: 0;
-    }
-
-    .analysis-project-shell .pg-rule-item {
-      border-width: 0 0 1px;
-      border-radius: 0;
-      background: transparent;
-      overflow: visible;
-    }
-
-    .analysis-project-shell .pg-rule-item-head {
-      display: grid;
-      grid-template-columns: auto minmax(0, 1fr) auto;
-      gap: var(--space-sm);
-      padding: var(--space-md) 0;
-    }
-
-    .analysis-project-shell .pg-rule-item-head:hover {
-      background: var(--bg-hover);
-    }
-
-    .analysis-project-shell .pg-rule-item-number {
-      align-self: center;
-      color: var(--text-muted);
-      font-family: var(--font-mono);
-      font-size: var(--font-sm);
-      font-variant-numeric: tabular-nums;
-      text-align: center;
-    }
-
-    .analysis-project-shell .pg-rule-toggle {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) auto;
-      min-width: 0;
-      align-items: center;
-      gap: var(--space-sm);
-    }
-
-    .analysis-project-shell .pg-rule-item-summary {
-      display: grid;
-      grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
-      min-width: 0;
-      align-items: baseline;
-      gap: var(--space-lg);
-    }
-
-    .analysis-project-shell .pg-rule-item-summary strong,
-    .analysis-project-shell .pg-rule-item-summary span {
-      min-width: 0;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-
-    .analysis-project-shell .pg-rule-item-summary strong {
-      color: var(--text-primary);
-      font-size: var(--font-base);
-      font-weight: 600;
-    }
-
-    .analysis-project-shell .pg-rule-item-summary span {
-      color: var(--text-secondary);
-      font-size: var(--font-base);
-    }
-
-    .analysis-project-shell .pg-rule-disclosure {
-      color: var(--text-muted);
-    }
-
-    .analysis-project-shell .pg-rule-version-overflow {
-      position: relative;
-      align-self: center;
-    }
-
-    .analysis-project-shell .pg-rule-version-menu-toggle {
-      color: var(--text-muted);
-    }
-
-    .analysis-project-shell .pg-rule-version-menu-toggle:hover,
-    .analysis-project-shell .pg-rule-version-menu-toggle[aria-expanded="true"] {
-      color: var(--accent-primary);
-    }
-
-    .analysis-project-shell .pg-rule-version-menu {
-      z-index: 30;
-    }
-
-    .analysis-project-shell .pg-rule-version-menu[hidden] {
-      display: none;
-    }
-
-    .analysis-project-shell .pg-rule-remove {
-      align-self: center;
-    }
-
-    .analysis-project-shell .pg-rule-fields {
-      padding: var(--space-md) 0 var(--space-lg) calc(var(--space-xl) + var(--space-lg));
-    }
-
-    .analysis-project-shell .pg-rule-field {
-      display: grid;
-      gap: var(--space-xs);
-    }
-
-    .analysis-project-shell .pg-rule-field-label {
-      color: var(--text-muted);
-      font-size: var(--font-sm);
-      font-weight: 600;
-    }
-
-    .analysis-project-shell .pg-rule-version-list {
-      max-height: none;
-      padding: 0 var(--space-lg);
-      overflow: visible;
-    }
-
-    .analysis-project-shell .pg-rule-version {
-      min-height: calc(var(--space-xl) + var(--space-md));
-      padding: var(--space-md) 0;
-      border-width: 0 0 1px;
-      border-radius: 0;
-      background: transparent;
-    }
-
-    .analysis-project-shell .pg-rule-version:hover {
-      border-color: var(--border-subtle);
-      background: var(--bg-hover);
-    }
-
-    .analysis-project-shell .pg-rule-version-selected {
-      border-color: var(--accent-primary);
-      background: var(--bg-active);
-    }
-
-    .analysis-project-shell .pg-rule-version-open {
-      width: 100%;
-    }
-
-    .analysis-project-shell .pg-rule-version-heading {
-      gap: var(--space-sm);
-    }
-
-    .analysis-project-shell .pg-rule-version-summary {
-      gap: var(--space-sm);
-    }
-
-    .analysis-project-shell .pg-rule-version-created {
-      color: var(--text-muted);
-      font-family: var(--font-mono);
-      font-size: var(--font-sm);
-      font-variant-numeric: tabular-nums;
-    }
-
-    .analysis-project-shell .analysis-version-heading {
-      min-height: 0;
-      padding: var(--space-md) 0;
-      border-bottom: 1px solid var(--border-subtle);
-      background: transparent;
-    }
-
-    .analysis-project-shell .analysis-project-footer #pg-create-rule-version.pg-context-primary,
-    .analysis-project-shell .analysis-project-footer #pg-infer-rules.pg-context-primary {
-      border-color: var(--accent-tertiary);
-      background: var(--accent-tertiary);
-      color: var(--bg-void);
-    }
-
-    .analysis-project-shell .analysis-project-footer #pg-create-rule-version:not(.pg-context-primary),
-    .analysis-project-shell .analysis-project-footer #pg-infer-rules:not(.pg-context-primary) {
-      border-color: var(--border-default);
-      background: var(--bg-elevated);
-      color: var(--text-secondary);
-    }
-
-    .analysis-project-shell .analysis-project-footer #pg-create-rule-version.pg-context-primary:hover:not(:disabled),
-    .analysis-project-shell .analysis-project-footer #pg-infer-rules.pg-context-primary:hover:not(:disabled) {
-      background: var(--accent-tertiary-soft);
-      color: var(--bg-void);
-    }
-
-    .analysis-project-shell .analysis-project-footer #pg-infer-rules.pg-context-primary:disabled {
-      border-color: var(--border-default);
-      background: var(--bg-elevated);
-      color: var(--text-muted);
-      cursor: not-allowed;
-      opacity: 1;
-    }
-
-    .analysis-version-history-host[hidden] {
-      display: none;
-    }
-
-    .analysis-version-history-popup-content {
-      min-width: 0;
-    }
-
-    .analysis-version-history-popup-content .analysis-version-column {
-      min-width: 0;
-      overflow: hidden;
-      border: 1px solid var(--border-subtle);
-      border-radius: var(--control-radius);
-      background: var(--bg-surface);
-    }
-
-    .analysis-version-history-popup-content .analysis-version-heading {
-      min-height: 0;
-      padding: var(--space-md) var(--space-lg);
-    }
-
-    .analysis-version-history-popup-content .analysis-version-legend {
-      display: flex;
-      align-items: center;
-      flex-wrap: wrap;
-      gap: var(--space-md);
-      margin-top: var(--space-xs);
-      color: var(--text-muted);
-      font-size: var(--font-sm);
-      line-height: 1.4;
-    }
-
-    .analysis-version-history-popup-content .analysis-version-node-key {
-      display: inline-flex;
-      align-items: center;
-      gap: var(--space-xs);
-      white-space: nowrap;
-    }
-
-    .analysis-version-history-popup-content .analysis-version-node {
-      display: inline-block;
-      width: var(--space-sm);
-      height: var(--space-sm);
-      flex: 0 0 var(--space-sm);
-      border: 1px solid var(--border-strong);
-      border-radius: 50%;
-      background: var(--bg-surface);
-    }
-
-    .analysis-version-history-popup-content .analysis-version-node-live {
-      border-color: var(--success);
-      background: var(--success);
-    }
-
-    .analysis-version-history-popup-content .pg-rule-version-list {
-      --analysis-history-graph-rail: clamp(calc(var(--space-xl) * 4), 30%, calc(var(--space-xl) * 8));
-      position: relative;
-      max-height: calc(100vh - (var(--space-xl) * 5));
-      padding: var(--space-md) var(--space-md) var(--space-lg) var(--analysis-history-graph-rail);
-      overflow-y: auto;
-      overscroll-behavior: contain;
-      scrollbar-color: var(--border-default) transparent;
-      scrollbar-width: thin;
-    }
-
-    .analysis-version-history-popup-content .pg-rule-version-list::before {
-      position: absolute;
-      inset: 0 auto 0 var(--analysis-history-graph-rail);
-      z-index: 0;
-      width: 1px;
-      background: var(--border-subtle);
-      content: "";
-      pointer-events: none;
-    }
-
-    .analysis-version-history-popup-content .analysis-rule-graph {
-      position: absolute;
-      inset: 0 auto 0 0;
-      z-index: 1;
-      width: var(--analysis-history-graph-rail);
-      height: 100%;
-      pointer-events: none;
-    }
-
-    .analysis-version-history-popup-content .analysis-rule-graph circle {
-      pointer-events: all;
-    }
-
-    .analysis-version-history-popup-content .pg-rule-version {
-      position: relative;
-      z-index: 0;
-      min-height: calc(var(--space-xl) + var(--space-md));
-      margin: 0;
-      padding: var(--space-sm) var(--space-md);
-      border-color: var(--border-subtle);
-      background: var(--bg-elevated);
-    }
-
-    .analysis-version-history-popup-content .pg-rule-version-menu-open {
-      z-index: 20;
-    }
-
-    .analysis-version-history-popup-content .pg-rule-version-selected {
-      border-color: var(--accent-primary);
-      background: var(--bg-active);
-    }
-
-    .analysis-version-history-popup-content .pg-rule-version-open {
-      display: grid;
-      width: 100%;
-      grid-template-columns: minmax(0, 1fr);
-      align-items: center;
-      gap: var(--space-xs);
-    }
-
-    .analysis-version-history-popup-content .pg-rule-version-copy {
-      display: grid;
-      min-width: 0;
-      grid-template-columns: calc(var(--space-xl) * 4 + var(--space-lg)) minmax(0, 1fr);
-      align-items: center;
-      gap: var(--space-lg);
-    }
-
-    .analysis-version-history-popup-content .pg-rule-version-heading,
-    .analysis-version-history-popup-content .pg-rule-version-summary {
-      display: flex;
-      align-items: center;
-      min-width: 0;
-      flex-wrap: nowrap;
-      gap: var(--space-sm);
-      white-space: nowrap;
-    }
-
-    .analysis-version-history-popup-content .pg-rule-version-summary {
-      flex: 0 1 auto;
-      overflow: hidden;
-      color: var(--text-muted);
-      font-size: var(--font-sm);
-    }
-
-    .analysis-version-history-popup-content .pg-rule-version-rule-count {
-      flex: 0 0 auto;
-    }
-
-    .analysis-version-history-popup-content .pg-rule-version-rule-count,
-    .analysis-version-history-popup-content .pg-rule-version-created {
-      font-family: var(--font-mono);
-      font-variant-numeric: tabular-nums;
-    }
-
-    .analysis-version-history-popup-content .pg-rule-version-created {
-      min-width: 0;
-      overflow: hidden;
-      color: var(--text-muted);
-      text-overflow: ellipsis;
-    }
-
-    .analysis-version-history-popup-content .pg-rule-version-created::before {
-      margin-right: var(--space-sm);
-      color: var(--text-dim);
-      content: "·";
-    }
-
-    @media (max-width: 720px) {
-      .analysis-version-history-popup-content .pg-rule-version-copy {
-        display: flex;
-        flex-wrap: wrap;
-        gap: var(--space-sm);
-      }
-
-      .analysis-version-history-popup-content .pg-rule-version-heading,
-      .analysis-version-history-popup-content .pg-rule-version-summary {
-        flex-wrap: wrap;
-        white-space: normal;
-      }
-
-      .analysis-version-history-popup-content .pg-rule-version-summary {
-        overflow: visible;
-      }
-
-      .analysis-project-shell .pg-rule-filters {
-        grid-template-columns: minmax(0, 1fr);
-      }
-
-      .analysis-project-shell .pg-rule-item-summary {
-        display: grid;
-        grid-template-columns: minmax(0, 1fr);
-        gap: var(--space-xs);
-      }
-
-      .analysis-project-shell .pg-rule-item-summary strong,
-      .analysis-project-shell .pg-rule-item-summary span {
-        max-width: none;
-      }
-
-      .analysis-project-shell .pg-rule-fields {
-        padding-left: 0;
-      }
+            .analysis-dashboard-kpis {
+              grid-template-columns: repeat(5, minmax(calc(10 * var(--space-md)), 1fr));
+              overflow-x: auto;
+            }
+            .analysis-dashboard-distribution {
+              grid-template-columns: minmax(0, 1fr);
+            }
+            .analysis-dashboard-ring {
+              width: 150px;
+            }
+            .analysis-dashboard-compare-category {
+              grid-template-columns: minmax(0, 1fr) max-content;
+            }
+            .analysis-dashboard-compare-track {
+              grid-column: 1 / -1;
+              grid-row: 2;
+            }
+            .analysis-dashboard-compare-category-values {
+              grid-column: 2;
+              grid-row: 1;
+            }
+            .analysis-dashboard-compare {
+              align-items: stretch;
+              flex-direction: column;
+            }
+            .analysis-dashboard-compare-actions {
+              width: 100%;
+            }
+            .analysis-dashboard-compare-copy {
+              min-width: 0;
+            }
     }
   </style>
   <link rel="stylesheet" href="/static/ui_components.css?v=auto-analysis-selectors-20260811-1">
@@ -3516,7 +3555,8 @@
       </div>
       <nav class="analysis-tabs qym-tabs" id="analysis-tabs" role="tablist" aria-label="Auto-analysis views" hidden>
         <button class="analysis-tab qym-tabs__tab" id="analysis-dashboard-tab" type="button" role="tab"
-          aria-selected="false" aria-controls="analysis-dashboard-view" data-analysis-view="dashboard">Dashboard</button>
+          aria-selected="false" aria-controls="analysis-dashboard-view" data-analysis-view="dashboard"
+          hidden aria-hidden="true">Dashboard</button>
         <button class="analysis-tab qym-tabs__tab" id="analysis-run-tab" type="button" role="tab"
           aria-selected="true" aria-controls="analysis-run-view" data-analysis-view="run">Analyze run</button>
         <button class="analysis-tab qym-tabs__tab" id="analysis-diagnosis-tab" type="button" role="tab"
@@ -3545,7 +3585,7 @@
       <a class="analysis-primary-link qym-inline-action qym-inline-action--accent" id="analysis-go-runs" href="#">Select a run from Runs</a>
     </section>
     <section class="analysis-dashboard analysis-view-panel" id="analysis-dashboard-view" role="tabpanel"
-      aria-labelledby="analysis-dashboard-tab" hidden>
+      aria-labelledby="analysis-dashboard-tab" hidden aria-hidden="true" data-dashboard-disabled="true">
       <div class="analysis-dashboard-commandbar" id="analysis-dashboard">
         <div class="analysis-dashboard-quick-filters" role="group" aria-label="Dashboard date range">
           <span class="analysis-dashboard-filter-label">Runs</span>
@@ -3587,6 +3627,7 @@
         </section>
       </div>
     </section>
+
     <div id="analyzer-host" hidden></div>
   </div>
 
@@ -3608,14 +3649,26 @@
         ? requestedPassValue
         : null;
       const requestedView = params.get('scope');
+      // Temporary client-side kill switch.  The dashboard implementation and
+      // markup remain in place, but no view or request may activate it.
+      const AUTO_ANALYSIS_DASHBOARD_ENABLED = false;
       const DASHBOARD_COMPARE_ALL_METRICS = '__all__';
+      const ANALYSIS_RUN_PICKER_PARAM = 'qym_analysis_run_picker';
+      const ANALYSIS_RUN_PICKER_VALUE = '1';
       let inputMappingOpener = null;
       let inputMappingEscapeHandler = null;
-      const canonicalRequestedView = requestedView === 'diagnosis' ? 'categories' : requestedView;
+      const canonicalRequestedView = requestedView === 'diagnosis'
+        ? 'categories'
+        : (requestedView === 'dashboard' ? 'run' : requestedView);
+      if (requestedView === 'dashboard') {
+        const redirectedParams = new URLSearchParams(window.location.search);
+        redirectedParams.set('scope', 'run');
+        history.replaceState(history.state, '', window.location.pathname + '?' + redirectedParams.toString());
+      }
       const state = {
-        currentView: ['dashboard', 'categories', 'rules', 'documents'].includes(canonicalRequestedView)
+        currentView: ['categories', 'rules', 'documents'].includes(canonicalRequestedView)
           ? canonicalRequestedView
-          : (requestedView === 'project' ? 'rules' : (runId ? 'run' : 'dashboard')),
+          : (requestedView === 'project' ? 'rules' : 'run'),
         contextRunId: '',
         data: null,
         passNumber: null,
@@ -3656,6 +3709,13 @@
         if (!projectSlug) return rootPath + '/';
         const clean = String(suffix || '').replace(/^\/+/, '');
         return rootPath + '/projects/' + encodeURIComponent(projectSlug) + (clean ? '/' + clean : '');
+      }
+
+      function analysisRunsPickerUrl() {
+        const base = projectUrl();
+        if (!projectSlug) return base;
+        const separator = base.includes('?') ? '&' : '?';
+        return base + separator + ANALYSIS_RUN_PICKER_PARAM + '=' + ANALYSIS_RUN_PICKER_VALUE;
       }
 
       function runUrl(id) {
@@ -3713,6 +3773,7 @@
           history: '<path d="M3 12a9 9 0 1 0 3-6.7"></path><path d="M3 4v5h5"></path><path d="M12 7v5l3 2"></path>',
           plus: '<path d="M12 5v14M5 12h14"></path>',
           arrow: '<path d="M5 12h14"></path><path d="m13 6 6 6-6 6"></path>',
+          settings: '<path d="M12 3.5 14 5l2.5-.5.8 2.4 2.2 1.2-.8 2.4.8 2.4-2.2 1.2-.8 2.4-2.5-.5-2 1.5-2-1.5-2.5.5-.8-2.4-2.2-1.2.8-2.4-.8-2.4 2.2-1.2.8-2.4L10 5l2-1.5Z"></path><circle cx="12" cy="12" r="2.5"></circle>',
         };
         return '<svg class="pg-action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">' +
           (paths[name] || paths.close) + '</svg>';
@@ -3725,9 +3786,10 @@
       }
 
       function setAnalyzerView(view, options = {}) {
-        const diagnosisTab = document.getElementById('analysis-diagnosis-tab');
         const requestedNextView = view === 'diagnosis' ? 'categories' : view;
-        const nextView = ['dashboard', 'categories', 'rules', 'documents'].includes(requestedNextView)
+        const dashboardAllowed = AUTO_ANALYSIS_DASHBOARD_ENABLED === true;
+        const nextView = ['dashboard', 'categories', 'rules', 'documents'].includes(requestedNextView) &&
+          (requestedNextView !== 'dashboard' || dashboardAllowed)
           ? requestedNextView
           : 'run';
         state.currentView = nextView;
@@ -3746,7 +3808,10 @@
         if (projectView) projectView.hidden = !['categories', 'rules', 'documents'].includes(nextView);
         if (runView) runView.hidden = nextView !== 'run';
         if (diagnosisView) diagnosisView.hidden = nextView !== 'categories';
-        if (dashboardView) dashboardView.hidden = nextView !== 'dashboard';
+        if (dashboardView) {
+          dashboardView.hidden = nextView !== 'dashboard' || !dashboardAllowed;
+          dashboardView.setAttribute('aria-hidden', dashboardAllowed ? 'false' : 'true');
+        }
         if (landing) landing.hidden = nextView !== 'run' || Boolean(runId);
         if (runFooter) {
           const noTargets = runFooter.dataset.noTargets === 'true';
@@ -3754,14 +3819,15 @@
         }
         if (['categories', 'rules', 'documents'].includes(nextView)) setProjectView(nextView);
         if (nextView !== 'run') closeInputMapping();
-        if (nextView === 'dashboard') loadDashboard().catch(error => showDashboardError(error));
+        if (nextView === 'dashboard' && dashboardAllowed) {
+          loadDashboard().catch(error => showDashboardError(error));
+        }
         if (options.updateUrl !== false) {
           const nextParams = new URLSearchParams(window.location.search);
           nextParams.set('scope', nextView);
           history.replaceState(history.state, '', window.location.pathname + '?' + nextParams.toString());
         }
       }
-
       document.querySelectorAll('[data-analysis-view]').forEach(tab => {
         tab.addEventListener('click', () => setAnalyzerView(tab.dataset.analysisView));
       });
@@ -4392,6 +4458,7 @@
       }
 
       async function loadDashboardOccurrences() {
+        if (!AUTO_ANALYSIS_DASHBOARD_ENABLED) return;
         const host = document.getElementById('analysis-dashboard-occurrences');
         if (!host || !projectSlug) return;
         const countNode = document.getElementById('analysis-dashboard-occurrence-count');
@@ -4682,6 +4749,7 @@
       }
 
       async function loadDashboard() {
+        if (!AUTO_ANALYSIS_DASHBOARD_ENABLED) return;
         if (!projectSlug) return;
         const refreshCompare = state.dashboard.compareRefreshPending ||
           (state.dashboard.compareRequested && state.dashboard.selectedRuns.length >= 2);
@@ -4719,6 +4787,7 @@
       }
 
       async function loadDashboardCompare() {
+        if (!AUTO_ANALYSIS_DASHBOARD_ENABLED) return;
         const selectedRunIds = state.dashboard.selectedRuns.slice();
         if (selectedRunIds.length < 2) {
           closeDashboardCompare();
@@ -4757,6 +4826,7 @@
         renderDashboardCompare(payload, { preserveControls });
       }
 
+      if (AUTO_ANALYSIS_DASHBOARD_ENABLED) {
       document.querySelectorAll('[data-dashboard-range]').forEach(button => button.addEventListener('click', () => {
         state.dashboard.range = button.dataset.dashboardRange || 'all';
         syncDashboardToggle('[data-dashboard-range]', 'dashboardRange', state.dashboard.range);
@@ -4782,6 +4852,7 @@
         closeDashboardCompare();
         renderDashboardSelection();
       });
+      }
       function runSummaryValue(value) {
         return '<span dir="auto">' + escapeHtml(value || '—') + '</span>';
       }
@@ -4932,6 +5003,7 @@
           circle.append(title);
           svg.append(circle);
         });
+        list.scrollTop = list.scrollHeight;
       }
 
       function closeInputMapping() {
@@ -5013,6 +5085,7 @@
         runPanel.setAttribute('aria-labelledby', 'analysis-run-tab');
 
         const inference = parts.content.querySelector('.pg-rule-source-actions');
+        const inferenceProgressHost = parts.content.querySelector('#pg-rule-inference-progress-host');
         const inferenceEmpty = parts.content.querySelector('#pg-infer-source-empty');
         const inferencePrevious = inference && inference.previousElementSibling;
         const rulesHint = inferencePrevious && inferencePrevious.classList.contains('pg-instructions-hint') ? inferencePrevious : null;
@@ -5108,6 +5181,23 @@
         const rulesWorkspaceBody = document.createElement('div');
         rulesWorkspaceBody.className = 'analysis-target-body';
         if (rulesHint) rulesWorkspaceBody.append(rulesHint);
+        if (inferenceProgressHost) {
+          const inferenceProgressCard = document.createElement('section');
+          inferenceProgressCard.className = 'analysis-target-card analysis-rule-inference-card';
+          inferenceProgressCard.id = 'analysis-rule-inference-card';
+          inferenceProgressCard.hidden = true;
+          const inferenceProgressHeader = document.createElement('div');
+          inferenceProgressHeader.className = 'analysis-section-header';
+          inferenceProgressHeader.innerHTML = '<div><h2>Rule generation progress</h2>' +
+            '<p>The selected sources are being processed in bounded LLM patches.</p></div>' +
+            '<div class="analysis-rule-inference-patch-stat"><span class="analysis-rule-inference-patch-label">LLM patches</span>' +
+            '<strong class="analysis-rule-inference-patch-count" id="analysis-rule-inference-patch-count" role="status" aria-live="polite">Preparing…</strong></div>';
+          const inferenceProgressBody = document.createElement('div');
+          inferenceProgressBody.className = 'analysis-target-body';
+          inferenceProgressBody.append(inferenceProgressHost);
+          inferenceProgressCard.append(inferenceProgressHeader, inferenceProgressBody);
+          rulesWorkspaceBody.append(inferenceProgressCard);
+        }
         if (inferenceEmpty) rulesWorkspaceBody.append(inferenceEmpty);
         rulesWorkspaceBody.append(rulesLayout);
         rulesWorkspaceBody.append(versionHistoryHost);
@@ -5237,7 +5327,8 @@
         diagnosisPanel.append(diagnosisBody);
         projectPanel.after(diagnosisPanel);
         const syncDiagnosisSummary = () => {
-          const groups = Array.from(diagnosisBody.querySelectorAll('.pg-category-group'));
+          const groups = Array.from(diagnosisBody.querySelectorAll('.pg-category-group'))
+            .filter(group => group.dataset.approved === 'true');
           const exampleCount = groups.reduce(
             (total, group) => total + Number(group.dataset.exampleCount || 0),
             0
@@ -5400,24 +5491,6 @@
         document.getElementById('analysis-metrics-all').addEventListener('click', () => setSelectedMetrics(state.metrics));
         document.getElementById('analysis-metrics-none').addEventListener('click', () => setSelectedMetrics([]));
 
-        const contextCard = document.createElement('section');
-        contextCard.className = 'analysis-target-card';
-        contextCard.innerHTML = '<div class="analysis-section-header"><div><h2>Use project context</h2>' +
-          '<p>Production rules, enabled documents, and execution trace can be included or removed for this run.</p></div></div>';
-        contextCard.append(createContextToggles());
-        contextCard.querySelectorAll('input[type="checkbox"]').forEach(toggle => {
-          toggle.addEventListener('change', () => {
-            if (window.QymPlayground && window.QymPlayground.refreshFilters) window.QymPlayground.refreshFilters();
-          });
-        });
-        contextCard.querySelectorAll('[data-context-view]').forEach(link => {
-          link.addEventListener('click', event => {
-            event.preventDefault();
-            setAnalyzerView(link.dataset.contextView, { focus: true });
-          });
-        });
-        runPanel.append(contextCard);
-
         const instructionsCard = document.createElement('section');
         instructionsCard.className = 'analysis-target-card';
         instructionsCard.innerHTML = '<div class="analysis-section-header"><div><h2>Additional instructions</h2>' +
@@ -5467,8 +5540,64 @@
           preview.classList.add('analysis-main-preview');
           const previewCard = document.createElement('section');
           previewCard.className = 'analysis-preview-card';
-          previewCard.innerHTML = '<div class="analysis-section-header"><div><h2>Prompt preview</h2>' +
-            '<p>Inspect the exact analyzer messages. The preview updates as you change the run configuration.</p></div></div>';
+          previewCard.innerHTML = '<div class="analysis-section-header analysis-preview-header"><div><h2>Prompt preview</h2>' +
+            '<p>Inspect the exact analyzer messages. The preview updates as you change the run configuration.</p></div>' +
+            '<button class="analysis-preview-settings-toggle qym-inline-action qym-inline-action--neutral" id="analysis-preview-settings-toggle" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="analysis-preview-settings">' +
+            iconMarkup('settings') + '<span>Settings</span></button></div>';
+          const previewHeader = previewCard.querySelector('.analysis-preview-header');
+          const settingsToggle = previewCard.querySelector('#analysis-preview-settings-toggle');
+          const contextSettings = document.createElement('div');
+          contextSettings.className = 'analysis-preview-settings';
+          contextSettings.id = 'analysis-preview-settings';
+          contextSettings.hidden = true;
+          contextSettings.setAttribute('role', 'dialog');
+          contextSettings.setAttribute('aria-labelledby', 'analysis-preview-settings-title');
+          contextSettings.innerHTML = '<div class="analysis-preview-settings-header"><h3 id="analysis-preview-settings-title">Project context</h3>' +
+            '<button class="qym-icon-action" id="analysis-preview-settings-close" type="button" aria-label="Close project context settings" title="Close settings">×</button></div>' +
+            '<p class="analysis-preview-settings-description">Choose which project and run evidence to include in the analysis prompt.</p>';
+          contextSettings.append(createContextToggles());
+          previewHeader.append(contextSettings);
+          const closeContextSettings = (returnFocus = false) => {
+            contextSettings.hidden = true;
+            settingsToggle.setAttribute('aria-expanded', 'false');
+            if (returnFocus) settingsToggle.focus();
+          };
+          const openContextSettings = () => {
+            contextSettings.hidden = false;
+            settingsToggle.setAttribute('aria-expanded', 'true');
+            const firstToggle = contextSettings.querySelector('input[type="checkbox"]');
+            if (firstToggle) firstToggle.focus();
+          };
+          settingsToggle.addEventListener('click', () => {
+            if (contextSettings.hidden) openContextSettings();
+            else closeContextSettings(true);
+          });
+          contextSettings.querySelector('#analysis-preview-settings-close').addEventListener('click', () => {
+            closeContextSettings(true);
+          });
+          contextSettings.querySelectorAll('input[type="checkbox"]').forEach(toggle => {
+            toggle.addEventListener('change', () => {
+              if (window.QymPlayground && window.QymPlayground.refreshFilters) window.QymPlayground.refreshFilters();
+            });
+          });
+          contextSettings.querySelectorAll('[data-context-view]').forEach(link => {
+            link.addEventListener('click', event => {
+              event.preventDefault();
+              closeContextSettings();
+              setAnalyzerView(link.dataset.contextView, { focus: true });
+            });
+          });
+          document.addEventListener('click', event => {
+            if (!contextSettings.hidden && !contextSettings.contains(event.target) && !settingsToggle.contains(event.target)) {
+              closeContextSettings();
+            }
+          });
+          document.addEventListener('keydown', event => {
+            if (event.key === 'Escape' && !contextSettings.hidden) {
+              event.preventDefault();
+              closeContextSettings(true);
+            }
+          });
           previewCard.append(preview);
           runPanel.append(previewCard);
         }
@@ -5482,6 +5611,7 @@
         runPanel.append(resultsCard);
         const syncResultsCard = () => {
           const hasContent = resultNodes.some(node => {
+            if (node.parentNode !== resultsBody) return false;
             const computed = window.getComputedStyle(node);
             if (computed.display === 'none' || computed.visibility === 'hidden') return false;
             return Boolean((node.textContent || '').trim());
@@ -5653,18 +5783,11 @@
 
       async function loadRun() {
         prepareAnalysisLoad();
-        const dashboardTab = document.getElementById('analysis-dashboard-tab');
-        if (!projectSlug && dashboardTab) {
-          dashboardTab.disabled = true;
-          dashboardTab.setAttribute('aria-disabled', 'true');
-          dashboardTab.setAttribute('title', 'Open Auto-analysis from a project to view the dashboard');
-          if (state.currentView === 'dashboard') state.currentView = 'run';
-        }
         if (!runId) {
           if (!projectSlug) {
             throw new Error('Open Auto-analysis from a project or choose a run first.');
           }
-          document.getElementById('analysis-go-runs').href = projectSlug ? projectUrl() : rootPath + '/';
+          document.getElementById('analysis-go-runs').href = projectSlug ? analysisRunsPickerUrl() : rootPath + '/';
           state.contextRunId = '';
           document.getElementById('analysis-loading').hidden = true;
           document.getElementById('analyzer-host').hidden = false;

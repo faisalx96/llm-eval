@@ -26,10 +26,10 @@ from qym_platform.db.models import (
     RunItemScore,
     RunMetricSpec,
 )
+from qym_platform.services.approved_diagnoses import load_approved_diagnoses
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 from qym_platform.services.root_cause_categories import analysis_root_causes
-
 
 DEFAULT_PASS_THRESHOLD = 0.8
 MAX_CHANGE_EVENTS = 500
@@ -123,7 +123,9 @@ def _metric_spec_payload(spec: RunMetricSpec | None) -> dict[str, Any]:
             else DEFAULT_PASS_THRESHOLD
         ),
         "unit": str(spec.unit or "") if spec else "",
-        "precision": int(spec.precision) if spec and spec.precision is not None else None,
+        "precision": (
+            int(spec.precision) if spec and spec.precision is not None else None
+        ),
         "sample_reducer": str(spec.sample_reducer or "mean") if spec else "mean",
         "run_reducer": str(spec.run_reducer or "mean") if spec else "mean",
     }
@@ -131,21 +133,31 @@ def _metric_spec_payload(spec: RunMetricSpec | None) -> dict[str, Any]:
 
 def _direction(spec: RunMetricSpec | None) -> str:
     value = str(spec.direction or "maximize").strip().lower() if spec else "maximize"
-    return "minimize" if value in {"minimize", "lower", "lower_is_better"} else "maximize"
+    return (
+        "minimize" if value in {"minimize", "lower", "lower_is_better"} else "maximize"
+    )
 
 
 def _pass_threshold(spec: RunMetricSpec | None) -> float:
-    return float(spec.pass_threshold) if spec and spec.pass_threshold is not None else DEFAULT_PASS_THRESHOLD
+    return (
+        float(spec.pass_threshold)
+        if spec and spec.pass_threshold is not None
+        else DEFAULT_PASS_THRESHOLD
+    )
 
 
-def _score_outcome(item: RunItem, score: RunItemScore | None, spec: RunMetricSpec | None) -> str:
+def _score_outcome(
+    item: RunItem, score: RunItemScore | None, spec: RunMetricSpec | None
+) -> str:
     if item.error:
         return "error"
     if score is None or score.score_numeric is None:
         return "unscored"
     value = float(score.score_numeric)
     threshold = _pass_threshold(spec)
-    passed = value <= threshold if _direction(spec) == "minimize" else value >= threshold
+    passed = (
+        value <= threshold if _direction(spec) == "minimize" else value >= threshold
+    )
     return "passed" if passed else "failed"
 
 
@@ -158,62 +170,36 @@ def _score_value(item: RunItem, score: RunItemScore | None) -> float | None:
     return float(score.score_numeric)
 
 
-def _metric_analysis_entries(run: Run, item: RunItem) -> list[dict[str, Any]]:
-    """Return the current effective diagnosis entries for one item.
+def _metric_analysis_entries(
+    run: Run,
+    item: RunItem,
+    approved_entries: Sequence[Mapping[str, Any]] = (),
+) -> list[dict[str, Any]]:
+    """Return only reviewer-approved diagnosis entries for one item."""
 
-    A non-empty metric_analyses object is authoritative.  The legacy top-level
-    fields are used only when metric-scoped analysis is absent, preventing the
-    same diagnosis from being counted twice.
-    """
+    metadata = item.item_metadata if isinstance(item.item_metadata, dict) else {}
+    default_metric = str(metadata.get("root_cause_metric_name") or "").strip()
+    if not default_metric:
+        metrics = list(run.metrics or [])
+        default_metric = metrics[0] if len(metrics) == 1 else "unscoped"
 
-    meta = item.item_metadata if isinstance(item.item_metadata, dict) else {}
-    metric_analyses = meta.get("metric_analyses")
-    if isinstance(metric_analyses, dict) and metric_analyses:
-        entries: list[dict[str, Any]] = []
-        for raw_metric, raw_analysis in metric_analyses.items():
-            if not isinstance(raw_analysis, dict):
-                continue
-            categories = analysis_root_causes(raw_analysis)
-            if not categories:
-                continue
-            if raw_analysis.get("error"):
-                continue
-            metric_name = str(raw_metric or "").strip() or "unscoped"
-            for category in categories:
-                entries.append(
-                    {
-                        "metric_name": metric_name,
-                        "category": category,
-                        "detail": _display_label(raw_analysis.get("root_cause_detail"), "Unspecified"),
-                        "note": str(raw_analysis.get("root_cause_note") or "").strip(),
-                        "confidence": raw_analysis.get("confidence"),
-                        "source": str(
-                            raw_analysis.get("source")
-                            or raw_analysis.get("root_cause_source")
-                            or "unknown"
-                        ).strip().lower(),
-                    }
-                )
-        return entries
-
-    categories = analysis_root_causes(meta)
-    if not categories or str(meta.get("analysis_error") or "").strip():
-        return []
-    metrics = list(run.metrics or [])
-    metric_name = str(meta.get("root_cause_metric_name") or "").strip()
-    if not metric_name:
-        metric_name = metrics[0] if len(metrics) == 1 else "unscoped"
-    return [
-        {
-            "metric_name": metric_name,
-            "category": category,
-            "detail": _display_label(meta.get("root_cause_detail"), "Unspecified"),
-            "note": str(meta.get("root_cause_note") or "").strip(),
-            "confidence": meta.get("root_cause_confidence"),
-            "source": str(meta.get("root_cause_source") or "legacy").strip().lower(),
-        }
-        for category in categories
-    ]
+    entries: list[dict[str, Any]] = []
+    for approved in approved_entries:
+        category = _display_label(approved.get("category"), "")
+        if not category:
+            continue
+        entries.append(
+            {
+                "metric_name": str(approved.get("metric_name") or default_metric),
+                "category": category,
+                "detail": _display_label(approved.get("detail"), "Unspecified"),
+                "note": str(approved.get("note") or "").strip(),
+                "confidence": approved.get("confidence"),
+                "source": str(approved.get("source") or "unknown").strip().lower(),
+                "review_status": "approved",
+            }
+        )
+    return entries
 
 
 def _latest_review_statuses(
@@ -250,7 +236,9 @@ def _load_changes(db: Session, run_ids: Sequence[str]) -> list[dict[str, Any]]:
         .all()
     )
     for revision in revisions:
-        before = revision.before_state if isinstance(revision.before_state, dict) else {}
+        before = (
+            revision.before_state if isinstance(revision.before_state, dict) else {}
+        )
         after = revision.after_state if isinstance(revision.after_state, dict) else {}
         before_category = _display_categories(before)
         after_category = _display_categories(after)
@@ -262,7 +250,11 @@ def _load_changes(db: Session, run_ids: Sequence[str]) -> list[dict[str, Any]]:
                 "metric_name": "",
                 "before_category": before_category,
                 "category": after_category,
-                "change": "cleared" if before_category and not after_category else ("new" if not before_category else "changed"),
+                "change": (
+                    "cleared"
+                    if before_category and not after_category
+                    else ("new" if not before_category else "changed")
+                ),
                 "source": str(revision.actor_source or "system"),
                 "timestamp": to_api_timestamp(revision.created_at),
             }
@@ -282,7 +274,14 @@ def _load_changes(db: Session, run_ids: Sequence[str]) -> list[dict[str, Any]]:
     selected = set(run_ids)
     for row in audit_rows:
         entity_id = str(row.entity_id or "")
-        run_id = next((candidate for candidate in selected if entity_id.startswith(candidate + ":")), None)
+        run_id = next(
+            (
+                candidate
+                for candidate in selected
+                if entity_id.startswith(candidate + ":")
+            ),
+            None,
+        )
         if not run_id:
             continue
         parts = entity_id.split(":")
@@ -300,7 +299,11 @@ def _load_changes(db: Session, run_ids: Sequence[str]) -> list[dict[str, Any]]:
                 "metric_name": metric_name,
                 "before_category": before_category,
                 "category": after_category,
-                "change": "cleared" if before_category and not after_category else ("new" if not before_category else "changed"),
+                "change": (
+                    "cleared"
+                    if before_category and not after_category
+                    else ("new" if not before_category else "changed")
+                ),
                 "source": "human",
                 "timestamp": to_api_timestamp(row.created_at),
             }
@@ -367,6 +370,7 @@ def _load_snapshot(
     spec_rows = db.query(RunMetricSpec).filter(RunMetricSpec.run_id.in_(run_ids)).all()
     snapshot.metric_specs = {(row.run_id, row.metric_name): row for row in spec_rows}
     review_statuses = _latest_review_statuses(db, run_ids)
+    approved_diagnoses = load_approved_diagnoses(db, run_ids, item_rows)
     runs_by_id = {run.id: run for run in runs}
     items_by_run: dict[str, list[RunItem]] = defaultdict(list)
     for item in item_rows:
@@ -393,7 +397,11 @@ def _load_snapshot(
             if item.error and not metrics:
                 snapshot.failed_pairs.add((run.id, item.item_id))
 
-            entries = _metric_analysis_entries(run, item)
+            entries = _metric_analysis_entries(
+                run,
+                item,
+                approved_diagnoses.get((run.id, item.item_id), ()),
+            )
             for entry in entries:
                 metric_name = str(entry["metric_name"] or "unscoped")
                 if not _matches(filters.metric, metric_name):
@@ -402,18 +410,34 @@ def _load_snapshot(
                 detail = str(entry["detail"] or "Unspecified")
                 category_key = normalize_label(category)
                 detail_key = normalize_label(detail)
-                if filters.category and not any(normalize_label(value) == category_key for value in filters.category):
+                if filters.category and not any(
+                    normalize_label(value) == category_key for value in filters.category
+                ):
                     continue
-                if filters.detail and not any(normalize_label(value) == detail_key for value in filters.detail):
+                if filters.detail and not any(
+                    normalize_label(value) == detail_key for value in filters.detail
+                ):
                     continue
                 score = scores.get((run.id, item.item_id, metric_name))
                 spec = snapshot.metric_specs.get((run.id, metric_name))
                 outcome = _score_outcome(item, score, spec)
-                source = str(entry.get("source") or "unknown").strip().lower() or "unknown"
-                review_status = review_statuses.get((run.id, item.item_id, metric_name))
+                source = (
+                    str(entry.get("source") or "unknown").strip().lower() or "unknown"
+                )
+                review_status = str(entry.get("review_status") or "").strip().lower()
+                if not review_status:
+                    review_status = review_statuses.get(
+                        (run.id, item.item_id, metric_name)
+                    )
                 if review_status is None:
-                    review_status = review_statuses.get((run.id, item.item_id, ""), "unreviewed")
-                if not _matches(filters.outcome, outcome) or not _matches(filters.source, source) or not _matches(filters.review_status, review_status):
+                    review_status = review_statuses.get(
+                        (run.id, item.item_id, ""), "unreviewed"
+                    )
+                if (
+                    not _matches(filters.outcome, outcome)
+                    or not _matches(filters.source, source)
+                    or not _matches(filters.review_status, review_status)
+                ):
                     continue
                 snapshot.occurrences.append(
                     {
@@ -464,10 +488,14 @@ def _sorted_counts(rows: Iterable[Mapping[str, Any]], key: str) -> list[dict[str
         identity = normalize_label(value)
         current = grouped.setdefault(identity, {"value": value, "count": 0})
         current["count"] += 1
-    return sorted(grouped.values(), key=lambda item: (-item["count"], item["value"].casefold()))
+    return sorted(
+        grouped.values(), key=lambda item: (-item["count"], item["value"].casefold())
+    )
 
 
-def _group_by(rows: Sequence[dict[str, Any]], key: str) -> dict[str, list[dict[str, Any]]]:
+def _group_by(
+    rows: Sequence[dict[str, Any]], key: str
+) -> dict[str, list[dict[str, Any]]]:
     grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for row in rows:
         grouped[normalize_label(row.get(key))].append(row)
@@ -481,7 +509,9 @@ def _run_score_payload(
     spec: RunMetricSpec | None,
 ) -> dict[str, Any]:
     stat = score_stats.get((run.id, metric_name), {})
-    denominator = int(stat.get("scored_count", 0) or 0) + int(stat.get("error_count", 0) or 0)
+    denominator = int(stat.get("scored_count", 0) or 0) + int(
+        stat.get("error_count", 0) or 0
+    )
     return {
         "run_id": run.id,
         "metric_name": metric_name,
@@ -505,7 +535,9 @@ def _category_group(rows: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
                 "category": first["category"],
                 "count": len(group),
                 "share": len(group) / total if total else 0.0,
-                "affected_items": len({(row["run_id"], row["item_id"]) for row in group}),
+                "affected_items": len(
+                    {(row["run_id"], row["item_id"]) for row in group}
+                ),
                 "run_count": len({row["run_id"] for row in group}),
                 "metric_count": len({row["metric_name"] for row in group}),
                 "metrics": _sorted_counts(group, "metric_name"),
@@ -514,7 +546,9 @@ def _category_group(rows: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
                 "failure_rate": _failure_rate(group),
             }
         )
-    return sorted(result, key=lambda item: (-item["count"], item["category"].casefold()))
+    return sorted(
+        result, key=lambda item: (-item["count"], item["category"].casefold())
+    )
 
 
 def _metric_group(rows: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -526,14 +560,18 @@ def _metric_group(rows: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
             {
                 "metric_name": first["metric_name"],
                 "count": len(group),
-                "affected_items": len({(row["run_id"], row["item_id"]) for row in group}),
+                "affected_items": len(
+                    {(row["run_id"], row["item_id"]) for row in group}
+                ),
                 "run_count": len({row["run_id"] for row in group}),
                 "categories": _sorted_counts(group, "category"),
                 "average_score": _average(row.get("score") for row in group),
                 "failure_rate": _failure_rate(group),
             }
         )
-    return sorted(result, key=lambda item: (-item["count"], item["metric_name"].casefold()))
+    return sorted(
+        result, key=lambda item: (-item["count"], item["metric_name"].casefold())
+    )
 
 
 def _run_group(
@@ -578,9 +616,15 @@ def _facets(snapshot: _Snapshot) -> dict[str, Any]:
     return {
         "runs": run_facets,
         "tasks": sorted({str(run.task or "") for run in runs if str(run.task or "")}),
-        "datasets": sorted({str(run.dataset or "") for run in runs if str(run.dataset or "")}),
-        "models": sorted({_model_name(run.model) for run in runs if _model_name(run.model)}),
-        "metrics": sorted({str(row["metric_name"]) for row in rows if row.get("metric_name")}),
+        "datasets": sorted(
+            {str(run.dataset or "") for run in runs if str(run.dataset or "")}
+        ),
+        "models": sorted(
+            {_model_name(run.model) for run in runs if _model_name(run.model)}
+        ),
+        "metrics": sorted(
+            {str(row["metric_name"]) for row in rows if row.get("metric_name")}
+        ),
         "score_metrics": sorted(
             {
                 str(metric)
@@ -597,10 +641,16 @@ def _facets(snapshot: _Snapshot) -> dict[str, Any]:
     }
 
 
-def _choose_score_metric(snapshot: _Snapshot, requested: str | None = None) -> str | None:
+def _choose_score_metric(
+    snapshot: _Snapshot, requested: str | None = None
+) -> str | None:
     if requested:
         return requested
-    counts = Counter(row["metric_name"] for row in snapshot.occurrences if row.get("metric_name") != "unscoped")
+    counts = Counter(
+        row["metric_name"]
+        for row in snapshot.occurrences
+        if row.get("metric_name") != "unscoped"
+    )
     if counts:
         return counts.most_common(1)[0][0]
     for run in snapshot.runs:
@@ -629,35 +679,46 @@ def build_dashboard_payload(
     most_repeated = category_groups[0] if category_groups else None
     summary = {
         "diagnosis_occurrences": len(rows),
-        "affected_run_item_pairs": len({(row["run_id"], row["item_id"]) for row in rows}),
+        "affected_run_item_pairs": len(
+            {(row["run_id"], row["item_id"]) for row in rows}
+        ),
         "runs_with_diagnoses": len({row["run_id"] for row in rows}),
         "categories": len(category_groups),
         "most_repeated_category": most_repeated,
         "failure_coverage": {
             "diagnosed_failed_pairs": len(diagnosed_failed_pairs),
             "failed_pairs": len(failed_pairs),
-            "rate": len(diagnosed_failed_pairs) / len(failed_pairs) if failed_pairs else 0.0,
+            "rate": (
+                len(diagnosed_failed_pairs) / len(failed_pairs) if failed_pairs else 0.0
+            ),
         },
         "selected_score_metric": selected_metric,
     }
     score_payload = {
         "metric_name": selected_metric,
-        "runs": [
-            _run_score_payload(
-                run,
-                selected_metric,
-                snapshot.score_stats,
-                snapshot.metric_specs.get((run.id, selected_metric)),
-            )
-            for run in snapshot.runs
-        ]
-        if selected_metric
-        else [],
+        "runs": (
+            [
+                _run_score_payload(
+                    run,
+                    selected_metric,
+                    snapshot.score_stats,
+                    snapshot.metric_specs.get((run.id, selected_metric)),
+                )
+                for run in snapshot.runs
+            ]
+            if selected_metric
+            else []
+        ),
     }
     trend = []
-    for run in sorted(snapshot.runs, key=lambda current: (_run_timestamp(current) or datetime.min, current.id)):
+    for run in sorted(
+        snapshot.runs,
+        key=lambda current: (_run_timestamp(current) or datetime.min, current.id),
+    ):
         run_rows = [row for row in rows if row["run_id"] == run.id]
-        score = next((item for item in score_payload["runs"] if item["run_id"] == run.id), None)
+        score = next(
+            (item for item in score_payload["runs"] if item["run_id"] == run.id), None
+        )
         trend.append(
             {
                 "run_id": run.id,
@@ -731,9 +792,9 @@ def _comparison_matrix(
             run_rows = [row for row in group_rows if row["run_id"] == run_id]
             per_run[run_id] = {
                 "count": len(run_rows),
-                "share": len(run_rows) / run_totals[run_id]
-                if run_totals[run_id]
-                else 0.0,
+                "share": (
+                    len(run_rows) / run_totals[run_id] if run_totals[run_id] else 0.0
+                ),
                 "average_score": _average(row.get("score") for row in run_rows),
                 "failure_rate": _failure_rate(run_rows),
             }
@@ -750,7 +811,9 @@ def _comparison_matrix(
     )
 
 
-def _comparison_status(raw_delta: float | None, direction: str, tolerance: float) -> str:
+def _comparison_status(
+    raw_delta: float | None, direction: str, tolerance: float
+) -> str:
     if raw_delta is None or abs(raw_delta) <= tolerance:
         return "tied"
     improved = raw_delta > 0 if direction == "maximize" else raw_delta < 0
@@ -821,12 +884,19 @@ def build_compare_payload(
         semantic_keys = {
             (
                 _direction(snapshot.metric_specs.get((run_id, selected_metric))),
-                str(snapshot.metric_specs.get((run_id, selected_metric)).unit or "")
-                if snapshot.metric_specs.get((run_id, selected_metric))
-                else "",
-                str(snapshot.metric_specs.get((run_id, selected_metric)).score_type or "")
-                if snapshot.metric_specs.get((run_id, selected_metric))
-                else "",
+                (
+                    str(snapshot.metric_specs.get((run_id, selected_metric)).unit or "")
+                    if snapshot.metric_specs.get((run_id, selected_metric))
+                    else ""
+                ),
+                (
+                    str(
+                        snapshot.metric_specs.get((run_id, selected_metric)).score_type
+                        or ""
+                    )
+                    if snapshot.metric_specs.get((run_id, selected_metric))
+                    else ""
+                ),
             )
             for run_id in selected_ids
         }
@@ -846,35 +916,50 @@ def build_compare_payload(
         baseline_score = baseline_score_payload["average"]
         for run_id in selected_ids:
             spec = snapshot.metric_specs.get((run_id, selected_metric))
-            score = _run_score_payload(run_map[run_id], selected_metric, snapshot.score_stats, spec)
-            raw_delta = score["average"] - baseline_score if score["average"] is not None and baseline_score is not None else None
+            score = _run_score_payload(
+                run_map[run_id], selected_metric, snapshot.score_stats, spec
+            )
+            raw_delta = (
+                score["average"] - baseline_score
+                if score["average"] is not None and baseline_score is not None
+                else None
+            )
             direction = _direction(spec)
             precision = spec.precision if spec and spec.precision is not None else None
-            tolerance = (10 ** (-int(precision))) / 2 if precision is not None and int(precision) >= 0 else 1e-9
+            tolerance = (
+                (10 ** (-int(precision))) / 2
+                if precision is not None and int(precision) >= 0
+                else 1e-9
+            )
             score_rows.append(
                 {
                     **score,
                     "raw_delta": raw_delta,
-                    "improvement_delta": (-raw_delta if direction == "minimize" and raw_delta is not None else raw_delta),
+                    "improvement_delta": (
+                        -raw_delta
+                        if direction == "minimize" and raw_delta is not None
+                        else raw_delta
+                    ),
                     "comparison_status": (
                         "baseline"
-                        if run_id == baseline and compatibility["comparable"] and score["average"] is not None
+                        if run_id == baseline
+                        and compatibility["comparable"]
+                        and score["average"] is not None
                         else (
                             "unavailable"
-                            if not compatibility["comparable"] or score["average"] is None
+                            if not compatibility["comparable"]
+                            or score["average"] is None
                             else _comparison_status(raw_delta, direction, tolerance)
                         )
                     ),
-                    "comparison_state": "comparable" if compatibility["comparable"] else "unavailable",
+                    "comparison_state": (
+                        "comparable" if compatibility["comparable"] else "unavailable"
+                    ),
                 }
             )
 
-    category_matrix = _comparison_matrix(
-        comparison_rows, selected_ids, "category"
-    )
-    metric_matrix = _comparison_matrix(
-        comparison_rows, selected_ids, "metric_name"
-    )
+    category_matrix = _comparison_matrix(comparison_rows, selected_ids, "category")
+    metric_matrix = _comparison_matrix(comparison_rows, selected_ids, "metric_name")
     total_occurrences = len(comparison_rows)
     run_summary = []
     for run_id in selected_ids:
@@ -884,9 +969,9 @@ def build_compare_payload(
                 "run_id": run_id,
                 "run_name": _run_name(run_map[run_id]),
                 "count": len(run_rows),
-                "share": len(run_rows) / total_occurrences
-                if total_occurrences
-                else 0.0,
+                "share": (
+                    len(run_rows) / total_occurrences if total_occurrences else 0.0
+                ),
                 "average_score": _average(row.get("score") for row in run_rows),
                 "failure_rate": _failure_rate(run_rows),
             }
@@ -905,7 +990,9 @@ def build_compare_payload(
         "project": {"id": project.id, "slug": project.slug, "name": project.name},
         "run_ids": list(selected_ids),
         "baseline_run_id": baseline,
-        "score_metric": ALL_METRICS_SENTINEL if all_metrics_requested else selected_metric,
+        "score_metric": (
+            ALL_METRICS_SENTINEL if all_metrics_requested else selected_metric
+        ),
         "score_direction": baseline_direction,
         "score_compatibility": compatibility,
         "runs": [_run_payload(run_map[run_id]) for run_id in selected_ids],

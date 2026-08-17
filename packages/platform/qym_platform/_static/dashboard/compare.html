@@ -5,13 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>قيِّم • Compare Runs</title>
   <link rel="icon" type="image/png" href="./static/qym_icon.png">
-<link rel="stylesheet" href="./static/dashboard.css?v=auto-analysis-selectors-20260811-6">
+<link rel="stylesheet" href="./static/dashboard.css?v=rule-history-bottom-20260816-1">
   <link rel="stylesheet" href="./static/shell.css">
   <script src="./static/auth.js"></script>
   <script src="./static/shell.js?v=ui-consistency-20260730-15"></script>
   <script src="./static/metrics.js"></script>
   <script src="./static/trace_viewer.js?v=merge-20260804-1"></script>
-<script src="./static/playground.js?v=auto-analysis-selectors-20260811-6"></script>
+<script src="./static/playground.js?v=rule-history-bottom-20260816-1"></script>
   <style>
     /* Typography/color rules: docs/DESIGN_LANGUAGE.md — tokens only (var(--font-*), var(--text-*)). */
     /* Compare-specific styles */
@@ -7233,16 +7233,26 @@
         return state.compareAlignmentStatus === 'aligned';
       }
 
-      function getApprovalState(row) {
+      function getApprovalState(row, metricName) {
         if (!row) return '';
-        const reviewStatus = String(row.review_correction_status || '').toLowerCase();
-        if (reviewStatus === 'approved') return 'approved';
+        const itemStatus = String(row.review_correction_status || '').toLowerCase();
+        const metricReviews = (row.review_corrections && typeof row.review_corrections === 'object')
+          ? row.review_corrections : {};
+        if (metricName) {
+          const metricStatus = String(metricReviews[metricName]?.status || '').toLowerCase();
+          if (metricStatus) return metricStatus === 'approved' ? 'approved' : 'not_approved';
+          if (itemStatus) return itemStatus === 'approved' ? 'approved' : 'not_approved';
+          return 'not_approved';
+        }
+        if (itemStatus === 'approved') return 'approved';
+        if (Object.values(metricReviews).some(review =>
+          String(review?.status || '').toLowerCase() === 'approved')) return 'approved';
         return 'not_approved';
       }
 
-      function matchesApprovalFilter(row, approvalSelection) {
+      function matchesApprovalFilter(row, approvalSelection, metricName) {
         if (!approvalSelection) return true;
-        const approvalState = getApprovalState(row);
+        const approvalState = getApprovalState(row, metricName);
         if (!approvalState) return false;
         if (typeof approvalSelection === 'string') {
           return approvalState === approvalSelection;
@@ -9950,7 +9960,7 @@
           return metadata.root_cause ? String(metadata.root_cause) : '__none__';
         });
         const approvals = rowData.filter(Boolean).map(row =>
-          matchesApprovalFilter(row, 'approved') ? 'approved' : 'not_approved');
+          matchesApprovalFilter(row, 'approved', state.selectedItemsMetric) ? 'approved' : 'not_approved');
         const latencies = rowData.map(row => Number(row?.latency_ms) || 0);
 
         return {
@@ -10274,7 +10284,7 @@
             if (customFilterFail) continue;
           }
           if (state.approvalFilter !== null) {
-            const matchingApproval = rowData.some(r => r && matchesApprovalFilter(r, state.approvalFilter));
+            const matchingApproval = rowData.some(r => r && matchesApprovalFilter(r, state.approvalFilter, state.selectedItemsMetric));
             if (!matchingApproval) continue;
           }
           if (state.taskErrorFilter || state.traceErrorFilter || state.analysisErrorFilter) {
@@ -12830,8 +12840,8 @@
         if (category === 'approval') {
           for (const itemId of (state.compareItemIds || [])) {
             const rowData = state.runs.map(run => findRowByCompareId(run.snapshot?.rows || [], itemId));
-            const hasApproved = rowData.some(r => r && getApprovalState(r) === 'approved');
-            const hasNotApproved = rowData.some(r => r && getApprovalState(r) === 'not_approved');
+            const hasApproved = rowData.some(r => r && getApprovalState(r, state.selectedItemsMetric) === 'approved');
+            const hasNotApproved = rowData.some(r => r && getApprovalState(r, state.selectedItemsMetric) === 'not_approved');
             if (hasApproved) itemCounts.approved++;
             if (hasNotApproved) itemCounts.not_approved++;
           }

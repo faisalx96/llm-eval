@@ -105,6 +105,7 @@ from qym_platform.services.root_cause_categories import (
     DEFAULT_MAX_ROOT_CAUSE_CATEGORIES,
     DEFAULT_ROOT_CAUSE_TAXONOMY,
     analysis_root_causes,
+    category_taxonomy_for_categories,
     merge_category_taxonomies,
     normalize_category_taxonomy,
     normalize_root_causes,
@@ -113,6 +114,7 @@ from qym_platform.services.root_cause_categories import (
 from qym_platform.services.analysis_jobs import (
     AnalysisJob,
     analysis_job_manager,
+    rule_inference_job_manager,
 )
 from qym_platform.services.analysis_prompts import get_effective_analysis_prompts
 from qym_platform.settings import PlatformSettings
@@ -864,7 +866,9 @@ class PlaygroundConfig(BaseModel):
     )
     include_project_rules: Optional[bool] = None
     include_project_documents: Optional[bool] = None
-    system_prompt: Optional[str] = Field(default=None, max_length=50_000)
+    system_prompt: Optional[str] = Field(
+        default=None, max_length=MAX_ANALYSIS_PROMPT_CHARS
+    )
     additional_instructions: Optional[str] = Field(default=None, max_length=20_000)
     custom_variable_mapping: Optional[Dict[str, MappingSource]] = None
     root_cause_categories: Optional[List[str]] = Field(default=None, max_length=100)
@@ -1444,11 +1448,11 @@ def _category_example_counts(
     return counts
 
 
-def _approved_category_example_counts(
+def _approved_corrections(
     db: Session,
     run: Run | _ProjectAnalysisScope,
-) -> dict[str, int]:
-    """Load the active approved-example counts for a run or project scope."""
+) -> list[ReviewCorrection]:
+    """Load the active approved corrections for a run or project scope."""
     corrections_query = (
         db.query(ReviewCorrection)
         .join(Run, Run.id == ReviewCorrection.run_id)
@@ -1463,7 +1467,43 @@ def _approved_category_example_counts(
         corrections_query = corrections_query.filter(
             ReviewCorrection.task == run.task
         )
-    return _category_example_counts(corrections_query.all())
+    return corrections_query.all()
+
+
+def _approved_category_example_counts(
+    db: Session,
+    run: Run | _ProjectAnalysisScope,
+) -> dict[str, int]:
+    """Load the active approved-example counts for a run or project scope."""
+    return _category_example_counts(_approved_corrections(db, run))
+
+
+def _approved_category_details(
+    db: Session,
+    run: Run | _ProjectAnalysisScope,
+) -> dict[str, list[str]]:
+    """Map each category to the details carried by its approved examples.
+
+    Shares the approved-correction source with the example counts so the
+    analyzer prompt can only ever surface details reviewers have approved.
+    The editable catalog map is deliberately not consulted here.
+    """
+    details: dict[str, list[str]] = {}
+    seen_by_category: dict[str, set[str]] = {}
+    for correction in _approved_corrections(db, run):
+        detail = _catalog_label(
+            correction.human_root_cause_detail or correction.ai_root_cause_detail or ""
+        )
+        if not detail:
+            continue
+        key = detail.casefold()
+        for category in _approved_correction_categories(correction):
+            seen = seen_by_category.setdefault(category, set())
+            if key in seen:
+                continue
+            seen.add(key)
+            details.setdefault(category, []).append(detail)
+    return details
 
 
 def _collect_task_root_cause_catalog(
@@ -1491,31 +1531,12 @@ def _collect_task_root_cause_catalog(
     # Build category → details mapping from approved corrections
     cat_details_map: Dict[str, List[str]] = {}
     for correction in task_corrections:
-        categories = normalize_root_causes(
-            correction.human_root_causes
-            or correction.human_root_cause
-        )
-        detail = correction.human_root_cause_detail or ""
+        categories = _approved_correction_categories(correction)
+        detail = correction.human_root_cause_detail or correction.ai_root_cause_detail or ""
         if categories:
             correction_categories.extend(categories)
             if detail:
                 for category in categories:
-                    cat_details_map.setdefault(category, []).append(detail)
-
-    # Include categories already present on this run even before a review
-    # candidate has been approved, so the analyzer can preserve current
-    # vocabulary when re-running or aggregating a run.
-    for item in items:
-        metadata = item.item_metadata if isinstance(item.item_metadata, dict) else {}
-        for analysis in [metadata, *(
-            value
-            for value in (metadata.get("metric_analyses") or {}).values()
-            if isinstance(value, dict)
-        )]:
-            correction_categories.extend(analysis_root_causes(analysis))
-            detail = str(analysis.get("root_cause_detail") or "").strip()
-            for category in analysis_root_causes(analysis):
-                if detail:
                     cat_details_map.setdefault(category, []).append(detail)
 
     all_categories = _ordered_unique(
@@ -1560,17 +1581,6 @@ def _collect_task_root_cause_taxonomy(
         learned.append(
             getattr(correction, "human_category_taxonomy", None)
         )
-
-    for item in items:
-        metadata = item.item_metadata if isinstance(item.item_metadata, dict) else {}
-        learned.append(metadata.get("category_taxonomy"))
-        metric_analyses = metadata.get("metric_analyses")
-        if isinstance(metric_analyses, dict):
-            learned.extend(
-                analysis.get("category_taxonomy")
-                for analysis in metric_analyses.values()
-                if isinstance(analysis, dict)
-            )
 
     return merge_category_taxonomies(DEFAULT_ROOT_CAUSE_TAXONOMY, *learned)
 
@@ -1814,25 +1824,35 @@ def _category_catalog_values(
     catalog: ProjectAnalysisCategoryCatalogVersion | dict[str, Any],
 ) -> dict[str, Any]:
     if isinstance(catalog, dict):
+        categories = normalize_root_causes(catalog.get("categories"))
         return {
             "id": catalog.get("id"),
             "version": int(catalog.get("version") or 0),
-            "categories": list(catalog.get("categories") or []),
+            "categories": categories,
             "category_entries": list(catalog.get("category_entries") or []),
-            "category_details_map": dict(catalog.get("category_details_map") or {}),
-            "category_taxonomy": dict(catalog.get("category_taxonomy") or {}),
+            "category_details_map": _normalize_category_details_map(
+                catalog.get("category_details_map"), categories
+            ),
+            "category_taxonomy": category_taxonomy_for_categories(
+                catalog.get("category_taxonomy"), categories
+            ),
             "max_root_cause_categories": int(
                 catalog.get("max_root_cause_categories")
                 or DEFAULT_MAX_ROOT_CAUSE_CATEGORIES
             ),
         }
+    categories = normalize_root_causes(catalog.categories)
     return {
         "id": catalog.id,
         "version": int(catalog.version),
-        "categories": list(catalog.categories or []),
+        "categories": categories,
         "category_entries": list(catalog.category_entries or []),
-        "category_details_map": dict(catalog.category_details_map or {}),
-        "category_taxonomy": dict(catalog.category_taxonomy or {}),
+        "category_details_map": _normalize_category_details_map(
+            catalog.category_details_map, categories
+        ),
+        "category_taxonomy": category_taxonomy_for_categories(
+            catalog.category_taxonomy, categories
+        ),
         "max_root_cause_categories": int(
             catalog.max_root_cause_categories or DEFAULT_MAX_ROOT_CAUSE_CATEGORIES
         ),
@@ -2010,7 +2030,7 @@ def _analysis_config_with_category_catalog(
     analyzer_config: dict[str, Any] | None,
     catalog_reference: Any = None,
 ) -> dict[str, Any] | None:
-    """Add the active project category catalog without overriding explicit edits."""
+    """Apply the active project catalog as the analyzer's category boundary."""
     config = dict(analyzer_config or {})
     reference = catalog_reference
     if reference is None:
@@ -2019,14 +2039,32 @@ def _analysis_config_with_category_catalog(
         reference = config.get("category_catalog_version")
     catalog = _category_catalog_reference(db, run.project_id, reference)
     values = _category_catalog_values(catalog)
-    if "root_cause_categories" not in config:
+    catalog_categories = list(values["categories"])
+    catalog_by_fold = {
+        category.casefold(): category for category in catalog_categories
+    }
+    requested_categories = config.get("root_cause_categories")
+    if requested_categories is None:
+        config["root_cause_categories"] = catalog_categories
+    else:
         config["root_cause_categories"] = _ordered_unique(
-            list(values["categories"]) + list(values["category_taxonomy"].keys())
-        )
+            [
+                catalog_by_fold[category.casefold()]
+                for category in normalize_root_causes(requested_categories)
+                if category.casefold() in catalog_by_fold
+            ]
+        ) or catalog_categories
     if "category_details_map" not in config:
         config["category_details_map"] = values["category_details_map"]
+    else:
+        config["category_details_map"] = _normalize_category_details_map(
+            config.get("category_details_map"), catalog_categories
+        )
     config["category_taxonomy"] = merge_category_taxonomies(
-        values["category_taxonomy"], config.get("category_taxonomy")
+        values["category_taxonomy"],
+        category_taxonomy_for_categories(
+            config.get("category_taxonomy"), catalog_categories
+        ),
     )
     if "max_root_cause_categories" not in config:
         config["max_root_cause_categories"] = values["max_root_cause_categories"]
@@ -2034,6 +2072,9 @@ def _analysis_config_with_category_catalog(
         config["category_example_counts"] = _approved_category_example_counts(
             db, run
         )
+    # Server-owned: never sourced from the editable catalog or the request body,
+    # so an unapproved detail cannot reach the analyzer prompt.
+    config["approved_category_details"] = _approved_category_details(db, run)
     config["category_catalog_version"] = values["version"]
     config["category_catalog_version_id"] = values["id"]
     return config or None
@@ -2088,6 +2129,7 @@ def _persistence_totals(results: list[dict[str, Any]]) -> dict[str, Any]:
         "total_attempted": len(results),
         "total_persisted": 0,
         "total_skipped_human": 0,
+        "total_skipped_approved": 0,
         "total_analysis_failed": 0,
     }
     for result in results:
@@ -2096,6 +2138,8 @@ def _persistence_totals(results: list[dict[str, Any]]) -> dict[str, Any]:
             counts["total_persisted"] += 1
         elif status == "skipped_human_protection":
             counts["total_skipped_human"] += 1
+        elif status == "skipped_approved_protection":
+            counts["total_skipped_approved"] += 1
         elif status == "analysis_failed":
             counts["total_analysis_failed"] += 1
     counts["persistence_totals"] = dict(counts)
@@ -2151,26 +2195,63 @@ def _is_protected_pass_analysis(analysis: dict[str, Any]) -> bool:
     return source == "human" or review_status == "approved"
 
 
-def _approved_aggregation_binding_keys(
-    db: Session,
-    run: Run,
-    bindings: list[_PersistedAnalysisBinding],
+def _is_approved_analysis(analysis: dict[str, Any]) -> bool:
+    """Return whether an analysis carries an explicit approval marker."""
+    return str(analysis.get("review_status") or "").strip().lower() == "approved"
+
+
+def _active_approved_review_keys(
+    db: Session, run: Run, item_ids: set[str] | list[str]
 ) -> set[tuple[str, str | None]]:
-    """Find active approved corrections before aggregation can rewrite labels."""
-    if not bindings:
+    """Return active approved review scopes for the supplied run items.
+
+    ``None`` is the legacy item-scoped candidate.  Metric names identify the
+    newer per-metric review rows.  Keeping both scopes in one set lets every AI
+    persistence boundary apply the same ownership rule.
+    """
+    normalized_item_ids = sorted({str(item_id) for item_id in item_ids if item_id})
+    if not normalized_item_ids:
         return set()
-    item_ids = sorted({binding.item.item_id for binding in bindings})
-    approved = (
+    rows = (
         db.query(ReviewCorrection)
         .filter(
             ReviewCorrection.run_id == run.id,
-            ReviewCorrection.item_id.in_(item_ids),
+            ReviewCorrection.item_id.in_(normalized_item_ids),
             ReviewCorrection.status == CorrectionStatus.APPROVED,
             ReviewCorrection.is_active.is_(True),
         )
         .all()
     )
-    return {(candidate.item_id, candidate.metric_name) for candidate in approved}
+    return {
+        (row.item_id, str(row.metric_name).strip() if row.metric_name else None)
+        for row in rows
+    }
+
+
+def _review_key_is_approved(
+    approved_keys: set[tuple[str, str | None]],
+    item_id: str,
+    metric_name: str | None,
+) -> bool:
+    """Match an exact metric approval or a legacy item-scoped approval."""
+    normalized_metric = str(metric_name or "").strip() or None
+    return (item_id, None) in approved_keys or (
+        item_id,
+        normalized_metric,
+    ) in approved_keys
+
+
+def _approved_aggregation_binding_keys(
+    db: Session,
+    run: Run,
+    bindings: list[_PersistedAnalysisBinding],
+) -> set[tuple[str, str | None]]:
+    """Find active approved corrections for persisted aggregation bindings."""
+    if not bindings:
+        return set()
+    return _active_approved_review_keys(
+        db, run, {binding.item.item_id for binding in bindings}
+    )
 
 
 def _persisted_ai_analysis_bindings(
@@ -2333,27 +2414,16 @@ def _persist_aggregated_bindings(
         else []
     )
     locked_by_id = {item.item_id: item for item in locked_items}
-    approved_candidates = (
-        db.query(ReviewCorrection)
-        .filter(
-            ReviewCorrection.run_id == run.id,
-            ReviewCorrection.item_id.in_(changed_item_ids),
-            ReviewCorrection.status == CorrectionStatus.APPROVED,
-            ReviewCorrection.is_active.is_(True),
-        )
-        .all()
-        if changed_item_ids
-        else []
+    approved_binding_keys = _active_approved_review_keys(
+        db, run, changed_item_ids
     )
-    approved_binding_keys = {
-        (candidate.item_id, candidate.metric_name)
-        for candidate in approved_candidates
-    }
     changed = [
         binding
         for binding in changed
         if binding.item.item_id in locked_by_id
-        and (binding.item.item_id, binding.metric_name) not in approved_binding_keys
+        and not _review_key_is_approved(
+            approved_binding_keys, binding.item.item_id, binding.metric_name
+        )
         and not (
             binding.metric_name
             and is_human_metric_analysis(
@@ -2687,13 +2757,32 @@ async def _aggregate_run_analysis_results(
         overwritten_item_ids=successful_item_ids,
         metric_scope=metric_scope,
     )
-    approved_binding_keys = _approved_aggregation_binding_keys(db, run, bindings)
+    approved_binding_keys = _active_approved_review_keys(
+        db,
+        run,
+        {
+            *(binding.item.item_id for binding in bindings),
+            *(result.item_id for result in new_results),
+        },
+    )
     bindings = [
         binding
         for binding in bindings
-        if (binding.item.item_id, binding.metric_name) not in approved_binding_keys
+        if not _review_key_is_approved(
+            approved_binding_keys, binding.item.item_id, binding.metric_name
+        )
     ]
-    combined_results = [*new_results, *(binding.result for binding in bindings)]
+    aggregatable_new_results = [
+        result
+        for result in new_results
+        if not _review_key_is_approved(
+            approved_binding_keys, result.item_id, result.metric_name
+        )
+    ]
+    combined_results = [
+        *aggregatable_new_results,
+        *(binding.result for binding in bindings),
+    ]
     if not combined_results:
         if force:
             _record_run_aggregation_status(
@@ -2756,7 +2845,7 @@ async def _aggregate_run_analysis_results(
             ),
         )
         != before
-        for result, before in zip(new_results, labels_before)
+        for result, before in zip(aggregatable_new_results, labels_before)
     )
     changed_saved_results = _persist_aggregated_bindings(
         db,
@@ -2892,13 +2981,25 @@ def _save_analysis_results(
             ).append(candidate)
         else:
             legacy_candidates_by_item.setdefault(candidate.item_id, []).append(candidate)
+    approved_review_keys = {
+        (
+            candidate.item_id,
+            str(candidate.metric_name).strip() if candidate.metric_name else None,
+        )
+        for candidate in active_candidates
+        if candidate.status == CorrectionStatus.APPROVED
+    }
 
     def set_status(result: AnalysisResult, status: str) -> None:
         for payload in response_results:
             if (
                 payload.get("item_id") == result.item_id
                 and payload.get("metric_name") == result.metric_name
-                and payload.get("persistence_status") != "skipped_human_protection"
+                and payload.get("persistence_status")
+                not in {
+                    "skipped_human_protection",
+                    "skipped_approved_protection",
+                }
             ):
                 payload["persistence_status"] = status
                 return
@@ -2920,6 +3021,11 @@ def _save_analysis_results(
         # unless the request explicitly opted into human-label replacement.
         persistable_results = []
         for result in item_results:
+            if _review_key_is_approved(
+                approved_review_keys, result.item_id, result.metric_name
+            ):
+                set_status(result, "skipped_approved_protection")
+                continue
             if (
                 result.metric_name
                 and not allow_human_overwrite
@@ -3069,6 +3175,8 @@ def _save_analysis_results(
             # independent category, root cause, and feedback.
             legacy_candidates = legacy_candidates_by_item.get(item.item_id, [])
             for candidate in legacy_candidates:
+                if candidate.status == CorrectionStatus.APPROVED:
+                    continue
                 candidate.is_active = False
                 candidate.status = CorrectionStatus.SUPERSEDED
         for result in successful:
@@ -3143,6 +3251,10 @@ def _save_pass_analysis_results(
         previous = score_meta.get(PASS_ANALYSIS_META_KEY)
         previous_analysis = dict(previous) if isinstance(previous, dict) else {}
         previous_source = str(previous_analysis.get("source") or "").lower()
+        if _is_approved_analysis(previous_analysis):
+            payload["persistence_status"] = "skipped_approved_protection"
+            response_results.append(payload)
+            continue
         if previous_source == "human" and not allow_human_overwrite:
             payload["persistence_status"] = "skipped_human_protection"
             response_results.append(payload)
@@ -3296,12 +3408,14 @@ def _filter_analysis_targets(
     all_items: list[RunItem],
     scores_by_item: dict[str, dict[str, RunItemScore]],
     metric_specs: dict[str, RunMetricSpec],
+    approved_review_keys: set[tuple[str, str | None]] | None = None,
 ) -> list[tuple[RunItem, str]]:
     requested_metrics: str | list[str] | None = (
         request.metrics if request.metrics is not None else request.metric
     )
     metrics = _analysis_metric_names(run, scores_by_item, requested_metrics)
     targets: list[tuple[RunItem, str]] = []
+    approved_review_keys = approved_review_keys or set()
 
     for item in all_items:
         md = item.item_metadata if isinstance(item.item_metadata, dict) else {}
@@ -3373,6 +3487,18 @@ def _filter_analysis_targets(
                         continue
 
             existing_analysis = metric_analyses.get(metric_name)
+            if _review_key_is_approved(
+                approved_review_keys, item.item_id, metric_name
+            ):
+                # The review row is authoritative.  In particular, an
+                # approved AI suggestion still has ``source: ai`` in the
+                # analysis metadata, so source-only checks are insufficient.
+                continue
+            if (
+                isinstance(existing_analysis, dict)
+                and _is_approved_analysis(existing_analysis)
+            ):
+                continue
             is_human_analysis = is_human_metric_analysis(md, metric_name)
             if is_human_analysis and not request.allow_human_overwrite:
                 continue
@@ -3467,6 +3593,13 @@ async def _run_analysis_job(
             all_items,
             scores_by_item,
             metric_specs,
+            approved_review_keys=(
+                set()
+                if request.pass_number is not None
+                else _active_approved_review_keys(
+                    db, run, {item.item_id for item in all_items}
+                )
+            ),
         )
 
         analyzer_config = _analysis_config_with_project_context(
@@ -3915,6 +4048,13 @@ async def start_analysis_job(
         all_items,
         scores_by_item,
         metric_specs,
+        approved_review_keys=(
+            set()
+            if request.pass_number is not None
+            else _active_approved_review_keys(
+                db, run, {item.item_id for item in all_items}
+            )
+        ),
     )
 
     job_session_factory = sessionmaker(
@@ -4036,6 +4176,13 @@ async def analyze_run_items(
         all_items,
         scores_by_item,
         metric_specs,
+        approved_review_keys=(
+            set()
+            if request.pass_number is not None
+            else _active_approved_review_keys(
+                db, run, {item.item_id for item in all_items}
+            )
+        ),
     )
 
     analyzer_config = _analysis_config_with_project_context(
@@ -4220,6 +4367,13 @@ async def analyze_run_items_stream(
         all_items,
         scores_by_item,
         metric_specs,
+        approved_review_keys=(
+            set()
+            if request.pass_number is not None
+            else _active_approved_review_keys(
+                db, run, {item.item_id for item in all_items}
+            )
+        ),
     )
 
     async def stream_events():
@@ -5228,12 +5382,12 @@ def update_analysis_context(
     }
 
 
-@router.post("/api/runs/{run_id:path}/analysis-rules/infer")
-async def infer_project_analysis_rules(
+async def _infer_project_analysis_rules_impl(
     run_id: str,
     request: RuleInferenceRequest,
-    db: Session = Depends(get_db),
-    principal: Principal = Depends(require_ui_principal),
+    db: Session,
+    principal: Principal,
+    progress_job: AnalysisJob | None = None,
 ) -> Dict[str, Any]:
     """Run the rule-writer agent over selected documents and approved examples."""
     run = _resolve_analysis_scope(db, principal, run_id)
@@ -5347,6 +5501,23 @@ async def infer_project_analysis_rules(
         copy.deepcopy(list(target_version.rules or [])) if target_version else []
     )
 
+    def update_rule_progress(completed: int, total: int, phase: str) -> None:
+        if progress_job is None:
+            return
+        rule_inference_job_manager.update_progress(
+            progress_job,
+            phase=phase,
+            completed=completed,
+            total=total,
+            documents_used=len(selected_documents),
+            examples_used=len(corrections),
+        )
+
+    if progress_job is not None:
+        update_rule_progress(0, 0, "preparing")
+        if progress_job.cancel_requested:
+            raise asyncio.CancelledError()
+
     try:
         analysis_prompts = get_effective_analysis_prompts(db, run.project_id)
         inference_stats: dict[str, Any] = {}
@@ -5363,6 +5534,8 @@ async def infer_project_analysis_rules(
             "stats": inference_stats,
             "include_fields": request.include_fields,
         }
+        if progress_job is not None:
+            inference_args["progress_callback"] = update_rule_progress
         # ``mode=update`` is accepted for old clients, but generation is now
         # the only operation: it can append rules and can never revise the
         # existing ruleset.
@@ -5398,6 +5571,12 @@ async def infer_project_analysis_rules(
             status_code=502, detail=f"Rule inference failed: {exc}"
         ) from exc
 
+    if progress_job is not None:
+        total_patches = int(inference_stats.get("total_patches", 0) or 0)
+        update_rule_progress(total_patches, total_patches, "persisting")
+        if progress_job.cancel_requested:
+            raise asyncio.CancelledError()
+
     new_rules = _new_analysis_rules(existing_rules, generated_rules)
     if not new_rules and target_version is None:
         raise HTTPException(
@@ -5432,6 +5611,9 @@ async def infer_project_analysis_rules(
             preserve_rules=True,
         )
         created_new_version = True
+    if progress_job is not None and progress_job.cancel_requested:
+        db.rollback()
+        raise asyncio.CancelledError()
     db.commit()
     production = _active_analysis_rule_version(db, project.id)
     before_map, _ = _rule_map(existing_rules)
@@ -5441,6 +5623,9 @@ async def infer_project_analysis_rules(
         not _rule_equal(before_map[key], after_map[key])
         for key in common_keys
     )
+    if progress_job is not None:
+        total_patches = int(inference_stats.get("total_patches", 0) or 0)
+        update_rule_progress(total_patches, total_patches, "completed")
     return {
         "analysis_rules": version.rules or [],
         "rule_version": _analysis_rule_version_payload(
@@ -5463,6 +5648,168 @@ async def infer_project_analysis_rules(
             "approved_examples": request.include_examples,
         },
     }
+
+
+@router.post("/api/runs/{run_id:path}/analysis-rules/infer")
+async def infer_project_analysis_rules(
+    run_id: str,
+    request: RuleInferenceRequest,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_ui_principal),
+) -> Dict[str, Any]:
+    """Run the rule-writer agent synchronously for legacy API clients."""
+    return await _infer_project_analysis_rules_impl(
+        run_id=run_id,
+        request=request,
+        db=db,
+        principal=principal,
+    )
+
+
+def _rule_inference_job_payload(job: AnalysisJob | None) -> dict[str, Any] | None:
+    """Return a JSON-safe rule-inference job snapshot for the UI."""
+    if job is None:
+        return None
+    payload = rule_inference_job_manager.snapshot(job)
+    if payload is None:
+        return None
+    for key in ("created_at", "updated_at", "completed_at"):
+        payload[key] = to_api_timestamp(payload.get(key))
+    return payload
+
+
+def _require_rule_inference_scope(
+    db: Session,
+    principal: Principal,
+    scope_id: str,
+) -> Run | _ProjectAnalysisScope:
+    scope = _resolve_analysis_scope(db, principal, scope_id)
+    if not is_project_manager(db, principal, scope.project_id):
+        raise HTTPException(status_code=403, detail="Project manager access required")
+    if db.get(Project, scope.project_id) is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return scope
+
+
+async def _run_rule_inference_job(
+    job: AnalysisJob,
+    session_factory: Any = SessionLocal,
+) -> dict[str, Any]:
+    """Run rule inference with a fresh database session owned by the worker."""
+    request = RuleInferenceRequest.model_validate(job.request_payload)
+    with session_factory() as db:
+        user = db.get(User, job.user_id)
+        if user is None:
+            raise RuntimeError("The rule-inference user no longer exists.")
+        principal = Principal(user=user, auth_type=job.auth_type)
+        try:
+            return await _infer_project_analysis_rules_impl(
+                run_id=job.run_id,
+                request=request,
+                db=db,
+                principal=principal,
+                progress_job=job,
+            )
+        except HTTPException as exc:
+            detail = exc.detail
+            if isinstance(detail, dict):
+                detail = detail.get("message") or detail.get("detail") or detail
+            raise RuntimeError(str(detail)) from exc
+
+
+async def _start_rule_inference_job(
+    scope_id: str,
+    request: RuleInferenceRequest,
+    db: Session,
+    principal: Principal,
+) -> JSONResponse:
+    """Validate access and enqueue one project rule-generation job."""
+    scope = _require_rule_inference_scope(db, principal, scope_id)
+    if not (request.include_documents or request.include_examples):
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "NO_INFERENCE_SOURCES_SELECTED",
+                "message": (
+                    "Choose at least one source before generating rules: turn on "
+                    "Project documents or Approved examples."
+                ),
+            },
+        )
+    _get_llm_config(db, scope.project_id, request.connection_id)
+    job_session_factory = sessionmaker(
+        bind=db.get_bind(),
+        autoflush=False,
+        autocommit=False,
+    )
+
+    async def run_job(job: AnalysisJob) -> dict[str, Any]:
+        return await _run_rule_inference_job(job, session_factory=job_session_factory)
+
+    job, created = await rule_inference_job_manager.submit(
+        run_id=scope.id,
+        user_id=principal.user.id,
+        auth_type=principal.auth_type,
+        request_payload=request.model_dump(mode="json", exclude_none=True),
+        progress={"phase": "queued", "completed": 0, "total": 0},
+        runner=run_job,
+    )
+    payload = _rule_inference_job_payload(job) or {}
+    payload["created"] = created
+    return JSONResponse(status_code=202 if created else 200, content=payload)
+
+
+@router.post("/api/runs/{run_id:path}/analysis-rule-jobs")
+async def start_rule_inference_job(
+    run_id: str,
+    request: RuleInferenceRequest,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_ui_principal),
+) -> JSONResponse:
+    """Start rule generation independently of the browser request lifecycle."""
+    return await _start_rule_inference_job(run_id, request, db, principal)
+
+
+@router.get("/api/runs/{run_id:path}/analysis-rule-jobs/active")
+def get_active_rule_inference_job(
+    run_id: str,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_ui_principal),
+) -> Dict[str, Any]:
+    _require_rule_inference_scope(db, principal, run_id)
+    return {
+        "job": _rule_inference_job_payload(
+            rule_inference_job_manager.active_for_run(run_id)
+        )
+    }
+
+
+@router.get("/api/runs/{run_id:path}/analysis-rule-jobs/{job_id}")
+def get_rule_inference_job(
+    run_id: str,
+    job_id: str,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_ui_principal),
+) -> Dict[str, Any]:
+    _require_rule_inference_scope(db, principal, run_id)
+    job = rule_inference_job_manager.get(job_id)
+    if job is None or job.run_id != run_id:
+        raise HTTPException(status_code=404, detail="Rule-inference job not found")
+    return _rule_inference_job_payload(job) or {}
+
+
+@router.post("/api/runs/{run_id:path}/analysis-rule-jobs/{job_id}/cancel")
+def cancel_rule_inference_job(
+    run_id: str,
+    job_id: str,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_ui_principal),
+) -> Dict[str, Any]:
+    _require_rule_inference_scope(db, principal, run_id)
+    job = rule_inference_job_manager.get(job_id)
+    if job is None or job.run_id != run_id:
+        raise HTTPException(status_code=404, detail="Rule-inference job not found")
+    return _rule_inference_job_payload(rule_inference_job_manager.cancel(job_id)) or {}
 
 
 @router.get("/api/runs/{run_id:path}/analysis-rule-versions")
@@ -6099,6 +6446,11 @@ def analyze_preview(
             [item],
             {item.item_id: scores},
             specs,
+            approved_review_keys=(
+                set()
+                if request.pass_number is not None
+                else _active_approved_review_keys(db, run, {item.item_id})
+            ),
         )
         preview_metric = (
             preview_targets[0][1]
@@ -6199,6 +6551,11 @@ async def analyze_test(
         items,
         scores_by_item,
         metric_specs,
+        approved_review_keys=(
+            set()
+            if request.pass_number is not None
+            else _active_approved_review_keys(db, run, {item.item_id for item in items})
+        ),
     )
 
     analyzed_results: list[AnalysisResult] = []
@@ -6954,6 +7311,53 @@ async def infer_project_scoped_analysis_rules(
         request=request,
         db=db,
         principal=principal,
+    )
+
+
+@router.post("/api/projects/{project_slug}/analysis-rule-jobs")
+async def start_project_scoped_rule_inference_job(
+    project_slug: str,
+    request: RuleInferenceRequest,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_ui_principal),
+) -> JSONResponse:
+    return await _start_rule_inference_job(
+        _project_analysis_scope_key(project_slug), request, db, principal
+    )
+
+
+@router.get("/api/projects/{project_slug}/analysis-rule-jobs/active")
+def get_active_project_scoped_rule_inference_job(
+    project_slug: str,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_ui_principal),
+) -> Dict[str, Any]:
+    return get_active_rule_inference_job(
+        _project_analysis_scope_key(project_slug), db, principal
+    )
+
+
+@router.get("/api/projects/{project_slug}/analysis-rule-jobs/{job_id}")
+def get_project_scoped_rule_inference_job(
+    project_slug: str,
+    job_id: str,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_ui_principal),
+) -> Dict[str, Any]:
+    return get_rule_inference_job(
+        _project_analysis_scope_key(project_slug), job_id, db, principal
+    )
+
+
+@router.post("/api/projects/{project_slug}/analysis-rule-jobs/{job_id}/cancel")
+def cancel_project_scoped_rule_inference_job(
+    project_slug: str,
+    job_id: str,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_ui_principal),
+) -> Dict[str, Any]:
+    return cancel_rule_inference_job(
+        _project_analysis_scope_key(project_slug), job_id, db, principal
     )
 
 
@@ -8169,6 +8573,21 @@ def approve_correction(
     run = Run.active(db).filter(Run.id == correction.run_id).first()
     if not run or not can_review_run(db, principal, run):
         raise HTTPException(status_code=403, detail="Access denied")
+    item = (
+        db.query(RunItem)
+        .filter(
+            RunItem.run_id == run.id,
+            RunItem.item_id == correction.item_id,
+        )
+        .first()
+    )
+    if not item:
+        raise HTTPException(status_code=404, detail="Run item not found")
+    # Serialize approval with the AI persistence boundary.  The item lock is
+    # shared by analysis saves and guarantees that a late approval is visible
+    # before an AI candidate can be superseded.
+    lock_run_item(db, run=run, item=item)
+    db.refresh(correction)
 
     target = correction
     if not correction.is_active:
@@ -8228,6 +8647,7 @@ def approve_metric_analysis(
     )
     if not item:
         raise HTTPException(status_code=404, detail="Run item not found")
+    item = lock_run_item(db, run=run, item=item)
 
     # Repeat-run analyses live on the selected pass score rather than on the
     # reduced RunItem metadata.  Keep approval scoped to that exact sample so
@@ -8299,6 +8719,7 @@ def approve_metric_analysis(
             ReviewCorrection.is_active.is_(True),
         )
         .order_by(ReviewCorrection.created_at.desc(), ReviewCorrection.id.desc())
+        .populate_existing()
         .first()
     )
     if candidate is None:

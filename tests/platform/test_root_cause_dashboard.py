@@ -10,10 +10,13 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from qym_platform.app import create_app
 from qym_platform.auth import Principal, require_ui_principal
+from qym_platform.api.root_cause_dashboard import router as root_cause_dashboard_router
 from qym_platform.db.base import Base
 from qym_platform.db.models import (
+    CorrectionStatus,
     Project,
     ProjectMembership,
+    ReviewCorrection,
     ProjectRole,
     Run,
     RunItem,
@@ -121,6 +124,21 @@ def _seed(session: Session) -> tuple[Project, list[Run]]:
                 ),
             ]
         )
+        session.add(
+            ReviewCorrection(
+                run_id=run.id,
+                item_id=item.item_id,
+                metric_name="accuracy" if index == 1 else None,
+                task=run.task,
+                ai_root_cause=category,
+                ai_root_causes=[category],
+                human_root_cause=category,
+                human_root_causes=[category],
+                human_root_cause_detail="Missing value",
+                status=CorrectionStatus.APPROVED,
+                is_active=True,
+            )
+        )
         runs.append(run)
     session.commit()
     return project, runs
@@ -136,7 +154,10 @@ def test_dashboard_uses_metric_scoped_state_and_normalizes_only_typography() -> 
         assert payload["summary"]["affected_run_item_pairs"] == 2
         assert payload["summary"]["categories"] == 1
         assert payload["facets"]["score_metrics"] == ["accuracy"]
-        assert payload["groups"]["by_category"][0]["category"] in {"Dataset-Issue", "dataset issue"}
+        assert payload["groups"]["by_category"][0]["category"] in {
+            "Dataset-Issue",
+            "dataset issue",
+        }
         assert payload["groups"]["by_category"][0]["count"] == 2
         assert payload["scores"]["metric_name"] == "accuracy"
         assert payload["scores"]["runs"][0]["average"] == 0.9
@@ -233,6 +254,35 @@ def test_compare_scopes_aggregate_statistics_to_selected_metric() -> None:
                     ),
                 ]
             )
+            correction = (
+                session.query(ReviewCorrection)
+                .filter(
+                    ReviewCorrection.run_id == run.id,
+                    ReviewCorrection.item_id == item.item_id,
+                )
+                .one()
+            )
+            correction.metric_name = "accuracy"
+            correction.ai_root_cause = "Accuracy issue"
+            correction.ai_root_causes = ["Accuracy issue"]
+            correction.human_root_cause = "Accuracy issue"
+            correction.human_root_causes = ["Accuracy issue"]
+            correction.human_root_cause_detail = "Incorrect answer"
+            session.add(
+                ReviewCorrection(
+                    run_id=run.id,
+                    item_id=item.item_id,
+                    metric_name="relevance",
+                    task=run.task,
+                    ai_root_cause="Relevance issue",
+                    ai_root_causes=["Relevance issue"],
+                    human_root_cause="Relevance issue",
+                    human_root_causes=["Relevance issue"],
+                    human_root_cause_detail="Off topic",
+                    status=CorrectionStatus.APPROVED,
+                    is_active=True,
+                )
+            )
         session.commit()
 
         accuracy = build_compare_payload(
@@ -246,9 +296,7 @@ def test_compare_scopes_aggregate_statistics_to_selected_metric() -> None:
         assert [row["category"] for row in accuracy["category_matrix"]] == [
             "Accuracy issue"
         ]
-        assert [row["metric_name"] for row in accuracy["metric_matrix"]] == [
-            "accuracy"
-        ]
+        assert [row["metric_name"] for row in accuracy["metric_matrix"]] == ["accuracy"]
         assert [row["count"] for row in accuracy["run_summary"]] == [1, 1]
 
         relevance = build_compare_payload(
@@ -285,7 +333,7 @@ def test_compare_scopes_aggregate_statistics_to_selected_metric() -> None:
         session.close()
 
 
-def test_dashboard_routes_are_project_scoped_and_read_only() -> None:
+def test_root_cause_dashboard_routes_are_temporarily_disabled() -> None:
     engine = create_engine(
         "sqlite://",
         connect_args={"check_same_thread": False},
@@ -303,17 +351,23 @@ def test_dashboard_routes_are_project_scoped_and_read_only() -> None:
             auth_type="none",
         )
         with TestClient(app) as client:
-            response = client.get(
-                f"/api/projects/{project.slug}/root-cause-dashboard"
+            response = client.get(f"/api/projects/{project.slug}/root-cause-dashboard")
+            assert response.status_code == 404
+            occurrences = client.get(
+                f"/api/projects/{project.slug}/root-cause-dashboard/occurrences"
             )
-            assert response.status_code == 200
-            assert response.json()["summary"]["diagnosis_occurrences"] == 2
+            assert occurrences.status_code == 404
             compare = client.get(
                 f"/api/projects/{project.slug}/root-cause-dashboard/compare",
                 params=[("run_id", "run-1"), ("run_id", "run-2")],
             )
-            assert compare.status_code == 200
-            assert compare.json()["score_comparison"][1]["comparison_status"] == "improved"
+            assert compare.status_code == 404
+            # Newer FastAPI versions keep included routers as deferred route
+            # entries, so inspect the original router instead of flattened paths.
+            assert any(
+                getattr(route, "original_router", None) is root_cause_dashboard_router
+                for route in app.routes
+            )
         assert session.query(RunItem).count() == 2
     finally:
         session.close()

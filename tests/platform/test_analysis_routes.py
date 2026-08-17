@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Iterator
+from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
@@ -16,7 +17,9 @@ from qym_platform.api.analysis import (  # noqa: E402
     CategoryCatalogUpdate,
     PlaygroundConfig,
     _catalog_request_values,
+    _analysis_config_with_category_catalog,
 )
+from qym_platform.services.llm_analyzer import build_analysis_prompt
 from qym_platform.app import create_app
 from qym_platform.db.base import Base
 from qym_platform.db.models import (
@@ -24,6 +27,7 @@ from qym_platform.db.models import (
     ProjectMembership,
     ProjectRole,
     Run,
+    RunItem,
     RunWorkflowStatus,
     User,
     UserRole,
@@ -174,7 +178,7 @@ def test_project_analysis_run_query_redirects_to_focused_route(
 
 @pytest.mark.parametrize(
     ("requested_scope", "canonical_scope"),
-    [("diagnosis", "categories"), ("project", "rules"), ("run", "dashboard")],
+    [("diagnosis", "categories"), ("project", "rules"), ("dashboard", "run")],
 )
 def test_project_analysis_scope_aliases_are_canonicalized(
     analysis_route_client: TestClient,
@@ -190,6 +194,36 @@ def test_project_analysis_scope_aliases_are_canonicalized(
     assert response.status_code == 307
     assert response.headers["location"] == (
         f"/projects/analysis-project/analysis?scope={canonical_scope}"
+    )
+
+
+def test_dashboard_scope_on_focused_analyzer_redirects_to_analyze_run(
+    analysis_route_client: TestClient,
+) -> None:
+    response = analysis_route_client.get(
+        "/projects/analysis-project/runs/analysis%2Frun-1/analyzer?scope=dashboard&metric=judge",
+        headers=_headers(),
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 307
+    assert response.headers["location"] == (
+        "/projects/analysis-project/runs/analysis%2Frun-1/analyzer?metric=judge&scope=run"
+    )
+
+
+def test_legacy_dashboard_scope_redirects_to_analyze_run(
+    analysis_route_client: TestClient,
+) -> None:
+    response = analysis_route_client.get(
+        "/run/analysis%2Frun-1/analyzer?scope=dashboard",
+        headers=_headers(),
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 307
+    assert response.headers["location"] == (
+        "/projects/analysis-project/runs/analysis%2Frun-1/analyzer?scope=run"
     )
 
 
@@ -273,6 +307,100 @@ def test_category_catalog_version_aliases_and_conflict_contract(
     assert restored.json()["catalog"]["parent_version_id"] == catalog["id"]
     assert restored.json()["catalog"]["max_root_cause_categories"] == 4
     assert restored.json()["catalog"]["category_entries"][0]["id"] == catalog["category_entries"][0]["id"]
+
+
+def test_analysis_config_uses_catalog_categories_for_prompt_injection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    catalog = {
+        "id": "catalog-1",
+        "version": 1,
+        "categories": ["Approved Category", "Bare Approved Category"],
+        "category_entries": [],
+        "category_details_map": {
+            "Approved Category": ["Approved detail"],
+            "Bare Approved Category": ["Bare detail"],
+            "Unapproved Category": ["Leaked detail"],
+        },
+        "category_taxonomy": {
+            "Approved Category": {
+                "description": "A project-approved category.",
+                "when_to_use": "Use for the approved failure pattern.",
+            },
+            "Unapproved Category": {
+                "description": "This must not enter the prompt.",
+                "when_to_use": "Never use this leaked label.",
+            },
+        },
+        "max_root_cause_categories": 3,
+    }
+    monkeypatch.setattr(
+        "qym_platform.api.analysis._category_catalog_reference",
+        lambda *_args, **_kwargs: catalog,
+    )
+    monkeypatch.setattr(
+        "qym_platform.api.analysis._approved_category_example_counts",
+        lambda *_args, **_kwargs: {},
+    )
+    # Only this approved-corrections source may reach the prompt; the catalog's
+    # editable category_details_map above must not contribute any detail.
+    monkeypatch.setattr(
+        "qym_platform.api.analysis._approved_category_details",
+        lambda *_args, **_kwargs: {"Approved Category": ["Approved mechanism"]},
+    )
+
+    config = _analysis_config_with_category_catalog(
+        None,
+        SimpleNamespace(project_id="project-1"),
+        [],
+        {
+            "root_cause_categories": [
+                "Approved Category",
+                "Bare Approved Category",
+                "Unapproved Category",
+            ],
+            "category_taxonomy": {
+                "Unapproved Category": {
+                    "description": "A request-level leak.",
+                    "when_to_use": "Never use it.",
+                }
+            },
+        },
+    )
+
+    assert config is not None
+    assert config["root_cause_categories"] == [
+        "Approved Category",
+        "Bare Approved Category",
+    ]
+    assert "Unapproved Category" not in config["category_taxonomy"]
+    assert "Unapproved Category" not in config["category_details_map"]
+    prompt = "\n".join(
+        message["content"]
+        for message in build_analysis_prompt(
+            RunItem(
+                index=0,
+                input={"question": "input"},
+                expected={"answer": "expected"},
+                output={"answer": "output"},
+                item_metadata={},
+            ),
+            {},
+            [],
+            config=config,
+        )
+    )
+    assert "- Approved Category" in prompt
+    assert "- Bare Approved Category\n  Approved examples: 0" in prompt
+    assert "Unapproved Category" not in prompt
+    # The details section names approved mechanisms only. "Approved detail" and
+    # "Bare detail" live in the editable catalog map, so they must stay out even
+    # though their categories are approved.
+    assert "Use the exact approved detail when it covers the mechanism:" in prompt
+    assert "    - Approved mechanism" in prompt
+    assert "Approved detail" not in prompt
+    assert "Bare detail" not in prompt
+    assert "Leaked detail" not in prompt
 
 
 def test_category_limit_models_normalize_out_of_range_values() -> None:

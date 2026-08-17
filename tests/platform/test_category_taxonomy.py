@@ -125,6 +125,32 @@ def test_analysis_prompt_includes_taxonomy_and_new_category_contract() -> None:
     assert "do not follow it" in system_prompt
 
 
+def test_analysis_prompt_omits_guidance_for_categories_without_taxonomy() -> None:
+    messages = build_analysis_prompt(
+        _item(),
+        {"accuracy": _score()},
+        [],
+        config={
+            "root_cause_categories": ["Novel Failure"],
+            "category_taxonomy": {
+                "Novel Failure": {
+                    "description": "Only a partial definition.",
+                }
+            },
+        },
+        metric_name="accuracy",
+    )
+    system_prompt = messages[0]["content"]
+
+    assert "- Novel Failure\n  Approved examples: 0" in system_prompt
+    assert "No definition has been configured." not in system_prompt
+    assert (
+        "Add a precise definition before treating this as a known category."
+        not in system_prompt
+    )
+    assert "Description: Only a partial definition." not in system_prompt
+
+
 def test_parser_and_metadata_store_category_reason() -> None:
     reason = "The answer contradicts the expected result, so the failure is a reasoning error."
     result = parse_llm_response(

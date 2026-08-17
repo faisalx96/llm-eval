@@ -74,6 +74,25 @@ def test_run_and_compare_exports_keep_independent_scroll_containers() -> None:
         assert "overflow-y: auto;" in rule
 
 
+def test_approval_filters_include_metric_scoped_reviews() -> None:
+    """Metric approvals must participate in both dashboard filter views."""
+    run_source = (DASHBOARD_DIR / "run.html").read_text(encoding="utf-8")
+    compare_source = (DASHBOARD_DIR / "compare.html").read_text(encoding="utf-8")
+
+    assert "row.review_corrections" in run_source
+    assert (
+        "matchesApprovalFilter(row, state.approvalFilter, state.selectedMetric)"
+        in run_source
+    )
+    assert "getApprovalState(row, state.selectedMetric)" in run_source
+    assert "row.review_corrections" in compare_source
+    assert (
+        "matchesApprovalFilter(r, state.approvalFilter, state.selectedItemsMetric)"
+        in compare_source
+    )
+    assert "getApprovalState(r, state.selectedItemsMetric)" in compare_source
+
+
 def test_repeat_run_rows_are_ordinary_rows_with_pass_count_chip() -> None:
     """×k rows read as ordinary data rows: no special surface, no dot
     strip — the chevron and the pass-count chip carry the signal."""
@@ -1864,8 +1883,8 @@ def test_clear_filter_control_has_aligned_label_and_soft_count_pill() -> None:
     for page in DASHBOARD_DIR.glob("*.html"):
         source = page.read_text(encoding="utf-8")
         if page.name == "analyzer.html":
-            assert "dashboard.css?v=auto-analysis-selectors-20260811-6" in source
-            assert "playground.js?v=auto-analysis-selectors-20260811-6" in source
+            assert "dashboard.css?v=rule-history-bottom-20260816-1" in source
+            assert "playground.js?v=rule-history-bottom-20260816-1" in source
             assert "ui_components.css?v=auto-analysis-selectors-20260811-1" in source
             assert "ui_components.js?v=auto-analysis-selectors-20260811-1" in source
             continue
@@ -2713,6 +2732,7 @@ def test_shell_form_dialog_supports_structured_details() -> None:
 
 def test_auto_analysis_is_a_first_class_project_page() -> None:
     run = (DASHBOARD_DIR / "run.html").read_text(encoding="utf-8")
+    dashboard = DASHBOARD_JS.read_text(encoding="utf-8")
     analyzer = (DASHBOARD_DIR / "analyzer.html").read_text(encoding="utf-8")
     compare = (DASHBOARD_DIR / "compare.html").read_text(encoding="utf-8")
     playground = (DASHBOARD_DIR / "playground.js").read_text(encoding="utf-8")
@@ -2730,6 +2750,11 @@ def test_auto_analysis_is_a_first_class_project_page() -> None:
     assert "api/runs?limit=1&project_slug=" not in analyzer
     assert "Select a run to start analysis" in analyzer
     assert "Select a run from Runs" in analyzer
+    assert "qym_analysis_run_picker" in analyzer
+    assert "analysisRunsPickerUrl" in analyzer
+    assert "consumeAnalysisRunPickerContext" in dashboard
+    assert "analysisRunPickerContext && run" in dashboard
+    assert "openUrl(analyzerUrlForRun(run), e);" in dashboard
     assert "Production rules and Documents remain available" in analyzer
     assert "if (!runId) {" in analyzer
     assert "getRunId: () => state.contextRunId" in analyzer
@@ -2978,6 +3003,11 @@ def test_auto_analysis_is_a_first_class_project_page() -> None:
     assert "pass_number: _opts.getPassNumber ? _opts.getPassNumber() : null" in playground
     assert "var _selectedTarget = null;" in playground
     assert 'data-metric-name="' in playground
+    assert "var targetMetricNames = failedMetricNames.length ? failedMetricNames : [_getPrimaryMetric(r) || 'metric'];" in playground
+    assert 'class="pg-item-target-row' in playground
+    assert 'pg-item-target-status qym-badge' in playground
+    assert "metricNames.indexOf(target.metric_name) !== -1" in playground
+    assert "failedMetricNames.length > 1" not in playground
     assert "function _resolveSelectedTarget(matchedItems)" in playground
     assert "_selectTarget(card.dataset.itemId, card.dataset.metricName || null)" in playground
     assert "metric: metricName || null" in playground
@@ -3078,6 +3108,34 @@ def test_playground_pages_load_matching_asset_revisions() -> None:
         assert dashboard_revision.group(1) == playground_revision.group(1)
 
 
+def test_rule_generation_progress_card_shows_shared_bar_and_patch_count() -> None:
+    analyzer = (DASHBOARD_DIR / "analyzer.html").read_text(encoding="utf-8")
+    playground = (DASHBOARD_DIR / "playground.js").read_text(encoding="utf-8")
+
+    assert "analysis-rule-inference-card" in analyzer
+    assert "analysis-rule-inference-patch-count" in analyzer
+    assert "inferenceProgressBody.append(inferenceProgressHost)" in analyzer
+    assert "pg-runall-progress" in playground
+    assert "function _setRuleInferencePatchCount(completed, total)" in playground
+    assert "_setRuleInferencePatchCount(completed, total)" in playground
+
+
+def test_rule_version_history_fills_drawer_and_starts_at_bottom() -> None:
+    analyzer = (DASHBOARD_DIR / "analyzer.html").read_text(encoding="utf-8")
+
+    popup_styles = analyzer.split(".analysis-version-history-popup-content {", 1)[1].split(
+        "}", 1
+    )[0]
+    list_styles = analyzer.split(
+        ".analysis-version-history-popup-content .pg-rule-version-list {", 1
+    )[1].split("}", 1)[0]
+    assert "flex: 1 1 auto;" in popup_styles
+    assert "overflow: hidden;" in popup_styles
+    assert "flex: 1 1 auto;" in list_styles
+    assert "justify-content: flex-end;" in list_styles
+    assert "list.scrollTop = list.scrollHeight;" in analyzer
+
+
 def test_auto_analysis_page_uses_first_class_run_rules_and_document_tabs() -> None:
     analyzer = (DASHBOARD_DIR / "analyzer.html").read_text(encoding="utf-8")
     playground = (DASHBOARD_DIR / "playground.js").read_text(encoding="utf-8")
@@ -3091,36 +3149,28 @@ def test_auto_analysis_page_uses_first_class_run_rules_and_document_tabs() -> No
     assert ">Select all</button>" in analyzer
     assert ">Clear</button>" in analyzer
     assert ">Apply</button>" not in analyzer
-    assert "updateFilterTrigger(wrapper, key, label);" in analyzer
-    assert "state.dashboard.openFilterKey = key;" in analyzer
-    assert "reopenDashboardFilter(host);" in analyzer
-    assert "filterFacets: null" in analyzer
-    assert "run_id: 'runs'" in analyzer
-    assert "review_status: 'review_statuses'" in analyzer
-    assert "No options match the current scope." in analyzer
-    assert ").filter(definition => definition[2].length)" not in analyzer
     assert 'class="analysis-run-context" aria-label="Run information"' in analyzer
     assert 'analysis-run-context-label">Run ID' not in analyzer
     assert "Production rules" in analyzer
     assert ">Documents</button>" in analyzer
+    assert 'id="analysis-preview-settings-toggle"' in analyzer
+    assert "contextSettings.append(createContextToggles())" in analyzer
+    assert "runPanel.append(contextCard)" not in analyzer
+    assert "Use project context" not in analyzer
     assert 'role="tablist"' in analyzer
     assert 'id="analysis-rules-tab"' in analyzer
     assert 'id="analysis-documents-tab"' in analyzer
     assert 'id="analysis-dashboard-tab"' in analyzer
     assert 'data-analysis-view="dashboard"' in analyzer
     assert 'id="analysis-dashboard-view"' in analyzer
+    assert 'hidden aria-hidden="true">Dashboard</button>' in analyzer
+    assert 'data-dashboard-disabled="true"' in analyzer
     assert 'src="/static/qym_table.js"' in analyzer
-    assert "analysis-dashboard-toolbar" not in analyzer
-    assert "analysis-dashboard-compare-toolbar" in analyzer
-    assert 'data-dashboard-compare-group="' in analyzer
-    assert 'data-dashboard-compare-measure="' in analyzer
-    assert "analysis-dashboard-compare-score-metric" in analyzer
-    assert 'data-dashboard-measure="failure"' not in analyzer
-    assert 'data-dashboard-outcome=' not in analyzer
-    assert "root-cause-dashboard/compare" in analyzer
-    assert "root-cause-dashboard/occurrences" in analyzer
-    assert "comparison_status" in analyzer
-    assert "score_compatibility" in analyzer or "Comparison unavailable" in analyzer
+    assert "root-cause-dashboard" in analyzer
+    assert "state.dashboard" in analyzer
+    assert "function dashboardQuery" in analyzer
+    assert "const AUTO_ANALYSIS_DASHBOARD_ENABLED = false;" in analyzer
+    assert "if (!AUTO_ANALYSIS_DASHBOARD_ENABLED) return;" in analyzer
     assert 'id="analysis-run-tab"' in analyzer
     assert 'id="analysis-diagnosis-tab"' in analyzer
     assert 'aria-controls="analysis-diagnosis-view"' in analyzer
@@ -3157,6 +3207,10 @@ def test_auto_analysis_page_uses_first_class_run_rules_and_document_tabs() -> No
     assert 'id="analysis-category-count"' in analyzer
     assert 'id="analysis-example-count"' in analyzer
     assert "data-example-count" in playground
+    assert 'data-approved="' in playground
+    assert "function _approvedCategoryGroups()" in playground
+    assert "group.dataset.approved === 'true'" in playground
+    assert "No approved categories yet." in playground
     assert "category_examples" in playground
     assert "Approved examples" in playground
     assert "No approved examples in this category yet." in playground

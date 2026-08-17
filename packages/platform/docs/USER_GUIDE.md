@@ -212,7 +212,7 @@ Project context strengthens the analysis:
 
 - **Project description** — explain the business domain and correctness expectations.
 - **Analysis rules** — manage versioned title/instruction pairs through a draft → published → `production` alias lifecycle. Rules support lineage, comparisons, cloning, and append-only generation from selected documents and approved correction examples.
-- **Reference documents** — upload PDF, DOCX, text, Markdown, HTML, CSV, JSON, or YAML into a shared project library, then select the documents a run uses. Each upload is limited to 10 MB. The normal prompt-safe representation is 40,000 characters; an explicit full-content choice can retain up to 200,000 characters. A prompt can include at most eight selected documents and 80,000 reference characters, within a final 120,000-character safety budget.
+- **Reference documents** — upload PDF, DOCX, text, Markdown, HTML, CSV, JSON, or YAML into a shared project library, then select the documents a run uses. Each upload is limited to 10 MB. The normal prompt-safe representation is 40,000 characters; an explicit full-content choice can retain up to 200,000 characters. A prompt can include at most eight selected documents and 80,000 reference characters, within a final 320,000-character safety budget.
 
 Rule generation processes large sources in bounded patches, using separate 256,000-character document/example patches and a 320,000-character request budget. HTML scripts and styles are ignored, scanned PDFs require OCR, and PDF/DOCX extraction rejects unsafe expansion. Hard-cap truncation is reported.
 

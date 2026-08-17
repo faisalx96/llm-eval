@@ -840,6 +840,30 @@ def test_pass_root_cause_analysis_is_scoped_to_the_selected_sample():
             "review_status"
         ] == "approved"
 
+        response_results, error_count = _save_pass_analysis_results(
+            session,
+            run,
+            [
+                AnalysisResult(
+                    item_id=item.item_id,
+                    metric_name="accuracy",
+                    root_cause="Fresh AI category",
+                    root_cause_detail="Fresh AI detail",
+                    root_cause_note="Fresh AI note",
+                    confidence=0.9,
+                )
+            ],
+            pass_number=1,
+            allow_human_overwrite=True,
+        )
+        assert error_count == 0
+        assert response_results[0]["persistence_status"] == (
+            "skipped_approved_protection"
+        )
+        session.refresh(pass_one)
+        assert pass_one.meta["root_cause_analysis"]["root_cause"] == "Reasoning Error"
+        assert pass_one.meta["root_cause_analysis"]["review_status"] == "approved"
+
         with pytest.raises(Exception) as exc:
             update_root_cause(
                 request={

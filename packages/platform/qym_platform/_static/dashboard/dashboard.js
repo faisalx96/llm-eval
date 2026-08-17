@@ -146,6 +146,24 @@
     navigateTo(url);
   }
 
+  const ANALYSIS_RUN_PICKER_PARAM = 'qym_analysis_run_picker';
+  const ANALYSIS_RUN_PICKER_VALUE = '1';
+
+  function consumeAnalysisRunPickerContext() {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get(ANALYSIS_RUN_PICKER_PARAM) !== ANALYSIS_RUN_PICKER_VALUE) return false;
+    params.delete(ANALYSIS_RUN_PICKER_PARAM);
+    const query = params.toString();
+    const cleanUrl = window.location.pathname + (query ? `?${query}` : '') + window.location.hash;
+    window.history.replaceState(window.history.state, '', cleanUrl);
+    return true;
+  }
+
+  // The analyzer hands off to Runs with a one-time picker context. Consume it
+  // when this page loads so the special run-name behavior cannot leak into a
+  // later visit or a browser-back navigation.
+  let analysisRunPickerContext = consumeAnalysisRunPickerContext();
+
   // ═══════════════════════════════════════════════════
   // STATE
   // ═══════════════════════════════════════════════════
@@ -5514,6 +5532,12 @@
   }
 
   function openRun(filePath, e) {
+    const run = state.flatRuns.find(candidate => candidate.file_path === filePath);
+    if (analysisRunPickerContext && run) {
+      analysisRunPickerContext = false;
+      openUrl(analyzerUrlForRun(run), e);
+      return;
+    }
     sessionStorage.removeItem('compareRuns');
     sessionStorage.removeItem('compareCohorts');
     sessionStorage.setItem('dashboardRunFile', filePath);

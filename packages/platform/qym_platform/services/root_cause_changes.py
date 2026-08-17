@@ -377,7 +377,27 @@ def replace_metric_review_candidate(
                 ReviewCorrection.is_active.is_(True),
             )
             .all()
-    )
+        )
+
+    # An approved example is a reviewer-owned snapshot.  AI may create a new
+    # candidate only after a reviewer changes or withdraws the diagnosis; it
+    # must never silently supersede the approved row during another analysis.
+    if actor_source == "ai":
+        approved_candidate = (
+            db.query(ReviewCorrection)
+            .filter(
+                ReviewCorrection.run_id == run.id,
+                ReviewCorrection.item_id == item.item_id,
+                ReviewCorrection.metric_name == metric_name,
+                ReviewCorrection.status == CorrectionStatus.APPROVED,
+                ReviewCorrection.is_active.is_(True),
+            )
+            .order_by(ReviewCorrection.created_at.desc(), ReviewCorrection.id.desc())
+            .first()
+        )
+        if approved_candidate is not None:
+            return approved_candidate
+
     ai_baseline = next(
         (
             candidate
@@ -748,6 +768,32 @@ def apply_root_cause_change(
     before_state = extract_analysis_state(
         item.item_metadata if isinstance(item.item_metadata, dict) else {}
     )
+
+    # Item-scoped legacy corrections use a NULL metric name.  Keep the same
+    # immutable approval boundary as metric-scoped corrections so the older
+    # persistence path cannot erase an approved example either.
+    if actor_source == "ai":
+        approved_candidate = (
+            db.query(ReviewCorrection)
+            .filter(
+                ReviewCorrection.run_id == run.id,
+                ReviewCorrection.item_id == item.item_id,
+                ReviewCorrection.metric_name.is_(None),
+                ReviewCorrection.status == CorrectionStatus.APPROVED,
+                ReviewCorrection.is_active.is_(True),
+            )
+            .order_by(ReviewCorrection.created_at.desc(), ReviewCorrection.id.desc())
+            .first()
+        )
+        if approved_candidate is not None:
+            return RootCauseChangeResult(
+                changed=False,
+                revision=None,
+                candidate=approved_candidate,
+                before_state=before_state,
+                after_state=before_state,
+            )
+
     after_state = (
         apply_human_patch(before_state, human_patch or {})
         if human_patch is not None

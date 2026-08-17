@@ -5408,6 +5408,10 @@ body.chart-col-resize-active {
   margin-bottom: var(--space-lg);
 }
 
+.pg-rule-source-count {
+  flex: 0 0 auto;
+}
+
 .pg-example-source-control {
   appearance: none;
   display: inline-flex;
@@ -5713,9 +5717,69 @@ body.chart-col-resize-active {
 /* Rule editor controls shared by the dedicated analysis page and playground. */
 .pg-rule-filters {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(160px, 220px);
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: var(--space-sm);
   margin-bottom: var(--space-md);
+}
+
+.pg-rule-selection-actions {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+}
+
+.pg-rule-selection-count {
+  min-height: var(--control-height);
+  display: inline-flex;
+  align-items: center;
+  color: var(--text-muted);
+  font-size: var(--font-sm);
+  white-space: nowrap;
+}
+
+.pg-rule-select-all {
+  min-width: 0;
+  gap: var(--space-xs);
+  white-space: nowrap;
+}
+
+.pg-rule-select {
+  min-width: var(--control-height);
+  justify-content: center;
+  gap: 0;
+}
+
+.pg-rule-selection-input:indeterminate + .pg-document-check {
+  border-color: var(--accent-primary);
+  background: var(--accent-primary);
+}
+
+.pg-rule-selection-input:indeterminate + .pg-document-check::after {
+  position: absolute;
+  top: 8px;
+  left: 4px;
+  width: 8px;
+  height: 2px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--bg-void);
+  content: "";
+}
+
+.pg-rule-selection-input:disabled + .pg-document-check {
+  opacity: 0.55;
+}
+
+.pg-rule-delete-selected {
+  gap: var(--space-xs);
+}
+
+.pg-rule-delete-selected .pg-action-icon {
+  width: var(--space-md);
+  height: var(--space-md);
 }
 
 .pg-rule-filter-field {
@@ -5725,8 +5789,12 @@ body.chart-col-resize-active {
 
 .pg-rule-item-head {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: auto auto minmax(0, 1fr) auto;
   align-items: center;
+}
+
+.pg-rule-item-selected .pg-rule-item-head {
+  background: var(--bg-active);
 }
 
 .pg-rule-toggle {
@@ -8009,7 +8077,7 @@ body.chart-col-resize-active {
   border: 1px solid rgba(255, 255, 255, 0.05);
   border-radius: 10px;
   padding: 10px 12px;
-  cursor: pointer;
+  cursor: default;
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 .pg-item-card:hover {
@@ -8021,6 +8089,48 @@ body.chart-col-resize-active {
 .pg-item-card:focus-visible {
   outline: 2px solid var(--accent-primary);
   outline-offset: 2px;
+}
+.pg-item-targets {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  margin-top: var(--space-sm);
+}
+.pg-item-target-row {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--control-radius);
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+.pg-item-target-row:hover {
+  border-color: var(--border-default);
+  background: var(--bg-hover);
+}
+.pg-item-target-row:focus-visible {
+  outline: 1px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+.pg-item-target-row.pg-item-selected {
+  border-color: var(--accent-primary);
+  background: color-mix(in srgb, var(--accent-primary) 10%, var(--bg-elevated));
+}
+.pg-item-target-row .pg-item-metric {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pg-item-target-status {
+  flex: 0 0 auto;
+  margin-left: auto;
 }
 .pg-item-selected {
   border-color: rgba(168, 85, 247, 0.6) !important;
