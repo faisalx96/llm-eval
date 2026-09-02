@@ -5937,6 +5937,8 @@
   // ═══════════════════════════════════════════════════
 
   const PAGE_SIZE = 100;
+  // Bounds in-flight page requests without bounding how many are fetched.
+  const PAGE_CONCURRENCY = 3;
   const LIVE_REFRESH_INTERVAL_MS = 15000;
   const IDLE_REFRESH_INTERVAL_MS = 60000;
   const FULL_REFRESH_STALE_MS = 5 * 60 * 1000;
@@ -5988,11 +5990,12 @@
 
   function saveRunsDataCache(data) {
     try {
-      const payload = {
-        saved_at: Date.now(),
-        data: _cloneRunsData(data),
-      };
-      sessionStorage.setItem(getRunsCacheKey(), JSON.stringify(payload));
+      // JSON.stringify already snapshots the payload, so the extra
+      // _cloneRunsData round trip only doubled the peak for no benefit.
+      sessionStorage.setItem(
+        getRunsCacheKey(),
+        JSON.stringify({ saved_at: Date.now(), data }),
+      );
     } catch {}
   }
 
@@ -6081,26 +6084,33 @@
   }
 
   async function _fetchRemainingPages(data, totalCount) {
-    // Fetch remaining pages in the background and merge into state
+    // Fetch remaining pages in the background and merge into state.  Every page
+    // is still fetched -- nothing is capped or dropped -- but a fixed worker
+    // pool bounds how many are in flight, and each page is merged as it lands
+    // instead of every response being retained until the last one resolves.
     const fetched = PAGE_SIZE; // first page already loaded
     if (fetched >= totalCount) return;
 
-    const pagePromises = [];
-    const projectSlug = state.currentProject && state.currentProject.slug ? `&project_slug=${encodeURIComponent(state.currentProject.slug)}` : '';
+    const offsets = [];
     for (let offset = fetched; offset < totalCount; offset += PAGE_SIZE) {
-      pagePromises.push(
-        fetch(apiUrl(`api/runs?limit=${PAGE_SIZE}&offset=${offset}${projectSlug}`))
+      offsets.push(offset);
+    }
+
+    const projectSlug = state.currentProject && state.currentProject.slug ? `&project_slug=${encodeURIComponent(state.currentProject.slug)}` : '';
+    let cursor = 0;
+    const drainPages = async () => {
+      while (cursor < offsets.length) {
+        if (!dashboardActive) return;
+        const offset = offsets[cursor++];
+        const page = await fetch(apiUrl(`api/runs?limit=${PAGE_SIZE}&offset=${offset}&include_total=false${projectSlug}`))
           .then(r => r.ok ? r.json() : null)
-          .catch(() => null)
-      );
-    }
+          .catch(() => null);
+        if (page) _mergeTasksData(data, page);
+      }
+    };
 
-    const pages = await Promise.all(pagePromises);
+    await Promise.all(Array.from({ length: PAGE_CONCURRENCY }, drainPages));
     if (!dashboardActive) return;
-
-    for (const page of pages) {
-      if (page) _mergeTasksData(data, page);
-    }
 
     // Re-apply with full data
     _applyRunsData(data);

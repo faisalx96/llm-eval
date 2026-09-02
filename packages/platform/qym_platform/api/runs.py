@@ -1616,6 +1616,14 @@ def legacy_list_runs(
     exclude_live: bool = Query(
         default=False, description="Exclude live run statuses from the result set"
     ),
+    include_total: bool = Query(
+        default=True,
+        description=(
+            "Compute total_count. Defaults to true so existing clients are "
+            "unaffected; pagers that already know the total can pass false to "
+            "skip a full count on every page."
+        ),
+    ),
     user: Optional[str] = Query(
         default=None, description="Filter by run owner user id, email, or display name"
     ),
@@ -1707,8 +1715,10 @@ def legacy_list_runs(
             )
         )
 
-    # Total count before pagination
-    total_count = q.count()
+    # Total count before pagination.  The count scans the whole project, so a
+    # pager walking N pages paid for it N times; callers that already have it
+    # can opt out.
+    total_count = q.count() if include_total else None
 
     # Apply pagination
     runs: List[Run] = q.offset(offset).limit(limit).all()
@@ -1885,14 +1895,22 @@ def legacy_list_runs(
         # A repeat-run diagnosis is stored on the pass score, not on the
         # reduced RunItem.  Keep the runs-list chip scoped to that pass so a
         # diagnosis on one sample cannot appear on every sample row.
+        # Only pass scores that carry an analysis payload can contribute a
+        # cause; the loop below discards the rest.  Applying that predicate in
+        # SQL and streaming the result keeps this independent of pass volume.
         pass_analysis_rows = (
             db.query(
                 RunItemPassScore.run_id,
                 RunItemPassScore.pass_number,
                 RunItemPassScore.meta,
             )
-            .filter(RunItemPassScore.run_id.in_(sampled_run_ids))
-            .all()
+            .filter(
+                RunItemPassScore.run_id.in_(sampled_run_ids),
+                cast(RunItemPassScore.meta, Text).like(
+                    f'%"{PASS_ANALYSIS_META_KEY}"%'
+                ),
+            )
+            .yield_per(1000)
         )
         pass_analysis_causes: Dict[str, Dict[int, set[str]]] = {}
         for rid, pass_number, meta in pass_analysis_rows:
@@ -1966,7 +1984,7 @@ def legacy_list_runs(
             RunItem.run_id.in_(run_ids),
             cast(RunItem.item_metadata, Text).like('%"root_cause"%'),
         )
-        .all()
+        .yield_per(1000)
     )
     analysis_causes: Dict[str, set] = {}
     for row in analysis_rows:
@@ -3213,8 +3231,11 @@ def run_passes(
 
     pass_analysis_rows = (
         db.query(RunItemPassScore.pass_number, RunItemPassScore.meta)
-        .filter(RunItemPassScore.run_id == run.id)
-        .all()
+        .filter(
+            RunItemPassScore.run_id == run.id,
+            cast(RunItemPassScore.meta, Text).like(f'%"{PASS_ANALYSIS_META_KEY}"%'),
+        )
+        .yield_per(1000)
     )
     pass_analysis_causes: Dict[int, set[str]] = {}
     for pass_number, meta in pass_analysis_rows:

@@ -15,4 +15,3 @@ def _build_engine():
 engine = _build_engine()
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 
-
