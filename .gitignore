@@ -45,6 +45,7 @@ wheels/
 .claude/
 .codex/
 .codex-work/
+.codex_work/
 .cursor/
 CLAUDE.md
 AIR_GAPPED_GUIDE.md
