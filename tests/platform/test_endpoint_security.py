@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import sys
 from pathlib import Path
@@ -40,6 +41,8 @@ from qym_platform.db.models import (
     ReviewCorrection,
     Run,
     RunItem,
+    RunItemAttempt,
+    RunItemPassScore,
     RunItemScore,
     RunWorkflowStatus,
     User,
@@ -422,10 +425,7 @@ def test_run_mutation_permissions_enforced(client, session_factory) -> None:
         "/api/runs/run-2/analysis-documents",
         headers=_headers("manager-a@example.com"),
     )
-    assert (
-        project_selection_from_second_run.json()["documents"][0]["selected"]
-        is False
-    )
+    assert project_selection_from_second_run.json()["documents"][0]["selected"] is False
 
     manager_can_change_project_document_selection = client.patch(
         f"/api/runs/run-1/analysis-documents/{document_id}",
@@ -714,7 +714,9 @@ def test_failed_metric_analysis_keeps_manual_recovery_available(
         },
     )
     assert context.status_code == 200
-    context_analysis = context.json()["row"]["item_metadata"]["metric_analyses"]["judge"]
+    context_analysis = context.json()["row"]["item_metadata"]["metric_analyses"][
+        "judge"
+    ]
     assert context_analysis["error"] == "missing_category_taxonomy"
     assert context_analysis["root_cause_note"].startswith("The reviewer")
     assert context.json()["row"]["item_metadata"]["analysis_error"] == (
@@ -859,3 +861,181 @@ def test_api_key_scopes_are_not_enforced(client, session_factory) -> None:
             },
         )
         assert response.status_code == 200, (token, response.text)
+
+
+def test_csv_run_upload_disambiguates_duplicate_item_ids(
+    client, session_factory
+) -> None:
+    with session_factory() as session:
+        _seed_api_key(session, token="upload-token", scopes=["runs:write"])
+
+    csv_body = (
+        "dataset_name,run_name,item_id,input,output,expected_output,time,accuracy_score\n"
+        "dataset,run-1,repeated-id,first,one,one,0.1,1\n"
+        "dataset,run-1,repeated-id,second,two,two,0.2,1\n"
+    )
+    response = client.post(
+        "/v1/runs:upload",
+        headers=_auth_headers("upload-token"),
+        data={"task": "task", "dataset": "dataset", "model": "model"},
+        files={"file": ("run.csv", csv_body, "text/csv")},
+    )
+
+    assert response.status_code == 200, response.text
+    run_id = response.json()["run_id"]
+    with session_factory() as session:
+        item_ids = [
+            row.item_id
+            for row in session.query(RunItem)
+            .filter(RunItem.run_id == run_id)
+            .order_by(RunItem.index)
+            .all()
+        ]
+    assert item_ids == ["repeated-id", "repeated-id__duplicate_0002"]
+
+
+def test_csv_run_upload_preserves_multi_pass_structure(client, session_factory) -> None:
+    with session_factory() as session:
+        _seed_api_key(session, token="multi-pass-token", scopes=["runs:write"])
+
+    csv_body = (
+        "dataset_name,run_name,run_metadata,run_config,trace_id,item_id,pass_number,"
+        "input,item_metadata,output,expected_output,time,task_started_at_ms,accuracy_score\n"
+        'dataset,run-1,"{}","{}",trace-1,item-1,1,question,"{}",wrong,right,0.1,1000,0\n'
+        'dataset,run-1,"{}","{}",trace-2,item-1,2,question,"{}",right,right,0.2,2000,1\n'
+    )
+    response = client.post(
+        "/v1/runs:upload",
+        headers=_auth_headers("multi-pass-token"),
+        data={"task": "task", "dataset": "dataset", "model": "model"},
+        files={"file": ("run.csv", csv_body, "text/csv")},
+    )
+
+    assert response.status_code == 200, response.text
+    run_id = response.json()["run_id"]
+    with session_factory() as session:
+        run = session.get(Run, run_id)
+        items = session.query(RunItem).filter(RunItem.run_id == run_id).all()
+        attempts = (
+            session.query(RunItemAttempt)
+            .filter(RunItemAttempt.run_id == run_id)
+            .order_by(RunItemAttempt.pass_number)
+            .all()
+        )
+        pass_scores = (
+            session.query(RunItemPassScore)
+            .filter(RunItemPassScore.run_id == run_id)
+            .order_by(RunItemPassScore.pass_number)
+            .all()
+        )
+        reduced = (
+            session.query(RunItemScore).filter(RunItemScore.run_id == run_id).one()
+        )
+
+        assert run is not None
+        assert run.samples == 2
+        assert run.run_config["samples"] == 2
+        assert len(items) == 1
+        assert items[0].output == "right"
+        assert [attempt.pass_number for attempt in attempts] == [1, 2]
+        assert [attempt.output for attempt in attempts] == ["wrong", "right"]
+        assert [score.score_numeric for score in pass_scores] == [0.0, 1.0]
+        assert reduced.score_numeric == pytest.approx(0.5)
+        assert reduced.meta == {"sample_reducer": "mean", "samples_observed": 2}
+
+
+def test_platform_snapshot_upload_preserves_indices_and_passes(
+    client, session_factory
+) -> None:
+    with session_factory() as session:
+        _seed_api_key(session, token="snapshot-token", scopes=["runs:write"])
+
+    snapshot = {
+        "run": {
+            "task_name": "source-task",
+            "dataset_name": "source-dataset",
+            "model_name": "source-model",
+            "run_name": "source-run",
+            "metric_names": ["accuracy"],
+            "metadata": {"source": "another-qym"},
+            "config": {},
+            "samples": 2,
+            "last_completed_pass": 2,
+        },
+        "snapshot": {
+            "metric_names": ["accuracy"],
+            "rows": [
+                {
+                    "index": 7,
+                    "item_id": "item-b",
+                    "input_full": "second",
+                    "expected_full": "yes",
+                    "output_full": "yes",
+                    "metric_values": [0.5],
+                    "metric_meta": {"accuracy": {"samples_observed": 2}},
+                    "pass_scores": {"accuracy": [0, 1]},
+                    "pass_attempts": [
+                        {"status": "completed", "output": "no", "latency_ms": 10},
+                        {"status": "completed", "output": "yes", "latency_ms": 20},
+                    ],
+                },
+                {
+                    "index": 2,
+                    "item_id": "item-a",
+                    "input_full": "first",
+                    "expected_full": "yes",
+                    "output_full": "yes",
+                    "metric_values": [1.0],
+                    "metric_meta": {"accuracy": {"samples_observed": 2}},
+                    "pass_scores": {"accuracy": [1, 1]},
+                    "pass_attempts": [
+                        {"status": "completed", "output": "yes", "latency_ms": 11},
+                        {"status": "completed", "output": "yes", "latency_ms": 21},
+                    ],
+                },
+            ],
+        },
+    }
+    response = client.post(
+        "/v1/runs:upload",
+        headers=_auth_headers("snapshot-token"),
+        data={"task": "imported", "dataset": "imported"},
+        files={
+            "file": (
+                "source-run.json",
+                json.dumps(snapshot),
+                "application/json",
+            )
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    run_id = response.json()["run_id"]
+    with session_factory() as session:
+        run = session.get(Run, run_id)
+        items = (
+            session.query(RunItem)
+            .filter(RunItem.run_id == run_id)
+            .order_by(RunItem.index)
+            .all()
+        )
+        attempts = (
+            session.query(RunItemAttempt).filter(RunItemAttempt.run_id == run_id).all()
+        )
+        pass_scores = (
+            session.query(RunItemPassScore)
+            .filter(RunItemPassScore.run_id == run_id)
+            .all()
+        )
+
+        assert run is not None
+        assert run.task == "source-task"
+        assert run.dataset == "source-dataset"
+        assert run.model == "source-model"
+        assert run.samples == 2
+        assert [(item.item_id, item.index) for item in items] == [
+            ("item-a", 2),
+            ("item-b", 7),
+        ]
+        assert len(attempts) == 4
+        assert len(pass_scores) == 4

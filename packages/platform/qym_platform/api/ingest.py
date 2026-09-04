@@ -452,9 +452,9 @@ def _build_trace_buckets_from_spans(spans: list[Span]) -> Dict[str, Dict[str, An
             return False
 
         for span in trace_spans:
-            if _span_usage_scope(span.attributes or {}) == "metric" or _is_metric_descendant(
-                span
-            ):
+            if _span_usage_scope(
+                span.attributes or {}
+            ) == "metric" or _is_metric_descendant(span):
                 metric_descendant_ids.add(span.span_id)
 
         roots = [
@@ -575,7 +575,10 @@ def _refresh_live_trace_stats(
         trace_buckets = _build_trace_buckets_from_spans(spans)
         for trace_id in rebuild_ids:
             _upsert_trace_aggregate(
-                db, run.id, trace_id, trace_buckets.get(trace_id) or _empty_trace_bucket()
+                db,
+                run.id,
+                trace_id,
+                trace_buckets.get(trace_id) or _empty_trace_bucket(),
             )
 
     cached_ids = sorted(item_trace_ids - set(trace_buckets.keys()))
@@ -767,15 +770,25 @@ def _normalized_metric_spec(raw: Dict[str, Any]) -> Dict[str, Any]:
     sample_reducer = str(raw.get("sample_reducer") or "mean")
     run_reducer = str(raw.get("run_reducer") or "mean")
     if score_type not in {"boolean", "percentage", "count", "number", "legacy"}:
-        raise HTTPException(status_code=422, detail=f"Invalid metric score_type: {score_type}")
+        raise HTTPException(
+            status_code=422, detail=f"Invalid metric score_type: {score_type}"
+        )
     if direction not in {"maximize", "minimize"}:
-        raise HTTPException(status_code=422, detail=f"Invalid metric direction: {direction}")
+        raise HTTPException(
+            status_code=422, detail=f"Invalid metric direction: {direction}"
+        )
     if sample_reducer not in {"mean", "sum", "min", "max"} or run_reducer not in {
-        "mean", "sum", "min", "max"
+        "mean",
+        "sum",
+        "min",
+        "max",
     }:
         raise HTTPException(status_code=422, detail="Invalid metric reducer")
     if sample_reducer != "mean" or run_reducer != "mean":
-        raise HTTPException(status_code=422, detail="Only the mean metric reducer is currently supported")
+        raise HTTPException(
+            status_code=422,
+            detail="Only the mean metric reducer is currently supported",
+        )
     threshold = raw.get("pass_threshold")
     precision = raw.get("precision")
     return {
@@ -804,7 +817,8 @@ def _store_metric_specs(
     for name, raw in metric_specs.items():
         if name not in positions:
             raise HTTPException(
-                status_code=422, detail=f"Metric spec provided for unknown metric: {name}"
+                status_code=422,
+                detail=f"Metric spec provided for unknown metric: {name}",
             )
         normalized = _normalized_metric_spec(raw)
         current = existing.get(name)
@@ -837,17 +851,24 @@ def create_run(
     dataset_id = req.dataset_id
     dataset_version_id = req.dataset_version_id
     if not dataset_version_id and (dataset_id or req.dataset_alias):
-        dq = db.query(Dataset).filter(Dataset.project_id == principal.project_id, Dataset.deleted_at.is_(None))
+        dq = db.query(Dataset).filter(
+            Dataset.project_id == principal.project_id, Dataset.deleted_at.is_(None)
+        )
         dataset_obj = None
         if dataset_id:
             dataset_obj = dq.filter(Dataset.id == dataset_id).first()
         else:
-            dataset_obj = dq.filter((Dataset.slug == req.dataset) | (Dataset.name == req.dataset)).first()
+            dataset_obj = dq.filter(
+                (Dataset.slug == req.dataset) | (Dataset.name == req.dataset)
+            ).first()
         if dataset_obj:
             alias_name = req.dataset_alias or "production"
             alias = (
                 db.query(DatasetAlias)
-                .filter(DatasetAlias.dataset_id == dataset_obj.id, DatasetAlias.alias == alias_name)
+                .filter(
+                    DatasetAlias.dataset_id == dataset_obj.id,
+                    DatasetAlias.alias == alias_name,
+                )
                 .first()
             )
             if alias:
@@ -945,12 +966,18 @@ async def ingest_events(
                     detail=f"Boolean metric {payload.metric_name} must emit bool, 0, or 1",
                 )
             if float(numeric) not in {0.0, 1.0}:
-                raise HTTPException(status_code=422, detail="Boolean score must be 0 or 1")
+                raise HTTPException(
+                    status_code=422, detail="Boolean score must be 0 or 1"
+                )
         elif spec.score_type == "percentage" and not 0.0 <= float(numeric) <= 1.0:
-            raise HTTPException(status_code=422, detail="Percentage score must be between 0 and 1")
+            raise HTTPException(
+                status_code=422, detail="Percentage score must be between 0 and 1"
+            )
         elif spec.score_type == "count":
             if float(numeric) < 0 or not float(numeric).is_integer():
-                raise HTTPException(status_code=422, detail="Count score must be a non-negative integer")
+                raise HTTPException(
+                    status_code=422, detail="Count score must be a non-negative integer"
+                )
 
     def _aggregate_score_meta(
         observations: int, existing: Optional[Dict[str, Any]] = None
@@ -1316,9 +1343,7 @@ async def ingest_events(
                 else _sanitize_for_json(payload.score_raw)
             )
             stored_meta = (
-                aggregate_meta
-                if run.samples > 1
-                else _sanitize_for_json(payload.meta)
+                aggregate_meta if run.samples > 1 else _sanitize_for_json(payload.meta)
             )
             stored_label = None if run.samples > 1 else payload.label
             stored_explanation = None if run.samples > 1 else payload.explanation
@@ -1345,9 +1370,9 @@ async def ingest_events(
 
         elif isinstance(payload, ItemCompletedPayload):
             mark_run_running(run)
-            completed_output_cache[(payload.item_id, payload.pass_number)] = (
-                _sanitize_for_json(payload.output)
-            )
+            completed_output_cache[
+                (payload.item_id, payload.pass_number)
+            ] = _sanitize_for_json(payload.output)
             # Determine task_started_at_ms: prefer explicit value from SDK,
             # fall back to event sent_at minus latency_ms for older SDKs.
             ts_ms = payload.task_started_at_ms
@@ -1772,79 +1797,260 @@ async def upload_run(
 
     if filename.endswith(".json"):
         data = json.loads(raw.decode("utf-8"))
-        metrics = list(data.get("metrics") or [])
-        run.metrics = metrics
-        run.dataset = str(data.get("dataset_name") or dataset)
-        # Ingest items
-        inputs = data.get("inputs") or {}
-        metadatas = data.get("metadatas") or {}
-        results = data.get("results") or {}
-        errors = data.get("errors") or {}
-        for idx, (item_id, inp) in enumerate(inputs.items()):
-            md = metadatas.get(item_id) or {}
-            r = results.get(item_id)
-            err = errors.get(item_id)
-            if r:
-                out = r.get("output")
-                exp = r.get("expected")
-                latency_ms = float(r.get("time") or 0.0) * 1000.0
-                trace_id = r.get("trace_id")
-                item = RunItem(
-                    run_id=run.id,
-                    item_id=str(item_id),
-                    index=idx,
-                    input=inp,
-                    expected=exp,
-                    output=out,
-                    error=None,
-                    latency_ms=latency_ms,
-                    trace_id=trace_id,
-                    trace_url=r.get("trace_url"),
-                    item_metadata=md if isinstance(md, dict) else {},
+        source_run = data.get("run")
+        source_snapshot = data.get("snapshot")
+        is_platform_snapshot = isinstance(source_run, dict) and isinstance(
+            source_snapshot, dict
+        )
+
+        if is_platform_snapshot:
+            snapshot_rows = (
+                source_snapshot.get("rows") or source_snapshot.get("items") or []
+            )
+            metrics = list(
+                source_run.get("metric_names")
+                or source_snapshot.get("metric_names")
+                or []
+            )
+            run.external_run_id = (
+                external_run_id
+                or source_run.get("external_run_id")
+                or source_run.get("run_name")
+            )
+            run.task = str(source_run.get("task_name") or task)
+            run.dataset = str(source_run.get("dataset_name") or dataset)
+            run.model = source_run.get("model_name") or model
+            run.metrics = metrics
+            run.run_metadata = _sanitize_for_json(source_run.get("metadata") or {})
+            run.run_config = _sanitize_for_json(source_run.get("config") or {})
+            try:
+                run.samples = max(1, int(source_run.get("samples") or 1))
+            except (TypeError, ValueError):
+                run.samples = 1
+            if run.samples > 1:
+                run.run_config = {**run.run_config, "samples": run.samples}
+                run.run_metadata = {
+                    **run.run_metadata,
+                    "samples": run.samples,
+                    "last_completed_pass": source_run.get("last_completed_pass")
+                    or run.samples,
+                }
+
+            for fallback_index, row in enumerate(snapshot_rows):
+                if not isinstance(row, dict):
+                    continue
+                item_id = str(row.get("item_id") or fallback_index)
+                try:
+                    item_index = int(row.get("index"))
+                except (TypeError, ValueError):
+                    item_index = fallback_index
+                error = str(row.get("error") or "") or None
+                input_value = row.get("input_full", row.get("input"))
+                expected_value = row.get("expected_full", row.get("expected"))
+                output_value = row.get("output_full", row.get("output"))
+                if (
+                    error
+                    and isinstance(output_value, str)
+                    and output_value.startswith("ERROR:")
+                ):
+                    output_value = None
+                try:
+                    latency_ms = float(row.get("latency_ms") or 0.0)
+                except (TypeError, ValueError):
+                    latency_ms = 0.0
+                item_metadata = row.get("item_metadata") or {}
+                if not isinstance(item_metadata, dict):
+                    item_metadata = {}
+                db.add(
+                    RunItem(
+                        run_id=run.id,
+                        item_id=item_id,
+                        index=item_index,
+                        input=input_value,
+                        expected=expected_value,
+                        output=output_value,
+                        error=error,
+                        latency_ms=latency_ms,
+                        retry_count=int(row.get("retry_count") or 0),
+                        trace_id=row.get("trace_id") or None,
+                        trace_url=row.get("trace_url") or None,
+                        item_metadata=_sanitize_for_json(item_metadata),
+                    )
                 )
-                db.add(item)
-                scores = r.get("scores") or {}
-                for m in metrics:
-                    val = scores.get(m)
-                    score_numeric = None
-                    if isinstance(val, (int, float, bool)):
-                        score_numeric = float(val)
-                    elif isinstance(val, dict) and isinstance(
-                        val.get("score"), (int, float, bool)
-                    ):
-                        score_numeric = float(val["score"])
-                    meta = {}
-                    if isinstance(val, dict) and isinstance(val.get("metadata"), dict):
-                        meta = val["metadata"]
+
+                metric_values = row.get("metric_values") or []
+                metric_meta = row.get("metric_meta") or {}
+                pass_scores = row.get("pass_scores") or {}
+                pass_metric_meta = row.get("pass_metric_meta") or {}
+                for metric_index, metric in enumerate(metrics):
+                    raw_score = (
+                        metric_values[metric_index]
+                        if metric_index < len(metric_values)
+                        else None
+                    )
+                    try:
+                        score_numeric = (
+                            float(raw_score) if raw_score not in (None, "") else None
+                        )
+                    except (TypeError, ValueError):
+                        score_numeric = None
+                    stored_meta = metric_meta.get(metric) or {}
                     db.add(
                         RunItemScore(
                             run_id=run.id,
-                            item_id=str(item_id),
-                            metric_name=str(m),
+                            item_id=item_id,
+                            metric_name=metric,
                             score_numeric=score_numeric,
-                            score_raw=val,
-                            meta=meta,
+                            score_raw=raw_score,
+                            meta=_sanitize_for_json(stored_meta),
                         )
                     )
-            elif err:
-                err_msg = err.get("error") if isinstance(err, dict) else str(err)
-                db.add(
-                    RunItem(
+
+                    if run.samples > 1:
+                        metric_pass_scores = pass_scores.get(metric) or []
+                        metric_pass_meta = pass_metric_meta.get(metric) or []
+                        for pass_number in range(1, run.samples + 1):
+                            pass_score = (
+                                metric_pass_scores[pass_number - 1]
+                                if pass_number <= len(metric_pass_scores)
+                                else None
+                            )
+                            pass_meta = (
+                                metric_pass_meta[pass_number - 1]
+                                if pass_number <= len(metric_pass_meta)
+                                else None
+                            )
+                            if pass_score is None and not pass_meta:
+                                continue
+                            try:
+                                pass_score_numeric = (
+                                    float(pass_score)
+                                    if pass_score is not None
+                                    else None
+                                )
+                            except (TypeError, ValueError):
+                                pass_score_numeric = None
+                            db.add(
+                                RunItemPassScore(
+                                    run_id=run.id,
+                                    item_id=item_id,
+                                    metric_name=metric,
+                                    pass_number=pass_number,
+                                    score_numeric=pass_score_numeric,
+                                    meta=_sanitize_for_json(pass_meta or {}),
+                                )
+                            )
+
+                if run.samples > 1:
+                    pass_attempts = row.get("pass_attempts") or []
+                    for pass_number, attempt in enumerate(pass_attempts, start=1):
+                        if not isinstance(attempt, dict):
+                            continue
+                        attempt_error = str(attempt.get("error") or "") or None
+                        attempt_output = attempt.get("output")
+                        if (
+                            attempt_error
+                            and isinstance(attempt_output, str)
+                            and attempt_output.startswith("ERROR:")
+                        ):
+                            attempt_output = None
+                        db.add(
+                            RunItemAttempt(
+                                run_id=run.id,
+                                item_id=item_id,
+                                pass_number=pass_number,
+                                attempt_number=1,
+                                status=(
+                                    "FAILED"
+                                    if attempt_error
+                                    or str(attempt.get("status") or "").lower()
+                                    in {"error", "failed"}
+                                    else "COMPLETED"
+                                ),
+                                latency_ms=attempt.get("latency_ms"),
+                                task_started_at_ms=attempt.get("task_started_at_ms"),
+                                trace_id=attempt.get("trace_id") or None,
+                                trace_url=attempt.get("trace_url") or None,
+                                output=attempt_output,
+                                error=attempt_error,
+                                is_last_attempt=True,
+                            )
+                        )
+        else:
+            metrics = list(data.get("metrics") or [])
+            run.metrics = metrics
+            run.dataset = str(data.get("dataset_name") or dataset)
+            inputs = data.get("inputs") or {}
+            metadatas = data.get("metadatas") or {}
+            results = data.get("results") or {}
+            errors = data.get("errors") or {}
+            for idx, (item_id, inp) in enumerate(inputs.items()):
+                md = metadatas.get(item_id) or {}
+                result = results.get(item_id)
+                err = errors.get(item_id)
+                if result:
+                    out = result.get("output")
+                    exp = result.get("expected")
+                    latency_ms = float(result.get("time") or 0.0) * 1000.0
+                    trace_id = result.get("trace_id")
+                    item = RunItem(
                         run_id=run.id,
                         item_id=str(item_id),
                         index=idx,
                         input=inp,
-                        expected=None,
-                        output=None,
-                        error=str(err_msg),
-                        latency_ms=None,
-                        trace_id=(
-                            err.get("trace_id") if isinstance(err, dict) else None
-                        ),
-                        trace_url=None,
+                        expected=exp,
+                        output=out,
+                        error=None,
+                        latency_ms=latency_ms,
+                        trace_id=trace_id,
+                        trace_url=result.get("trace_url"),
                         item_metadata=md if isinstance(md, dict) else {},
                     )
-                )
+                    db.add(item)
+                    scores = result.get("scores") or {}
+                    for metric in metrics:
+                        value = scores.get(metric)
+                        score_numeric = None
+                        if isinstance(value, (int, float, bool)):
+                            score_numeric = float(value)
+                        elif isinstance(value, dict) and isinstance(
+                            value.get("score"), (int, float, bool)
+                        ):
+                            score_numeric = float(value["score"])
+                        meta = {}
+                        if isinstance(value, dict) and isinstance(
+                            value.get("metadata"), dict
+                        ):
+                            meta = value["metadata"]
+                        db.add(
+                            RunItemScore(
+                                run_id=run.id,
+                                item_id=str(item_id),
+                                metric_name=str(metric),
+                                score_numeric=score_numeric,
+                                score_raw=value,
+                                meta=meta,
+                            )
+                        )
+                elif err:
+                    err_msg = err.get("error") if isinstance(err, dict) else str(err)
+                    db.add(
+                        RunItem(
+                            run_id=run.id,
+                            item_id=str(item_id),
+                            index=idx,
+                            input=inp,
+                            expected=None,
+                            output=None,
+                            error=str(err_msg),
+                            latency_ms=None,
+                            trace_id=(
+                                err.get("trace_id") if isinstance(err, dict) else None
+                            ),
+                            trace_url=None,
+                            item_metadata=md if isinstance(md, dict) else {},
+                        )
+                    )
         db.commit()
 
     elif filename.endswith(".csv"):
@@ -1878,81 +2084,264 @@ async def upload_run(
                 except (json.JSONDecodeError, TypeError):
                     pass
 
-        fingerprint_counts: Dict[str, int] = {}
-        for idx, row in enumerate(rows):
+        def _row_metadata(row: Dict[str, Any]) -> Dict[str, Any]:
             raw_meta = row.get("item_metadata") or ""
             try:
                 parsed_meta = json.loads(raw_meta) if raw_meta else {}
             except (json.JSONDecodeError, TypeError):
                 parsed_meta = {}
-            raw_item_id = str(row.get("item_id") or "").strip()
-            if raw_item_id and not looks_like_positional_item_id(raw_item_id):
-                item_id = raw_item_id
-            else:
-                fingerprint = build_identity_fingerprint(
-                    input_value=row.get("input") or "",
-                    expected_value=row.get("expected_output") or "",
-                    metadata=parsed_meta,
-                )
-                fingerprint_counts[fingerprint] = (
-                    fingerprint_counts.get(fingerprint, 0) + 1
-                )
-                item_id = f"csv_{fingerprint}__{fingerprint_counts[fingerprint]:04d}"
-            output = str(row.get("output") or "")
-            is_error = output.startswith("ERROR:")
-            item = RunItem(
-                run_id=run.id,
-                item_id=item_id,
-                index=idx,
-                input=row.get("input"),
-                expected=row.get("expected_output"),
-                output=None if is_error else row.get("output"),
-                error=(output[6:].strip() if is_error else None),
-                item_metadata=parsed_meta if isinstance(parsed_meta, dict) else {},
-                latency_ms=(float(row.get("time") or 0.0) * 1000.0),
-                trace_id=row.get("trace_id") or None,
-                trace_url=None,
-            )
-            db.add(item)
+            return parsed_meta if isinstance(parsed_meta, dict) else {}
 
-            for m in metrics:
-                raw_val = row.get(f"{m}_score")
-                score_numeric = None
+        def _row_metric_meta(row: Dict[str, Any], metric: str) -> Dict[str, Any]:
+            meta: Dict[str, Any] = {}
+            for col in fieldnames:
+                if not col.startswith(f"{metric}__meta__"):
+                    continue
+                key = col[len(f"{metric}__meta__") :]
+                if key == "json":
+                    raw_json = row.get(col, "")
+                    if raw_json:
+                        try:
+                            parsed = json.loads(raw_json)
+                            if isinstance(parsed, dict):
+                                meta.update(_sanitize_for_json(parsed))
+                            else:
+                                meta[key] = raw_json
+                        except (json.JSONDecodeError, TypeError):
+                            meta[key] = raw_json
+                else:
+                    meta[key] = row.get(col)
+            return meta
+
+        def _row_score(
+            row: Dict[str, Any], metric: str, is_error: bool
+        ) -> Optional[float]:
+            if is_error:
+                return 0.0
+            raw_value = row.get(f"{metric}_score")
+            if raw_value in (None, "", "N/A"):
+                return None
+            try:
+                return float(raw_value)
+            except (TypeError, ValueError):
+                normalized = str(raw_value).strip().lower()
+                if normalized in {"true", "yes", "y", "✓"}:
+                    return 1.0
+                if normalized in {"false", "no", "n", "✗"}:
+                    return 0.0
+                return None
+
+        def _pass_number(row: Dict[str, Any]) -> int:
+            try:
+                return max(1, int(float(row.get("pass_number") or 1)))
+            except (TypeError, ValueError):
+                return 1
+
+        max_pass_number = max((_pass_number(row) for row in rows), default=1)
+        is_multi_pass = "pass_number" in fieldnames and max_pass_number > 1
+
+        if is_multi_pass:
+            run.samples = max_pass_number
+            run.run_config = {
+                **(run.run_config if isinstance(run.run_config, dict) else {}),
+                "samples": max_pass_number,
+            }
+            run.run_metadata = {
+                **(run.run_metadata if isinstance(run.run_metadata, dict) else {}),
+                "last_completed_pass": max_pass_number,
+                "samples": max_pass_number,
+            }
+
+            items_by_id: Dict[str, RunItem] = {}
+            item_latest_pass: Dict[str, int] = {}
+            item_indices: Dict[str, int] = {}
+            seen_item_passes: set[tuple[str, int]] = set()
+            pass_scores: Dict[tuple[str, str], list[float]] = defaultdict(list)
+
+            for row in rows:
+                parsed_meta = _row_metadata(row)
+                raw_item_id = str(row.get("item_id") or "").strip()
+                if raw_item_id:
+                    item_id = raw_item_id
+                else:
+                    fingerprint = build_identity_fingerprint(
+                        input_value=row.get("input") or "",
+                        expected_value=row.get("expected_output") or "",
+                        metadata=parsed_meta,
+                    )
+                    item_id = f"csv_{fingerprint}"
+
+                pass_number = _pass_number(row)
+                item_pass = (item_id, pass_number)
+                if item_pass in seen_item_passes:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=(
+                            "Duplicate item/pass pair in CSV: "
+                            f"item_id={item_id}, pass_number={pass_number}"
+                        ),
+                    )
+                seen_item_passes.add(item_pass)
+
+                output = str(row.get("output") or "")
+                is_error = output.startswith("ERROR:") or output.startswith("ERROR ")
+                error = output.split(":", 1)[-1].strip() if is_error else None
                 try:
-                    if not is_error and raw_val not in (None, "", "N/A"):
-                        score_numeric = float(raw_val)
-                    elif is_error:
-                        score_numeric = 0.0
-                except Exception:
-                    score_numeric = None
+                    latency_ms = float(row.get("time") or 0.0) * 1000.0
+                except (TypeError, ValueError):
+                    latency_ms = 0.0
+                raw_started = row.get("task_started_at_ms")
+                try:
+                    task_started_at_ms = (
+                        int(float(raw_started))
+                        if raw_started not in (None, "")
+                        else None
+                    )
+                except (TypeError, ValueError):
+                    task_started_at_ms = None
 
-                meta: Dict[str, Any] = {}
-                for col in fieldnames:
-                    if col.startswith(f"{m}__meta__"):
-                        k = col[len(f"{m}__meta__") :]
-                        if k == "json":
-                            raw_json = row.get(col, "")
-                            if raw_json:
-                                try:
-                                    parsed = json.loads(raw_json)
-                                    if isinstance(parsed, dict):
-                                        meta.update(_sanitize_for_json(parsed))
-                                    else:
-                                        meta[k] = raw_json
-                                except (json.JSONDecodeError, TypeError):
-                                    meta[k] = raw_json
-                        else:
-                            meta[k] = row.get(col)
-                db.add(
-                    RunItemScore(
+                item = items_by_id.get(item_id)
+                if item is None:
+                    item_indices[item_id] = len(item_indices)
+                    item = RunItem(
                         run_id=run.id,
                         item_id=item_id,
-                        metric_name=m,
-                        score_numeric=score_numeric,
-                        score_raw=raw_val,
-                        meta=meta,
+                        index=item_indices[item_id],
+                        input=row.get("input"),
+                        expected=row.get("expected_output"),
+                        output=None if is_error else row.get("output"),
+                        error=error,
+                        item_metadata=parsed_meta,
+                        latency_ms=latency_ms,
+                        trace_id=row.get("trace_id") or None,
+                        trace_url=None,
+                    )
+                    items_by_id[item_id] = item
+                    item_latest_pass[item_id] = pass_number
+                    db.add(item)
+                elif pass_number >= item_latest_pass[item_id]:
+                    item_latest_pass[item_id] = pass_number
+                    item.input = row.get("input")
+                    item.expected = row.get("expected_output")
+                    if not is_error:
+                        item.output = row.get("output")
+                    item.error = error
+                    item.item_metadata = parsed_meta
+                    item.latency_ms = latency_ms
+                    item.trace_id = row.get("trace_id") or None
+
+                db.add(
+                    RunItemAttempt(
+                        run_id=run.id,
+                        item_id=item_id,
+                        pass_number=pass_number,
+                        attempt_number=1,
+                        status="FAILED" if is_error else "COMPLETED",
+                        latency_ms=latency_ms,
+                        task_started_at_ms=task_started_at_ms,
+                        trace_id=row.get("trace_id") or None,
+                        trace_url=None,
+                        output=None if is_error else row.get("output"),
+                        error=error,
+                        is_last_attempt=True,
                     )
                 )
+
+                for metric in metrics:
+                    score_numeric = _row_score(row, metric, is_error)
+                    metric_meta = _row_metric_meta(row, metric)
+                    db.add(
+                        RunItemPassScore(
+                            run_id=run.id,
+                            item_id=item_id,
+                            metric_name=metric,
+                            pass_number=pass_number,
+                            score_numeric=score_numeric,
+                            meta=metric_meta,
+                        )
+                    )
+                    if score_numeric is not None:
+                        pass_scores[(item_id, metric)].append(score_numeric)
+
+            for item_id in items_by_id:
+                for metric in metrics:
+                    values = pass_scores.get((item_id, metric), [])
+                    reduced = sum(values) / len(values) if values else None
+                    db.add(
+                        RunItemScore(
+                            run_id=run.id,
+                            item_id=item_id,
+                            metric_name=metric,
+                            score_numeric=reduced,
+                            score_raw=reduced,
+                            meta={
+                                "sample_reducer": "mean",
+                                "samples_observed": len(values),
+                            },
+                        )
+                    )
+        else:
+            fingerprint_counts: Dict[str, int] = {}
+            imported_item_ids: set[str] = set()
+            duplicate_item_id_counts: Dict[str, int] = {}
+            for idx, row in enumerate(rows):
+                parsed_meta = _row_metadata(row)
+                raw_item_id = str(row.get("item_id") or "").strip()
+                if raw_item_id and not looks_like_positional_item_id(raw_item_id):
+                    item_id = raw_item_id
+                else:
+                    fingerprint = build_identity_fingerprint(
+                        input_value=row.get("input") or "",
+                        expected_value=row.get("expected_output") or "",
+                        metadata=parsed_meta,
+                    )
+                    fingerprint_counts[fingerprint] = (
+                        fingerprint_counts.get(fingerprint, 0) + 1
+                    )
+                    item_id = (
+                        f"csv_{fingerprint}__{fingerprint_counts[fingerprint]:04d}"
+                    )
+
+                # Legacy non-pass CSVs can contain repeated IDs. Preserve the
+                # first and disambiguate later rows as separate imported items.
+                if item_id in imported_item_ids:
+                    duplicate_number = duplicate_item_id_counts.get(item_id, 1) + 1
+                    candidate = f"{item_id}__duplicate_{duplicate_number:04d}"
+                    while candidate in imported_item_ids:
+                        duplicate_number += 1
+                        candidate = f"{item_id}__duplicate_{duplicate_number:04d}"
+                    duplicate_item_id_counts[item_id] = duplicate_number
+                    item_id = candidate
+                imported_item_ids.add(item_id)
+                output = str(row.get("output") or "")
+                is_error = output.startswith("ERROR:") or output.startswith("ERROR ")
+                item = RunItem(
+                    run_id=run.id,
+                    item_id=item_id,
+                    index=idx,
+                    input=row.get("input"),
+                    expected=row.get("expected_output"),
+                    output=None if is_error else row.get("output"),
+                    error=(output.split(":", 1)[-1].strip() if is_error else None),
+                    item_metadata=parsed_meta,
+                    latency_ms=(float(row.get("time") or 0.0) * 1000.0),
+                    trace_id=row.get("trace_id") or None,
+                    trace_url=None,
+                )
+                db.add(item)
+
+                for metric in metrics:
+                    raw_value = row.get(f"{metric}_score")
+                    db.add(
+                        RunItemScore(
+                            run_id=run.id,
+                            item_id=item_id,
+                            metric_name=metric,
+                            score_numeric=_row_score(row, metric, is_error),
+                            score_raw=raw_value,
+                            meta=_row_metric_meta(row, metric),
+                        )
+                    )
         db.commit()
     else:
         raise HTTPException(
