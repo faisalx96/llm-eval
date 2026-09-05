@@ -19,10 +19,12 @@ from qym_platform.api.root_cause_dashboard import router as root_cause_dashboard
 from qym_platform.api.product_evals import router as product_evals_router
 from qym_platform.api.datasets import router as datasets_router
 from qym_platform.api.insights import router as insights_router
+from qym_platform.api.dashboard import router as dashboard_router
 from qym_platform.services.analysis_jobs import (
     analysis_job_manager,
     rule_inference_job_manager,
 )
+from qym_platform.services.dashboard_summaries import DashboardSummaryWorker
 
 
 def create_app(settings: PlatformSettings | None = None) -> FastAPI:
@@ -37,6 +39,23 @@ def create_app(settings: PlatformSettings | None = None) -> FastAPI:
         redoc_url=None,
         openapi_url="/openapi.json",
     )
+
+    from qym_platform.db.session import SessionLocal
+    from qym_platform.deps import get_db
+
+    dashboard_worker = DashboardSummaryWorker(SessionLocal)
+    app.state.dashboard_summary_worker = dashboard_worker
+
+    @app.on_event("startup")
+    def start_dashboard_summary_worker() -> None:
+        # Dependency-overridden apps own their test/embedding database. They can
+        # use app.state.dashboard_summary_worker or run a worker for that factory.
+        if get_db not in app.dependency_overrides:
+            dashboard_worker.start()
+
+    @app.on_event("shutdown")
+    def stop_dashboard_summary_worker() -> None:
+        dashboard_worker.stop()
 
     if session_auth_enabled(settings):
         if not settings.auth_session_secret:
@@ -94,6 +113,7 @@ def create_app(settings: PlatformSettings | None = None) -> FastAPI:
     app.include_router(product_evals_router)
     app.include_router(datasets_router)
     app.include_router(insights_router)
+    app.include_router(dashboard_router)
     app.include_router(runs_router)
     app.include_router(ingest_router)
 

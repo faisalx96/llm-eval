@@ -38,7 +38,7 @@ def test_alembic_has_one_upgrade_head() -> None:
     config.set_main_option("script_location", str(MIGRATIONS_DIR))
     heads = ScriptDirectory.from_config(config).get_heads()
 
-    assert heads == ["0044"]
+    assert heads == ["0046"]
 
 
 def test_catalog_backfill_scopes_streaming_to_select_statements() -> None:
