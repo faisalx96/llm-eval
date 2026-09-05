@@ -1,0 +1,39 @@
+{
+  "environment": "Python3.12.8; SQLAlchemy2.0.52; same .venv executable; SQLite in-memory; fresh database per sample; median3",
+  "measurement": "Ordered batch parse/apply/commit; original async handler vs new synchronous processor inside the same asyncio.run wrapper; HTTP transport and worker-thread dispatch excluded.",
+  "limitations": [
+    "Synthetic100/1000event batches and short payloads; not production throughput.",
+    "Workstation load uncontrolled; individual samples included and SQL counts identical across repetitions.",
+    "Final includes transactional dashboard outbox hooks; baseline has no dashboard outbox."
+  ],
+  "results": [
+    {
+      "event": "item_started",
+      "events": 100,
+      "before_median_ms": 41.6,
+      "after_median_ms": 29.73,
+      "median_ratio_before_over_after": 1.4
+    },
+    {
+      "event": "item_started",
+      "events": 1000,
+      "before_median_ms": 418.88,
+      "after_median_ms": 203.05,
+      "median_ratio_before_over_after": 2.06
+    },
+    {
+      "event": "span_completed",
+      "events": 100,
+      "before_median_ms": 84.11,
+      "after_median_ms": 31.1,
+      "median_ratio_before_over_after": 2.7
+    },
+    {
+      "event": "span_completed",
+      "events": 1000,
+      "before_median_ms": 775.1,
+      "after_median_ms": 105.21,
+      "median_ratio_before_over_after": 7.37
+    }
+  ]
+}

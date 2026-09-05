@@ -1,0 +1,2 @@
+{"case": "legacy_full_history", "runs": 1000, "items_per_run": 50, "backend": "sqlite", "median_ms": 275.26, "requests": 2, "response_bytes": 905840, "sql": {"SELECT": 20}}
+{"case": "projected_first_page_with_global_overview", "runs": 1000, "items_per_run": 50, "backend": "sqlite", "median_ms": 168.33, "requests": 1, "response_bytes": 137807, "sql": {"SELECT": 27, "BEGIN": 1, "WITH": 1}}

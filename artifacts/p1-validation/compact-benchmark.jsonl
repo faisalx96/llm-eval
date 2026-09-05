@@ -1,0 +1,4 @@
+{"compact": false, "items": 10000, "build_ms": 1007.9, "serialize_ms": 250.2, "json_mib": 71.44}
+{"compact": false, "peak_python_mib": 163.13}
+{"compact": true, "items": 10000, "build_ms": 928.8, "serialize_ms": 42.4, "json_mib": 12.14}
+{"compact": true, "peak_python_mib": 38.91}

@@ -1,0 +1,14 @@
+[
+  {
+    "wheel": "qym-1.6.0-py3-none-any.whl",
+    "python_files": 58,
+    "source_matches": true,
+    "no_stale_or_nested_build_modules": true
+  },
+  {
+    "wheel": "qym_platform-0.2.6-py3-none-any.whl",
+    "python_files": 115,
+    "source_matches": true,
+    "no_stale_or_nested_build_modules": true
+  }
+]

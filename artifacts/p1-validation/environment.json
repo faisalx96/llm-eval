@@ -1,0 +1,16 @@
+{
+  "python": "3.12.8",
+  "system": "Darwin",
+  "machine": "arm64",
+  "versions": {
+    "sqlalchemy": "2.0.52",
+    "fastapi": "0.141.1",
+    "starlette": "1.6.0",
+    "openai": "3.8.0",
+    "pytest": "9.1.1",
+    "pytest-asyncio": "1.4.0",
+    "hypothesis": "6.167.1",
+    "playwright": "1.62.0",
+    "axe-playwright-python": "0.1.8"
+  }
+}

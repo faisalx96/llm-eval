@@ -1,0 +1,28 @@
+{
+  "items": 1000,
+  "input_characters_per_item": 10000,
+  "warmup_runs": 1,
+  "median_s": 0.0702955829910934,
+  "runs": [
+    {
+      "elapsed_s": 0.07428087503649294,
+      "statements": 1000
+    },
+    {
+      "elapsed_s": 0.06485183403128758,
+      "statements": 1000
+    },
+    {
+      "elapsed_s": 0.10033141705207527,
+      "statements": 1000
+    },
+    {
+      "elapsed_s": 0.0702955829910934,
+      "statements": 1000
+    },
+    {
+      "elapsed_s": 0.06171499995980412,
+      "statements": 1000
+    }
+  ]
+}

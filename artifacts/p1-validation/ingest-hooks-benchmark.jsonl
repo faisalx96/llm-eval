@@ -1,0 +1,4 @@
+{"event": "item_started", "events": 100, "median_ms": 27.14, "sql": {"SELECT": 10, "INSERT": 103, "UPDATE": 1}, "dashboard_hooks_enabled": true}
+{"event": "item_started", "events": 1000, "median_ms": 404.03, "sql": {"SELECT": 20, "INSERT": 1006, "UPDATE": 1}, "dashboard_hooks_enabled": true}
+{"event": "span_completed", "events": 100, "median_ms": 24.98, "sql": {"SELECT": 10, "INSERT": 8, "SAVEPOINT": 3, "RELEASE": 3, "UPDATE": 3, "DELETE": 2}, "dashboard_hooks_enabled": true}
+{"event": "span_completed", "events": 1000, "median_ms": 103.18, "sql": {"SELECT": 14, "INSERT": 10, "SAVEPOINT": 3, "RELEASE": 3, "UPDATE": 3, "DELETE": 2}, "dashboard_hooks_enabled": true}
