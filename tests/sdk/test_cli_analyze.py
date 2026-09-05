@@ -59,3 +59,45 @@ def test_analyze_summary_reads_snapshot_rows_and_metric_analyses(monkeypatch) ->
             },
         }
     ]
+
+
+def test_analyze_summary_counts_same_category_issue_records(monkeypatch) -> None:
+    payloads: list[dict] = []
+    run_data = {
+        "snapshot": {
+            "rows": [
+                {
+                    "item_metadata": {
+                        "metric_analyses": {
+                            "accuracy": {
+                                "root_cause_issues": [
+                                    {
+                                        "category": "Agent",
+                                        "subcategory": "Retrieval failure",
+                                        "finding": "Status A was omitted.",
+                                    },
+                                    {
+                                        "category": "Agent",
+                                        "subcategory": "Retrieval failure",
+                                        "finding": "Status B was omitted.",
+                                    },
+                                ]
+                            }
+                        }
+                    }
+                }
+            ]
+        }
+    }
+    monkeypatch.setattr(
+        analyze_module.PlatformAPIClient,
+        "get_run",
+        lambda self, run_id: run_data,
+    )
+    monkeypatch.setattr(analyze_module, "is_json_mode", lambda: True)
+    monkeypatch.setattr(analyze_module, "output", payloads.append)
+
+    analyze_module.analyze_summary("run-1")
+
+    assert payloads[0]["total_item_metrics_analyzed"] == 2
+    assert payloads[0]["categories"] == {"Agent": 2}

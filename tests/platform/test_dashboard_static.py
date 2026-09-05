@@ -2982,9 +2982,10 @@ def test_auto_analysis_is_a_first_class_project_page() -> None:
     assert "!isValid(metricAnalyses[legacyMetric])) return [];" in run
     assert "rootCauseHtml" not in run
     assert "'<div class=\"rc-sol-row\">'" not in run
-    assert 'data-metric-rc-item=' in run
-    assert 'data-metric-rcdetail-item=' in run
-    assert 'data-metric-feedback-item=' in run
+    assert 'data-metric-issues-item=' in run
+    assert 'data-issue-field="category"' in run
+    assert 'data-issue-field="subcategory"' in run
+    assert 'data-issue-field="finding"' in run
     assert 'data-metric-sol-item=' in run
     assert 'AI analysis did not produce a usable diagnosis.' in run
     assert 'role="alert"' in run
@@ -2994,7 +2995,7 @@ def test_auto_analysis_is_a_first_class_project_page() -> None:
     assert "metric_name: metricName" in run
     assert "if (!hasStoredAnalysis && !metricFailed) return '';" in run
     assert "const hasCategories = analysisCategories.length > 0;" in run
-    assert "(analysis.root_cause || '+ Category')" in run
+    assert "renderMetricRootCauseIssues(analysis)" in run
     assert "'>Edit</button>'" not in run
     assert 'id="analysis-metric-list"' in analyzer
     assert "getMetrics: projectScoped ? () => [] : () => state.selectedMetrics.slice()" in analyzer
@@ -3218,8 +3219,12 @@ def test_auto_analysis_page_uses_first_class_run_rules_and_document_tabs() -> No
     assert "pg-category-example-data" in playground
     assert 'data-taxonomy-field="description"' in playground
     assert 'data-taxonomy-field="when_to_use"' in playground
+    assert 'data-subcategory-taxonomy-field="description"' in playground
+    assert 'data-subcategory-taxonomy-field="when_to_use"' in playground
     assert "cfg.category_taxonomy = taxonomyMap" in playground
+    assert "cfg.subcategory_taxonomy = subcategoryTaxonomyMap" in playground
     assert "function _categoryTaxonomyFor" in playground
+    assert "function _subcategoryTaxonomyFor" in playground
     assert ".pg-category-taxonomy" in styles
     assert "instructionsBody.append(instructions)" in analyzer
     assert analyzer.index("runPanel.append(instructionsCard)") < analyzer.index("runPanel.append(targetCard)")
@@ -3281,7 +3286,7 @@ def test_auto_analysis_page_uses_first_class_run_rules_and_document_tabs() -> No
     assert 'data-category-limit-field' in playground
     assert 'class="qym-help-marker"' in playground
     assert 'class="qym-help-tooltip" role="tooltip"' in playground
-    assert "Limits how many diagnosis categories the analyzer can return" in playground
+    assert "Limits how many root-cause issues the analyzer can return" in playground
     assert 'min="1"' in playground
     assert 'inputmode="numeric"' in playground
     assert "function _normalizeCategoryLimitInput" in playground
@@ -3378,8 +3383,45 @@ def test_root_cause_breakdowns_support_metric_scoping() -> None:
         assert 'id="root-cause-metric-select"' in source
         assert ">All</option>" in source
         assert "getRowRootCauseAnalyses(row, state.rootCauseMetric)" in source
-        assert "analysis.root_cause_detail" in source
+        assert "rootCauseIssues(analysis)" in source
+        assert "issue.subcategory" in source
         assert "renderSankeyDiagram" in source
+
+
+def test_root_cause_issue_records_are_rendered_edited_and_exported() -> None:
+    playground = (DASHBOARD_DIR / "playground.js").read_text(encoding="utf-8")
+    reviews = (DASHBOARD_DIR / "reviews.html").read_text(encoding="utf-8")
+    run = (DASHBOARD_DIR / "run.html").read_text(encoding="utf-8")
+    compare = (DASHBOARD_DIR / "compare.html").read_text(encoding="utf-8")
+    endpoints = (DASHBOARD_DIR / "docs/developer/endpoints.html").read_text(
+        encoding="utf-8"
+    )
+
+    assert "function _rootCauseIssues" in playground
+    assert 'class="pg-result-issues"' in playground
+    assert "if (Array.isArray(value.root_cause_issues))" in playground
+    assert "var hasCanonicalIssues = Array.isArray(r.root_cause_issues)" in playground
+    assert "return (legacyCategories.length ? legacyCategories : ['']).map" in playground
+    assert "subcategory: legacySubcategory" in playground
+    assert "finding: legacyFinding" in playground
+    assert "var useLegacyResultLayout = !hasCanonicalIssues && !issues.length" in playground
+    assert "function reviewRootCauseIssues" in reviews
+    assert "data-review-issue-edit" in reviews
+    assert "human_root_cause_issues: issues" in reviews
+    assert "function rootCauseIssuePatch" in run
+    assert 'data-metric-issues-item=' in run
+    assert ":root_cause_issues" in run
+    assert "function rootCauseIssuePatch" in compare
+    assert 'data-rc-issues-item=' in compare
+    assert "root_cause_issues', label: 'Root cause issues (JSON)'" in compare
+    assert "canonical <code>root_cause_issues</code> records" in endpoints
+
+    active_compare_output = compare.split("function renderCompareOutputGroup", 1)[
+        1
+    ].split("function renderItemComparisonCard", 1)[0]
+    assert "const rootCauseBlockFor = (row, runIdx)" in active_compare_output
+    assert "${rootCauseBlockFor(row, runIdx)}" in active_compare_output
+    assert 'data-rc-issues-item="${escapeAttr(itemId)}"' in active_compare_output
 
 
 def test_run_manual_diagnosis_uses_project_backed_modal_picker() -> None:
@@ -3418,6 +3460,8 @@ def test_category_taxonomy_is_required_across_diagnosis_entry_points() -> None:
     assert "Both fields are required." in playground
     assert "required aria-required=\"true\"" in playground
     assert "incompleteTaxonomyCategories" in analyzer
+    assert "incompleteTaxonomySubcategories" in analyzer
+    assert "subcategoryTaxonomyTouched" in analyzer
     assert "Taxonomy required" in analyzer
     assert "Required · saved to the project" in run
     assert "missingTaxonomyField" in run

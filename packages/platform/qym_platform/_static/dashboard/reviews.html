@@ -865,6 +865,85 @@
       margin-top: var(--space-sm);
     }
 
+    .review-issue-list,
+    .review-issue-edit-list {
+      display: grid;
+      gap: var(--space-sm);
+    }
+
+    .review-issue {
+      padding: var(--space-sm);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--control-radius);
+      background: var(--bg-elevated);
+    }
+
+    .review-issue.changed {
+      border-left: 2px solid var(--accent-primary);
+    }
+
+    .review-issue.removed {
+      border-left: 2px solid var(--error);
+      opacity: 0.7;
+    }
+
+    .review-issue-head,
+    .review-issue-edit-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-sm);
+      margin-bottom: var(--space-sm);
+    }
+
+    .review-issue-number {
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+      font-size: var(--font-sm);
+    }
+
+    .review-issue-category {
+      color: var(--text-primary);
+      font-size: var(--font-md);
+      font-weight: 600;
+    }
+
+    .review-issue-subcategory {
+      margin-top: var(--space-xs);
+      color: var(--text-secondary);
+      font-size: var(--font-base);
+      font-weight: 600;
+    }
+
+    .review-issue-finding {
+      margin-top: var(--space-xs);
+      color: var(--text-secondary);
+      font-size: var(--font-sm);
+      line-height: 1.5;
+      white-space: pre-wrap;
+    }
+
+    .review-issue-reason {
+      margin-top: var(--space-xs);
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+    }
+
+    .review-issue-edit {
+      padding: var(--space-sm);
+      border: 1px solid var(--border-default);
+      border-radius: var(--control-radius);
+      background: var(--bg-elevated);
+    }
+
+    .review-issue-edit .edit-field:last-child {
+      margin-bottom: 0;
+    }
+
+    .review-issue-add {
+      justify-self: start;
+    }
+
     /* ── Empty State ─────────────────────────────── */
 
     .empty-state {
@@ -2028,10 +2107,9 @@
       const st = c.status || 'pending';
       const isSelected = state.selected.has(c.id);
       const isEditing = state.editingId === c.id;
-      const aiCategories = reviewRootCauseCategories(c, 'ai');
-      const humanCategories = reviewRootCauseCategories(c, 'human');
-      const aiChanged = aiCategories.join('\u0000').toLocaleLowerCase() !== humanCategories.join('\u0000').toLocaleLowerCase();
-      const detailChanged = c.ai_root_cause_detail !== c.human_root_cause_detail;
+      const aiIssues = reviewRootCauseIssues(c, 'ai');
+      const humanIssues = reviewRootCauseIssues(c, 'human');
+      const issuesChanged = reviewIssueSignature(aiIssues) !== reviewIssueSignature(humanIssues);
 
       const corrector = c.corrected_by ? (c.corrected_by.display_name || c.corrected_by.email) : '';
       const reviewer = c.reviewed_by ? (c.reviewed_by.display_name || c.reviewed_by.email) : '';
@@ -2083,16 +2161,8 @@
                 ${c.ai_confidence != null ? `<span class="diff-confidence">${(c.ai_confidence * 100).toFixed(0)}% conf</span>` : ''}
               </div>
               <div class="diff-field">
-                <div class="diff-label">Root Cause Category</div>
-                <div class="diff-value ${aiCategories.length ? (aiChanged ? 'removed' : '') : 'is-empty'}">${aiCategories.length ? escapeHtml(aiCategories.join(' · ')) : '<span class="diff-empty">—</span>'}</div>
-              </div>
-              <div class="diff-field">
-                <div class="diff-label">Root Cause Detail</div>
-                <div class="diff-value ${c.ai_root_cause_detail ? (detailChanged ? 'removed' : '') : 'is-empty'}">${c.ai_root_cause_detail ? escapeHtml(c.ai_root_cause_detail) : '<span class="diff-empty">—</span>'}</div>
-              </div>
-              <div class="diff-field">
-                <div class="diff-label">Feedback</div>
-                <div class="diff-value ${c.ai_root_cause_note ? '' : 'is-empty'}">${c.ai_root_cause_note ? escapeHtml(truncate(c.ai_root_cause_note, 200)) : '<span class="diff-empty">—</span>'}</div>
+                <div class="diff-label">Root-cause issues</div>
+                ${renderReviewIssues(aiIssues, issuesChanged ? 'removed' : '')}
               </div>
             </div>
 
@@ -2103,16 +2173,8 @@
               </div>
               ${isEditing ? renderEditForm(c) : `
                 <div class="diff-field">
-                  <div class="diff-label">Root Cause Category</div>
-                  <div class="diff-value ${humanCategories.length ? (aiChanged ? 'changed' : '') : 'is-empty'}">${humanCategories.length ? escapeHtml(humanCategories.join(' · ')) : '<span class="diff-empty">—</span>'}</div>
-                </div>
-                <div class="diff-field">
-                  <div class="diff-label">Root Cause Detail</div>
-                  <div class="diff-value ${c.human_root_cause_detail ? (detailChanged ? 'changed' : '') : 'is-empty'}">${c.human_root_cause_detail ? escapeHtml(c.human_root_cause_detail) : '<span class="diff-empty">—</span>'}</div>
-                </div>
-                <div class="diff-field">
-                  <div class="diff-label">Feedback</div>
-                  <div class="diff-value ${c.human_root_cause_note ? '' : 'is-empty'}">${c.human_root_cause_note ? escapeHtml(truncate(c.human_root_cause_note, 200)) : '<span class="diff-empty">—</span>'}</div>
+                  <div class="diff-label">Root-cause issues</div>
+                  ${renderReviewIssues(humanIssues, issuesChanged ? 'changed' : '')}
                 </div>
               `}
             </div>
@@ -2181,17 +2243,73 @@
       `;
     }
 
-    function reviewRootCauseCategories(correction, source) {
-      const plural = correction && (source ? correction[`${source}_root_causes`] : correction.root_causes);
-      const singular = correction && (source ? correction[`${source}_root_cause`] : correction.root_cause);
-      const raw = Array.isArray(plural) ? plural : (singular ? [singular] : []);
-      const seen = new Set();
-      return raw.map(value => String(value || '').trim()).filter(value => {
-        const key = value.toLocaleLowerCase();
-        if (!value || seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      }).slice(0, 3);
+    function reviewRootCauseIssues(correction, source, legacyFallback = true) {
+      if (!correction || typeof correction !== 'object') return [];
+      const raw = source ? correction[`${source}_root_cause_issues`] : correction.root_cause_issues;
+      if (Array.isArray(raw)) {
+        const issues = raw.map(issue => {
+          if (!issue || typeof issue !== 'object' || Array.isArray(issue)) return null;
+          const rawConfidence = issue.confidence;
+          const confidence = rawConfidence == null || rawConfidence === '' ? NaN : Number(rawConfidence);
+          const normalized = {
+            category: String(issue.category || issue.root_cause || '').trim(),
+            subcategory: String(issue.subcategory || issue.root_cause_detail || '').trim(),
+            finding: String(issue.finding || issue.root_cause_note || '').trim(),
+            category_reason: String(issue.category_reason || issue.root_cause_reason || '').trim(),
+          };
+          if (Number.isFinite(confidence)) normalized.confidence = Math.min(1, Math.max(0, confidence));
+          else delete normalized.confidence;
+          return normalized.category || normalized.subcategory || normalized.finding ? normalized : null;
+        }).filter(Boolean);
+        if (issues.length) {
+          const topReason = String((source ? correction[`${source}_root_cause_reason`] : correction.root_cause_reason) || '').trim();
+          if (!issues[0].category_reason && topReason) issues[0].category_reason = topReason;
+          const rawTopConfidence = source ? correction[`${source}_confidence`] : correction.confidence;
+          const topConfidence = rawTopConfidence == null || rawTopConfidence === '' ? NaN : Number(rawTopConfidence);
+          if (issues[0].confidence == null && Number.isFinite(topConfidence)) {
+            issues[0].confidence = Math.min(1, Math.max(0, topConfidence));
+          }
+        }
+        return issues;
+      }
+      if (!legacyFallback) return [];
+      const categories = (() => {
+        const plural = source ? correction[`${source}_root_causes`] : correction.root_causes;
+        const singular = source ? correction[`${source}_root_cause`] : correction.root_cause;
+        return Array.isArray(plural) ? plural : (singular ? [singular] : []);
+      })().map(value => String(value || '').trim()).filter(Boolean);
+      const subcategory = String((source ? correction[`${source}_root_cause_detail`] : correction.root_cause_detail) || '').trim();
+      const finding = String((source ? correction[`${source}_root_cause_note`] : correction.root_cause_note) || '').trim();
+      const reason = String((source ? correction[`${source}_root_cause_reason`] : correction.root_cause_reason) || '').trim();
+      const rawConfidence = source ? correction[`${source}_confidence`] : correction.confidence;
+      const confidence = rawConfidence == null || rawConfidence === '' ? NaN : Number(rawConfidence);
+      if (!categories.length && !subcategory && !finding) return [];
+      const legacyIssues = (categories.length ? categories : ['']).map((category, index) => ({
+        category,
+        subcategory,
+        finding,
+        ...(index === 0 && reason ? { category_reason: reason } : {}),
+        ...(index === 0 && Number.isFinite(confidence) ? { confidence: Math.min(1, Math.max(0, confidence)) } : {}),
+      }));
+      return legacyIssues;
+    }
+
+    function reviewIssueSignature(issues) {
+      return JSON.stringify((issues || []).map(issue => [issue.category, issue.subcategory, issue.finding]
+        .map(value => String(value || '').trim().toLocaleLowerCase())));
+    }
+
+    function renderReviewIssues(issues, changeClass = '') {
+      if (!issues.length) return '<div class="diff-value is-empty"><span class="diff-empty">—</span></div>';
+      return '<div class="review-issue-list">' + issues.map((issue, index) => `
+        <article class="review-issue ${changeClass}">
+          <div class="review-issue-head"><span class="review-issue-number">Issue ${index + 1}</span>${issue.confidence != null ? `<span class="diff-confidence">${Math.round(issue.confidence * 100)}%</span>` : ''}</div>
+          <div class="review-issue-category">${escapeHtml(issue.category || 'Uncategorized')}</div>
+          ${issue.subcategory ? `<div class="review-issue-subcategory">${escapeHtml(issue.subcategory)}</div>` : ''}
+          ${issue.finding ? `<div class="review-issue-finding">${escapeHtml(truncate(issue.finding, 300))}</div>` : ''}
+          ${issue.category_reason ? `<details class="review-issue-reason"><summary>Why this category</summary><div>${escapeHtml(issue.category_reason)}</div></details>` : ''}
+        </article>
+      `).join('') + '</div>';
     }
 
     function renderHistory(c) {
@@ -2204,11 +2322,14 @@
             ${history.map(entry => {
               const after = entry.after_state || {};
               const review = entry.review;
-              const afterCategories = reviewRootCauseCategories(after, '');
-              const rootCause = afterCategories.length ? escapeHtml(afterCategories.join(' · ')) : '<span class="history-empty">Cleared</span>';
-              const detail = after.root_cause_detail ? ` / ${escapeHtml(after.root_cause_detail)}` : '';
+              const afterIssues = reviewRootCauseIssues(after, '');
+              const rootCause = afterIssues.length
+                ? afterIssues.map(issue => escapeHtml([issue.category, issue.subcategory].filter(Boolean).join(' / '))).join(' · ')
+                : '<span class="history-empty">Cleared</span>';
               const solution = after.solution ? ` | Solution: ${escapeHtml(after.solution)}` : '';
-              const note = after.root_cause_note ? `<div class="history-note">${escapeHtml(after.root_cause_note)}</div>` : '';
+              const note = afterIssues.some(issue => issue.finding)
+                ? `<div class="history-note">${afterIssues.map(issue => escapeHtml(issue.finding)).filter(Boolean).join('<br>')}</div>`
+                : '';
               const actor = titleCase(entry.actor_source || 'legacy');
               const reviewStatus = review && review.status ? `
                 <span class="history-review-status ${escapeHtml(review.status)}">${escapeHtml(review.status)}</span>
@@ -2225,7 +2346,7 @@
                     ${reviewStatus}
                   </div>
                   <div class="history-state">
-                    <strong>After:</strong> ${rootCause}${detail}${solution}
+                    <strong>After:</strong> ${rootCause}${solution}
                   </div>
                   ${note}
                   ${reviewComment}
@@ -2238,24 +2359,26 @@
     }
 
     function renderEditForm(c) {
+      const issues = reviewRootCauseIssues(c, 'human');
       return `
-        <div class="edit-field">
-          <label>Root Cause Category</label>
-          <input class="qym-control qym-input" type="text" data-edit-field="human_root_causes" value="${escapeHtml(reviewRootCauseCategories(c, 'human').join(', '))}" placeholder="Category 1, Category 2, Category 3" />
-        </div>
-        <div class="edit-field">
-          <label>Root Cause Detail</label>
-          <input class="qym-control qym-input" type="text" data-edit-field="human_root_cause_detail" value="${escapeHtml(c.human_root_cause_detail)}" />
-        </div>
-        <div class="edit-field">
-          <label>Feedback</label>
-          <textarea data-edit-field="human_root_cause_note">${escapeHtml(c.human_root_cause_note)}</textarea>
+        <div class="review-issue-edit-list" data-review-issue-list>
+          ${(issues.length ? issues : [{}]).map((issue, index) => renderReviewIssueEdit(issue, index)).join('')}
+          <button class="btn-sm btn-reset review-issue-add" type="button" data-add-review-issue>Add issue</button>
         </div>
         <div class="edit-actions">
-          <button class="btn-sm btn-approve" data-save-edit="${c.id}">Save</button>
-          <button class="btn-sm btn-reset" data-cancel-edit="${c.id}">Cancel</button>
+          <button class="btn-sm btn-approve" type="button" data-save-edit="${c.id}">Save</button>
+          <button class="btn-sm btn-reset" type="button" data-cancel-edit="${c.id}">Cancel</button>
         </div>
       `;
+    }
+
+    function renderReviewIssueEdit(issue = {}, index = 0) {
+      return `<article class="review-issue-edit" data-review-issue-edit>
+        <div class="review-issue-edit-head"><span class="review-issue-number">Issue ${index + 1}</span><button class="qym-icon-action" type="button" data-remove-review-issue title="Remove issue" aria-label="Remove issue">×</button></div>
+        <div class="edit-field"><label>Category</label><input class="qym-control qym-input" type="text" data-issue-field="category" value="${escapeHtml(issue.category || '')}" placeholder="Root-cause category" /></div>
+        <div class="edit-field"><label>Subcategory</label><input class="qym-control qym-input" type="text" data-issue-field="subcategory" value="${escapeHtml(issue.subcategory || '')}" placeholder="Reusable failure mechanism" /></div>
+        <div class="edit-field"><label>Finding</label><textarea data-issue-field="finding" placeholder="Item-specific diagnosis">${escapeHtml(issue.finding || '')}</textarea></div>
+      </article>`;
     }
 
     /* ── Event Handlers ──────────────────────────── */
@@ -2363,20 +2486,59 @@
         });
       });
 
+      $$('[data-review-issue-list]').forEach(list => {
+        list.addEventListener('click', event => {
+          const add = event.target.closest('[data-add-review-issue]');
+          if (add) {
+            add.insertAdjacentHTML('beforebegin', renderReviewIssueEdit({}, list.querySelectorAll('[data-review-issue-edit]').length));
+            return;
+          }
+          const remove = event.target.closest('[data-remove-review-issue]');
+          if (!remove) return;
+          const row = remove.closest('[data-review-issue-edit]');
+          if (row) row.remove();
+          list.querySelectorAll('[data-review-issue-edit]').forEach((issue, index) => {
+            const number = issue.querySelector('.review-issue-number');
+            if (number) number.textContent = `Issue ${index + 1}`;
+          });
+        });
+      });
+
       // Save edit
       $$('[data-save-edit]').forEach(btn => {
         btn.addEventListener('click', async (e) => {
           e.stopPropagation();
           const id = Number(btn.dataset.saveEdit);
           const card = btn.closest('.correction-card');
-          const body = {};
-          card.querySelectorAll('[data-edit-field]').forEach(field => {
-            if (field.dataset.editField === 'human_root_causes') {
-              body.human_root_causes = field.value.split(',').map(value => value.trim()).filter(Boolean).slice(0, 3);
-            } else {
-              body[field.dataset.editField] = field.value;
+          const issues = Array.from(card.querySelectorAll('[data-review-issue-edit]')).map(row => {
+            const issue = { category: '', subcategory: '', finding: '' };
+            row.querySelectorAll('[data-issue-field]').forEach(field => {
+              issue[field.dataset.issueField] = field.value.trim();
+            });
+            return issue;
+          }).filter(issue => issue.category || issue.subcategory || issue.finding);
+          const incompleteIssue = issues.findIndex(issue => !issue.category);
+          if (incompleteIssue >= 0) {
+            const row = card.querySelectorAll('[data-review-issue-edit]')[incompleteIssue];
+            const categoryInput = row && row.querySelector('[data-issue-field="category"]');
+            if (categoryInput) categoryInput.focus();
+            showToast('error', 'Category required', `Issue ${incompleteIssue + 1} needs a category.`);
+            return;
+          }
+          const firstIssue = issues[0] || {};
+          const categories = [];
+          issues.forEach(issue => {
+            if (issue.category && !categories.some(category => category.toLocaleLowerCase() === issue.category.toLocaleLowerCase())) {
+              categories.push(issue.category);
             }
           });
+          const body = {
+            human_root_cause_issues: issues,
+            human_root_causes: categories,
+            human_root_cause: firstIssue.category || '',
+            human_root_cause_detail: firstIssue.subcategory || '',
+            human_root_cause_note: firstIssue.finding || '',
+          };
           try {
             const updated = await apiAction('PUT', `api/corrections/${id}`, body);
             applyCorrectionUpdate(id, updated);

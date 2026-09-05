@@ -796,10 +796,17 @@ def test_correction_review_permissions_and_filtering(client, session_factory) ->
             "item_id": "item-1",
             "metric_name": None,
             "run_name": "run-1",
-            "dataset": "dataset-1",
-            "model": "",
-            "detail": "",
-            "note": "Human review",
+                "dataset": "dataset-1",
+                "model": "",
+                "root_cause_issues": [
+                    {
+                        "category": "Wrong Format",
+                        "subcategory": "",
+                        "finding": "Human review",
+                    }
+                ],
+                "detail": "",
+                "note": "Human review",
             "solution": "",
             "solution_note": "",
             "input": {"prompt": "hello"},

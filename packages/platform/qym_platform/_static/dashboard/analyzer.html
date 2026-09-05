@@ -844,11 +844,8 @@
       margin-top: var(--space-md);
     }
     #analysis-diagnosis-view .pg-detail-item {
-      display: flex;
+      display: block;
       min-height: var(--badge-height);
-      align-items: center;
-      justify-content: space-between;
-      gap: var(--space-md);
       padding: var(--space-sm) var(--space-md);
       border: 1px solid var(--border-subtle);
       border-radius: var(--control-radius);
@@ -868,6 +865,15 @@
       min-width: 0;
       align-items: center;
       gap: var(--space-sm);
+    }
+    #analysis-diagnosis-view .pg-detail-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-md);
+    }
+    #analysis-diagnosis-view .pg-detail-taxonomy-fields {
+      margin-top: var(--space-md);
     }
     #analysis-diagnosis-view .pg-detail-name {
       min-width: 0;
@@ -3850,7 +3856,7 @@
         function passMetadata(row) {
           const metadata = { ...((row.item_metadata && typeof row.item_metadata === 'object') ? row.item_metadata : {}) };
           [
-            'root_cause', 'root_causes', 'root_cause_categories', 'root_cause_detail',
+            'root_cause', 'root_causes', 'root_cause_categories', 'root_cause_issues', 'root_cause_detail',
             'root_cause_note', 'root_cause_reason', 'category_taxonomy',
             'root_cause_source', 'root_cause_confidence', 'solution', 'solution_note',
             'solution_source', 'analysis_error', 'analysis_warning', 'metric_analyses',
@@ -5384,7 +5390,11 @@
           if (canManageCategoryCatalog) setCategorySaveState('warning', 'Unsaved changes');
         };
         diagnosisBody.addEventListener('input', event => {
-          if (event.target.matches('[data-taxonomy-field], #pg-new-category, .pg-add-detail-input')) {
+          if (event.target.matches('[data-taxonomy-field], [data-subcategory-taxonomy-field], #pg-new-category, .pg-add-detail-input')) {
+            if (event.target.matches('[data-subcategory-taxonomy-field]')) {
+              const item = event.target.closest('.pg-detail-item');
+              if (item) item.dataset.subcategoryTaxonomyTouched = 'true';
+            }
             markCategoryCatalogDirty();
           }
         });
@@ -5401,13 +5411,32 @@
           const categories = [];
           const categoryDetails = {};
           const categoryTaxonomy = {};
+          const subcategoryTaxonomy = {};
           const incompleteTaxonomyCategories = [];
+          const incompleteTaxonomySubcategories = [];
           diagnosisBody.querySelectorAll('#pg-categories-list .pg-category-group').forEach(group => {
             const category = String(group.dataset.cat || '').trim();
             if (!category) return;
             categories.push(category);
             const details = Array.from(group.querySelectorAll('.pg-detail-item'))
-              .map(item => String(item.dataset.detail || '').trim()).filter(Boolean);
+              .map(item => {
+                const subcategory = String(item.dataset.detail || '').trim();
+                const taxonomy = {};
+                item.querySelectorAll('[data-subcategory-taxonomy-field]').forEach(field => {
+                  const value = String(field.value || '').trim();
+                  if (value) taxonomy[field.dataset.subcategoryTaxonomyField] = value;
+                });
+                if (taxonomy.description || taxonomy.when_to_use) {
+                  if (!subcategoryTaxonomy[category]) subcategoryTaxonomy[category] = {};
+                  subcategoryTaxonomy[category][subcategory] = taxonomy;
+                }
+                if ((item.dataset.newSubcategory === 'true' || item.dataset.subcategoryTaxonomyDefined === 'true' ||
+                    item.dataset.subcategoryTaxonomyTouched === 'true' || Object.keys(taxonomy).length) &&
+                    (!taxonomy.description || !taxonomy.when_to_use)) {
+                  incompleteTaxonomySubcategories.push(category + ' / ' + subcategory);
+                }
+                return subcategory;
+              }).filter(Boolean);
             if (details.length) categoryDetails[category] = details;
             const taxonomy = {};
             group.querySelectorAll('[data-taxonomy-field]').forEach(field => {
@@ -5424,12 +5453,14 @@
               categories,
               category_details_map: categoryDetails,
               category_taxonomy: categoryTaxonomy,
+              subcategory_taxonomy: subcategoryTaxonomy,
               max_root_cause_categories: Number.isFinite(projectMaxCategories)
                 ? Math.min(10, Math.max(1, Math.trunc(projectMaxCategories)))
                 : 3,
               base_revision: categoryCatalogRevision,
             },
             incompleteTaxonomyCategories,
+            incompleteTaxonomySubcategories,
           };
         };
         if (categorySaveButton) categorySaveButton.addEventListener('click', async () => {
@@ -5446,6 +5477,17 @@
               'error',
               'Taxonomy required',
               'Add both Description and Use when guidance for ' + categoryLabel + ': ' + categories.join(', ') + '.'
+            );
+            return;
+          }
+          if (categoryCatalog.incompleteTaxonomySubcategories.length) {
+            const subcategories = categoryCatalog.incompleteTaxonomySubcategories;
+            categorySaveButton.disabled = !canManageCategoryCatalog;
+            setCategorySaveState('warning', 'Taxonomy required');
+            showStatus(
+              'error',
+              'Subcategory guidance required',
+              'Add both Description and Use when guidance for: ' + subcategories.join(', ') + '.'
             );
             return;
           }
@@ -5666,6 +5708,9 @@
               warning: warning,
               error: result.error || '',
             };
+            if (Array.isArray(result.root_cause_issues)) {
+              analysis.root_cause_issues = result.root_cause_issues;
+            }
             if (state.passNumber) {
               if (!row.pass_metric_analyses || typeof row.pass_metric_analyses !== 'object') row.pass_metric_analyses = {};
               if (!Array.isArray(row.pass_metric_analyses[result.metric_name])) {

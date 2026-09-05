@@ -5,6 +5,7 @@ from collections.abc import Iterator
 from types import SimpleNamespace
 
 import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -18,6 +19,7 @@ from qym_platform.api.analysis import (  # noqa: E402
     PlaygroundConfig,
     _catalog_request_values,
     _analysis_config_with_category_catalog,
+    _playground_config_to_analyzer,
 )
 from qym_platform.services.llm_analyzer import build_analysis_prompt
 from qym_platform.app import create_app
@@ -260,6 +262,27 @@ def test_category_catalog_version_aliases_and_conflict_contract(
     assert incomplete.json()["detail"]["code"] == "category_taxonomy_required"
     assert incomplete.json()["detail"]["categories"] == ["Custom Failure"]
 
+    incomplete_subcategory = analysis_route_client.put(
+        base,
+        headers=_headers(),
+        json={
+            "categories": ["Custom Failure"],
+            "category_details_map": {"Custom Failure": ["Missing field"]},
+            "category_taxonomy": {
+                "Custom Failure": {
+                    "description": "Project-specific failure.",
+                    "when_to_use": "Use for project-specific failures.",
+                }
+            },
+            "base_revision": 0,
+        },
+    )
+    assert incomplete_subcategory.status_code == 422
+    assert incomplete_subcategory.json()["detail"]["code"] == "subcategory_taxonomy_required"
+    assert incomplete_subcategory.json()["detail"]["subcategories"] == [
+        {"category": "Custom Failure", "subcategory": "Missing field"}
+    ]
+
     saved = analysis_route_client.put(
         base,
         headers=_headers(),
@@ -270,6 +293,14 @@ def test_category_catalog_version_aliases_and_conflict_contract(
                 "Custom Failure": {
                     "description": "Project-specific failure.",
                     "when_to_use": "Use for project-specific failures.",
+                }
+            },
+            "subcategory_taxonomy": {
+                "Custom Failure": {
+                    "Missing field": {
+                        "description": "A required field is absent.",
+                        "when_to_use": "Use when the output omits a required field.",
+                    }
                 }
             },
             "max_root_cause_categories": 4,
@@ -283,6 +314,34 @@ def test_category_catalog_version_aliases_and_conflict_contract(
     assert catalog["max_root_cause_categories"] == 4
     assert catalog["category_entries"][0]["id"]
     assert catalog["category_entries"][0]["status"] == "active"
+    assert catalog["subcategory_taxonomy"] == {
+        "Custom Failure": {
+            "Missing field": {
+                "description": "A required field is absent.",
+                "when_to_use": "Use when the output omits a required field.",
+            }
+        }
+    }
+
+    legacy_save = analysis_route_client.put(
+        base,
+        headers=_headers(),
+        json={
+            "categories": ["Custom Failure"],
+            "category_details_map": {"Custom Failure": ["Missing field"]},
+            "category_taxonomy": {
+                "Custom Failure": {
+                    "description": "Project-specific failure.",
+                    "when_to_use": "Use for project-specific failures.",
+                }
+            },
+            "max_root_cause_categories": 4,
+            "base_revision": 1,
+        },
+    )
+    assert legacy_save.status_code == 200
+    assert legacy_save.json()["created"] is False
+    assert legacy_save.json()["catalog"]["subcategory_taxonomy"] == catalog["subcategory_taxonomy"]
 
     history = analysis_route_client.get(base + "/versions", headers=_headers())
     assert history.status_code == 200
@@ -307,6 +366,7 @@ def test_category_catalog_version_aliases_and_conflict_contract(
     assert restored.json()["catalog"]["parent_version_id"] == catalog["id"]
     assert restored.json()["catalog"]["max_root_cause_categories"] == 4
     assert restored.json()["catalog"]["category_entries"][0]["id"] == catalog["category_entries"][0]["id"]
+    assert restored.json()["catalog"]["subcategory_taxonomy"] == catalog["subcategory_taxonomy"]
 
 
 def test_analysis_config_uses_catalog_categories_for_prompt_injection(
@@ -330,6 +390,20 @@ def test_analysis_config_uses_catalog_categories_for_prompt_injection(
             "Unapproved Category": {
                 "description": "This must not enter the prompt.",
                 "when_to_use": "Never use this leaked label.",
+            },
+        },
+        "subcategory_taxonomy": {
+            "Approved Category": {
+                "Approved detail": {
+                    "description": "The approved detail definition.",
+                    "when_to_use": "Use for this approved detail.",
+                }
+            },
+            "Unapproved Category": {
+                "Leaked detail": {
+                    "description": "This must not enter the prompt.",
+                    "when_to_use": "Never use this leaked detail.",
+                }
             },
         },
         "max_root_cause_categories": 3,
@@ -375,6 +449,14 @@ def test_analysis_config_uses_catalog_categories_for_prompt_injection(
     ]
     assert "Unapproved Category" not in config["category_taxonomy"]
     assert "Unapproved Category" not in config["category_details_map"]
+    assert config["subcategory_taxonomy"] == {
+        "Approved Category": {
+            "Approved detail": {
+                "description": "The approved detail definition.",
+                "when_to_use": "Use for this approved detail.",
+            }
+        }
+    }
     prompt = "\n".join(
         message["content"]
         for message in build_analysis_prompt(
@@ -393,12 +475,13 @@ def test_analysis_config_uses_catalog_categories_for_prompt_injection(
     assert "- Approved Category" in prompt
     assert "- Bare Approved Category\n  Approved examples: 0" in prompt
     assert "Unapproved Category" not in prompt
-    # The details section names approved mechanisms only. "Approved detail" and
-    # "Bare detail" live in the editable catalog map, so they must stay out even
-    # though their categories are approved.
-    assert "Use the exact approved detail when it covers the mechanism:" in prompt
+    # Approved correction details remain separate from the project taxonomy.
+    # A label with no subcategory definition still stays out of the prompt.
+    assert "Use the exact listed subcategory when it covers the mechanism:" in prompt
     assert "    - Approved mechanism" in prompt
-    assert "Approved detail" not in prompt
+    assert "    - Approved detail" in prompt
+    assert "      Description: The approved detail definition." in prompt
+    assert "      Use when: Use for this approved detail." in prompt
     assert "Bare detail" not in prompt
     assert "Leaked detail" not in prompt
 
@@ -410,6 +493,146 @@ def test_category_limit_models_normalize_out_of_range_values() -> None:
     assert CategoryCatalogUpdate(max_root_cause_categories=0).max_root_cause_categories == 1
     assert CategoryCatalogUpdate(max_root_cause_categories=11).max_root_cause_categories == 10
     assert CategoryCatalogUpdate(max_root_cause_categories="").max_root_cause_categories == 3
+
+
+def test_playground_converts_subcategory_taxonomy_for_analyzer() -> None:
+    config = _playground_config_to_analyzer(
+        PlaygroundConfig(
+            subcategory_taxonomy={
+                "Category": {
+                    "Detail": {
+                        "description": "A reusable diagnosis detail.",
+                        "when_to_use": "Use when this detail fits the evidence.",
+                    }
+                }
+            }
+        )
+    )
+
+    assert config is not None
+    assert config["subcategory_taxonomy"] == {
+        "Category": {
+            "Detail": {
+                "description": "A reusable diagnosis detail.",
+                "when_to_use": "Use when this detail fits the evidence.",
+            }
+        }
+    }
+
+
+def test_catalog_grandfathers_unchanged_legacy_subcategory_without_definition() -> None:
+    request = CategoryCatalogUpdate(
+        categories=["Legacy Category"],
+        category_details_map={"Legacy Category": ["Legacy detail"]},
+        category_taxonomy={"Legacy Category": {"description": "Legacy"}},
+    )
+    values = _catalog_request_values(
+        None,
+        "analysis-project",
+        request,
+        {
+            "categories": ["Legacy Category"],
+            "category_entries": [],
+            "category_details_map": {"Legacy Category": ["Legacy detail"]},
+            "category_taxonomy": {"Legacy Category": {"description": "Legacy"}},
+            "subcategory_taxonomy": {},
+            "max_root_cause_categories": 3,
+        },
+    )
+
+    assert values["subcategory_taxonomy"] == {}
+
+
+def test_catalog_taxonomy_casing_has_a_stable_round_trip_hash() -> None:
+    prior = {
+        "categories": [],
+        "category_entries": [],
+        "category_details_map": {},
+        "category_taxonomy": {},
+        "subcategory_taxonomy": {},
+        "max_root_cause_categories": 3,
+    }
+    first = _catalog_request_values(
+        None,
+        "analysis-project",
+        CategoryCatalogUpdate(
+            categories=["Canonical Category"],
+            category_taxonomy={
+                "canonical category": {
+                    "description": "A stable category definition.",
+                    "when_to_use": "Use when this category matches the evidence.",
+                }
+            },
+        ),
+        prior,
+    )
+    second = _catalog_request_values(
+        None,
+        "analysis-project",
+        CategoryCatalogUpdate(
+            categories=first["categories"],
+            category_entries=first["category_entries"],
+            category_details_map=first["category_details_map"],
+            category_taxonomy=first["category_taxonomy"],
+            subcategory_taxonomy=first["subcategory_taxonomy"],
+            max_root_cause_categories=first["max_root_cause_categories"],
+        ),
+        first,
+    )
+
+    assert first["category_taxonomy"] == {
+        "Canonical Category": {
+            "description": "A stable category definition.",
+            "when_to_use": "Use when this category matches the evidence.",
+        }
+    }
+    assert second["content_hash"] == first["content_hash"]
+
+
+def test_catalog_requires_complete_definition_when_subcategory_is_edited() -> None:
+    request = CategoryCatalogUpdate(
+        categories=["Category"],
+        category_details_map={"Category": ["Detail"]},
+        category_taxonomy={
+            "Category": {
+                "description": "Category definition.",
+                "when_to_use": "Use for this category.",
+            }
+        },
+        subcategory_taxonomy={
+            "Category": {"Detail": {"description": "Changed definition."}}
+        },
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        _catalog_request_values(
+            None,
+            "analysis-project",
+            request,
+            {
+                "categories": ["Category"],
+                "category_entries": [],
+                "category_details_map": {"Category": ["Detail"]},
+                "category_taxonomy": {
+                    "Category": {
+                        "description": "Category definition.",
+                        "when_to_use": "Use for this category.",
+                    }
+                },
+                "subcategory_taxonomy": {
+                    "Category": {
+                        "Detail": {
+                            "description": "Original definition.",
+                            "when_to_use": "Use for this detail.",
+                        }
+                    }
+                },
+                "max_root_cause_categories": 3,
+            },
+        )
+
+    assert exc_info.value.status_code == 422
+    assert exc_info.value.detail["code"] == "subcategory_taxonomy_required"
 
 
 def test_category_catalog_add_does_not_require_taxonomy_for_untouched_legacy_categories() -> None:

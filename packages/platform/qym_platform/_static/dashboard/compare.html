@@ -3933,6 +3933,163 @@
       border: 1px solid var(--border-subtle);
       border-radius: 8px;
     }
+    .compare-issue-list {
+      display: grid;
+      gap: var(--space-sm);
+      width: 100%;
+    }
+    .compare-issue {
+      padding: var(--space-sm);
+      border: 1px solid var(--border-subtle);
+      border-left: 3px solid var(--compare-issue-color, var(--accent-tertiary));
+      border-radius: var(--control-radius);
+      background: var(--bg-elevated);
+    }
+    .compare-issue-head {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+      margin-bottom: var(--space-xs);
+    }
+    .compare-issue-number {
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+      font-size: var(--font-sm);
+    }
+    .compare-issue-confidence {
+      margin-left: auto;
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+      font-size: var(--font-sm);
+    }
+    .compare-issue-category {
+      color: var(--compare-issue-color, var(--text-primary));
+      font-size: var(--font-md);
+      font-weight: 600;
+    }
+    .compare-issue-subcategory {
+      color: var(--text-primary);
+      font-size: var(--font-base);
+      font-weight: 600;
+    }
+    .compare-issue-finding {
+      margin-top: var(--space-xs);
+      color: var(--text-secondary);
+      font-size: var(--font-base);
+      line-height: 1.5;
+      white-space: pre-wrap;
+    }
+    .compare-issue-empty {
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+      font-style: italic;
+    }
+    .compare-issue-reason {
+      margin-top: var(--space-xs);
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+    }
+    .compare-issue-edit {
+      margin-bottom: var(--space-sm);
+    }
+    .compare-issues-editor {
+      position: fixed;
+      z-index: 1000;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      padding: var(--space-lg);
+      background: color-mix(in srgb, var(--bg-void) 76%, transparent);
+    }
+    .compare-issues-editor__panel {
+      display: flex;
+      width: min(620px, calc(100vw - (2 * var(--space-lg))));
+      max-height: calc(100vh - (2 * var(--space-lg)));
+      flex-direction: column;
+      overflow: hidden;
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius-md);
+      background: var(--bg-surface);
+    }
+    .compare-issues-editor__header,
+    .compare-issues-editor__footer {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: var(--space-md);
+      padding: var(--space-lg);
+    }
+    .compare-issues-editor__header { border-bottom: 1px solid var(--border-default); }
+    .compare-issues-editor__footer { border-top: 1px solid var(--border-default); }
+    .compare-issues-editor__header h2 {
+      margin: 0;
+      color: var(--text-primary);
+      font-size: var(--font-xl);
+      font-weight: 650;
+    }
+    .compare-issues-editor__header p,
+    .compare-issues-editor__status {
+      margin: var(--space-xs) 0 0;
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+      line-height: 1.5;
+    }
+    .compare-issues-editor__status.is-error { color: var(--error); }
+    .compare-issues-editor__body {
+      display: grid;
+      gap: var(--space-md);
+      padding: var(--space-lg);
+      overflow-y: auto;
+    }
+    .compare-issues-editor__row {
+      padding: var(--space-md);
+      border: 1px solid var(--border-default);
+      border-radius: var(--control-radius);
+      background: var(--bg-base);
+    }
+    .compare-issues-editor__row-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-sm);
+      margin-bottom: var(--space-sm);
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+      font-size: var(--font-sm);
+    }
+    .compare-issues-editor__fields {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: var(--space-md);
+    }
+    .compare-issues-editor__field {
+      display: grid;
+      gap: var(--space-xs);
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+      font-weight: 600;
+    }
+    .compare-issues-editor__field--finding { grid-column: 1 / -1; }
+    .compare-issues-editor__field textarea {
+      min-height: calc(var(--space-xl) * 2);
+      padding: var(--space-sm);
+      resize: vertical;
+      border: 1px solid var(--border-default);
+      border-radius: var(--control-radius);
+      background: var(--bg-elevated);
+      color: var(--text-primary);
+      font-family: var(--font-sans);
+      font-size: var(--font-base);
+      line-height: 1.5;
+    }
+    .compare-issues-editor__actions {
+      display: flex;
+      gap: var(--space-sm);
+    }
+    @media (max-width: 640px) {
+      .compare-issues-editor__fields { grid-template-columns: 1fr; }
+      .compare-issues-editor__field--finding { grid-column: auto; }
+    }
     .rc-sol-label {
       display: block;
       font-size: var(--font-xs);
@@ -7641,7 +7798,7 @@
         }
 
         // Auto-select categories for breakdown chips
-        const EXCLUDED_CATEGORY_KEYS = new Set(['root_cause', 'root_causes', 'root_cause_detail', 'root_cause_reason', 'root_cause_note', 'root_cause_source', 'root_cause_confidence', 'solution', 'solution_note', 'solution_source', 'task_started_at_ms', 'retry_count', 'analysis_error', 'trace_stats']);
+        const EXCLUDED_CATEGORY_KEYS = new Set(['root_cause', 'root_causes', 'root_cause_issues', 'root_cause_detail', 'root_cause_reason', 'root_cause_note', 'root_cause_source', 'root_cause_confidence', 'solution', 'solution_note', 'solution_source', 'task_started_at_ms', 'retry_count', 'analysis_error', 'trace_stats']);
         const MAX_CARDINALITY = 30;
         if (state.selectedCategories.size === 0) {
           for (const k of state.allMetadataKeys) {
@@ -8329,7 +8486,7 @@
 
       // Render aggregated metadata breakdowns using the Run Detail category component.
       function getCategoryChipKeys() {
-        const EXCLUDED = new Set(['root_cause', 'root_causes', 'root_cause_detail', 'root_cause_reason', 'root_cause_note', 'root_cause_source', 'root_cause_confidence', 'solution', 'solution_note', 'solution_source', 'task_started_at_ms', 'retry_count', 'analysis_error']);
+        const EXCLUDED = new Set(['root_cause', 'root_causes', 'root_cause_issues', 'root_cause_detail', 'root_cause_reason', 'root_cause_note', 'root_cause_source', 'root_cause_confidence', 'solution', 'solution_note', 'solution_source', 'task_started_at_ms', 'retry_count', 'analysis_error']);
         const MAX_CARD = 30;
         const keys = [];
         for (const k of state.allMetadataKeys) {
@@ -9163,6 +9320,20 @@
       var _sankeyResizeTimeout = null;
 
       function rootCauseCategories(value) {
+        const hasCanonicalIssues = value && typeof value === 'object' && !Array.isArray(value) && Array.isArray(value.root_cause_issues);
+        const issues = rootCauseIssues(value, false);
+        if (hasCanonicalIssues || issues.length) {
+          const categories = [];
+          const seen = new Set();
+          issues.forEach(issue => {
+            const category = String(issue.category || '').trim();
+            const key = category.toLocaleLowerCase();
+            if (!category || seen.has(key)) return;
+            seen.add(key);
+            categories.push(category);
+          });
+          return categories;
+        }
         const raw = value && typeof value === 'object' && !Array.isArray(value)
           ? (Object.prototype.hasOwnProperty.call(value, 'root_causes')
             ? value.root_causes
@@ -9177,6 +9348,80 @@
           seen.add(key);
           return true;
         }).slice(0, MAX_ROOT_CAUSE_CATEGORIES);
+      }
+
+      function rootCauseIssues(value, legacyFallback = true) {
+        if (!value || typeof value !== 'object' || Array.isArray(value)) return [];
+        if (Array.isArray(value.root_cause_issues)) {
+          const issues = value.root_cause_issues.map(issue => {
+            if (!issue || typeof issue !== 'object' || Array.isArray(issue)) return null;
+            const rawConfidence = issue.confidence;
+            const confidence = rawConfidence == null || rawConfidence === '' ? NaN : Number(rawConfidence);
+            const normalized = {
+              category: String(issue.category || issue.root_cause || '').trim(),
+              subcategory: String(issue.subcategory || issue.root_cause_detail || '').trim(),
+              finding: String(issue.finding || issue.root_cause_note || '').trim(),
+              category_reason: String(issue.category_reason || issue.root_cause_reason || '').trim(),
+            };
+            if (Number.isFinite(confidence)) normalized.confidence = Math.min(1, Math.max(0, confidence));
+            else delete normalized.confidence;
+            return normalized.category || normalized.subcategory || normalized.finding ? normalized : null;
+          }).filter(Boolean);
+          if (issues.length) {
+            const topReason = String(value.root_cause_reason || '').trim();
+            if (!issues[0].category_reason && topReason) issues[0].category_reason = topReason;
+            const rawTopConfidence = value.confidence ?? value.root_cause_confidence;
+            const topConfidence = rawTopConfidence == null || rawTopConfidence === '' ? NaN : Number(rawTopConfidence);
+            if (issues[0].confidence == null && Number.isFinite(topConfidence)) {
+              issues[0].confidence = Math.min(1, Math.max(0, topConfidence));
+            }
+          }
+          return issues;
+        }
+        if (!legacyFallback) return [];
+        const rawCategories = Object.prototype.hasOwnProperty.call(value, 'root_causes')
+          ? value.root_causes
+          : (Object.prototype.hasOwnProperty.call(value, 'root_cause_categories') ? value.root_cause_categories : value.root_cause);
+        const categories = (Array.isArray(rawCategories) ? rawCategories : (rawCategories ? [rawCategories] : []))
+          .map(category => String(category || '').trim()).filter(Boolean);
+        const subcategory = String(value.root_cause_detail || '').trim();
+        const finding = String(value.root_cause_note || '').trim();
+        const reason = String(value.root_cause_reason || '').trim();
+        const confidence = Number(value.confidence ?? value.root_cause_confidence);
+        if (!categories.length && !subcategory && !finding) return [];
+        return (categories.length ? categories : ['']).map((category, index) => ({
+          category,
+          subcategory,
+          finding,
+          ...(index === 0 && reason ? { category_reason: reason } : {}),
+          ...(index === 0 && Number.isFinite(confidence) ? { confidence: Math.min(1, Math.max(0, confidence)) } : {}),
+        }));
+      }
+
+      function rootCauseIssuePatch(issues) {
+        const displayIssues = rootCauseIssues({ root_cause_issues: issues });
+        const normalized = displayIssues.map(issue => ({
+          category: issue.category,
+          subcategory: issue.subcategory,
+          finding: issue.finding,
+        }));
+        const categories = [];
+        const seen = new Set();
+        normalized.forEach(issue => {
+          const key = issue.category.toLocaleLowerCase();
+          if (!issue.category || seen.has(key)) return;
+          seen.add(key);
+          categories.push(issue.category);
+        });
+        const first = normalized[0] || {};
+        return {
+          root_cause_issues: normalized,
+          root_causes: categories,
+          root_cause: first.category || '',
+          root_cause_detail: first.subcategory || '',
+          root_cause_note: first.finding || '',
+          root_cause_reason: (displayIssues[0] && displayIssues[0].category_reason) || '',
+        };
       }
 
       function getRowRootCauseAnalyses(row, metricFilter) {
@@ -9203,6 +9448,7 @@
         const canUseLegacy = metricFilter === 'all' || legacyMetric === metricFilter ||
           (!legacyMetric && state.allMetrics.length <= 1);
         return legacyCategories.length && canUseLegacy ? [{
+          root_cause_issues: rootCauseIssues(md),
           root_causes: legacyCategories,
           root_cause: legacyCategories[0],
           root_cause_detail: md.root_cause_detail || '',
@@ -9218,6 +9464,29 @@
           )).join('');
         return '<label class="root-cause-metric-control" for="root-cause-metric-select">Metric' +
           '<select id="root-cause-metric-select" class="filter-select">' + options + '</select></label>';
+      }
+
+      function compareRootCauseScope(row, runIdx, selectedMetric = state.selectedItemsMetric) {
+        const ref = state.runs[runIdx]?.run?.file_path || '';
+        const runId = passRefBase(ref);
+        const passNumber = runId === ref
+          ? null
+          : parseInt(ref.slice(runId.length + PASS_REF_SEP.length), 10);
+        const md = row?.item_metadata || {};
+        const analyses = Number.isFinite(passNumber)
+          ? Object.fromEntries(Object.entries(row?.pass_metric_analyses || {})
+              .map(([name, values]) => [name, values?.[passNumber - 1]]))
+          : (md.metric_analyses || {});
+        const summaryMetric = String(md.root_cause_metric_name || '').trim();
+        const metricName = selectedMetric || summaryMetric || Object.keys(analyses)[0] || '';
+        const isMetricScoped = Number.isFinite(passNumber) || summaryMetric ||
+          Object.keys(analyses).length || !rootCauseIssues(md).length;
+        return {
+          runId,
+          passNumber,
+          metricName: isMetricScoped ? metricName : '',
+          analysis: isMetricScoped ? (analyses[metricName] || {}) : md,
+        };
       }
 
       function wireRootCauseMetricControl(section) {
@@ -9672,13 +9941,15 @@
             if (!itemId) continue;
             if (!filteredItemIds.has(itemId)) continue;
             for (const analysis of getRowRootCauseAnalyses(row, state.rootCauseMetric)) {
-              const rcDetail = analysis.root_cause_detail || '';
-              for (const rcRaw of rootCauseCategories(analysis)) {
+              const issues = rootCauseIssues(analysis);
+              for (let issueIndex = 0; issueIndex < issues.length; issueIndex++) {
+                const issue = issues[issueIndex];
+                const rcRaw = issue.category;
                 if (!rcRaw) continue;
                 if (!rcCategories[rcRaw]) rcCategories[rcRaw] = { count: 0, subcauses: {} };
                 rcCategories[rcRaw].count++;
-                if (rcDetail) {
-                  rcCategories[rcRaw].subcauses[rcDetail] = (rcCategories[rcRaw].subcauses[rcDetail] || 0) + 1;
+                if (issue.subcategory) {
+                  rcCategories[rcRaw].subcauses[issue.subcategory] = (rcCategories[rcRaw].subcauses[issue.subcategory] || 0) + 1;
                 }
               }
             }
@@ -10607,7 +10878,7 @@
             meta: (row.metric_meta || {})[name] || {},
           };
         };
-        const verdictFor = (row, runIdx) => {
+        const verdictStateFor = (row, runIdx) => {
           if (!row) return '';
           const metric = state.selectedItemsMetric;
           let verdict = '';
@@ -10620,10 +10891,39 @@
               : (state.metricThresholds[metric] ?? 0.8);
             if (score !== null) verdict = score >= threshold ? 'pass' : 'fail';
           }
+          return verdict;
+        };
+        const verdictFor = (row, runIdx) => {
+          const verdict = verdictStateFor(row, runIdx);
           if (!verdict) return '';
+          const metric = state.selectedItemsMetric;
           const label = verdict === 'pass' ? 'Pass' : 'Fail';
           const title = row.status === 'error' ? 'Execution error' : `${label} on ${metric}`;
           return `<span class="qym-tag ${verdict === 'pass' ? 'qym-tag--success' : 'qym-tag--danger'}" title="${escapeAttr(title)}">${label}</span>`;
+        };
+        const rootCauseBlockFor = (row, runIdx) => {
+          const scope = compareRootCauseScope(row, runIdx);
+          const issues = rootCauseIssues(scope.analysis);
+          if (!issues.length && (IS_COMPARE_EXPORT || verdictStateFor(row, runIdx) !== 'fail')) return '';
+          const issueHtml = issues.length
+            ? '<div class="compare-issue-list" role="list" aria-label="Root-cause issues">' + issues.map((issue, issueIndex) => {
+                const issueColor = rootCauseColor(issue.category);
+                const confidence = issue.confidence == null ? '' : Math.round(issue.confidence * 100) + '%';
+                return '<article class="compare-issue" role="listitem" style="--compare-issue-color:' + issueColor + ';">' +
+                  '<div class="compare-issue-head"><span class="compare-issue-number">Issue ' + (issueIndex + 1) + '</span>' +
+                    (issue.category ? '<span class="compare-issue-category">' + escapeHtml(issue.category) + '</span>' : '') +
+                    (confidence ? '<span class="compare-issue-confidence">' + escapeHtml(confidence) + '</span>' : '') + '</div>' +
+                  (issue.subcategory ? '<div class="compare-issue-subcategory">' + escapeHtml(issue.subcategory) + '</div>' : '') +
+                  (issue.finding ? '<div class="compare-issue-finding">' + escapeHtml(issue.finding) + '</div>' : '') +
+                  (issue.category_reason ? '<details class="compare-issue-reason"><summary>Why this category</summary><div>' + escapeHtml(issue.category_reason) + '</div></details>' : '') +
+                '</article>';
+              }).join('') + '</div>'
+            : '<span class="compare-issue-empty">No root-cause issues assigned.</span>';
+          const editButton = IS_COMPARE_EXPORT
+            ? ''
+            : `<button class="root-cause-assign-btn compare-issue-edit" data-rc-issues-item="${escapeAttr(itemId)}" data-rc-issues-run-idx="${runIdx}" data-rc-issues-metric="${escapeAttr(scope.metricName)}" type="button">Edit issues</button>`;
+          const metricLabel = scope.metricName ? ' · ' + escapeHtml(scope.metricName) : '';
+          return `<div class="rc-sol-row"><div class="rc-badges-row"><div class="rc-badge-group" style="max-width:100%;"><span class="rc-sol-label rc-label">ROOT-CAUSE ISSUES${metricLabel}</span>${issueHtml}${editButton}</div></div></div>`;
         };
         const metricStripFor = (row, runIdx) => {
           if (!row) return '';
@@ -10679,7 +10979,7 @@
             ? `<button type="button" class="trace-drawer-btn qym-inline-action qym-inline-action--neutral qym-trace-action" data-trace-endpoint="${escapeAttr(traceEndpoint)}" data-trace-item-label="${escapeAttr(identity + ' · ' + runItemId)}" data-trace-id="${escapeAttr(traceId || '')}" data-trace-url="${escapeAttr(traceUrl || '')}" title="Open trace viewer"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M2.5 4h11M2.5 8h7M2.5 12h9"/><circle cx="12.5" cy="8" r="1.2" fill="currentColor" stroke="none" opacity=".5"/><circle cx="13.5" cy="12" r="1.2" fill="currentColor" stroke="none" opacity=".5"/></svg>Trace</button>`
             : '';
           const copyButton = `<button class="copy-btn qym-icon-action" data-copy-text="${escapeAttr(typeof output === 'object' ? JSON.stringify(output, null, 2) : String(output))}" title="Copy output">${COPY_ICON}</button>`;
-          return `<article class="item-run-output qym-output-card${hidden.has(runIdx) ? ' is-hidden' : ''}" data-output-card="${outputId}" style="border-left-color:${color}"><div class="qym-output-card__header"><span class="qym-output-card__identity"><span class="qym-output-swatch" style="background:${color}"></span>${identityHtml}${verdictFor(row, runIdx)}</span>${row.latency_ms ? `<span class="qym-output-card__duration">${CLOCK_ICON}<span>${formatLatency(row.latency_ms)}</span></span>` : '<span class="qym-output-card__duration">\u2014</span>'}<span class="qym-output-card__actions">${traceButton}${copyButton}</span></div><div class="output-text ${row.status === 'error' ? 'score-1' : ''}">${renderMarkdownSafe(output)}</div>${metricStripFor(row, runIdx)}</article>`;
+          return `<article class="item-run-output qym-output-card${hidden.has(runIdx) ? ' is-hidden' : ''}" data-output-card="${outputId}" style="border-left-color:${color}"><div class="qym-output-card__header"><span class="qym-output-card__identity"><span class="qym-output-swatch" style="background:${color}"></span>${identityHtml}${verdictFor(row, runIdx)}</span>${row.latency_ms ? `<span class="qym-output-card__duration">${CLOCK_ICON}<span>${formatLatency(row.latency_ms)}</span></span>` : '<span class="qym-output-card__duration">\u2014</span>'}<span class="qym-output-card__actions">${traceButton}${copyButton}</span></div><div class="output-text ${row.status === 'error' ? 'score-1' : ''}">${renderMarkdownSafe(output)}</div>${metricStripFor(row, runIdx)}${rootCauseBlockFor(row, runIdx)}</article>`;
         }).join('');
         const panels = state.allMetrics.map(name => {
           const cells = rowData.map((row, runIdx) => {
@@ -10850,54 +11150,31 @@
               ? `<div class="status-indicator qym-badge ${pfClass === 'pass' ? 'qym-badge--success' : 'qym-badge--danger'}"><div class="status-dot ${pfClass}"></div><span class="status-label ${pfClass}">${pfClass === 'pass' ? 'Pass' : 'Fail'}</span></div>`
               : '';
 
-            // Root cause + Solution badges + feedback (only for failed items)
+            // Root-cause issues and solution for this run.
             let rootCauseHtml = '';
             const itemPassed = pfClass === 'pass';
-            const rowRcs = rootCauseCategories(row.item_metadata);
-            const rowRc = rowRcs[0] || '';
-            const rowRcDetail = row.item_metadata?.root_cause_detail || '';
-            const rowRcNote = row.item_metadata?.root_cause_note || '';
-            const rowRcSource = row.item_metadata?.root_cause_source || '';
-            const rowRcConfidence = row.item_metadata?.root_cause_confidence;
+            const issueScope = compareRootCauseScope(row, runIdx);
+            const rowIssues = rootCauseIssues(issueScope.analysis);
             const rowSol = row.item_metadata?.solution || '';
             const rowSolNote = row.item_metadata?.solution_note || '';
             const reviewStatus = row.review_correction_status || '';
 
-            if (rowRc || rowRcDetail || rowSol || !itemPassed) {
-              const feedbackIcon = '<svg class="feedback-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 3h12v8H4l-2 2V3z"/></svg>';
-              const isAi = rowRcSource === 'ai';
-              const rcColor = rootCauseColor(rowRc);
-
-              // Detail badge — uses same color as category
-              let rcDetailBadge = '';
-              if (rowRcDetail) {
-                const aiClass = isAi ? ' ai-suggested' : '';
-                const aiIcon = isAi ? '<span class="ai-indicator" title="AI suggested">\uD83E\uDD16</span>' : '';
-                rcDetailBadge = `<span class="meta-badge badge-rc-detail${aiClass}" data-rcdetail-item="${escapeAttr(itemId)}" data-rcdetail-run-idx="${runIdx}" style="border-color:${rcColor}40;color:${rcColor};background:${rcColor}15;max-width:100%;box-sizing:border-box;display:inline-flex;" title="Root cause: ${escapeAttr(rowRcDetail)}. Click to change.">${aiIcon}${escapeHtml(rowRcDetail)}</span>`;
-              } else if (!itemPassed) {
-                rcDetailBadge = `<button class="root-cause-assign-btn" data-rcdetail-item="${escapeAttr(itemId)}" data-rcdetail-run-idx="${runIdx}" title="Assign root cause"><span class="badge-icon">+</span>Root Cause</button>`;
-              }
-
-              // Category badge
-              let rcCategoryBadge = '';
-              if (rowRcs.length) {
-                const aiClass = isAi ? ' ai-suggested' : '';
-                let confidenceMarker = '';
-                if (isAi && rowRcConfidence != null) {
-                  const confidencePct = Math.round(rowRcConfidence * 100);
-                  confidenceMarker = `<button type="button" class="qym-help-marker" aria-label="AI confidence ${confidencePct}%" aria-expanded="false">i<span class="qym-help-tooltip" role="tooltip">AI confidence: ${confidencePct}%</span></button>`;
-                }
-                rcCategoryBadge = rowRcs.map((category, categoryIndex) => {
-                  const categoryColor = rootCauseColor(category);
-                  const aiIcon = isAi && categoryIndex === 0 ? '<span class="ai-indicator" title="AI suggested">\uD83E\uDD16</span>' : '';
-                  const confidence = categoryIndex === 0 ? confidenceMarker : '';
-                  return `<span class="meta-badge badge-root-cause${aiClass}" data-rc-item="${escapeAttr(itemId)}" data-rc-run-idx="${runIdx}" style="border-color: ${categoryColor}40; color: ${categoryColor}; background: ${categoryColor}15;max-width:100%;box-sizing:border-box;display:inline-flex;" title="Category: ${escapeAttr(category)}. Click to change.">${aiIcon}${escapeHtml(category)}${confidence}</span>`;
-                }).join('');
-              } else if (!itemPassed) {
-                rcCategoryBadge = `<button class="root-cause-assign-btn rc-category-assign" data-rc-item="${escapeAttr(itemId)}" data-rc-run-idx="${runIdx}" title="Assign root cause category"><span class="badge-icon">+</span>Category</button>`;
-              }
-
-              // Solution badge group
+            if (rowIssues.length || rowSol || !itemPassed) {
+              const issueHtml = rowIssues.length
+                ? '<div class="compare-issue-list" role="list" aria-label="Root-cause issues">' + rowIssues.map((issue, issueIndex) => {
+                    const issueColor = rootCauseColor(issue.category);
+                    const confidence = issue.confidence == null ? '' : Math.round(issue.confidence * 100) + '%';
+                    return '<article class="compare-issue" role="listitem" style="--compare-issue-color:' + issueColor + ';">' +
+                      '<div class="compare-issue-head"><span class="compare-issue-number">Issue ' + (issueIndex + 1) + '</span>' +
+                        (issue.category ? '<span class="compare-issue-category">' + escapeHtml(issue.category) + '</span>' : '') +
+                        (confidence ? '<span class="compare-issue-confidence">' + escapeHtml(confidence) + '</span>' : '') + '</div>' +
+                      (issue.subcategory ? '<div class="compare-issue-subcategory">' + escapeHtml(issue.subcategory) + '</div>' : '') +
+                      (issue.finding ? '<div class="compare-issue-finding">' + escapeHtml(issue.finding) + '</div>' : '') +
+                      (issue.category_reason ? '<details class="compare-issue-reason"><summary>Why this category</summary><div>' + escapeHtml(issue.category_reason) + '</div></details>' : '') +
+                    '</article>';
+                  }).join('') + '</div>'
+                : '<span class="feedback-placeholder">No root-cause issues assigned.</span>';
+              const editIssues = `<button class="root-cause-assign-btn compare-issue-edit" data-rc-issues-item="${escapeAttr(itemId)}" data-rc-issues-run-idx="${runIdx}" data-rc-issues-metric="${escapeAttr(issueScope.metricName)}" type="button">Edit issues</button>`;
               let solBadgeHtml = '';
               if (rowSol) {
                 const solColor = SOLUTION_COLORS[rowSol] || '#60a5fa';
@@ -10916,19 +11193,9 @@
                 </div>`;
               }
 
-              // Feedback
-              let feedbackHtml = '';
-              if (rowRc || rowRcDetail) {
-                feedbackHtml = rowRcNote
-                  ? `<div class="feedback-section"><div class="feedback-display" data-feedback-item="${escapeAttr(itemId)}" data-feedback-run-idx="${runIdx}" title="Click to edit feedback">${feedbackIcon}<span class="feedback-text">${escapeHtml(rowRcNote)}</span></div></div>`
-                  : `<div class="feedback-section"><div class="feedback-display" data-feedback-item="${escapeAttr(itemId)}" data-feedback-run-idx="${runIdx}" title="Click to add feedback">${feedbackIcon}<span class="feedback-text feedback-placeholder">Add feedback\u2026</span></div></div>`;
-              }
-
-              const detailGroup = rcDetailBadge ? `<div class="rc-badge-group" style="max-width:100%;"><span class="rc-sol-label rc-label">\u26A0 ROOT CAUSE</span>${rcDetailBadge}</div>` : '';
-              const catGroup = rcCategoryBadge ? `<div class="rc-badge-group" style="max-width:100%;"><span class="rc-sol-label rc-label">\uD83D\uDCC2 CATEGORY</span>${rcCategoryBadge}</div>` : '';
               const reviewStatusHtml = reviewStatus === 'approved' ? '<div class="rc-status-pill qym-badge approved">Approved</div>' : '';
               const solSep = solBadgeHtml ? '<div class="rc-badges-sep"></div>' : '';
-              rootCauseHtml = `<div class="rc-sol-row">${reviewStatusHtml}<div class="rc-badges-row">${detailGroup}${catGroup}${solSep}${solBadgeHtml}</div>${feedbackHtml}</div>`;
+              rootCauseHtml = `<div class="rc-sol-row">${reviewStatusHtml}<div class="rc-badges-row"><div class="rc-badge-group" style="max-width:100%;"><span class="rc-sol-label rc-label">ROOT-CAUSE ISSUES</span>${issueHtml}${editIssues}</div>${solSep}${solBadgeHtml}</div></div>`;
             }
 
             return `
@@ -10966,7 +11233,7 @@
           // #5/#6: Build item metadata row — complexity & domain as first-class badges
           let itemMetadataHtml = '';
           {
-            const SPECIAL_KEYS = ['complexity', 'domain', 'root_cause', 'root_causes', 'root_cause_detail', 'root_cause_reason', 'root_cause_note', 'root_cause_source', 'root_cause_confidence', 'solution', 'solution_note', 'solution_source'];
+            const SPECIAL_KEYS = ['complexity', 'domain', 'root_cause', 'root_causes', 'root_cause_issues', 'root_cause_detail', 'root_cause_reason', 'root_cause_note', 'root_cause_source', 'root_cause_confidence', 'solution', 'solution_note', 'solution_source'];
             const metaRow = rowData.find(r => r);
             const md = metaRow?.item_metadata || {};
             if (typeof md === 'object') {
@@ -11711,6 +11978,12 @@
 
       function wireRootCauseHandlers(scope = document) {
         const root = scope || document;
+        root.querySelectorAll('[data-rc-issues-item]').forEach(trigger => {
+          trigger.addEventListener('click', event => {
+            event.stopPropagation();
+            showRootCauseIssuesEditor(trigger.dataset.rcIssuesItem, Number(trigger.dataset.rcIssuesRunIdx), trigger.dataset.rcIssuesMetric);
+          });
+        });
         root.querySelectorAll('[data-rc-item]:not([data-feedback-item])').forEach(trigger => {
           trigger.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -11757,6 +12030,152 @@
             });
           });
         });
+      }
+
+      async function saveRootCauseIssues(itemId, runIdx, issues, metricName) {
+        const run = state.runs[runIdx];
+        const rows = run?.snapshot?.rows || [];
+        const row = findRowByCompareId(rows, itemId);
+        const scope = compareRootCauseScope(row, runIdx, metricName);
+        const runId = scope.runId;
+        const rawItemId = row?.item_id;
+        if (!runId || !rawItemId) return false;
+        const patch = rootCauseIssuePatch(issues);
+        try {
+          const response = await fetch(apiUrl('api/runs/update_root_cause'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              item_id: rawItemId,
+              run_id: runId,
+              ...patch,
+              ...(scope.metricName ? { metric_name: scope.metricName } : {}),
+              ...(Number.isFinite(scope.passNumber) ? { pass_number: scope.passNumber } : {}),
+            }),
+          });
+          const data = await response.json().catch(() => ({}));
+          if (!response.ok || data.error || data.detail) {
+            console.error('Failed to save root-cause issues:', data.detail || data.error);
+            return false;
+          }
+          if (data.row) applyUpdatedRowToRun(runIdx, data.row);
+          else if (row && scope.metricName) {
+            const analysis = { ...scope.analysis, ...patch, source: 'human' };
+            delete analysis.confidence;
+            delete analysis.review_status;
+            if (patch.root_cause_issues.length) delete analysis.error;
+            if (Number.isFinite(scope.passNumber)) {
+              if (!row.pass_metric_analyses) row.pass_metric_analyses = {};
+              if (!row.pass_metric_analyses[scope.metricName]) row.pass_metric_analyses[scope.metricName] = [];
+              row.pass_metric_analyses[scope.metricName][scope.passNumber - 1] = analysis;
+            } else {
+              if (!row.item_metadata) row.item_metadata = {};
+              if (!row.item_metadata.metric_analyses) row.item_metadata.metric_analyses = {};
+              row.item_metadata.metric_analyses[scope.metricName] = analysis;
+            }
+          } else if (row) {
+            if (!row.item_metadata) row.item_metadata = {};
+            Object.assign(row.item_metadata, patch);
+            if (!patch.root_cause_issues.length) {
+              ['root_cause_issues', 'root_causes', 'root_cause', 'root_cause_detail', 'root_cause_note', 'root_cause_reason'].forEach(key => delete row.item_metadata[key]);
+            }
+            if (patch.root_cause_issues.length) row.item_metadata.root_cause_source = 'human';
+            else delete row.item_metadata.root_cause_source;
+            delete row.item_metadata.root_cause_confidence;
+          }
+          rootCauseCategories(patch).forEach(category => {
+            if (!state.rootCauseValues.includes(category)) state.rootCauseValues.push(category);
+          });
+          state.rootCauseValues.sort();
+          buildCategoryDropdowns();
+          renderItems();
+          return true;
+        } catch (error) {
+          console.error('Error saving root-cause issues:', error);
+          return false;
+        }
+      }
+
+      function showRootCauseIssuesEditor(itemId, runIdx, metricName) {
+        if (IS_COMPARE_EXPORT) return;
+        document.querySelectorAll('.compare-issues-editor, .root-cause-dropdown').forEach(node => node.remove());
+        const run = state.runs[runIdx];
+        const row = findRowByCompareId(run?.snapshot?.rows || [], itemId);
+        const scope = compareRootCauseScope(row, runIdx, metricName);
+        metricName = scope.metricName;
+        let issues = rootCauseIssues(scope.analysis).map(issue => ({ ...issue }));
+        if (!issues.length) issues = [{}];
+        const categories = [...new Set([...ROOT_CAUSE_PRESETS, ...state.rootCauseValues])].sort();
+        const editor = document.createElement('div');
+        editor.className = 'compare-issues-editor';
+        editor.innerHTML = '<div class="compare-issues-editor__panel" role="dialog" aria-modal="true" aria-labelledby="compare-issues-editor-title">' +
+          '<div class="compare-issues-editor__header"><div><h2 id="compare-issues-editor-title">Edit root-cause issues</h2><p>Keep each independent cause in its own issue.</p></div><button type="button" class="qym-icon-action" data-close-issues aria-label="Close issue editor" title="Close">×</button></div>' +
+          '<div class="compare-issues-editor__body" data-issue-list></div>' +
+          '<div class="compare-issues-editor__footer"><span class="compare-issues-editor__status" data-issue-status role="status" aria-live="polite"></span><div class="compare-issues-editor__actions"><button type="button" class="qym-inline-action qym-inline-action--neutral" data-add-issue>Add issue</button><button type="button" class="qym-inline-action qym-inline-action--accent" data-save-issues>Save</button></div></div>' +
+          '</div><datalist id="compare-issue-categories">' + categories.map(category => '<option value="' + escapeAttr(category) + '"></option>').join('') + '</datalist>';
+        const list = editor.querySelector('[data-issue-list]');
+        const status = editor.querySelector('[data-issue-status]');
+        const renderRows = () => {
+          list.innerHTML = issues.map((issue, index) => '<article class="compare-issues-editor__row" data-issue-row>' +
+            '<div class="compare-issues-editor__row-head"><span>Issue ' + (index + 1) + '</span><button type="button" class="qym-icon-action" data-remove-issue="' + index + '" title="Remove issue" aria-label="Remove issue">×</button></div>' +
+            '<div class="compare-issues-editor__fields">' +
+              '<label class="compare-issues-editor__field"><span>Category</span><input class="qym-control qym-input" data-issue-field="category" list="compare-issue-categories" value="' + escapeAttr(issue.category || '') + '" placeholder="Root-cause category" /></label>' +
+              '<label class="compare-issues-editor__field"><span>Subcategory</span><input class="qym-control qym-input" data-issue-field="subcategory" value="' + escapeAttr(issue.subcategory || '') + '" placeholder="Reusable failure mechanism" /></label>' +
+              '<label class="compare-issues-editor__field compare-issues-editor__field--finding"><span>Finding</span><textarea data-issue-field="finding" placeholder="Item-specific diagnosis">' + escapeHtml(issue.finding || '') + '</textarea></label>' +
+            '</div></article>').join('');
+        };
+        const readRows = () => {
+          issues = Array.from(list.querySelectorAll('[data-issue-row]')).map((issueRow, index) => {
+            const issue = { ...(issues[index] || {}) };
+            issueRow.querySelectorAll('[data-issue-field]').forEach(field => {
+              issue[field.dataset.issueField] = field.value.trim();
+            });
+            return issue;
+          });
+        };
+        list.addEventListener('click', event => {
+          const remove = event.target.closest('[data-remove-issue]');
+          if (!remove) return;
+          readRows();
+          issues.splice(Number(remove.dataset.removeIssue), 1);
+          if (!issues.length) issues.push({});
+          renderRows();
+        });
+        editor.querySelector('[data-add-issue]').addEventListener('click', () => {
+          readRows();
+          issues.push({});
+          renderRows();
+          list.lastElementChild?.querySelector('[data-issue-field="category"]')?.focus();
+        });
+        const cleanup = () => editor.remove();
+        editor.querySelector('[data-close-issues]').addEventListener('click', cleanup);
+        editor.addEventListener('click', event => { if (event.target === editor) cleanup(); });
+        editor.querySelector('[data-save-issues]').addEventListener('click', async event => {
+          readRows();
+          const nextIssues = issues.filter(issue => issue.category || issue.subcategory || issue.finding);
+          if (nextIssues.some(issue => !issue.category)) {
+            status.textContent = 'Every issue needs a category.';
+            status.classList.add('is-error');
+            return;
+          }
+          const saveButton = event.currentTarget;
+          saveButton.disabled = true;
+          status.classList.remove('is-error');
+          status.textContent = 'Saving issues…';
+          try {
+            const saved = await saveRootCauseIssues(itemId, runIdx, nextIssues, metricName);
+            if (!saved) throw new Error('Issue save failed');
+            cleanup();
+          } catch (error) {
+            status.textContent = 'Could not save these issues.';
+            status.classList.add('is-error');
+          } finally {
+            saveButton.disabled = false;
+          }
+        });
+        renderRows();
+        document.body.appendChild(editor);
+        setTimeout(() => list.querySelector('[data-issue-field="category"]')?.focus(), 0);
       }
 
       async function saveFeedback(itemId, runIdx, note) {
@@ -13366,6 +13785,7 @@
           }
           runCols.push({ key: 'run:' + ri + ':status', label: 'Status', checked: true });
           runCols.push({ key: 'run:' + ri + ':root_cause', label: 'Root Cause', checked: true });
+          runCols.push({ key: 'run:' + ri + ':root_cause_issues', label: 'Root cause issues (JSON)', checked: true });
           for (const m of metricNames) {
             runCols.push({ key: 'run:' + ri + ':' + m + '_score', label: m + ' Score', checked: true });
             for (const k of Array.from(metricMetaKeys[m]).sort()) {
@@ -13481,7 +13901,11 @@
             return obj ? stringify(obj[field.slice(7)]) : '';
           }
           if (field === 'status') return rd.status || '';
-          if (field === 'root_cause') return String((rd.item_metadata || {}).root_cause || '');
+          if (field === 'root_cause') return rootCauseCategories(rd.item_metadata)[0] || '';
+          if (field === 'root_cause_issues') {
+            const issues = rootCauseIssuePatch(rootCauseIssues(rd.item_metadata)).root_cause_issues;
+            return issues.length ? JSON.stringify(issues) : '';
+          }
           if (field === 'latency_ms') return String(rd.latency_ms || '');
           if (field === 'trace_url') return rd.trace_url || '';
 
@@ -13618,6 +14042,9 @@
                               solution_note: result.solution_note || '',
                               error: result.error || '',
                           };
+                          if (Array.isArray(result.root_cause_issues)) {
+                              row.item_metadata.metric_analyses[result.metric_name].root_cause_issues = result.root_cause_issues;
+                          }
                       }
                   }
               }

@@ -7,8 +7,8 @@ from typing import Any, Iterable, Sequence
 
 from qym_platform.db.models import CorrectionStatus, ReviewCorrection, RunItem
 from qym_platform.services.root_cause_categories import (
-    analysis_root_causes,
-    normalize_root_causes,
+    analysis_root_cause_issues,
+    normalize_root_cause_issues,
 )
 from sqlalchemy.orm import Session
 
@@ -20,22 +20,27 @@ def _clean(value: Any) -> str:
     return " ".join(str(value or "").split()).strip()
 
 
-def _correction_categories(correction: ReviewCorrection) -> list[str]:
-    return normalize_root_causes(
-        correction.human_root_causes
-        or correction.human_root_cause
-        or correction.ai_root_causes
-        or correction.ai_root_cause
-    )
-
-
-def _correction_source(correction: ReviewCorrection) -> str:
-    return (
-        "human"
-        if normalize_root_causes(
+def _correction_issues(
+    correction: ReviewCorrection,
+) -> tuple[list[dict[str, str]], str]:
+    human_issues = normalize_root_cause_issues(
+        getattr(correction, "human_root_cause_issues", None),
+        legacy_root_causes=(
             correction.human_root_causes or correction.human_root_cause
-        )
-        else "ai"
+        ),
+        legacy_detail=correction.human_root_cause_detail,
+        legacy_finding=correction.human_root_cause_note,
+    )
+    if human_issues:
+        return human_issues, "human"
+    return (
+        normalize_root_cause_issues(
+            getattr(correction, "ai_root_cause_issues", None),
+            legacy_root_causes=(correction.ai_root_causes or correction.ai_root_cause),
+            legacy_detail=correction.ai_root_cause_detail,
+            legacy_finding=correction.ai_root_cause_note,
+        ),
+        "ai",
     )
 
 
@@ -55,15 +60,15 @@ def _metadata_entries(item: RunItem) -> list[DiagnosisEntry]:
                 continue
             if _clean(raw_analysis.get("review_status")).lower() != "approved":
                 continue
-            categories = analysis_root_causes(raw_analysis)
-            if raw_analysis.get("error") or not categories:
+            issues = analysis_root_cause_issues(raw_analysis)
+            if raw_analysis.get("error") or not issues:
                 continue
             entries.extend(
                 {
                     "metric_name": _clean(raw_metric) or None,
-                    "category": category,
-                    "detail": _clean(raw_analysis.get("root_cause_detail")),
-                    "note": _clean(raw_analysis.get("root_cause_note")),
+                    "category": _clean(issue.get("category")),
+                    "detail": _clean(issue.get("subcategory")),
+                    "note": _clean(issue.get("finding")),
                     "confidence": raw_analysis.get("confidence"),
                     "source": _clean(
                         raw_analysis.get("source")
@@ -72,26 +77,26 @@ def _metadata_entries(item: RunItem) -> list[DiagnosisEntry]:
                     ).lower(),
                     "review_status": "approved",
                 }
-                for category in categories
+                for issue in issues
             )
         return entries
 
     if _clean(metadata.get("review_status")).lower() != "approved":
         return []
-    categories = analysis_root_causes(metadata)
-    if not categories or _clean(metadata.get("analysis_error")):
+    issues = analysis_root_cause_issues(metadata)
+    if not issues or _clean(metadata.get("analysis_error")):
         return []
     entries.extend(
         {
             "metric_name": None,
-            "category": category,
-            "detail": _clean(metadata.get("root_cause_detail")),
-            "note": _clean(metadata.get("root_cause_note")),
+            "category": _clean(issue.get("category")),
+            "detail": _clean(issue.get("subcategory")),
+            "note": _clean(issue.get("finding")),
             "confidence": metadata.get("root_cause_confidence"),
             "source": _clean(metadata.get("root_cause_source") or "unknown").lower(),
             "review_status": "approved",
         }
-        for category in categories
+        for issue in issues
     )
     return entries
 
@@ -141,25 +146,20 @@ def load_approved_diagnoses(
             continue
         seen_scopes.add(scope)
         approved_scopes.add(scope)
-        categories = _correction_categories(correction)
-        if not categories:
+        issues, source = _correction_issues(correction)
+        if not issues:
             continue
-        detail = _clean(
-            correction.human_root_cause_detail or correction.ai_root_cause_detail
-        )
-        note = _clean(correction.human_root_cause_note or correction.ai_root_cause_note)
-        source = _correction_source(correction)
         result[(correction.run_id, correction.item_id)].extend(
             {
                 "metric_name": scope[2],
-                "category": category,
-                "detail": detail,
-                "note": note,
+                "category": _clean(issue.get("category")),
+                "detail": _clean(issue.get("subcategory")),
+                "note": _clean(issue.get("finding")),
                 "confidence": correction.ai_confidence,
                 "source": source,
                 "review_status": "approved",
             }
-            for category in categories
+            for issue in issues
         )
 
     for item in items or ():

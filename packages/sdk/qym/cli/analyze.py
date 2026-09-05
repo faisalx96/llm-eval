@@ -80,17 +80,51 @@ def analyze_summary(
         metric_analyses = meta.get("metric_analyses")
         metric_categories = []
         if isinstance(metric_analyses, dict):
+            for analysis in metric_analyses.values():
+                if not isinstance(analysis, dict) or analysis.get("error"):
+                    continue
+                issues = analysis.get("root_cause_issues")
+                if isinstance(issues, list):
+                    metric_categories.extend(
+                        str(issue.get("category") or "").strip()
+                        for issue in issues
+                        if isinstance(issue, dict)
+                    )
+                    continue
+                root_causes = analysis.get("root_causes")
+                if isinstance(root_causes, list):
+                    metric_categories.extend(
+                        str(category or "").strip() for category in root_causes
+                    )
+                else:
+                    metric_categories.append(
+                        str(analysis.get("root_cause") or "").strip()
+                    )
             metric_categories = [
-                str(analysis.get("root_cause") or "").strip()
-                for analysis in metric_analyses.values()
-                if isinstance(analysis, dict) and not analysis.get("error")
+                category for category in metric_categories if category
             ]
-            metric_categories = [category for category in metric_categories if category]
 
         if not metric_categories:
-            root_cause = str(meta.get("root_cause") or "").strip()
-            if root_cause:
-                metric_categories = [root_cause]
+            issues = meta.get("root_cause_issues")
+            if isinstance(issues, list):
+                metric_categories = [
+                    str(issue.get("category") or "").strip()
+                    for issue in issues
+                    if isinstance(issue, dict)
+                    and str(issue.get("category") or "").strip()
+                ]
+            else:
+                root_causes = meta.get("root_causes")
+                if isinstance(root_causes, list):
+                    metric_categories = [
+                        str(category or "").strip()
+                        for category in root_causes
+                        if str(category or "").strip()
+                    ]
+                else:
+                    root_cause = str(meta.get("root_cause") or "").strip()
+                    if root_cause:
+                        metric_categories = [root_cause]
 
         for root_cause in metric_categories:
             total_analyzed += 1

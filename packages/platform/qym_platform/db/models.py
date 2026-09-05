@@ -135,6 +135,9 @@ class ProjectAnalysisCategoryCatalogVersion(Base):
     category_taxonomy: Mapped[dict[str, dict[str, str]]] = mapped_column(
         JSON, default=dict, nullable=False
     )
+    subcategory_taxonomy: Mapped[dict[str, dict[str, dict[str, str]]]] = (
+        mapped_column(JSON, default=dict, nullable=False)
+    )
     max_root_cause_categories: Mapped[int] = mapped_column(
         Integer, default=3, server_default="3", nullable=False
     )
@@ -942,6 +945,9 @@ class ReviewCorrection(Base):
     # Plural category storage. The singular columns remain as the primary
     # category for compatibility with existing queries and clients.
     ai_root_causes: Mapped[Optional[list[str]]] = mapped_column(JSON, nullable=True)
+    ai_root_cause_issues: Mapped[Optional[list[dict[str, Any]]]] = mapped_column(
+        JSON, nullable=True
+    )
     ai_category_taxonomy: Mapped[Optional[dict[str, Any]]] = mapped_column(
         JSON, nullable=True
     )
@@ -953,6 +959,9 @@ class ReviewCorrection(Base):
 
     human_root_cause: Mapped[str] = mapped_column(String(200))
     human_root_causes: Mapped[Optional[list[str]]] = mapped_column(JSON, nullable=True)
+    human_root_cause_issues: Mapped[Optional[list[dict[str, Any]]]] = mapped_column(
+        JSON, nullable=True
+    )
     human_category_taxonomy: Mapped[Optional[dict[str, Any]]] = mapped_column(
         JSON, nullable=True
     )
