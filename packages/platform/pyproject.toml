@@ -42,6 +42,7 @@ qym-platform = "qym_platform.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
+include = ["qym_platform", "qym_platform.*"]
 
 [tool.setuptools.package-data]
 qym_platform = ["_static/dashboard/*", "_static/dashboard/docs/**/*", "_static/ui/*", "migrations/*", "migrations/versions/*"]
