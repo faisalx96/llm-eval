@@ -55,4 +55,4 @@ The release must preserve platform behavior and logical content. Faster response
 - [x] Durable dashboard summaries and bounded browser reads complete.
 - [x] Full integration, browser and performance evidence complete; existing external-fixture/type-check/responsive limitations documented.
 - [x] Independent review complete.
-- [ ] PR submitted.
+- [x] [PR #35 submitted](https://github.com/faisalx96/qym/pull/35).
