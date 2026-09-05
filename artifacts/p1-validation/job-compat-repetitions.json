@@ -1,0 +1,16 @@
+[
+  {
+    "interpreter": ".venv39/bin/python",
+    "independent_trials": 10,
+    "tests_per_trial": 3,
+    "all_passed": true,
+    "asyncio_debug": true
+  },
+  {
+    "interpreter": ".venv/bin/python",
+    "independent_trials": 10,
+    "tests_per_trial": 3,
+    "all_passed": true,
+    "asyncio_debug": true
+  }
+]

@@ -162,6 +162,22 @@
     "time": 256.534,
     "passed": 1134
   },
+  "python312-job-compat.xml": {
+    "tests": 3,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "time": 0.028,
+    "passed": 3
+  },
+  "python312-route-compat.xml": {
+    "tests": 6,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "time": 2.018,
+    "passed": 6
+  },
   "python39-integrated.xml": {
     "tests": 35,
     "failures": 0,
@@ -177,6 +193,30 @@
     "skipped": 6,
     "time": 113.904,
     "passed": 223
+  },
+  "python39-job-compat.xml": {
+    "tests": 3,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "time": 0.028,
+    "passed": 3
+  },
+  "python39-migration-ci-fix.xml": {
+    "tests": 5,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "time": 0.218,
+    "passed": 5
+  },
+  "python39-route-compat.xml": {
+    "tests": 6,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "time": 1.978,
+    "passed": 6
   },
   "python39-sdk.xml": {
     "tests": 290,

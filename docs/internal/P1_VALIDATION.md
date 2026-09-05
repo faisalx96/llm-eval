@@ -87,6 +87,13 @@ discovery is restricted to each package's namespace: repeat builds cannot copy
 nested build directories or stale migration files into a wheel. Local wheel
 checks compare every Python module and the changed dashboard assets with source.
 
+The first complete CI run passed all 1,200 cases on Python 3.11 and 3.12, with
+nine skips in each clean checkout. Python 3.9 exposed test-helper compatibility
+issues: evaluated union annotations, a FastAPI router-internal assertion, and
+an asyncio event shared across worker and test loops. The fixtures now use
+Python 3.9-compatible annotations, public OpenAPI paths, and explicit worker
+synchronization. The PR checks record the full rerun after these corrections.
+
 ## Existing limitations
 
 - A local SDK test imports the separate sibling `sql_eval` checkout and assumes
