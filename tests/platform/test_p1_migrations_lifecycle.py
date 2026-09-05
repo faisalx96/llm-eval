@@ -19,6 +19,8 @@ from sqlalchemy.orm import Session, sessionmaker
 from qym_platform.db.dashboard_models import DashboardRunDimension, DashboardRunSummary
 from qym_platform.db.models import (
     Project,
+    ProjectAnalysisCategoryCatalogVersion,
+    ReviewCorrection,
     Run,
     RunEvent,
     RunItem,
@@ -91,6 +93,32 @@ def seed(engine, *, before_dashboard=False):
         )
         db.flush()
         db.add(
+            ProjectAnalysisCategoryCatalogVersion(
+                id="catalog",
+                project_id="project",
+                version=1,
+                content_hash="f" * 64,
+                subcategory_taxonomy={
+                    "reasoning": {"math": {"label": "Math", "description": "Preserve"}}
+                },
+            )
+        )
+        db.add(
+            ReviewCorrection(
+                run_id="run",
+                item_id="item",
+                task="test",
+                ai_root_cause="reasoning",
+                human_root_cause="reasoning",
+                ai_root_cause_issues=[
+                    {"category": "reasoning", "subcategory": "math", "finding": "AI"}
+                ],
+                human_root_cause_issues=[
+                    {"category": "reasoning", "subcategory": "math", "finding": "Human"}
+                ],
+            )
+        )
+        db.add(
             RunItem(
                 run_id="run",
                 item_id="item",
@@ -126,20 +154,29 @@ def source_snapshot(engine):
             "output": source.output,
             "score": db.scalar(select(RunItemScore.score_numeric)),
             "event": db.scalar(select(RunEvent.payload)),
+            "subcategory_taxonomy": db.scalar(
+                select(ProjectAnalysisCategoryCatalogVersion.subcategory_taxonomy)
+            ),
+            "ai_root_cause_issues": db.scalar(
+                select(ReviewCorrection.ai_root_cause_issues)
+            ),
+            "human_root_cause_issues": db.scalar(
+                select(ReviewCorrection.human_root_cause_issues)
+            ),
         }
 
 
 @pytest.mark.parametrize("populated", [False, True])
 def test_postgres_full_chain_upgrade_p1_downgrade_reupgrade(postgres, populated):
     engine, config = postgres
-    command.upgrade(config, "0044")
+    command.upgrade(config, "0046")
     if populated:
         seed(engine, before_dashboard=True)
         expected = source_snapshot(engine)
     command.upgrade(config, "head")
     with engine.connect() as connection:
         assert (
-            connection.scalar(text("select version_num from alembic_version")) == "0046"
+            connection.scalar(text("select version_num from alembic_version")) == "0048"
         )
         inspector = inspect(connection)
         assert "ix_dashboard_event_retention" in {
@@ -161,10 +198,10 @@ def test_postgres_full_chain_upgrade_p1_downgrade_reupgrade(postgres, populated)
         with Session(engine) as db:
             partition = db.get(DashboardPartitionState, "run")
             assert partition and not partition.backfill_complete
-    command.downgrade(config, "0044")
+    command.downgrade(config, "0046")
     with engine.connect() as connection:
         assert (
-            connection.scalar(text("select version_num from alembic_version")) == "0044"
+            connection.scalar(text("select version_num from alembic_version")) == "0046"
         )
         tables = set(inspect(connection).get_table_names())
         assert (

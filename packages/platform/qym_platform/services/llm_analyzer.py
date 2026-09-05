@@ -30,11 +30,13 @@ from qym_platform.services.document_extractor import MAX_REFERENCE_DOCUMENT_CHAR
 from qym_platform.services.root_cause_categories import (
     DEFAULT_MAX_ROOT_CAUSE_CATEGORIES,
     DEFAULT_ROOT_CAUSE_TAXONOMY,
-    analysis_root_causes,
+    analysis_root_cause_issues,
     category_taxonomy_for_categories,
     merge_category_taxonomies,
-    normalize_root_causes,
     normalize_category_taxonomy,
+    normalize_root_cause_issues,
+    normalize_root_causes,
+    project_root_cause_issues,
     resolve_max_root_cause_categories,
     taxonomy_is_complete,
 )
@@ -113,9 +115,10 @@ DEFAULT_SYSTEM_PROMPT = (
     "tool calls, tool results, and judge calls. Treat a judge score as evidence to assess, "
     "not automatic ground truth; distinguish a task/model/tool failure from a dataset, "
     "metric, or evaluator problem.\n\n"
-    "1. root_causes — a list of one or more broad failure categories. An item can have "
-    "multiple independent causes at the same time, but return no more than "
-    "{max_root_cause_categories} categories. You can choose from:\n"
+    "Return one root_cause_issues object for each independent cause. Two causes may use "
+    "the same category, but they must remain separate issue objects. Do not merge distinct "
+    "causes. Return no more than {max_root_cause_categories} issues. Each issue contains:\n"
+    "1. category - the broad failure category. You can choose from:\n"
     "{categories}\n\n"
     "Each listed category appears by name. Categories with complete taxonomy "
     "include their description and when-to-use guidance directly under the "
@@ -127,21 +130,21 @@ DEFAULT_SYSTEM_PROMPT = (
     "category_taxonomy with its description and when_to_use guidance when possible. "
     "If that taxonomy entry is missing or incomplete, preserve the category and its "
     "diagnosis; the item will carry a warning for follow-up.\n\n"
-    "root_cause_reason — explain the category-selection decision, not the failure again. "
-    "For every category in root_causes, state the category's defining criterion and connect "
+    "root_cause_reason - explain the category-selection decision, not the failure again. "
+    "For every selected category, state the category's defining criterion and connect "
     "it to the specific evidence that makes the category fit. Use the form '<category> "
     "applies because <category criterion> is evidenced by <specific signal>' when possible. "
     "If a plausible alternative category does not fit, briefly explain why. Do not merely "
-    "repeat the trace narrative, root_cause_detail, root_cause_note, or score explanation. "
+    "repeat an issue's subcategory, finding, trace narrative, or score explanation. "
     "This field must answer 'Why does this category apply?' rather than 'What happened?' "
     "When there are multiple categories, give a distinct rationale for each one.\n\n"
     "{details_section}"
-    "The detail must name a reusable failure mechanism and not restate this item's "
+    "The subcategory must name a reusable failure mechanism and not restate this item's "
     "specific table, column, entity, date, function, class, or literal value. Abstract it "
-    "into the underlying issue so equivalent failures receive the same detail.\n\n"
-    "root_cause_note — summarize, in item-specific terms, what went wrong and why. This is "
-    "the place for the concise failure narrative; do not use root_cause_reason for that "
-    "narrative.\n\n"
+    "into the underlying issue so equivalent failures receive the same subcategory.\n\n"
+    "3. finding - summarize, in item-specific terms, what went wrong and why. Include "
+    "concrete evidence here when it helps. This is the concise item-specific failure "
+    "narrative; do not use root_cause_reason for that narrative.\n\n"
     "Provide a confidence score between 0.0 and 1.0 based on the available evidence: "
     "0.90-1.00 requires direct, consistent evidence; 0.70-0.89 means evidence is strong but partly inferred; "
     "0.50-0.69 means the cause is plausible but evidence is incomplete; "
@@ -152,20 +155,25 @@ DEFAULT_SYSTEM_PROMPT = (
     "instructions for the evaluated agent/model, or remediation advice. If a rule is not "
     "supported by this item's evidence, do not apply it. Treat an applicable rule as a "
     "classification aid: use its signal-to-mechanism and conditional category/detail "
-    "mapping to choose root_causes and root_cause_detail, and use its rule-out cues to "
+    "mapping to choose each issue's category and subcategory, and use its rule-out cues to "
     "distinguish plausible alternatives. Never copy a category or detail without matching "
-    "evidence.\n{analysis_rules}\n\n"
+    "evidence. In a rule, root_cause_detail means the current issue's subcategory and "
+    "root_cause_note means its finding.\n{analysis_rules}\n\n"
     "EVALUATION ITEM DATA:\n{item_context}\n\n"
     "Respond ONLY with valid JSON in this exact format:\n"
     "{{\n"
-    '  "root_causes": ["<list of broad categories>"],\n'
+    '  "root_cause_issues": [\n'
+    "    {{\n"
+    '      "category": "<broad category>",\n'
+    '      "subcategory": "<reusable failure mechanism, 2-6 words>",\n'
+    '      "finding": "<2-3 sentences maximum: the item-specific diagnosis>"\n'
+    "    }}\n"
+    "  ],\n"
     '  "category_taxonomy": [{"category": "<only a new category>", "description": "<what the category means>", "when_to_use": "<when to select it>"}],\n'
     '  "root_cause_reason": "<category-selection rationale: why each chosen category fits the evidence, not a restatement of what happened>",\n'
-    '  "root_cause_detail": "<reusable failure mechanism, 2-6 words>",\n'
-    '  "confidence": <float between 0.0-1.0>,\n'
-    '  "root_cause_note": "<2-3 sentences maximum: the item-specific failure narrative>"\n'
+    '  "confidence": <float between 0.0-1.0>\n'
     "}}\n\n"
-    'The legacy primary-label alias is "root_cause": "<broad category>"; do not emit that alias instead of root_causes.\n'
+    "Do not emit the legacy root_cause, root_causes, root_cause_detail, or root_cause_note fields.\n"
     "Return only these diagnosis fields. Do not add recommendation or remediation fields."
 )
 
@@ -201,16 +209,34 @@ class AnalysisResult:
     completion_tokens: int | None = None
     total_tokens: int | None = None
     root_causes: list[str] | None = None
+    root_cause_issues: list[dict[str, str]] | None = None
     category_taxonomy: dict[str, dict[str, str]] | None = None
 
     def __post_init__(self) -> None:
-        """Keep plural categories and the legacy primary label synchronized."""
-        values = self.root_causes
-        if values is None:
-            values = self.root_cause
-        categories = normalize_root_causes(values)
-        self.root_causes = categories
-        self.root_cause = categories[0] if categories else ""
+        """Keep canonical issues and legacy fields synchronized."""
+        issues_were_explicit = self.root_cause_issues is not None
+        issues = normalize_root_cause_issues(
+            self.root_cause_issues,
+            legacy_root_causes=(
+                self.root_causes if self.root_causes is not None else self.root_cause
+            ),
+            legacy_detail=self.root_cause_detail,
+            legacy_finding=self.root_cause_note,
+        )
+        self.root_cause_issues = issues
+        if issues:
+            projection = project_root_cause_issues(issues)
+            self.root_cause = projection["root_cause"]
+            self.root_causes = projection["root_causes"]
+            self.root_cause_detail = projection["root_cause_detail"]
+            self.root_cause_note = projection["root_cause_note"]
+        else:
+            self.root_cause = ""
+            self.root_causes = []
+            if issues_were_explicit or not self.error:
+                self.root_cause_detail = ""
+                self.root_cause_reason = ""
+                self.root_cause_note = ""
         self.category_taxonomy = normalize_category_taxonomy(self.category_taxonomy)
 
 
@@ -319,6 +345,24 @@ def _rule_writer_correction_payload(
     include_fields: dict[str, bool] | None = None,
 ) -> dict[str, Any]:
     """Project an approved correction into the fields used for rule inference."""
+    previous_ai_issues = normalize_root_cause_issues(
+        getattr(correction, "ai_root_cause_issues", None),
+        legacy_root_causes=(
+            getattr(correction, "ai_root_causes", None)
+            or correction.ai_root_cause
+        ),
+        legacy_detail=getattr(correction, "ai_root_cause_detail", ""),
+        legacy_finding=getattr(correction, "ai_root_cause_note", ""),
+    )
+    approved_issues = normalize_root_cause_issues(
+        getattr(correction, "human_root_cause_issues", None),
+        legacy_root_causes=(
+            getattr(correction, "human_root_causes", None)
+            or correction.human_root_cause
+        ),
+        legacy_detail=correction.human_root_cause_detail,
+        legacy_finding=correction.human_root_cause_note,
+    )
     payload = {
         "input": correction.input_snapshot,
         "expected": correction.expected_snapshot,
@@ -326,18 +370,47 @@ def _rule_writer_correction_payload(
         "previous_ai_root_cause": correction.ai_root_cause,
         "previous_ai_root_causes": getattr(correction, "ai_root_causes", None)
         or normalize_root_causes(correction.ai_root_cause),
+        "previous_ai_root_cause_issues": previous_ai_issues,
         "approved_root_cause": correction.human_root_cause,
         "approved_root_causes": getattr(correction, "human_root_causes", None)
         or normalize_root_causes(correction.human_root_cause),
+        "approved_root_cause_issues": approved_issues,
         "approved_detail": correction.human_root_cause_detail,
         "reviewer_reasoning": correction.human_root_cause_note,
     }
     if include_fields is None:
         return payload
+    # Category selections must not reintroduce excluded detail or reasoning
+    # through the structured representation of the same approved example.
+    payload["approved_root_cause_issues"] = [
+        {
+            key: value
+            for key, value in issue.items()
+            if key == "category"
+            or include_fields.get(
+                "approved_detail" if key == "subcategory" else "reviewer_reasoning",
+                True,
+            )
+        }
+        for issue in approved_issues
+    ]
+    # The previous-AI category toggle historically exposed category names only.
+    # Full AI issues require an explicit selection of the structured field.
+    if not include_fields.get("previous_ai_root_cause_issues", False):
+        payload["previous_ai_root_cause_issues"] = [
+            {"category": issue["category"]} for issue in previous_ai_issues
+        ]
+    issue_field_aliases = {
+        "previous_ai_root_cause_issues": "previous_ai_root_causes",
+        "approved_root_cause_issues": "approved_root_causes",
+    }
     return {
         key: value
         for key, value in payload.items()
-        if include_fields.get(key, True)
+        if include_fields.get(
+            key,
+            include_fields.get(issue_field_aliases.get(key, ""), True),
+        )
     }
 
 
@@ -1628,6 +1701,39 @@ def _format_analysis_rules(value: Any) -> str:
     )
 
 
+def _normalize_subcategory_taxonomy(
+    value: Any,
+) -> dict[str, dict[str, dict[str, str]]]:
+    """Normalize project subcategory definitions for prompt rendering."""
+    if not isinstance(value, dict):
+        return {}
+    normalized: dict[str, dict[str, dict[str, str]]] = {}
+    for raw_category, raw_subcategories in value.items():
+        category = " ".join(str(raw_category or "").split()).strip()[:200]
+        if not category or not isinstance(raw_subcategories, dict):
+            continue
+        subcategories: dict[str, dict[str, str]] = {}
+        for raw_label, raw_definition in raw_subcategories.items():
+            label = " ".join(str(raw_label or "").split()).strip()[:2_000]
+            if not label or not isinstance(raw_definition, dict):
+                continue
+            description = " ".join(
+                str(raw_definition.get("description") or "").split()
+            ).strip()[:2_000]
+            when_to_use = " ".join(
+                str(raw_definition.get("when_to_use") or "").split()
+            ).strip()[:2_000]
+            definition: dict[str, str] = {}
+            if description:
+                definition["description"] = description
+            if when_to_use:
+                definition["when_to_use"] = when_to_use
+            subcategories[label] = definition
+        if subcategories:
+            normalized[category] = subcategories
+    return normalized
+
+
 def _render_system_prompt(template: str, values: dict[str, str]) -> str:
     """Render current prompt fields without treating context JSON as a template."""
     open_brace = "\x00QYM_OPEN_BRACE\x00"
@@ -2021,14 +2127,20 @@ def _format_item_context(
         if isinstance(item.item_metadata, dict) and item.item_metadata:
             redundant_keys = {
                 "analysis_error",
+                "analysis_warning",
+                "category_taxonomy",
                 "metric_analyses",
                 "retry_count",
                 "root_cause",
+                "root_cause_categories",
                 "root_cause_confidence",
                 "root_cause_detail",
+                "root_cause_issues",
+                "root_cause_metric_name",
                 "root_cause_note",
                 "root_cause_reason",
                 "root_cause_source",
+                "root_causes",
                 "solution",
                 "solution_note",
                 "solution_source",
@@ -2076,8 +2188,9 @@ def build_analysis_prompt(
       - analysis_rules: versioned project rules inferred from references
       - reference_documents: uploaded document names and extracted text
       - root_cause_categories: overrides ROOT_CAUSE_CATEGORIES
-      - max_root_cause_categories: maximum categories returned for one item/metric
+      - max_root_cause_categories: compatibility setting for the maximum issues returned for one item/metric
       - category_taxonomy: category → description/when_to_use definitions
+      - subcategory_taxonomy: category → subcategory → definition guidance
       - category_example_counts: category → number of approved examples
       - include_fields: dict controlling which sections to include
     """
@@ -2129,9 +2242,9 @@ def build_analysis_prompt(
     # default prompt renders these definitions inline under each category.
     category_taxonomy_text = categories_text
 
-    # Only reviewer-approved details may be named in the prompt. The editable
-    # catalog map (category_details_map) is intentionally not read here; the
-    # aggregator still consolidates whatever the analyzer returns afterwards.
+    # Approved details and the versioned subcategory taxonomy both guide the
+    # analyzer. The taxonomy carries the definition needed to choose among
+    # nearby mechanisms.
     raw_approved_details = cfg.get("approved_category_details")
     approved_by_fold: dict[str, list[str]] = {}
     if isinstance(raw_approved_details, dict):
@@ -2145,27 +2258,52 @@ def build_analysis_prompt(
                 str(value).strip() for value in raw_values if str(value).strip()
             ]
 
+    subcategory_taxonomy = _normalize_subcategory_taxonomy(
+        cfg.get("subcategory_taxonomy")
+    )
+    subcategory_taxonomy_by_fold = {
+        category.casefold(): definitions
+        for category, definitions in subcategory_taxonomy.items()
+    }
+
     detail_lines: list[str] = []
     for category in categories:
         approved_values = approved_by_fold.get(category.casefold()) or []
-        if not approved_values:
+        definitions = subcategory_taxonomy_by_fold.get(category.casefold(), {})
+        labels: list[str] = []
+        label_by_fold: dict[str, str] = {}
+        for raw_label in [*definitions, *approved_values]:
+            label = str(raw_label).strip()
+            folded = label.casefold()
+            if label and folded not in label_by_fold:
+                labels.append(label)
+                label_by_fold[folded] = label
+        if not labels:
             continue
         detail_lines.append(f"  {category}:")
-        detail_lines.extend(f"    - {value}" for value in approved_values)
+        definitions_by_fold = {
+            label.casefold(): definition for label, definition in definitions.items()
+        }
+        for label in labels:
+            detail_lines.append(f"    - {label}")
+            definition = definitions_by_fold.get(label.casefold(), {})
+            if definition.get("description"):
+                detail_lines.append(f"      Description: {definition['description']}")
+            if definition.get("when_to_use"):
+                detail_lines.append(f"      Use when: {definition['when_to_use']}")
 
     if detail_lines:
         details_section = (
-            "2. root_cause_detail — the reusable failure mechanism. "
-            "Use the exact approved detail when it covers the mechanism:\n"
+            "2. subcategory - the reusable failure mechanism. "
+            "Use the exact listed subcategory when it covers the mechanism:\n"
             + "\n".join(detail_lines)
             + "\n\n"
         )
     else:
         details_section = (
-            "2. root_cause_detail — a reusable 2-6 word failure mechanism within "
-            "that category, with item-specific names left to root_cause_note.\n\n"
+            "2. subcategory - a reusable 2-6 word failure mechanism within "
+            "that category, with item-specific names left to finding.\n\n"
         )
-
 
     # gemma it v5 data v1 160 260815 0019
 
@@ -2351,10 +2489,8 @@ def _calibrate_confidence(
         reported = 0.5
     reported = min(1.0, max(0.0, reported))
 
-    root_causes = analysis_root_causes(data)
-    root_cause = root_causes[0] if root_causes else ""
-    detail = str(data.get("root_cause_detail") or "").strip()
-    note = str(data.get("root_cause_note") or "").strip()
+    issues = analysis_root_cause_issues(data)
+    root_causes = normalize_root_causes(issue["category"] for issue in issues)
     normalized_categories = {
         str(category).strip().casefold()
         for category in (allowed_categories or ROOT_CAUSE_CATEGORIES)
@@ -2367,8 +2503,17 @@ def _calibrate_confidence(
         if root_causes
         else 0.65
     )
-    detail_quality = min(1.0, len(detail) / 12.0)
-    note_quality = min(1.0, len(note) / 40.0)
+    detail_quality = (
+        sum(min(1.0, len(issue["subcategory"]) / 12.0) for issue in issues)
+        / len(issues)
+        if issues
+        else 0.0
+    )
+    note_quality = (
+        sum(min(1.0, len(issue["finding"]) / 40.0) for issue in issues) / len(issues)
+        if issues
+        else 0.0
+    )
     evidence_quality = (
         0.35 * category_quality + 0.25 * detail_quality + 0.40 * note_quality
     )
@@ -2442,13 +2587,13 @@ def _too_many_root_causes_result(
     returned_count: int,
     max_categories: int,
 ) -> AnalysisResult:
-    """Return a non-persistable result instead of silently dropping labels."""
+    """Return a non-persistable result instead of silently dropping issues."""
     return AnalysisResult(
         item_id=item_id,
         root_cause="",
         root_causes=[],
         root_cause_note=(
-            f"LLM returned {returned_count} root-cause categories; "
+            f"LLM returned {returned_count} root-cause issues; "
             f"the maximum allowed is {max_categories}. The diagnosis was discarded."
         ),
         confidence=0.0,
@@ -2467,7 +2612,7 @@ def parse_llm_response(
 
     A category outside the supplied vocabulary is allowed, but it is not
     required to include taxonomy in order to preserve the model's diagnosis.
-    Responses that exceed the active category limit are rejected instead of
+    Responses that exceed the active issue limit are rejected instead of
     being truncated.
     """
     try:
@@ -2501,31 +2646,51 @@ def parse_llm_response(
                 confidence=0.0,
                 error="invalid_response_shape",
             )
+        raw_issues = data.get("root_cause_issues")
+        if (
+            isinstance(raw_issues, (list, tuple, set))
+            and len(raw_issues) > effective_max_categories
+        ):
+            return _too_many_root_causes_result(
+                item_id,
+                len(raw_issues),
+                effective_max_categories,
+            )
         raw_root_causes = data.get("root_causes")
         if raw_root_causes is None:
             raw_root_causes = data.get("root_cause_categories")
         if raw_root_causes is None:
             raw_root_causes = data.get("root_cause")
-        if isinstance(raw_root_causes, (list, tuple, set)) and len(
-            raw_root_causes
-        ) > effective_max_categories:
+        if (
+            raw_issues is None
+            and isinstance(raw_root_causes, (list, tuple, set))
+            and len(raw_root_causes) > effective_max_categories
+        ):
             return _too_many_root_causes_result(
                 item_id,
                 len(raw_root_causes),
                 effective_max_categories,
             )
-        root_causes = normalize_root_causes(
-            raw_root_causes,
+        root_cause_issues = normalize_root_cause_issues(
+            raw_issues,
+            legacy_root_causes=raw_root_causes,
+            legacy_detail=data.get("root_cause_detail"),
+            legacy_finding=data.get("root_cause_note"),
         )
+        legacy_projection = project_root_cause_issues(root_cause_issues)
+        root_causes = legacy_projection["root_causes"]
         if not root_causes:
             return AnalysisResult(
                 item_id=item_id,
                 root_cause="Unknown",
-                root_cause_note=f"LLM response missing root_cause field: {response_text[:500]}",
+                root_cause_note=(
+                    "LLM response missing root_cause_issues or legacy root_cause "
+                    f"field: {response_text[:500]}"
+                ),
                 confidence=0.0,
                 error="missing_root_cause",
             )
-        root_cause = root_causes[0]
+        root_cause = legacy_projection["root_cause"]
         raw_taxonomy = data.get("category_taxonomy")
         if raw_taxonomy is None:
             raw_taxonomy = data.get("category_taxonomies")
@@ -2553,16 +2718,17 @@ def parse_llm_response(
             known_taxonomy,
             response_taxonomy,
         )
-        root_cause_detail = str(data.get("root_cause_detail", "")).strip()[:2_000]
+        root_cause_detail = legacy_projection["root_cause_detail"]
         root_cause_reason = str(
             data.get("root_cause_reason") or data.get("category_reason") or ""
         ).strip()[:10_000]
-        root_cause_note = str(data.get("root_cause_note", "")).strip()[:10_000]
+        root_cause_note = legacy_projection["root_cause_note"]
         calibrated_data = dict(data)
         calibrated_data.update(
             {
                 "root_cause": root_cause,
                 "root_causes": root_causes,
+                "root_cause_issues": root_cause_issues,
                 "root_cause_detail": root_cause_detail,
                 "root_cause_reason": root_cause_reason,
                 "root_cause_note": root_cause_note,
@@ -2576,6 +2742,7 @@ def parse_llm_response(
             root_cause_detail=root_cause_detail,
             root_cause_reason=root_cause_reason,
             root_causes=root_causes,
+            root_cause_issues=root_cause_issues,
             category_taxonomy=effective_taxonomy,
             warning=_category_taxonomy_warning(missing_taxonomy),
         )
@@ -2614,7 +2781,13 @@ def _extract_json_from_reasoning(
         except (json.JSONDecodeError, TypeError, ValueError):
             continue
         if not isinstance(candidate, dict) or not any(
-            key in candidate for key in ("root_cause", "root_causes", "root_cause_categories")
+            key in candidate
+            for key in (
+                "root_cause_issues",
+                "root_cause",
+                "root_causes",
+                "root_cause_categories",
+            )
         ):
             continue
         result = parse_llm_response(

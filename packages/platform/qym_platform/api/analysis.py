@@ -104,11 +104,14 @@ from qym_platform.services.root_cause_changes import (
 from qym_platform.services.root_cause_categories import (
     DEFAULT_MAX_ROOT_CAUSE_CATEGORIES,
     DEFAULT_ROOT_CAUSE_TAXONOMY,
+    analysis_root_cause_issues,
     analysis_root_causes,
     category_taxonomy_for_categories,
     merge_category_taxonomies,
     normalize_category_taxonomy,
+    normalize_root_cause_issues,
     normalize_root_causes,
+    project_root_cause_issues,
     taxonomy_is_complete,
 )
 from qym_platform.services.analysis_jobs import (
@@ -884,6 +887,7 @@ class PlaygroundConfig(BaseModel):
     root_cause_details: Optional[List[str]] = Field(default=None, max_length=500)
     category_details_map: Optional[Dict[str, List[str]]] = None
     category_taxonomy: Optional[Dict[str, CategoryTaxonomyConfig]] = None
+    subcategory_taxonomy: Optional[Dict[str, Dict[str, CategoryTaxonomyConfig]]] = None
     # Accept the plural spelling from external clients while emitting the
     # canonical singular map internally.
     category_taxonomies: Optional[Dict[str, CategoryTaxonomyConfig]] = None
@@ -976,6 +980,9 @@ class CategoryCatalogUpdate(BaseModel):
     )
     category_details_map: Dict[str, List[str]] = Field(default_factory=dict)
     category_taxonomy: Dict[str, CategoryTaxonomyConfig] = Field(default_factory=dict)
+    subcategory_taxonomy: Dict[str, Dict[str, CategoryTaxonomyConfig]] = Field(
+        default_factory=dict
+    )
     max_root_cause_categories: int = Field(
         default=DEFAULT_MAX_ROOT_CAUSE_CATEGORIES, ge=1, le=10
     )
@@ -1154,6 +1161,14 @@ def _playground_config_to_analyzer(
         cfg["category_taxonomy"] = {
             category: definition.model_dump()
             for category, definition in category_taxonomy.items()
+        }
+    if pg.subcategory_taxonomy is not None:
+        cfg["subcategory_taxonomy"] = {
+            category: {
+                subcategory: definition.model_dump()
+                for subcategory, definition in definitions.items()
+            }
+            for category, definitions in pg.subcategory_taxonomy.items()
         }
     if pg.category_catalog_version is not None:
         cfg["category_catalog_version"] = pg.category_catalog_version
@@ -1427,13 +1442,32 @@ def _ordered_unique(values: List[str]) -> List[str]:
     return ordered
 
 
+def _correction_root_cause_issues(
+    correction: ReviewCorrection,
+) -> list[dict[str, str]]:
+    """Return the reviewer-approved issues, falling back to the AI baseline."""
+    human_issues = normalize_root_cause_issues(
+        getattr(correction, "human_root_cause_issues", None),
+        legacy_root_causes=(
+            correction.human_root_causes or correction.human_root_cause
+        ),
+        legacy_detail=correction.human_root_cause_detail,
+        legacy_finding=correction.human_root_cause_note,
+    )
+    if human_issues:
+        return human_issues
+    return normalize_root_cause_issues(
+        getattr(correction, "ai_root_cause_issues", None),
+        legacy_root_causes=correction.ai_root_causes or correction.ai_root_cause,
+        legacy_detail=correction.ai_root_cause_detail,
+        legacy_finding=correction.ai_root_cause_note,
+    )
+
+
 def _approved_correction_categories(correction: ReviewCorrection) -> list[str]:
     """Return the categories represented by an approved correction example."""
     return normalize_root_causes(
-        correction.human_root_causes
-        or correction.human_root_cause
-        or correction.ai_root_causes
-        or correction.ai_root_cause
+        issue["category"] for issue in _correction_root_cause_issues(correction)
     )
 
 
@@ -1491,13 +1525,12 @@ def _approved_category_details(
     details: dict[str, list[str]] = {}
     seen_by_category: dict[str, set[str]] = {}
     for correction in _approved_corrections(db, run):
-        detail = _catalog_label(
-            correction.human_root_cause_detail or correction.ai_root_cause_detail or ""
-        )
-        if not detail:
-            continue
-        key = detail.casefold()
-        for category in _approved_correction_categories(correction):
+        for issue in _correction_root_cause_issues(correction):
+            category = issue["category"]
+            detail = _catalog_label(issue["subcategory"])
+            if not detail:
+                continue
+            key = detail.casefold()
             seen = seen_by_category.setdefault(category, set())
             if key in seen:
                 continue
@@ -1531,13 +1564,13 @@ def _collect_task_root_cause_catalog(
     # Build category → details mapping from approved corrections
     cat_details_map: Dict[str, List[str]] = {}
     for correction in task_corrections:
-        categories = _approved_correction_categories(correction)
-        detail = correction.human_root_cause_detail or correction.ai_root_cause_detail or ""
-        if categories:
-            correction_categories.extend(categories)
-            if detail:
-                for category in categories:
-                    cat_details_map.setdefault(category, []).append(detail)
+        issues = _correction_root_cause_issues(correction)
+        correction_categories.extend(issue["category"] for issue in issues)
+        for issue in issues:
+            if issue["subcategory"]:
+                cat_details_map.setdefault(issue["category"], []).append(
+                    issue["subcategory"]
+                )
 
     all_categories = _ordered_unique(
         list(ROOT_CAUSE_CATEGORIES) + correction_categories
@@ -1624,6 +1657,46 @@ def _normalize_category_details_map(
     return details
 
 
+def _normalize_subcategory_taxonomy(
+    value: Any,
+    categories: list[str],
+    category_details_map: dict[str, list[str]],
+) -> dict[str, dict[str, dict[str, str]]]:
+    """Project subcategory definitions onto active catalog labels."""
+    if not isinstance(value, dict):
+        return {}
+    category_by_fold = {category.casefold(): category for category in categories}
+    normalized: dict[str, dict[str, dict[str, str]]] = {}
+    for raw_category, raw_definitions in value.items():
+        category = category_by_fold.get(_catalog_label(raw_category).casefold())
+        if not category or not isinstance(raw_definitions, dict):
+            continue
+        definitions = category_taxonomy_for_categories(
+            raw_definitions, category_details_map.get(category, [])
+        )
+        if definitions:
+            normalized[category] = definitions
+    return normalized
+
+
+def _merge_subcategory_taxonomies(
+    categories: list[str],
+    category_details_map: dict[str, list[str]],
+    *values: Any,
+) -> dict[str, dict[str, dict[str, str]]]:
+    """Merge subcategory definitions without changing catalog labels."""
+    merged: dict[str, dict[str, dict[str, str]]] = {}
+    for value in values:
+        normalized = _normalize_subcategory_taxonomy(
+            value, categories, category_details_map
+        )
+        for category, definitions in normalized.items():
+            target = merged.setdefault(category, {})
+            for subcategory, definition in definitions.items():
+                target.setdefault(subcategory, {}).update(definition)
+    return merged
+
+
 def _catalog_entries_for_categories(
     categories: list[str],
     *,
@@ -1699,6 +1772,7 @@ def _category_catalog_hash(
     category_details_map: dict[str, list[str]],
     category_taxonomy: dict[str, dict[str, str]],
     max_root_cause_categories: int,
+    subcategory_taxonomy: dict[str, dict[str, dict[str, str]]] | None = None,
 ) -> str:
     payload = {
         "categories": categories,
@@ -1707,6 +1781,9 @@ def _category_catalog_hash(
         "category_taxonomy": category_taxonomy,
         "max_root_cause_categories": max_root_cause_categories,
     }
+    # Empty maps are omitted to preserve hashes created before this field.
+    if subcategory_taxonomy:
+        payload["subcategory_taxonomy"] = subcategory_taxonomy
     return hashlib.sha256(
         json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode(
             "utf-8"
@@ -1743,6 +1820,7 @@ def _synthetic_category_catalog(
         "category_entries": entries,
         "category_details_map": details,
         "category_taxonomy": taxonomy,
+        "subcategory_taxonomy": {},
         "max_root_cause_categories": DEFAULT_MAX_ROOT_CAUSE_CATEGORIES,
         "content_hash": _category_catalog_hash(
             categories=categories,
@@ -1750,6 +1828,7 @@ def _synthetic_category_catalog(
             category_details_map=details,
             category_taxonomy=taxonomy,
             max_root_cause_categories=DEFAULT_MAX_ROOT_CAUSE_CATEGORIES,
+            subcategory_taxonomy={},
         ),
         "source": "legacy",
         "parent_version_id": None,
@@ -1825,16 +1904,20 @@ def _category_catalog_values(
 ) -> dict[str, Any]:
     if isinstance(catalog, dict):
         categories = normalize_root_causes(catalog.get("categories"))
+        details = _normalize_category_details_map(
+            catalog.get("category_details_map"), categories
+        )
         return {
             "id": catalog.get("id"),
             "version": int(catalog.get("version") or 0),
             "categories": categories,
             "category_entries": list(catalog.get("category_entries") or []),
-            "category_details_map": _normalize_category_details_map(
-                catalog.get("category_details_map"), categories
-            ),
+            "category_details_map": details,
             "category_taxonomy": category_taxonomy_for_categories(
                 catalog.get("category_taxonomy"), categories
+            ),
+            "subcategory_taxonomy": _normalize_subcategory_taxonomy(
+                catalog.get("subcategory_taxonomy"), categories, details
             ),
             "max_root_cause_categories": int(
                 catalog.get("max_root_cause_categories")
@@ -1842,16 +1925,18 @@ def _category_catalog_values(
             ),
         }
     categories = normalize_root_causes(catalog.categories)
+    details = _normalize_category_details_map(catalog.category_details_map, categories)
     return {
         "id": catalog.id,
         "version": int(catalog.version),
         "categories": categories,
         "category_entries": list(catalog.category_entries or []),
-        "category_details_map": _normalize_category_details_map(
-            catalog.category_details_map, categories
-        ),
+        "category_details_map": details,
         "category_taxonomy": category_taxonomy_for_categories(
             catalog.category_taxonomy, categories
+        ),
+        "subcategory_taxonomy": _normalize_subcategory_taxonomy(
+            getattr(catalog, "subcategory_taxonomy", None), categories, details
         ),
         "max_root_cause_categories": int(
             catalog.max_root_cause_categories or DEFAULT_MAX_ROOT_CAUSE_CATEGORIES
@@ -1913,11 +1998,14 @@ def _catalog_request_values(
         project_id=project_id,
     )
     details = _normalize_category_details_map(request.category_details_map, categories)
-    taxonomy = normalize_category_taxonomy(
-        {
-            category: definition.model_dump()
-            for category, definition in request.category_taxonomy.items()
-        }
+    taxonomy = category_taxonomy_for_categories(
+        normalize_category_taxonomy(
+            {
+                category: definition.model_dump()
+                for category, definition in request.category_taxonomy.items()
+            }
+        ),
+        categories,
     )
     taxonomy_by_category = {label.casefold(): entry for label, entry in taxonomy.items()}
     prior_taxonomy = normalize_category_taxonomy(prior_values.get("category_taxonomy"))
@@ -1946,12 +2034,74 @@ def _catalog_request_values(
                 "categories": incomplete_taxonomy_categories,
             },
         )
+    requested_subcategory_taxonomy = _normalize_subcategory_taxonomy(
+        {
+            category: {
+                subcategory: definition.model_dump()
+                for subcategory, definition in definitions.items()
+            }
+            for category, definitions in request.subcategory_taxonomy.items()
+        },
+        categories,
+        details,
+    )
+    prior_subcategory_taxonomy = _normalize_subcategory_taxonomy(
+        prior_values.get("subcategory_taxonomy"), categories, details
+    )
+    prior_detail_pairs = {
+        (category.casefold(), subcategory.casefold())
+        for category, subcategories in prior_values.get(
+            "category_details_map", {}
+        ).items()
+        for subcategory in subcategories
+    }
+    requested_subcategory_by_key = {
+        (category.casefold(), subcategory.casefold()): definition
+        for category, definitions in requested_subcategory_taxonomy.items()
+        for subcategory, definition in definitions.items()
+    }
+    prior_subcategory_by_key = {
+        (category.casefold(), subcategory.casefold()): definition
+        for category, definitions in prior_subcategory_taxonomy.items()
+        for subcategory, definition in definitions.items()
+    }
+    incomplete_subcategories: list[dict[str, str]] = []
+    for category in categories:
+        for subcategory in details.get(category, []):
+            key = (category.casefold(), subcategory.casefold())
+            requested_definition = requested_subcategory_by_key.get(key)
+            changed = (
+                requested_definition is not None
+                and requested_definition != prior_subcategory_by_key.get(key, {})
+            )
+            if (key not in prior_detail_pairs or changed) and not taxonomy_is_complete(
+                requested_definition
+            ):
+                incomplete_subcategories.append(
+                    {"category": category, "subcategory": subcategory}
+                )
+    if incomplete_subcategories:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "subcategory_taxonomy_required",
+                "message": "Every newly added or edited diagnosis subcategory requires both Description and Use when guidance before it can be saved.",
+                "subcategories": incomplete_subcategories,
+            },
+        )
+    subcategory_taxonomy = _merge_subcategory_taxonomies(
+        categories,
+        details,
+        prior_subcategory_taxonomy,
+        requested_subcategory_taxonomy,
+    )
     max_categories = max(1, min(int(request.max_root_cause_categories), 10))
     return {
         "categories": categories,
         "category_entries": entries,
         "category_details_map": details,
         "category_taxonomy": taxonomy,
+        "subcategory_taxonomy": subcategory_taxonomy,
         "max_root_cause_categories": max_categories,
         "content_hash": _category_catalog_hash(
             categories=categories,
@@ -1959,6 +2109,7 @@ def _catalog_request_values(
             category_details_map=details,
             category_taxonomy=taxonomy,
             max_root_cause_categories=max_categories,
+            subcategory_taxonomy=subcategory_taxonomy,
         ),
     }
 
@@ -2009,6 +2160,7 @@ def _create_category_catalog_version(
         category_entries=values["category_entries"],
         category_details_map=values["category_details_map"],
         category_taxonomy=values["category_taxonomy"],
+        subcategory_taxonomy=values["subcategory_taxonomy"],
         max_root_cause_categories=values["max_root_cause_categories"],
         content_hash=values["content_hash"],
         source=source,
@@ -2066,6 +2218,12 @@ def _analysis_config_with_category_catalog(
             config.get("category_taxonomy"), catalog_categories
         ),
     )
+    config["subcategory_taxonomy"] = _merge_subcategory_taxonomies(
+        catalog_categories,
+        values["category_details_map"],
+        values["subcategory_taxonomy"],
+        config.get("subcategory_taxonomy"),
+    )
     if "max_root_cause_categories" not in config:
         config["max_root_cause_categories"] = values["max_root_cause_categories"]
     if "category_example_counts" not in config:
@@ -2080,6 +2238,26 @@ def _analysis_config_with_category_catalog(
     return config or None
 
 
+def _result_root_cause_issues(result: AnalysisResult) -> list[dict[str, str]]:
+    return normalize_root_cause_issues(
+        getattr(result, "root_cause_issues", None),
+        legacy_root_causes=(
+            getattr(result, "root_causes", None) or result.root_cause
+        ),
+        legacy_detail=result.root_cause_detail,
+        legacy_finding=result.root_cause_note,
+    )
+
+
+def _root_cause_issue_signature(
+    issues: Any,
+) -> tuple[tuple[str, str, str], ...]:
+    return tuple(
+        (issue["category"], issue["subcategory"], issue["finding"])
+        for issue in normalize_root_cause_issues(issues)
+    )
+
+
 def _analysis_result_payload(result: AnalysisResult) -> Dict[str, Any]:
     return {
         "item_id": result.item_id,
@@ -2088,6 +2266,7 @@ def _analysis_result_payload(result: AnalysisResult) -> Dict[str, Any]:
         "root_causes": normalize_root_causes(
             getattr(result, "root_causes", None) or result.root_cause
         ),
+        "root_cause_issues": _result_root_cause_issues(result),
         "category_taxonomy": normalize_category_taxonomy(
             getattr(result, "category_taxonomy", None)
         ),
@@ -2113,12 +2292,11 @@ def _analysis_result_payload(result: AnalysisResult) -> Dict[str, Any]:
 def _category_counts(results: List[AnalysisResult]) -> Dict[str, int]:
     counts: Dict[str, int] = {}
     for result in results:
-        categories = normalize_root_causes(
-            getattr(result, "root_causes", None) or result.root_cause
-        )
-        if result.error or not categories:
+        issues = _result_root_cause_issues(result)
+        if result.error or not issues:
             continue
-        for category in categories:
+        for issue in issues:
+            category = issue["category"]
             counts[category] = counts.get(category, 0) + 1
     return counts
 
@@ -2173,6 +2351,7 @@ class _PersistedAnalysisBinding:
     original_root_cause_detail: str
     original_solution: str
     original_root_causes: tuple[str, ...] = ()
+    original_root_cause_issues: tuple[tuple[str, str, str], ...] = ()
     original_category_taxonomy: dict[str, dict[str, str]] | None = None
 
 
@@ -2181,6 +2360,7 @@ class _PassPersistedAnalysisBinding:
     score: RunItemPassScore
     result: AnalysisResult
     original_root_causes: tuple[str, ...]
+    original_root_cause_issues: tuple[tuple[str, str, str], ...]
     original_root_cause_detail: str
     original_solution: str
     original_category_taxonomy: dict[str, dict[str, str]] | None = None
@@ -2273,6 +2453,7 @@ def _persisted_ai_analysis_bindings(
 
     for item in items:
         meta = item.item_metadata if isinstance(item.item_metadata, dict) else {}
+        root_cause_issues = analysis_root_cause_issues(meta)
         root_causes = analysis_root_causes(meta)
         root_cause = root_causes[0] if root_causes else ""
         root_cause_detail = str(meta.get("root_cause_detail") or "").strip()
@@ -2315,6 +2496,7 @@ def _persisted_ai_analysis_bindings(
                         item_id=item.item_id,
                         root_cause=root_cause,
                         root_causes=root_causes,
+                        root_cause_issues=root_cause_issues,
                         category_taxonomy=category_taxonomy,
                         root_cause_detail=root_cause_detail,
                         root_cause_reason=root_cause_reason,
@@ -2327,6 +2509,9 @@ def _persisted_ai_analysis_bindings(
                     original_root_cause_detail=root_cause_detail,
                     original_solution=str(meta.get("solution") or ""),
                     original_root_causes=tuple(root_causes),
+                    original_root_cause_issues=_root_cause_issue_signature(
+                        root_cause_issues
+                    ),
                     original_category_taxonomy=category_taxonomy,
                 )
             )
@@ -2335,6 +2520,7 @@ def _persisted_ai_analysis_bindings(
             if (item.item_id, metric_name) in target_keys:
                 continue
             metric_root_causes = analysis_root_causes(raw_analysis)
+            metric_root_cause_issues = analysis_root_cause_issues(raw_analysis)
             metric_root_cause = metric_root_causes[0] if metric_root_causes else ""
             metric_detail = str(raw_analysis.get("root_cause_detail") or "").strip()
             metric_reason = str(raw_analysis.get("root_cause_reason") or "").strip()
@@ -2350,6 +2536,7 @@ def _persisted_ai_analysis_bindings(
                         metric_name=metric_name,
                         root_cause=metric_root_cause,
                         root_causes=metric_root_causes,
+                        root_cause_issues=metric_root_cause_issues,
                         category_taxonomy=metric_taxonomy,
                         root_cause_detail=metric_detail,
                         root_cause_reason=metric_reason,
@@ -2362,6 +2549,9 @@ def _persisted_ai_analysis_bindings(
                     original_root_cause_detail=metric_detail,
                     original_solution=str(raw_analysis.get("solution") or ""),
                     original_root_causes=tuple(metric_root_causes),
+                    original_root_cause_issues=_root_cause_issue_signature(
+                        metric_root_cause_issues
+                    ),
                     original_category_taxonomy=metric_taxonomy,
                 )
             )
@@ -2387,6 +2577,10 @@ def _persist_aggregated_bindings(
                 )
             )
             != binding.original_root_causes
+            or _root_cause_issue_signature(
+                _result_root_cause_issues(binding.result)
+            )
+            != binding.original_root_cause_issues
             or binding.result.root_cause != binding.original_root_cause
             or binding.result.root_cause_detail != binding.original_root_cause_detail
             or binding.result.solution != binding.original_solution
@@ -2493,6 +2687,7 @@ def _persist_aggregated_bindings(
             if isinstance(binding.item.item_metadata, dict)
             else {}
         )
+        state["root_cause_issues"] = _result_root_cause_issues(binding.result)
         state["root_cause"] = binding.result.root_cause
         state["root_causes"] = normalize_root_causes(
             getattr(binding.result, "root_causes", None)
@@ -2527,6 +2722,9 @@ def _persist_aggregated_bindings(
         metric_analyses = dict(meta.get("metric_analyses") or {})
         for binding in item_bindings:
             analysis = dict(metric_analyses.get(binding.metric_name) or {})
+            analysis["root_cause_issues"] = _result_root_cause_issues(
+                binding.result
+            )
             analysis["root_cause"] = binding.result.root_cause
             analysis["root_causes"] = normalize_root_causes(
                 getattr(binding.result, "root_causes", None)
@@ -2543,6 +2741,7 @@ def _persist_aggregated_bindings(
                 meta.get("root_cause_source") == "ai"
                 and meta.get("root_cause_metric_name") == binding.metric_name
             ):
+                meta["root_cause_issues"] = analysis["root_cause_issues"]
                 meta["root_cause"] = binding.result.root_cause
                 meta["root_causes"] = analysis["root_causes"]
                 meta["category_taxonomy"] = analysis["category_taxonomy"]
@@ -2604,6 +2803,7 @@ async def _aggregate_pass_analysis_results(
             or _is_protected_pass_analysis(analysis)
         ):
             continue
+        root_cause_issues = analysis_root_cause_issues(analysis)
         root_causes = analysis_root_causes(analysis)
         category_taxonomy = normalize_category_taxonomy(
             analysis.get("category_taxonomy")
@@ -2617,6 +2817,7 @@ async def _aggregate_pass_analysis_results(
             metric_name=score.metric_name,
             root_cause=root_causes[0],
             root_causes=root_causes,
+            root_cause_issues=root_cause_issues,
             category_taxonomy=category_taxonomy,
             root_cause_detail=str(analysis.get("root_cause_detail") or "").strip(),
             root_cause_reason=str(analysis.get("root_cause_reason") or "").strip(),
@@ -2630,6 +2831,9 @@ async def _aggregate_pass_analysis_results(
                 score=score,
                 result=result,
                 original_root_causes=tuple(root_causes),
+                original_root_cause_issues=_root_cause_issue_signature(
+                    root_cause_issues
+                ),
                 original_root_cause_detail=result.root_cause_detail,
                 original_solution=result.solution,
                 original_category_taxonomy=category_taxonomy,
@@ -2653,6 +2857,18 @@ async def _aggregate_pass_analysis_results(
         )
     except AnalysisAggregationError:
         for binding in bindings:
+            binding.result.root_cause_issues = normalize_root_cause_issues(
+                [
+                    {
+                        "category": category,
+                        "subcategory": subcategory,
+                        "finding": finding,
+                    }
+                    for category, subcategory, finding in (
+                        binding.original_root_cause_issues
+                    )
+                ]
+            )
             binding.result.root_causes = list(binding.original_root_causes)
             binding.result.root_cause = (
                 binding.original_root_causes[0]
@@ -2679,6 +2895,10 @@ async def _aggregate_pass_analysis_results(
                 )
             )
             != binding.original_root_causes
+            or _root_cause_issue_signature(
+                _result_root_cause_issues(binding.result)
+            )
+            != binding.original_root_cause_issues
             or binding.result.root_cause_detail != binding.original_root_cause_detail
             or binding.result.solution != binding.original_solution
             or normalize_category_taxonomy(
@@ -2717,6 +2937,9 @@ async def _aggregate_pass_analysis_results(
         ):
             continue
         updated_analysis = dict(current_analysis)
+        updated_analysis["root_cause_issues"] = _result_root_cause_issues(
+            binding.result
+        )
         updated_analysis["root_cause"] = binding.result.root_cause
         updated_analysis["root_causes"] = normalize_root_causes(
             getattr(binding.result, "root_causes", None)
@@ -2797,6 +3020,7 @@ async def _aggregate_run_analysis_results(
 
     labels_before = [
         (
+            _root_cause_issue_signature(_result_root_cause_issues(result)),
             tuple(
                 normalize_root_causes(
                     getattr(result, "root_causes", None) or result.root_cause
@@ -2824,7 +3048,15 @@ async def _aggregate_run_analysis_results(
         )
     except AnalysisAggregationError:
         for result, before in zip(combined_results, labels_before):
-            categories, detail, solution, category_taxonomy = before
+            issues, categories, detail, solution, category_taxonomy = before
+            result.root_cause_issues = [
+                {
+                    "category": category,
+                    "subcategory": subcategory,
+                    "finding": finding,
+                }
+                for category, subcategory, finding in issues
+            ]
             result.root_causes = list(categories)
             result.root_cause = categories[0] if categories else ""
             result.root_cause_detail = detail
@@ -2833,6 +3065,7 @@ async def _aggregate_run_analysis_results(
         raise
     changed_new_results = sum(
         (
+            _root_cause_issue_signature(_result_root_cause_issues(result)),
             tuple(
                 normalize_root_causes(
                     getattr(result, "root_causes", None) or result.root_cause
@@ -3066,6 +3299,7 @@ def _save_analysis_results(
                 original_meta,
                 build_ai_state(
                     root_cause=primary.root_cause,
+                    root_cause_issues=_result_root_cause_issues(primary),
                     root_causes=normalize_root_causes(
                         getattr(primary, "root_causes", None) or primary.root_cause
                     ),
@@ -3116,6 +3350,7 @@ def _save_analysis_results(
             metric_analyses[metric_name] = {
                 "source": "ai",
                 "root_cause": result.root_cause,
+                "root_cause_issues": _result_root_cause_issues(result),
                 "root_causes": normalize_root_causes(
                     getattr(result, "root_causes", None) or result.root_cause
                 ),
@@ -3277,6 +3512,7 @@ def _save_pass_analysis_results(
             analysis = {
                 "source": "ai",
                 "root_cause": result.root_cause,
+                "root_cause_issues": _result_root_cause_issues(result),
                 "root_causes": normalize_root_causes(
                     getattr(result, "root_causes", None) or result.root_cause
                 ),
@@ -4477,6 +4713,7 @@ async def analyze_run_items_stream(
                     "item_id": result.item_id,
                     "metric_name": result.metric_name,
                     "root_cause": result.root_cause,
+                    "root_cause_issues": _result_root_cause_issues(result),
                     "root_causes": normalize_root_causes(
                         getattr(result, "root_causes", None) or result.root_cause
                     ),
@@ -4901,10 +5138,16 @@ def _analysis_example_filter_query(
         cast(Run.run_config.op("->>")("run_name"), String), ""
     )
     ai_root_cause_expr = func.btrim(func.coalesce(ReviewCorrection.ai_root_cause, ""))
+    ai_issues_expr = func.coalesce(
+        cast(ReviewCorrection.ai_root_cause_issues, String), ""
+    )
     ai_detail_expr = func.btrim(func.coalesce(ReviewCorrection.ai_root_cause_detail, ""))
     ai_note_expr = func.btrim(func.coalesce(ReviewCorrection.ai_root_cause_note, ""))
     human_root_cause_expr = func.btrim(
         func.coalesce(ReviewCorrection.human_root_cause, "")
+    )
+    human_issues_expr = func.coalesce(
+        cast(ReviewCorrection.human_root_cause_issues, String), ""
     )
     human_detail_expr = func.btrim(
         func.coalesce(ReviewCorrection.human_root_cause_detail, "")
@@ -4920,6 +5163,7 @@ def _analysis_example_filter_query(
     )
     has_ai_data = or_(
         and_(ai_root_cause_expr != "", func.lower(ai_root_cause_expr) != "unanalyzed"),
+        and_(ai_issues_expr != "", ai_issues_expr != "[]", ai_issues_expr != "null"),
         ai_detail_expr != "",
         ai_note_expr != "",
         ai_solution_expr != "",
@@ -4927,6 +5171,11 @@ def _analysis_example_filter_query(
     )
     has_human_data = or_(
         human_root_cause_expr != "",
+        and_(
+            human_issues_expr != "",
+            human_issues_expr != "[]",
+            human_issues_expr != "null",
+        ),
         human_detail_expr != "",
         human_note_expr != "",
         human_solution_expr != "",
@@ -4934,6 +5183,11 @@ def _analysis_example_filter_query(
     )
     is_changed = or_(
         ai_root_cause_expr != human_root_cause_expr,
+        and_(
+            ai_issues_expr.notin_(("", "null")),
+            human_issues_expr.notin_(("", "null")),
+            ai_issues_expr != human_issues_expr,
+        ),
         ai_detail_expr != human_detail_expr,
         ai_note_expr != human_note_expr,
         ai_solution_expr != human_solution_expr,
@@ -4990,6 +5244,8 @@ def _analysis_example_filter_query(
                 ReviewCorrection.human_root_cause_detail.ilike(like),
                 ReviewCorrection.human_root_cause_note.ilike(like),
                 ReviewCorrection.ai_root_cause.ilike(like),
+                ai_issues_expr.ilike(like),
+                human_issues_expr.ilike(like),
                 Run.dataset.ilike(like),
                 Run.model.ilike(like),
                 Run.external_run_id.ilike(like),
@@ -5008,8 +5264,23 @@ def _analysis_example_row(
     def clean(value: Any) -> str:
         return str(value or "").strip()
 
+    ai_issues = normalize_root_cause_issues(
+        getattr(correction, "ai_root_cause_issues", None),
+        legacy_root_causes=correction.ai_root_causes or correction.ai_root_cause,
+        legacy_detail=correction.ai_root_cause_detail,
+        legacy_finding=correction.ai_root_cause_note,
+    )
+    human_issues = normalize_root_cause_issues(
+        getattr(correction, "human_root_cause_issues", None),
+        legacy_root_causes=(
+            correction.human_root_causes or correction.human_root_cause
+        ),
+        legacy_detail=correction.human_root_cause_detail,
+        legacy_finding=correction.human_root_cause_note,
+    )
     ai_values = [
         clean(correction.ai_root_cause),
+        json.dumps(ai_issues, sort_keys=True),
         clean(correction.ai_root_cause_detail),
         clean(correction.ai_root_cause_note),
         clean(correction.ai_solution),
@@ -5017,16 +5288,18 @@ def _analysis_example_row(
     ]
     human_values = [
         clean(correction.human_root_cause),
+        json.dumps(human_issues, sort_keys=True),
         clean(correction.human_root_cause_detail),
         clean(correction.human_root_cause_note),
         clean(correction.human_solution),
         clean(correction.human_solution_note),
     ]
     has_ai_data = bool(
-        any(ai_values[1:])
+        ai_issues
+        or any(ai_values[2:])
         or (ai_values[0] and ai_values[0].lower() != "unanalyzed")
     )
-    has_human_data = any(human_values)
+    has_human_data = bool(human_issues or any(human_values[2:]))
     if has_ai_data and has_human_data and ai_values != human_values:
         source = "Corrected"
     elif has_human_data and not has_ai_data:
@@ -5037,12 +5310,9 @@ def _analysis_example_row(
         source = "AI"
     else:
         source = "Unknown"
-    categories = normalize_root_causes(
-        correction.human_root_causes
-        or correction.human_root_cause
-        or correction.ai_root_causes
-        or correction.ai_root_cause
-    )
+    issues = _correction_root_cause_issues(correction)
+    categories = normalize_root_causes(issue["category"] for issue in issues)
+    primary_issue = issues[0] if issues else {}
     return {
         "id": correction.id,
         "item_id": correction.item_id,
@@ -5052,12 +5322,9 @@ def _analysis_example_row(
         "model": _strip_model_provider(run.model or "") if run else "",
         "run_name": _run_display_name(run),
         "root_causes": categories,
-        "detail": correction.human_root_cause_detail
-        or correction.ai_root_cause_detail
-        or "",
-        "note": correction.human_root_cause_note
-        or correction.ai_root_cause_note
-        or "",
+        "root_cause_issues": issues,
+        "detail": primary_issue.get("subcategory", ""),
+        "note": primary_issue.get("finding", ""),
         "confidence": correction.ai_confidence,
         "source": source,
         "corrected_by": _serialize_user(users_by_id.get(correction.corrected_by_user_id)),
@@ -6604,6 +6871,7 @@ async def analyze_test(
     aggregation_error: str | None = None
     raw_labels = [
         (
+            _root_cause_issue_signature(_result_root_cause_issues(result)),
             tuple(
                 normalize_root_causes(
                     getattr(result, "root_causes", None) or result.root_cause
@@ -6631,7 +6899,15 @@ async def analyze_test(
         )
     except AnalysisAggregationError as exc:
         for result, labels in zip(analyzed_results, raw_labels):
-            categories, detail, solution, category_taxonomy = labels
+            issues, categories, detail, solution, category_taxonomy = labels
+            result.root_cause_issues = [
+                {
+                    "category": category,
+                    "subcategory": subcategory,
+                    "finding": finding,
+                }
+                for category, subcategory, finding in issues
+            ]
             result.root_causes = list(categories)
             result.root_cause = categories[0] if categories else ""
             result.root_cause_detail = detail
@@ -6644,6 +6920,7 @@ async def analyze_test(
             "item_id": result.item_id,
             "metric_name": result.metric_name,
             "root_cause": result.root_cause,
+            "root_cause_issues": _result_root_cause_issues(result),
             "root_causes": normalize_root_causes(
                 getattr(result, "root_causes", None) or result.root_cause
             ),
@@ -6707,6 +6984,14 @@ def get_corrections(
                 "human_root_causes": normalize_root_causes(
                     c.human_root_causes or c.human_root_cause
                 ),
+                "human_root_cause_issues": normalize_root_cause_issues(
+                    getattr(c, "human_root_cause_issues", None),
+                    legacy_root_causes=(
+                        c.human_root_causes or c.human_root_cause
+                    ),
+                    legacy_detail=c.human_root_cause_detail,
+                    legacy_finding=c.human_root_cause_note,
+                ),
                 "human_category_taxonomy": normalize_category_taxonomy(
                     getattr(c, "human_category_taxonomy", None)
                 ),
@@ -6715,6 +7000,12 @@ def get_corrections(
                 "ai_root_cause": c.ai_root_cause,
                 "ai_root_causes": normalize_root_causes(
                     c.ai_root_causes or c.ai_root_cause
+                ),
+                "ai_root_cause_issues": normalize_root_cause_issues(
+                    getattr(c, "ai_root_cause_issues", None),
+                    legacy_root_causes=c.ai_root_causes or c.ai_root_cause,
+                    legacy_detail=c.ai_root_cause_detail,
+                    legacy_finding=c.ai_root_cause_note,
                 ),
                 "ai_category_taxonomy": normalize_category_taxonomy(
                     getattr(c, "ai_category_taxonomy", None)
@@ -6821,6 +7112,7 @@ def get_analysis_config(
     all_categories = list(category_catalog_values["categories"])
     category_details_map = dict(category_catalog_values["category_details_map"])
     category_taxonomy = dict(category_catalog_values["category_taxonomy"])
+    subcategory_taxonomy = dict(category_catalog_values["subcategory_taxonomy"])
     correction_runs = _load_runs_map(
         db, {correction.run_id for correction in approved_corrections}
     )
@@ -6828,35 +7120,44 @@ def get_analysis_config(
         category: [] for category in all_categories
     }
     for correction in approved_corrections:
-        categories = _approved_correction_categories(correction)
+        issues = _correction_root_cause_issues(correction)
+        categories = normalize_root_causes(issue["category"] for issue in issues)
         if not categories:
             continue
         example_run = correction_runs.get(correction.run_id)
-        example = {
-                "id": correction.id,
-                "item_id": correction.item_id,
-                "metric_name": correction.metric_name,
-                "run_name": _run_display_name(example_run),
-                "dataset": example_run.dataset if example_run else "",
-                "model": (
-                    _strip_model_provider(example_run.model or "")
-                    if example_run
-                    else ""
-                ),
-                "detail": correction.human_root_cause_detail
-                or correction.ai_root_cause_detail,
-                "note": correction.human_root_cause_note
-                or correction.ai_root_cause_note,
-                "solution": correction.human_solution or correction.ai_solution,
-                "solution_note": correction.human_solution_note
-                or correction.ai_solution_note,
-                "input": _normalize_snapshot_value(correction.input_snapshot),
-                "expected": _normalize_snapshot_value(correction.expected_snapshot),
-                "output": _normalize_snapshot_value(correction.output_snapshot),
-                "created_at": to_api_timestamp(correction.created_at),
-            }
         for category in categories:
-            category_examples.setdefault(category, []).append(example)
+            category_issues = [
+                issue for issue in issues if issue["category"] == category
+            ]
+            primary_issue = category_issues[0]
+            category_examples.setdefault(category, []).append(
+                {
+                    "id": correction.id,
+                    "item_id": correction.item_id,
+                    "metric_name": correction.metric_name,
+                    "run_name": _run_display_name(example_run),
+                    "dataset": example_run.dataset if example_run else "",
+                    "model": (
+                        _strip_model_provider(example_run.model or "")
+                        if example_run
+                        else ""
+                    ),
+                    "root_cause_issues": category_issues,
+                    "detail": primary_issue["subcategory"],
+                    "note": primary_issue["finding"],
+                    "solution": correction.human_solution or correction.ai_solution,
+                    "solution_note": (
+                        correction.human_solution_note
+                        or correction.ai_solution_note
+                    ),
+                    "input": _normalize_snapshot_value(correction.input_snapshot),
+                    "expected": _normalize_snapshot_value(
+                        correction.expected_snapshot
+                    ),
+                    "output": _normalize_snapshot_value(correction.output_snapshot),
+                    "created_at": to_api_timestamp(correction.created_at),
+                }
+            )
     active_rule_version = (
         _active_analysis_rule_version(db, project.id) if project else None
     )
@@ -6912,6 +7213,7 @@ def get_analysis_config(
         "default_solution_categories": SOLUTION_CATEGORIES,
         "category_details_map": category_details_map,
         "category_taxonomy": category_taxonomy,
+        "subcategory_taxonomy": subcategory_taxonomy,
         "category_example_counts": {
             category: category_example_counts.get(category, 0)
             for category, examples in category_examples.items()
@@ -7110,6 +7412,7 @@ def _restore_project_category_catalog(
         category_details_map=values["category_details_map"],
         category_taxonomy=values["category_taxonomy"],
         max_root_cause_categories=values["max_root_cause_categories"],
+        subcategory_taxonomy=values["subcategory_taxonomy"],
     )
     version = _create_category_catalog_version(
         db,
@@ -7625,6 +7928,18 @@ def _serialize_review_fields(
 ) -> Dict[str, Any]:
     ai_root_cause = (c.ai_root_cause or "").strip()
     ai_is_unanalyzed = ai_root_cause.lower() == "unanalyzed"
+    ai_root_cause_issues = normalize_root_cause_issues(
+        getattr(c, "ai_root_cause_issues", None),
+        legacy_root_causes=c.ai_root_causes or c.ai_root_cause,
+        legacy_detail=c.ai_root_cause_detail,
+        legacy_finding=c.ai_root_cause_note,
+    )
+    human_root_cause_issues = normalize_root_cause_issues(
+        getattr(c, "human_root_cause_issues", None),
+        legacy_root_causes=c.human_root_causes or c.human_root_cause,
+        legacy_detail=c.human_root_cause_detail,
+        legacy_finding=c.human_root_cause_note,
+    )
     run = runs_by_id.get(c.run_id)
     run_trace_stats = (
         run.run_metadata.get("trace_stats")
@@ -7660,6 +7975,9 @@ def _serialize_review_fields(
             if ai_is_unanalyzed
             else normalize_root_causes(c.ai_root_causes or c.ai_root_cause)
         ),
+        "ai_root_cause_issues": (
+            [] if ai_is_unanalyzed else ai_root_cause_issues
+        ),
         "ai_category_taxonomy": (
             {}
             if ai_is_unanalyzed
@@ -7676,6 +7994,7 @@ def _serialize_review_fields(
         "human_root_causes": normalize_root_causes(
             c.human_root_causes or c.human_root_cause
         ),
+        "human_root_cause_issues": human_root_cause_issues,
         "human_category_taxonomy": normalize_category_taxonomy(
             getattr(c, "human_category_taxonomy", None)
         ),
@@ -7894,17 +8213,26 @@ def _approve_candidate(
             correction.human_solution,
             correction.human_solution_note,
         )
-    ) or bool(correction.human_root_causes)
-    if not has_human_label and str(correction.ai_root_cause or "").strip():
-        correction.human_root_cause = correction.ai_root_cause or ""
-        correction.human_root_causes = normalize_root_causes(
-            correction.ai_root_causes or correction.ai_root_cause
-        )
+    ) or bool(
+        correction.human_root_causes
+        or getattr(correction, "human_root_cause_issues", None)
+    )
+    ai_issues = normalize_root_cause_issues(
+        getattr(correction, "ai_root_cause_issues", None),
+        legacy_root_causes=(correction.ai_root_causes or correction.ai_root_cause),
+        legacy_detail=correction.ai_root_cause_detail,
+        legacy_finding=correction.ai_root_cause_note,
+    )
+    if not has_human_label and ai_issues:
+        projection = project_root_cause_issues(ai_issues)
+        correction.human_root_cause = projection["root_cause"]
+        correction.human_root_causes = projection["root_causes"]
+        correction.human_root_cause_issues = ai_issues
         correction.human_category_taxonomy = normalize_category_taxonomy(
             getattr(correction, "ai_category_taxonomy", None)
         )
-        correction.human_root_cause_detail = correction.ai_root_cause_detail or ""
-        correction.human_root_cause_note = correction.ai_root_cause_note or ""
+        correction.human_root_cause_detail = projection["root_cause_detail"]
+        correction.human_root_cause_note = projection["root_cause_note"]
         correction.human_solution = correction.ai_solution or ""
         correction.human_solution_note = correction.ai_solution_note or ""
 
@@ -8000,6 +8328,7 @@ def _sync_legacy_summary_after_metric_deletion(
         {
             "root_cause": analysis.get("root_cause"),
             "root_causes": analysis_root_causes(analysis),
+            "root_cause_issues": analysis_root_cause_issues(analysis),
             "category_taxonomy": normalize_category_taxonomy(
                 analysis.get("category_taxonomy")
             ),
@@ -8104,6 +8433,9 @@ def list_corrections(
         cast(Run.run_config.op("->>")("run_name"), String), ""
     )
     ai_root_cause_expr = func.btrim(func.coalesce(ReviewCorrection.ai_root_cause, ""))
+    ai_issues_expr = func.coalesce(
+        cast(ReviewCorrection.ai_root_cause_issues, String), ""
+    )
     ai_root_cause_detail_expr = func.btrim(
         func.coalesce(ReviewCorrection.ai_root_cause_detail, "")
     )
@@ -8116,6 +8448,9 @@ def list_corrections(
     )
     human_root_cause_expr = func.btrim(
         func.coalesce(ReviewCorrection.human_root_cause, "")
+    )
+    human_issues_expr = func.coalesce(
+        cast(ReviewCorrection.human_root_cause_issues, String), ""
     )
     human_root_cause_detail_expr = func.btrim(
         func.coalesce(ReviewCorrection.human_root_cause_detail, "")
@@ -8130,6 +8465,7 @@ def list_corrections(
 
     has_ai_data = or_(
         and_(ai_root_cause_expr != "", func.lower(ai_root_cause_expr) != "unanalyzed"),
+        and_(ai_issues_expr != "", ai_issues_expr != "[]", ai_issues_expr != "null"),
         ai_root_cause_detail_expr != "",
         ai_root_cause_note_expr != "",
         ai_solution_expr != "",
@@ -8137,6 +8473,11 @@ def list_corrections(
     )
     has_human_data = or_(
         human_root_cause_expr != "",
+        and_(
+            human_issues_expr != "",
+            human_issues_expr != "[]",
+            human_issues_expr != "null",
+        ),
         human_root_cause_detail_expr != "",
         human_root_cause_note_expr != "",
         human_solution_expr != "",
@@ -8144,6 +8485,11 @@ def list_corrections(
     )
     is_changed = or_(
         ai_root_cause_expr != human_root_cause_expr,
+        and_(
+            ai_issues_expr.notin_(("", "null")),
+            human_issues_expr.notin_(("", "null")),
+            ai_issues_expr != human_issues_expr,
+        ),
         ai_root_cause_detail_expr != human_root_cause_detail_expr,
         ai_root_cause_note_expr != human_root_cause_note_expr,
         ai_solution_expr != human_solution_expr,
@@ -8220,6 +8566,8 @@ def list_corrections(
                     ReviewCorrection.item_id.ilike(like),
                     ReviewCorrection.human_root_cause.ilike(like),
                     ReviewCorrection.ai_root_cause.ilike(like),
+                    ai_issues_expr.ilike(like),
+                    human_issues_expr.ilike(like),
                     Run.dataset.ilike(like),
                     Run.model.ilike(like),
                     Run.external_run_id.ilike(like),
@@ -8429,6 +8777,8 @@ def update_correction(
         ("human_root_cause", "root_cause"),
         ("human_root_causes", "root_causes"),
         ("root_causes", "root_causes"),
+        ("human_root_cause_issues", "root_cause_issues"),
+        ("root_cause_issues", "root_cause_issues"),
         ("human_category_taxonomy", "category_taxonomy"),
         ("category_taxonomy", "category_taxonomy"),
         ("human_root_cause_detail", "root_cause_detail"),
@@ -8440,65 +8790,13 @@ def update_correction(
             patch[state_key] = request.get(request_key)
 
     if c.metric_name:
+        from qym_platform.api.runs import _apply_metric_analysis_patch
+
         meta = dict(item.item_metadata) if isinstance(item.item_metadata, dict) else {}
         metric_analyses = dict(meta.get("metric_analyses") or {})
-        analysis = dict(metric_analyses.get(c.metric_name) or {})
-        if "root_causes" in patch:
-            root_causes = normalize_root_causes(
-                patch.get("root_causes")
-            )
-            if root_causes:
-                analysis["root_causes"] = root_causes
-                analysis["root_cause"] = root_causes[0]
-            else:
-                for field in (
-                    "root_causes",
-                    "root_cause",
-                    "root_cause_detail",
-                    "root_cause_reason",
-                    "root_cause_note",
-                    "confidence",
-                ):
-                    analysis.pop(field, None)
-        elif "root_cause" in patch:
-            root_cause = str(patch.get("root_cause") or "").strip()
-            if root_cause:
-                analysis["root_cause"] = root_cause
-                analysis["root_causes"] = [root_cause]
-            else:
-                for field in (
-                    "root_causes",
-                    "root_cause",
-                    "root_cause_detail",
-                    "root_cause_reason",
-                    "root_cause_note",
-                    "confidence",
-                ):
-                    analysis.pop(field, None)
-        for field in (
-            "root_cause_detail",
-            "root_cause_note",
-            "solution",
-            "solution_note",
-        ):
-            if field not in patch:
-                continue
-            value = str(patch.get(field) or "").strip()
-            if value:
-                analysis[field] = value
-            else:
-                analysis.pop(field, None)
-                if field == "solution":
-                    analysis.pop("solution_note", None)
-        if "category_taxonomy" in patch:
-            taxonomy = normalize_category_taxonomy(patch.get("category_taxonomy"))
-            if taxonomy:
-                analysis["category_taxonomy"] = taxonomy
-            else:
-                analysis.pop("category_taxonomy", None)
-        analysis.pop("error", None)
-        analysis.pop("confidence", None)
-        analysis["source"] = "human"
+        analysis = _apply_metric_analysis_patch(
+            dict(metric_analyses.get(c.metric_name) or {}), patch
+        )
         meaningful = {
             key: value
             for key, value in analysis.items()

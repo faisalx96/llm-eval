@@ -11,6 +11,7 @@ MUTABLE_METADATA_KEYS = {
     "review_correction_id",
     "review_correction_status",
     "root_cause",
+    "root_cause_issues",
     "root_cause_confidence",
     "root_cause_detail",
     "root_cause_note",

@@ -357,7 +357,7 @@ class ViewFixture:
 
 
 @contextmanager
-def source_run_api(count=61):
+def source_run_api(count=61, seed_issues=False):
     """Real source rows, repeats and score mutations behind the shipped pages."""
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
@@ -426,6 +426,18 @@ def source_run_api(count=61):
                     )
                 )
             for row in payload(run_id, count, 3)["snapshot"]["rows"]:
+                if seed_issues and row["index"] == 0:
+                    row["item_metadata"].update(
+                        root_causes=["Aggregate only"],
+                        root_cause_issues=[
+                            {
+                                "category": "Aggregate only",
+                                "subcategory": "Stale summary",
+                                "finding": "Aggregate diagnosis must not appear in a pass",
+                            }
+                        ],
+                        root_cause_reason="Aggregate category explanation",
+                    )
                 db.add(
                     RunItem(
                         run_id=run_id,
@@ -497,6 +509,34 @@ def source_run_api(count=61):
     app.dependency_overrides[require_ui_principal] = lambda: principal
     try:
         with TestClient(app) as client:
+            if seed_issues:
+                for pass_number in (1, 2, 3):
+                    issues = [
+                        {
+                            "category": "Reasoning Error",
+                            "subcategory": "First mechanism",
+                            "finding": f"pass-{pass_number} first finding {count - 1}",
+                        }
+                    ]
+                    if pass_number == 2:
+                        issues.append(
+                            {
+                                "category": "Reasoning Error",
+                                "subcategory": "Second mechanism",
+                                "finding": f"pass-2 second finding {count - 1}",
+                            }
+                        )
+                    response = client.post(
+                        "/api/runs/update_root_cause",
+                        json={
+                            "run_id": "run-1",
+                            "item_id": f"item-{count - 1}",
+                            "metric_name": "accuracy",
+                            "pass_number": pass_number,
+                            "root_cause_issues": issues,
+                        },
+                    )
+                    assert response.status_code == 200, response.text
             yield client
     finally:
         engine.dispose()
@@ -580,6 +620,113 @@ def test_source_api_preserves_repeated_offpage_details_search_edit_and_csv(
                 for _, verb, body in fixture.requests
                 if verb == "details"
             )
+    finally:
+        for fixture in fixtures:
+            fixture.close()
+
+
+@pytest.mark.parametrize("kind", ["run", "compare"])
+def test_source_issue_records_keep_full_compact_pass_filter_export_and_edit_parity(
+    browser, monkeypatch, tmp_path, kind
+):
+    monkeypatch.setenv("QYM_DATABASE_URL", "sqlite://")
+    fixtures = []
+    try:
+        with source_run_api(seed_issues=True) as client:
+            for compact in (False, True):
+                fixture = ViewFixture(
+                    browser, kind, compact=compact, count=61, samples=3
+                )
+                fixture.api_client = client
+                fixtures.append(fixture)
+                fixture.goto("?pass=2" if kind == "run" else "")
+                page = fixture.page
+                page.locator(
+                    "#root-cause-section .rc-category-pill-count"
+                ).first.wait_for(state="attached")
+                assert page.locator(
+                    "#root-cause-section .rc-category-pill-count"
+                ).all_inner_texts() == ["2" if kind == "run" else "4"]
+                assert (
+                    "Aggregate only"
+                    not in page.locator("#root-cause-section").inner_text()
+                )
+                if compact:
+                    assert page.evaluate(
+                        "(__viewTest.state.snapshot?.rows || __viewTest.state.runs[0].snapshot.rows)[60].__details_loaded === false"
+                    )
+                page.evaluate(
+                    "__viewTest.state.rootCauseMetric='accuracy'; __viewTest.state.rootCauseFilter=['Reasoning Error']; __viewTest.renderItems()"
+                )
+                fixture.settled()
+                assert len(fixture.state_result()["ids"]) == 1
+                page.locator("#items-grid .item-header-expand").first.click()
+                visible = page.locator("#items-grid").inner_text()
+                assert "pass-2 first finding 60" in visible
+                assert "pass-2 second finding 60" in visible
+                assert "Aggregate diagnosis" not in visible
+                if kind == "run":
+                    assert "pass-1 first finding" not in visible
+                    assert (
+                        page.locator("#items-grid .metric-analysis-issue").count() == 2
+                    )
+                else:
+                    assert "pass-1 first finding 60" in visible
+                    assert "pass-3 first finding 60" in visible
+                    assert page.locator("#items-grid .compare-issue").count() == 4
+                page.locator("#export-filtered-btn").click()
+                page.locator("#export-modal-overlay.open").wait_for()
+                with page.expect_download() as download:
+                    page.locator("#export-modal-confirm").click()
+                target = tmp_path / f"issues-{kind}-{compact}.csv"
+                download.value.save_as(target)
+                assert "pass-2 first finding 60" in target.read_text()
+                assert "pass-2 second finding 60" in target.read_text()
+            assert (tmp_path / f"issues-{kind}-False.csv").read_bytes() == (
+                tmp_path / f"issues-{kind}-True.csv"
+            ).read_bytes()
+            fixture = fixtures[1]
+            page = fixture.page
+            if kind == "run":
+                trigger = page.locator(
+                    '[data-metric-issues-item="item-60"][data-metric-name="accuracy"]'
+                )
+            else:
+                run_index = page.evaluate(
+                    "__viewTest.state.runs.findIndex(run => run.run.file_path === 'run-1::pass2')"
+                )
+                trigger = page.locator(
+                    f'[data-rc-issues-run-idx="{run_index}"][data-rc-issues-metric="accuracy"]'
+                )
+            trigger.first.click()
+            editor = page.get_by_role("dialog", name="Edit root-cause issues")
+            fields = editor.locator('[data-issue-field="finding"]')
+            assert fields.count() == 2
+            fields.nth(1).fill("Reviewed second issue")
+            with page.expect_response("**/api/runs/update_root_cause") as saved:
+                editor.locator("[data-save-issues]").click()
+            assert saved.value.status == 200
+            editor.wait_for(state="hidden")
+            fixture.settled()
+            updated = client.get("/api/runs/run-1").json()["snapshot"]["rows"][60]
+            analyses = updated["pass_metric_analyses"]["accuracy"]
+            assert (
+                analyses[1]["root_cause_issues"][1]["finding"]
+                == "Reviewed second issue"
+            )
+            assert (
+                analyses[1]["root_cause_issues"][0]["finding"]
+                == "pass-2 first finding 60"
+            )
+            assert (
+                analyses[0]["root_cause_issues"][0]["finding"]
+                == "pass-1 first finding 60"
+            )
+            assert (
+                analyses[2]["root_cause_issues"][0]["finding"]
+                == "pass-3 first finding 60"
+            )
+            assert "Reviewed second issue" in page.locator("#items-grid").inner_text()
     finally:
         for fixture in fixtures:
             fixture.close()

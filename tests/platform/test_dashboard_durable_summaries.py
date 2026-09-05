@@ -766,7 +766,7 @@ def test_migration_frozen_schema_and_existing_history_seed(database):
 
     path = (
         Path(__file__).parents[2]
-        / "packages/platform/qym_platform/migrations/versions/0046_durable_dashboard_summaries.py"
+        / "packages/platform/qym_platform/migrations/versions/0048_durable_dashboard_summaries.py"
     )
     assert "qym_platform.db" not in path.read_text()
     spec = importlib.util.spec_from_file_location("dashboard_migration", path)

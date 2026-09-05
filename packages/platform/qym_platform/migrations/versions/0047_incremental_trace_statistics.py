@@ -1,14 +1,14 @@
 """Add durable incremental trace contributions and numeric summaries.
 
-Revision ID: 0045
-Revises: 0044
+Revision ID: 0047
+Revises: 0046
 """
 
 from alembic import op
 import sqlalchemy as sa
 
-revision = "0045"
-down_revision = "0044"
+revision = "0047"
+down_revision = "0046"
 branch_labels = None
 depends_on = None
 

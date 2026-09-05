@@ -72,9 +72,12 @@ from qym_platform.services.root_cause_changes import (
     replace_metric_review_candidate,
 )
 from qym_platform.services.root_cause_categories import (
+    analysis_root_cause_issues,
     analysis_root_causes,
     normalize_category_taxonomy,
+    normalize_root_cause_issues,
     normalize_root_causes,
+    patch_issue_categories,
 )
 from qym_platform.settings import PlatformSettings
 
@@ -138,48 +141,97 @@ def _apply_metric_analysis_patch(
     """Apply the editable diagnosis fields without touching other metadata."""
     analysis = dict(before_analysis or {})
 
-    if "root_causes" in patch:
+    if "root_cause_issues" in patch:
+        issues = normalize_root_cause_issues(patch.get("root_cause_issues"))
+        analysis["root_cause_issues"] = issues
+    elif "root_causes" in patch:
         root_causes = normalize_root_causes(patch.get("root_causes"))
         if root_causes:
-            analysis["root_causes"] = root_causes
-            analysis["root_cause"] = root_causes[0]
+            existing = analysis_root_cause_issues(analysis)
+            analysis["root_cause_issues"] = patch_issue_categories(
+                existing, root_causes
+            )
         else:
-            for field in (
-                "root_causes",
-                "root_cause",
-                "root_cause_detail",
-                "root_cause_reason",
-                "root_cause_note",
-                "confidence",
-            ):
-                analysis.pop(field, None)
+            analysis["root_cause_issues"] = []
     elif "root_cause" in patch:
         root_cause = str(patch.get("root_cause") or "").strip()
         if root_cause:
-            analysis["root_cause"] = root_cause
-            analysis["root_causes"] = [root_cause]
+            existing = analysis_root_cause_issues(analysis)
+            primary = dict(existing[0]) if existing else {}
+            primary["category"] = root_cause
+            analysis["root_cause_issues"] = [primary, *existing[1:]]
+        else:
+            analysis["root_cause_issues"] = []
+    if "root_cause_detail" in patch:
+        issues = analysis_root_cause_issues(analysis)
+        if issues:
+            issues[0]["subcategory"] = str(
+                patch.get("root_cause_detail") or ""
+            ).strip()
+            analysis["root_cause_issues"] = issues
+        else:
+            detail = str(patch.get("root_cause_detail") or "").strip()
+            if detail:
+                analysis["root_cause_detail"] = detail
+            else:
+                analysis.pop("root_cause_detail", None)
+    if "root_cause_note" in patch:
+        issues = analysis_root_cause_issues(analysis)
+        if issues:
+            issues[0]["finding"] = str(
+                patch.get("root_cause_note") or ""
+            ).strip()
+            analysis["root_cause_issues"] = issues
+        else:
+            note = str(patch.get("root_cause_note") or "").strip()
+            if note:
+                analysis["root_cause_note"] = note
+            else:
+                analysis.pop("root_cause_note", None)
+
+    category_was_patched = any(
+        field in patch for field in ("root_cause_issues", "root_causes", "root_cause")
+    )
+    if category_was_patched or any(
+        field in patch
+        for field in ("root_cause_detail", "root_cause_note")
+    ):
+        issues = normalize_root_cause_issues(
+            analysis.get("root_cause_issues"),
+            legacy_root_causes=(
+                analysis.get("root_causes") or analysis.get("root_cause")
+            ),
+            legacy_detail=analysis.get("root_cause_detail"),
+            legacy_finding=analysis.get("root_cause_note"),
+        )
+        if issues:
+            categories = normalize_root_causes(
+                issue.get("category") for issue in issues
+            )
+            primary = issues[0]
+            analysis["root_cause_issues"] = issues
+            analysis["root_causes"] = categories
+            analysis["root_cause"] = categories[0]
+            if primary.get("subcategory"):
+                analysis["root_cause_detail"] = primary["subcategory"]
+            else:
+                analysis.pop("root_cause_detail", None)
+            if primary.get("finding"):
+                analysis["root_cause_note"] = primary["finding"]
+            else:
+                analysis.pop("root_cause_note", None)
         else:
             for field in (
+                "root_cause_issues",
                 "root_causes",
                 "root_cause",
-                "root_cause_detail",
                 "root_cause_reason",
-                "root_cause_note",
                 "confidence",
             ):
                 analysis.pop(field, None)
-    if "root_cause_detail" in patch:
-        detail = str(patch.get("root_cause_detail") or "").strip()
-        if detail:
-            analysis["root_cause_detail"] = detail
-        else:
-            analysis.pop("root_cause_detail", None)
-    if "root_cause_note" in patch:
-        note = str(patch.get("root_cause_note") or "").strip()
-        if note:
-            analysis["root_cause_note"] = note
-        else:
-            analysis.pop("root_cause_note", None)
+            if category_was_patched:
+                analysis.pop("root_cause_detail", None)
+                analysis.pop("root_cause_note", None)
     if "category_taxonomy" in patch:
         taxonomy = normalize_category_taxonomy(patch.get("category_taxonomy"))
         if taxonomy:
@@ -4204,6 +4256,7 @@ def update_root_cause(
     editable_fields = (
         "root_cause",
         "root_causes",
+        "root_cause_issues",
         "category_taxonomy",
         "root_cause_detail",
         "root_cause_note",
@@ -4327,82 +4380,7 @@ def update_root_cause(
             if isinstance(metric_analyses.get(metric_name), dict)
             else {}
         )
-        analysis = dict(before_analysis)
-
-        if "root_causes" in patch:
-            root_causes = normalize_root_causes(
-                patch.get("root_causes")
-            )
-            if root_causes:
-                analysis["root_causes"] = root_causes
-                analysis["root_cause"] = root_causes[0]
-            else:
-                for field in (
-                    "root_causes",
-                    "root_cause",
-                    "root_cause_detail",
-                    "root_cause_reason",
-                    "root_cause_note",
-                    "confidence",
-                ):
-                    analysis.pop(field, None)
-        elif "root_cause" in patch:
-            root_cause = str(patch.get("root_cause") or "").strip()
-            if root_cause:
-                analysis["root_cause"] = root_cause
-                analysis["root_causes"] = [root_cause]
-            else:
-                for field in (
-                    "root_causes",
-                    "root_cause",
-                    "root_cause_detail",
-                    "root_cause_reason",
-                    "root_cause_note",
-                    "confidence",
-                ):
-                    analysis.pop(field, None)
-        if "root_cause_detail" in patch:
-            detail = str(patch.get("root_cause_detail") or "").strip()
-            if detail:
-                analysis["root_cause_detail"] = detail
-            else:
-                analysis.pop("root_cause_detail", None)
-        if "root_cause_note" in patch:
-            note = str(patch.get("root_cause_note") or "").strip()
-            if note:
-                analysis["root_cause_note"] = note
-            else:
-                analysis.pop("root_cause_note", None)
-        if "category_taxonomy" in patch:
-            taxonomy = normalize_category_taxonomy(patch.get("category_taxonomy"))
-            if taxonomy:
-                analysis["category_taxonomy"] = taxonomy
-            else:
-                analysis.pop("category_taxonomy", None)
-        if "solution" in patch:
-            solution = str(patch.get("solution") or "").strip()
-            if solution:
-                analysis["solution"] = solution
-            else:
-                analysis.pop("solution", None)
-                analysis.pop("solution_note", None)
-        if "solution_note" in patch:
-            solution_note = str(patch.get("solution_note") or "").strip()
-            if solution_note:
-                analysis["solution_note"] = solution_note
-            else:
-                analysis.pop("solution_note", None)
-
-        if patch:
-            # A failed AI diagnosis remains visibly unresolved while a
-            # reviewer adds context. Supplying a category is the explicit
-            # human recovery action that clears that failure.
-            if normalize_root_causes(
-                analysis.get("root_causes") or analysis.get("root_cause")
-            ):
-                analysis.pop("error", None)
-            analysis.pop("confidence", None)
-            analysis["source"] = "human"
+        analysis = _apply_metric_analysis_patch(before_analysis, patch)
 
         meaningful_analysis = {
             key: value

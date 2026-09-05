@@ -248,6 +248,45 @@ async def test_singleton_label_fields_skip_redundant_llm_passes() -> None:
 
 
 @pytest.mark.asyncio
+async def test_detail_only_pass_ignores_category_clusters() -> None:
+    results = [
+        _result("Dataset Issue", "Missing table"),
+        _result("Context Missing", "Missing column"),
+    ]
+    client = SimpleNamespace(
+        chat=SimpleNamespace(
+            completions=SimpleNamespace(
+                parse=AsyncMock(
+                    return_value=_response(
+                        {
+                            "category_clusters": [
+                                {
+                                    "canonical_id": "c0",
+                                    "member_ids": ["c0", "c1"],
+                                }
+                            ],
+                            "detail_clusters": [],
+                        }
+                    )
+                )
+            )
+        )
+    )
+
+    await aggregate_analysis_categories(
+        client,
+        "test-model",
+        results,
+        known_categories=["Dataset Issue", "Context Missing"],
+    )
+
+    assert [result.root_cause for result in results] == [
+        "Dataset Issue",
+        "Context Missing",
+    ]
+
+
+@pytest.mark.asyncio
 async def test_prompt_includes_all_category_and_detail_labels_without_solutions() -> None:
     known_categories = [f"Known category {index}" for index in range(100)]
     known_details = [f"Known detail {index}" for index in range(100)]
@@ -614,7 +653,9 @@ async def test_dashboard_scale_one_offs_collapse_into_recurring_mechanisms() -> 
             result for result in results if result.root_cause_detail == canonical
         ]
         assert len(matching) == len(members)
-        assert len({result.root_cause for result in matching}) == 1
+        assert [result.root_cause for result in matching] == [
+            category for category, _detail in members
+        ]
     client.chat.completions.parse.assert_awaited_once()
 
 
@@ -677,7 +718,7 @@ async def test_provider_failure_is_reported_without_a_retry() -> None:
 
 
 @pytest.mark.asyncio
-async def test_semantic_details_converge_across_existing_categories() -> None:
+async def test_semantic_details_converge_without_moving_categories() -> None:
     results = [
         _result("Context Missing", "Missing table in context"),
         _result("Context Missing", "Missing table in context"),
@@ -697,8 +738,12 @@ async def test_semantic_details_converge_across_existing_categories() -> None:
         known_categories=["Context Missing", "Dataset Issue"],
     )
 
-    assert categories == {"Context Missing": 3}
-    assert [result.root_cause for result in results] == ["Context Missing"] * 3
+    assert categories == {"Context Missing": 2, "Dataset Issue": 1}
+    assert [result.root_cause for result in results] == [
+        "Context Missing",
+        "Context Missing",
+        "Dataset Issue",
+    ]
     assert [result.root_cause_detail for result in results] == [
         "Missing table in context"
     ] * 3
@@ -734,7 +779,7 @@ async def test_aggregation_rejects_invented_target_ids() -> None:
 
 
 @pytest.mark.asyncio
-async def test_detail_instances_move_to_their_dominant_curated_category() -> None:
+async def test_shared_detail_does_not_move_instances_between_categories() -> None:
     results = [
         *[_result("Dataset Issue", "Missing value") for _ in range(20)],
         *[_result("Context Missing", "Missing value") for _ in range(4)],
@@ -748,14 +793,17 @@ async def test_detail_instances_move_to_their_dominant_curated_category() -> Non
         known_categories=["Dataset Issue", "Context Missing"],
     )
 
-    assert categories == {"Dataset Issue": 24}
-    assert [result.root_cause for result in results] == ["Dataset Issue"] * 24
+    assert categories == {"Dataset Issue": 20, "Context Missing": 4}
+    assert [result.root_cause for result in results] == [
+        *(["Dataset Issue"] * 20),
+        *(["Context Missing"] * 4),
+    ]
     assert [result.root_cause_detail for result in results] == ["Missing value"] * 24
     client.chat.completions.parse.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_detail_relocation_uses_first_category_to_break_a_tie() -> None:
+async def test_shared_detail_does_not_relocate_categories_on_a_tie() -> None:
     results = [
         _result("Context Missing", "Missing value"),
         _result("Dataset Issue", "Missing value"),
@@ -769,7 +817,10 @@ async def test_detail_relocation_uses_first_category_to_break_a_tie() -> None:
         known_categories=["Context Missing", "Dataset Issue"],
     )
 
-    assert [result.root_cause for result in results] == ["Context Missing"] * 2
+    assert [result.root_cause for result in results] == [
+        "Context Missing",
+        "Dataset Issue",
+    ]
     client.chat.completions.parse.assert_not_awaited()
 
 

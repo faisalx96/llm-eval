@@ -184,7 +184,7 @@ curl -s -X POST "https://qym.example.com/v1/datasets:upload" \
 <p>Run mutation endpoints (also UI session) live under <code>/api/runs</code>:</p>
 <ul>
   <li><code>POST /api/runs/update_metric</code> &mdash; override one metric score on one item. Requires <code>file_path</code> (the run id), <code>row_index</code>, <code>metric_name</code>, <code>new_score</code>; else <code>400 file_path, row_index, and metric_name required</code>.</li>
-  <li><code>POST /api/runs/update_root_cause</code> &mdash; set <code>root_cause</code> / <code>root_cause_detail</code> / <code>root_cause_note</code> / <code>solution</code> / <code>solution_note</code> on an item. Requires <code>item_id</code> and <code>run_id</code>. Pass optional <code>metric_name</code> to patch that metric's analysis while preserving the item-level summary.</li>
+  <li><code>POST /api/runs/update_root_cause</code> &mdash; set canonical <code>root_cause_issues</code> records with <code>category</code>, <code>subcategory</code>, and <code>finding</code>. The legacy <code>root_cause</code>, <code>root_causes</code>, <code>root_cause_detail</code>, and <code>root_cause_note</code> fields remain supported, as do <code>solution</code> and <code>solution_note</code>. Requires <code>item_id</code> and <code>run_id</code>. Pass optional <code>metric_name</code> to patch that metric's analysis while preserving the item-level summary.</li>
   <li><code>POST /api/runs/delete</code> &mdash; soft-delete a run (<code>file_path</code> = run id).</li>
   <li><code>POST /api/runs/restore</code> &mdash; restore a soft-deleted run. Admin only.</li>
 </ul>

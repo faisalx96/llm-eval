@@ -3214,6 +3214,50 @@
       color: var(--text-muted);
       font-weight: 400;
     }
+    .metric-analysis-issue-list {
+      display: grid;
+      gap: var(--space-sm);
+    }
+    .metric-analysis-issue {
+      padding: var(--space-sm) var(--space-md);
+      border: 1px solid var(--border-subtle);
+      border-left: 3px solid var(--metric-analysis-category-color, var(--accent-tertiary));
+      border-radius: var(--control-radius);
+      background: var(--bg-elevated);
+    }
+    .metric-analysis-issue-head {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+      margin-bottom: var(--space-xs);
+    }
+    .metric-analysis-issue-number {
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+      font-size: var(--font-sm);
+    }
+    .metric-analysis-issue-category {
+      color: var(--metric-analysis-category-color, var(--text-primary));
+      font-size: var(--font-md);
+      font-weight: 600;
+    }
+    .metric-analysis-issue-subcategory {
+      color: var(--text-primary);
+      font-size: var(--font-base);
+      font-weight: 600;
+    }
+    .metric-analysis-issue-finding {
+      margin-top: var(--space-xs);
+      color: var(--text-secondary);
+      font-size: var(--font-base);
+      line-height: 1.5;
+      white-space: pre-wrap;
+    }
+    .metric-analysis-issue-reason {
+      margin-top: var(--space-xs);
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+    }
     .metric-analysis-feedback-edit {
       margin-top: var(--space-sm);
       border: 1px solid var(--border-default);
@@ -3733,6 +3777,63 @@
       align-items: center;
       flex: 0 0 auto;
       gap: var(--space-sm);
+    }
+    .rdi-issues-editor__list {
+      display: grid;
+      gap: var(--space-md);
+      padding: var(--space-lg);
+    }
+    .rdi-issues-editor__row {
+      padding: var(--space-md);
+      border: 1px solid var(--border-default);
+      border-radius: var(--control-radius);
+      background: var(--bg-base);
+    }
+    .rdi-issues-editor__row-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-sm);
+      margin-bottom: var(--space-sm);
+    }
+    .rdi-issues-editor__number {
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+      font-size: var(--font-sm);
+    }
+    .rdi-issues-editor__fields {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: var(--space-md);
+    }
+    .rdi-issues-editor__field {
+      display: grid;
+      gap: var(--space-xs);
+      color: var(--text-muted);
+      font-size: var(--font-sm);
+      font-weight: 600;
+    }
+    .rdi-issues-editor__field--finding {
+      grid-column: 1 / -1;
+    }
+    .rdi-issues-editor__field textarea {
+      min-height: calc(var(--space-xl) * 2);
+      padding: var(--space-sm);
+      resize: vertical;
+      border: 1px solid var(--border-default);
+      border-radius: var(--control-radius);
+      background: var(--bg-elevated);
+      color: var(--text-primary);
+      font-family: var(--font-sans);
+      font-size: var(--font-base);
+      line-height: 1.5;
+    }
+    .rdi-issues-editor__add {
+      justify-self: start;
+    }
+    @media (max-width: 640px) {
+      .rdi-issues-editor__fields { grid-template-columns: 1fr; }
+      .rdi-issues-editor__field--finding { grid-column: auto; }
     }
     .rdi-analysis-warning {
       display: flex;
@@ -5659,6 +5760,9 @@
             ? source.category_details_map
             : {},
           category_taxonomy: taxonomy,
+          subcategory_taxonomy: source.subcategory_taxonomy && typeof source.subcategory_taxonomy === 'object'
+            ? source.subcategory_taxonomy
+            : {},
           max_root_cause_categories: Number(source.max_root_cause_categories) > 0
             ? Math.min(10, Math.trunc(Number(source.max_root_cause_categories)))
             : MAX_ROOT_CAUSE_CATEGORIES,
@@ -5676,12 +5780,14 @@
         const config = run && run.config && typeof run.config === 'object' ? run.config : {};
         const hasCatalogData = Array.isArray(config.root_cause_categories) ||
           (config.category_taxonomy && typeof config.category_taxonomy === 'object') ||
+          (config.subcategory_taxonomy && typeof config.subcategory_taxonomy === 'object') ||
           (config.category_details_map && typeof config.category_details_map === 'object');
         if (!hasCatalogData) return;
         setCategoryCatalog({
           categories: config.root_cause_categories || [],
           category_details_map: config.category_details_map || {},
           category_taxonomy: config.category_taxonomy || config.category_taxonomies || {},
+          subcategory_taxonomy: config.subcategory_taxonomy || {},
           max_root_cause_categories: config.max_root_cause_categories,
           version: config.category_catalog_version,
           can_manage: false,
@@ -5750,6 +5856,7 @@
             ...state.categoryCatalog,
             categories: nextCategories,
             category_taxonomy: nextTaxonomy,
+            subcategory_taxonomy: state.categoryCatalog?.subcategory_taxonomy || {},
             loaded: false,
           });
           return true;
@@ -5775,6 +5882,7 @@
           category_entries: catalog.category_entries || [],
           category_details_map: catalog.category_details_map || {},
           category_taxonomy: nextTaxonomy,
+          subcategory_taxonomy: catalog.subcategory_taxonomy || {},
           max_root_cause_categories: catalog.max_root_cause_categories || MAX_ROOT_CAUSE_CATEGORIES,
           base_revision: catalog.version || 0,
         };
@@ -5829,6 +5937,7 @@
           category_entries: [],
           category_details_map: {},
           category_taxonomy: {},
+          subcategory_taxonomy: {},
           max_root_cause_categories: MAX_ROOT_CAUSE_CATEGORIES,
           version: 0,
           can_manage: false,
@@ -6471,7 +6580,7 @@
       function scopedPassItemMetadata(metadata, row, metricNames, passNumber) {
         const scoped = { ...((metadata && typeof metadata === 'object') ? metadata : {}) };
         [
-          'root_cause', 'root_cause_detail', 'root_cause_note',
+          'root_cause', 'root_causes', 'root_cause_issues', 'root_cause_detail', 'root_cause_note', 'root_cause_reason',
           'root_cause_source', 'root_cause_confidence', 'root_cause_metric_name',
           'solution', 'solution_note', 'solution_source',
           'metric_analyses', 'analysis_error', 'analysis_warning',
@@ -6667,7 +6776,7 @@
 
         // Auto-select categories for breakdown chips
         // Exclude keys that have their own sections or are not useful for grouping
-        const EXCLUDED_CATEGORY_KEYS = new Set(['root_cause', 'root_causes', 'root_cause_detail', 'root_cause_reason', 'root_cause_note', 'root_cause_source', 'root_cause_confidence', 'solution', 'solution_note', 'solution_source', 'metric_analyses', 'task_started_at_ms', 'retry_count', 'analysis_error', 'trace_stats']);
+        const EXCLUDED_CATEGORY_KEYS = new Set(['root_cause', 'root_causes', 'root_cause_issues', 'root_cause_detail', 'root_cause_reason', 'root_cause_note', 'root_cause_source', 'root_cause_confidence', 'solution', 'solution_note', 'solution_source', 'metric_analyses', 'task_started_at_ms', 'retry_count', 'analysis_error', 'trace_stats']);
         const MAX_CARDINALITY = 30; // skip keys with too many unique values
         if (state.selectedCategories.size === 0) {
           for (const k of state.allMetadataKeys) {
@@ -8690,6 +8799,20 @@
       }
 
       function rootCauseCategories(value) {
+        const hasCanonicalIssues = value && typeof value === 'object' && !Array.isArray(value) && Array.isArray(value.root_cause_issues);
+        const issues = rootCauseIssues(value, false);
+        if (hasCanonicalIssues || issues.length) {
+          const issueCategories = [];
+          const issueSeen = new Set();
+          issues.forEach(issue => {
+            const category = String(issue.category || '').trim();
+            const key = category.toLocaleLowerCase();
+            if (!category || issueSeen.has(key)) return;
+            issueSeen.add(key);
+            issueCategories.push(category);
+          });
+          return issueCategories;
+        }
         const raw = value && typeof value === 'object' && !Array.isArray(value)
           ? (Object.prototype.hasOwnProperty.call(value, 'root_causes')
             ? value.root_causes
@@ -8704,6 +8827,97 @@
           seen.add(key);
           return true;
         });
+      }
+
+      function rootCauseIssues(value, legacyFallback = true) {
+        if (!value || typeof value !== 'object' || Array.isArray(value)) return [];
+        if (Array.isArray(value.root_cause_issues)) {
+          const issues = value.root_cause_issues.map(issue => {
+            if (!issue || typeof issue !== 'object' || Array.isArray(issue)) return null;
+            const rawConfidence = issue.confidence;
+            const confidence = rawConfidence == null || rawConfidence === '' ? NaN : Number(rawConfidence);
+            const normalized = {
+              category: String(issue.category || issue.root_cause || '').trim(),
+              subcategory: String(issue.subcategory || issue.root_cause_detail || '').trim(),
+              finding: String(issue.finding || issue.root_cause_note || '').trim(),
+              category_reason: String(issue.category_reason || issue.root_cause_reason || '').trim(),
+            };
+            if (Number.isFinite(confidence)) normalized.confidence = Math.min(1, Math.max(0, confidence));
+            else delete normalized.confidence;
+            return normalized.category || normalized.subcategory || normalized.finding ? normalized : null;
+          }).filter(Boolean);
+          if (issues.length) {
+            const topReason = String(value.root_cause_reason || '').trim();
+            if (!issues[0].category_reason && topReason) issues[0].category_reason = topReason;
+            const rawTopConfidence = value.confidence ?? value.root_cause_confidence;
+            const topConfidence = rawTopConfidence == null || rawTopConfidence === '' ? NaN : Number(rawTopConfidence);
+            if (issues[0].confidence == null && Number.isFinite(topConfidence)) {
+              issues[0].confidence = Math.min(1, Math.max(0, topConfidence));
+            }
+          }
+          return issues;
+        }
+        if (!legacyFallback) return [];
+        const rawCategories = Object.prototype.hasOwnProperty.call(value, 'root_causes')
+          ? value.root_causes
+          : (Object.prototype.hasOwnProperty.call(value, 'root_cause_categories') ? value.root_cause_categories : value.root_cause);
+        const categories = (Array.isArray(rawCategories) ? rawCategories : (rawCategories ? [rawCategories] : []))
+          .map(category => String(category || '').trim()).filter(Boolean);
+        const subcategory = String(value.root_cause_detail || '').trim();
+        const finding = String(value.root_cause_note || '').trim();
+        const reason = String(value.root_cause_reason || '').trim();
+        const confidence = Number(value.confidence ?? value.root_cause_confidence);
+        if (!categories.length && !subcategory && !finding) return [];
+        return (categories.length ? categories : ['']).map((category, index) => ({
+          category,
+          subcategory,
+          finding,
+          ...(index === 0 && reason ? { category_reason: reason } : {}),
+          ...(index === 0 && Number.isFinite(confidence) ? { confidence: Math.min(1, Math.max(0, confidence)) } : {}),
+        }));
+      }
+
+      function rootCauseIssuePatch(issues) {
+        const displayIssues = rootCauseIssues({ root_cause_issues: issues });
+        const normalized = displayIssues.map(issue => ({
+          category: issue.category,
+          subcategory: issue.subcategory,
+          finding: issue.finding,
+        }));
+        const categories = [];
+        const seen = new Set();
+        normalized.forEach(issue => {
+          const key = issue.category.toLocaleLowerCase();
+          if (!issue.category || seen.has(key)) return;
+          seen.add(key);
+          categories.push(issue.category);
+        });
+        const first = normalized[0] || {};
+        return {
+          root_cause_issues: normalized,
+          root_causes: categories,
+          root_cause: first.category || '',
+          root_cause_detail: first.subcategory || '',
+          root_cause_note: first.finding || '',
+          root_cause_reason: (displayIssues[0] && displayIssues[0].category_reason) || '',
+        };
+      }
+
+      function renderMetricRootCauseIssues(analysis) {
+        const issues = rootCauseIssues(analysis);
+        if (!issues.length) return '<div class="metric-analysis-empty">No root-cause issues assigned.</div>';
+        return '<div class="metric-analysis-issue-list" role="list" aria-label="Root-cause issues">' + issues.map((issue, index) => {
+          const color = rootCauseColor(issue.category);
+          const confidence = issue.confidence == null ? '' : Math.round(issue.confidence * 100) + '%';
+          return '<article class="metric-analysis-issue" role="listitem" style="--metric-analysis-category-color:' + color + ';">' +
+            '<div class="metric-analysis-issue-head"><span class="metric-analysis-issue-number">Issue ' + (index + 1) + '</span>' +
+              (issue.category ? '<span class="metric-analysis-issue-category">' + escapeHtml(issue.category) + '</span>' : '') +
+              (confidence ? '<span class="metric-analysis-confidence">' + escapeHtml(confidence) + '</span>' : '') + '</div>' +
+            (issue.subcategory ? '<div class="metric-analysis-issue-subcategory">' + escapeHtml(issue.subcategory) + '</div>' : '') +
+            (issue.finding ? '<div class="metric-analysis-issue-finding">' + escapeHtml(issue.finding) + '</div>' : '') +
+            (issue.category_reason ? '<details class="metric-analysis-issue-reason"><summary>Why this category</summary><div>' + escapeHtml(issue.category_reason) + '</div></details>' : '') +
+          '</article>';
+        }).join('') + '</div>';
       }
 
       function isRepeatRun() {
@@ -8764,6 +8978,7 @@
           (!legacyMetric && state.allMetrics.length <= 1);
         const legacyCategories = rootCauseCategories(md);
         return legacyCategories.length && canUseLegacy ? [{
+          root_cause_issues: rootCauseIssues(md),
           root_causes: legacyCategories,
           root_cause: legacyCategories[0],
           root_cause_detail: md.root_cause_detail || '',
@@ -9153,7 +9368,7 @@
 
       function getCategoryChipKeys() {
         // Return metadata keys eligible for breakdown chips
-        const EXCLUDED = new Set(['root_cause', 'root_causes', 'root_cause_detail', 'root_cause_reason', 'root_cause_note', 'root_cause_source', 'root_cause_confidence', 'solution', 'solution_note', 'solution_source', 'metric_analyses', 'task_started_at_ms', 'retry_count', 'analysis_error']);
+        const EXCLUDED = new Set(['root_cause', 'root_causes', 'root_cause_issues', 'root_cause_detail', 'root_cause_reason', 'root_cause_note', 'root_cause_source', 'root_cause_confidence', 'solution', 'solution_note', 'solution_source', 'metric_analyses', 'task_started_at_ms', 'retry_count', 'analysis_error']);
         const MAX_CARD = 30;
         const rows = state.snapshot.rows || [];
         const keys = [];
@@ -9662,13 +9877,13 @@
           const itemId = row.item_id || String(row.index);
           if (!filteredItemIds.has(itemId)) continue;
           for (const analysis of getRowRootCauseAnalyses(row, state.rootCauseMetric)) {
-            const rcDetail = analysis.root_cause_detail || '';
-            for (const rcRaw of rootCauseCategories(analysis)) {
+            for (const issue of rootCauseIssues(analysis)) {
+              const rcRaw = issue.category;
               if (!rcRaw) continue;
               if (!rcCategories[rcRaw]) rcCategories[rcRaw] = { count: 0, subcauses: {} };
               rcCategories[rcRaw].count++;
-              if (rcDetail) {
-                rcCategories[rcRaw].subcauses[rcDetail] = (rcCategories[rcRaw].subcauses[rcDetail] || 0) + 1;
+              if (issue.subcategory) {
+                rcCategories[rcRaw].subcauses[issue.subcategory] = (rcCategories[rcRaw].subcauses[issue.subcategory] || 0) + 1;
               }
             }
           }
@@ -10760,7 +10975,7 @@
                 metricValue !== null && metricValue < metricThreshold;
               if (!hasStoredAnalysis && !metricFailed) return '';
               const analysis = hasStoredAnalysis ? storedAnalysis : {};
-              const metricEditData = ' data-metric-rc-item="' + escapeAttr(itemId) + '" data-metric-name="' + escapeAttr(metricName) + '"';
+              const metricEditData = ' data-metric-issues-item="' + escapeAttr(itemId) + '" data-metric-name="' + escapeAttr(metricName) + '"';
               const analysisWarning = itemAnalysisWarning ? '' : String(analysis.warning || '').trim();
               const analysisWarningHtml = analysisWarning
                 ? '<div class="rdi-analysis-warning" role="status"><span class="rdi-analysis-warning__label">' + (/(taxonomy|taxonom)/i.test(analysisWarning) ? 'No taxonomy' : 'Analysis warning') + '</span><span>' + escapeHtml(analysisWarning) + '</span></div>'
@@ -10768,15 +10983,12 @@
               if (analysis.error) {
                 return '<div class="metric-analysis-card" style="--metric-analysis-color:var(--error);">' +
                   '<div class="metric-analysis-head"><span class="metric-analysis-name">' + escapeHtml(metricName) + '</span>' +
-                    '<button type="button" class="metric-analysis-edit"' + metricEditData + '>Assign root cause</button></div>' +
+                    '<button type="button" class="metric-analysis-edit"' + metricEditData + '>Edit issues</button></div>' +
                   '<div class="metric-analysis-error" role="alert">Analysis failed: ' + escapeHtml(String(analysis.error)) + '</div>' +
                   analysisWarningHtml +
                   '<div class="metric-analysis-recovery">' +
-                    '<div class="metric-analysis-recovery-copy">AI analysis did not produce a usable diagnosis. You can still add a manual category, specific issue, feedback, or recommended solution.</div>' +
-                    '<button type="button" class="metric-analysis-detail" data-metric-rcdetail-item="' + escapeAttr(itemId) + '" data-metric-name="' + escapeAttr(metricName) + '" title="Add specific issue">' +
-                      (analysis.root_cause_detail ? escapeHtml(analysis.root_cause_detail) : '<span class="metric-analysis-empty">+ Add specific issue</span>') + '</button>' +
-                    '<button type="button" class="metric-analysis-note" data-metric-feedback-item="' + escapeAttr(itemId) + '" data-metric-name="' + escapeAttr(metricName) + '" title="Add feedback">' +
-                      (analysis.root_cause_note ? escapeHtml(analysis.root_cause_note) : '<span class="metric-analysis-empty">+ Add feedback</span>') + '</button>' +
+                    '<div class="metric-analysis-recovery-copy">AI analysis did not produce a usable diagnosis. Add one or more issues manually.</div>' +
+                    renderMetricRootCauseIssues(analysis) +
                     '<button type="button" class="metric-analysis-solution" data-metric-sol-item="' + escapeAttr(itemId) + '" data-metric-name="' + escapeAttr(metricName) + '" title="Add recommended solution">' +
                       ([analysis.solution, analysis.solution_note].filter(Boolean).join(' — ') ? '<strong>Recommended solution:</strong> ' + escapeHtml([analysis.solution, analysis.solution_note].filter(Boolean).join(' — ')) : '<span class="metric-analysis-empty">+ Add recommended solution</span>') + '</button>' +
                   '</div>' +
@@ -10784,17 +10996,10 @@
               }
               const analysisCategories = rootCauseCategories(analysis);
               const hasCategories = analysisCategories.length > 0;
-              const categoryValues = hasCategories ? analysisCategories : [(analysis.root_cause || '+ Category')];
-              const categoryBadges = categoryValues.map(category => {
-                const isEmpty = !hasCategories;
-                const categoryColor = isEmpty ? 'var(--text-muted)' : rootCauseColor(category);
-                return '<button type="button" class="metric-analysis-category' + (isEmpty ? ' metric-analysis-category--empty' : '') + '"' + metricEditData + ' style="--metric-analysis-category-color:' + categoryColor + ';" title="Change categories" aria-label="Change category: ' + escapeAttr(category) + '">' + escapeHtml(category) + '</button>';
-              }).join('');
               const analysisColor = rootCauseColor(analysisCategories[0]);
               const confidence = analysis.source === 'human'
                 ? 'Human edited'
                 : (analysis.confidence == null ? '' : Math.round(Number(analysis.confidence) * 100) + '% confidence');
-              const categoryReason = String(analysis.root_cause_reason || '').trim();
               const solutionText = [analysis.solution, analysis.solution_note].filter(Boolean).join(' — ');
               const metricReview = row.review_corrections?.[metricName] || {};
               const reviewCorrectionId = metricReview.id;
@@ -10814,16 +11019,12 @@
               return '<div class="metric-analysis-card" style="--metric-analysis-color:' + analysisColor + ';">' +
                 '<div class="metric-analysis-head">' +
                   '<span class="metric-analysis-name">' + escapeHtml(metricName) + '</span>' +
-                '<div class="metric-analysis-category-list" role="group" aria-label="Root-cause categories">' + categoryBadges + '</div>' +
                   (confidence ? '<span class="metric-analysis-confidence">' + escapeHtml(confidence) + '</span>' : '') +
                   reviewActionsHtml +
+                  '<button type="button" class="metric-analysis-edit"' + metricEditData + '>Edit issues</button>' +
                 '</div>' +
                 analysisWarningHtml +
-                (categoryReason ? '<details class="metric-analysis-reason"><summary>Why this category</summary><div class="metric-analysis-reason-copy">' + escapeHtml(categoryReason) + '</div></details>' : '') +
-                '<button type="button" class="metric-analysis-detail" data-metric-rcdetail-item="' + escapeAttr(itemId) + '" data-metric-name="' + escapeAttr(metricName) + '" title="Change specific issue">' +
-                  (analysis.root_cause_detail ? escapeHtml(analysis.root_cause_detail) : '<span class="metric-analysis-empty">+ Add specific issue</span>') + '</button>' +
-                '<button type="button" class="metric-analysis-note" data-metric-feedback-item="' + escapeAttr(itemId) + '" data-metric-name="' + escapeAttr(metricName) + '" title="Edit feedback">' +
-                  (analysis.root_cause_note ? escapeHtml(analysis.root_cause_note) : '<span class="metric-analysis-empty">+ Add feedback</span>') + '</button>' +
+                renderMetricRootCauseIssues(analysis) +
                 '<button type="button" class="metric-analysis-solution" data-metric-sol-item="' + escapeAttr(itemId) + '" data-metric-name="' + escapeAttr(metricName) + '" title="Change recommended solution">' +
                   (solutionText ? '<strong>Recommended solution:</strong> ' + escapeHtml(solutionText) : '<span class="metric-analysis-empty">+ Add recommended solution</span>') + '</button>' +
               '</div>';
@@ -10846,7 +11047,7 @@
 
           // Item metadata badges
           let itemMetadataHtml = '';
-          const SPECIAL_KEYS = ['complexity', 'domain', 'root_cause', 'root_causes', 'root_cause_detail', 'root_cause_reason', 'root_cause_note', 'root_cause_source', 'root_cause_confidence', 'solution', 'solution_note', 'solution_source', 'metric_analyses', 'analysis_warning'];
+          const SPECIAL_KEYS = ['complexity', 'domain', 'root_cause', 'root_causes', 'root_cause_issues', 'root_cause_detail', 'root_cause_reason', 'root_cause_note', 'root_cause_source', 'root_cause_confidence', 'solution', 'solution_note', 'solution_source', 'metric_analyses', 'analysis_warning'];
           const itemMd = row.item_metadata || {};
           if (typeof itemMd === 'object') {
             let badgesHtml = '';
@@ -11283,14 +11484,10 @@
       }
 
       function wireMetricAnalysisHandlers() {
-        document.querySelectorAll('[data-metric-rc-item]').forEach(trigger => {
+        document.querySelectorAll('[data-metric-issues-item]').forEach(trigger => {
           trigger.addEventListener('click', (e) => {
             e.stopPropagation();
-            showRootCauseCategoryPicker(
-              trigger.dataset.metricRcItem,
-              trigger,
-              trigger.dataset.metricName
-            );
+            showRootCauseIssuesEditor(trigger.dataset.metricIssuesItem, trigger.dataset.metricName);
           });
         });
         document.querySelectorAll('[data-metric-rcdetail-item]').forEach(trigger => {
@@ -11402,6 +11599,13 @@
         if (!row.item_metadata) row.item_metadata = {};
         const metricAnalyses = Object.assign({}, row.item_metadata.metric_analyses || {});
         const analysis = Object.assign({}, metricAnalyses[metricName] || {});
+
+        if (Object.prototype.hasOwnProperty.call(patch, 'root_cause_issues')) {
+          const projection = rootCauseIssuePatch(patch.root_cause_issues);
+          patch = Object.assign({}, patch, projection);
+          if (projection.root_cause_issues.length) analysis.root_cause_issues = projection.root_cause_issues;
+          else delete analysis.root_cause_issues;
+        }
 
         if (Object.prototype.hasOwnProperty.call(patch, 'root_causes')) {
           const categories = rootCauseCategories({ root_causes: patch.root_causes });
@@ -11528,6 +11732,147 @@
           showToast('error', 'Could not save diagnosis', 'Check your connection and try again.');
           return false;
         }
+      }
+
+      async function saveRootCauseIssues(itemId, issues, metricName) {
+        const patch = rootCauseIssuePatch(issues);
+        if (metricName) return saveMetricAnalysisPatch(itemId, metricName, patch);
+        const rows = state.snapshot.rows || [];
+        const row = rows.find(candidate => (candidate.item_id || String(candidate.index)) === itemId);
+        const applyLocally = () => {
+          if (!row) return;
+          if (!row.item_metadata) row.item_metadata = {};
+          Object.assign(row.item_metadata, patch);
+          if (!patch.root_cause_issues.length) {
+            ['root_cause_issues', 'root_causes', 'root_cause', 'root_cause_detail', 'root_cause_note', 'root_cause_reason'].forEach(key => delete row.item_metadata[key]);
+          }
+          if (patch.root_cause_issues.length) row.item_metadata.root_cause_source = 'human';
+          else delete row.item_metadata.root_cause_source;
+          delete row.item_metadata.root_cause_confidence;
+        };
+        if (IS_EXPORT) {
+          applyLocally();
+          autoSaveExport();
+          renderItems();
+          return true;
+        }
+        const runId = state.run?.file_path;
+        if (!runId) return false;
+        try {
+          const response = await fetch(apiUrl('api/runs/update_root_cause'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(addCurrentPassToPayload({ item_id: itemId, run_id: runId, ...patch })),
+          });
+          const data = await response.json().catch(() => ({}));
+          if (!response.ok || data.error || data.detail) {
+            showToast('error', 'Could not save diagnosis', data.detail || data.error || 'The server rejected the manual diagnosis.');
+            return false;
+          }
+          if (data.row) applyUpdatedRow(data.row);
+          else applyLocally();
+          renderItems();
+          return true;
+        } catch (error) {
+          console.error('Error saving root-cause issues:', error);
+          showToast('error', 'Could not save diagnosis', 'Check your connection and try again.');
+          return false;
+        }
+      }
+
+      function showRootCauseIssuesEditor(itemId, metricName) {
+        document.querySelectorAll('.rdi-category-picker, .root-cause-dropdown').forEach(node => node.remove());
+        const rows = state.snapshot.rows || [];
+        const row = rows.find(candidate => (candidate.item_id || String(candidate.index)) === itemId);
+        const analysis = metricName
+          ? row?.item_metadata?.metric_analyses?.[metricName]
+          : row?.item_metadata;
+        let issues = rootCauseIssues(analysis).map(issue => ({ ...issue }));
+        if (!issues.length) issues = [{}];
+        const categories = categoryPickerOptions();
+        const subcategories = [];
+        Object.values(state.categoryCatalog?.category_details_map || {}).forEach(values => {
+          (Array.isArray(values) ? values : []).forEach(value => {
+            const label = String(value || '').trim();
+            if (label && !subcategories.includes(label)) subcategories.push(label);
+          });
+        });
+
+        const editor = document.createElement('div');
+        editor.className = 'rdi-category-picker rdi-issues-editor';
+        editor.setAttribute('role', 'presentation');
+        editor.innerHTML = '<div class="rdi-category-picker__panel" role="dialog" aria-modal="true" aria-labelledby="rdi-issues-editor-title">' +
+          '<div class="rdi-category-picker__header"><div><p class="rdi-category-picker__eyebrow">Diagnosis</p><h2 class="rdi-category-picker__title" id="rdi-issues-editor-title">Edit root-cause issues</h2><p class="rdi-category-picker__lead">Keep each independent cause in its own issue.</p></div><button type="button" class="rdi-category-picker__close qym-icon-action" aria-label="Close issue editor" title="Close">×</button></div>' +
+          '<div class="rdi-category-picker__body"><div class="rdi-issues-editor__list" data-issue-list></div></div>' +
+          '<div class="rdi-category-picker__footer"><span class="rdi-category-picker__status" data-issue-status role="status" aria-live="polite"></span><div class="rdi-category-picker__footer-actions"><button type="button" class="qym-inline-action qym-inline-action--neutral" data-add-issue>Add issue</button><button type="button" class="qym-inline-action qym-inline-action--accent" data-save-issues>Save</button></div></div>' +
+          '</div>' +
+          '<datalist id="rdi-issue-categories">' + categories.map(category => '<option value="' + escapeAttr(category) + '"></option>').join('') + '</datalist>' +
+          '<datalist id="rdi-issue-subcategories">' + subcategories.sort().map(subcategory => '<option value="' + escapeAttr(subcategory) + '"></option>').join('') + '</datalist>';
+        const list = editor.querySelector('[data-issue-list]');
+        const status = editor.querySelector('[data-issue-status]');
+        const renderRows = () => {
+          list.innerHTML = issues.map((issue, index) => '<article class="rdi-issues-editor__row" data-issue-row>' +
+            '<div class="rdi-issues-editor__row-head"><span class="rdi-issues-editor__number">Issue ' + (index + 1) + '</span><button type="button" class="qym-icon-action" data-remove-issue="' + index + '" title="Remove issue" aria-label="Remove issue">×</button></div>' +
+            '<div class="rdi-issues-editor__fields">' +
+              '<label class="rdi-issues-editor__field"><span>Category</span><input class="qym-control qym-input" data-issue-field="category" list="rdi-issue-categories" value="' + escapeAttr(issue.category || '') + '" placeholder="Root-cause category" /></label>' +
+              '<label class="rdi-issues-editor__field"><span>Subcategory</span><input class="qym-control qym-input" data-issue-field="subcategory" list="rdi-issue-subcategories" value="' + escapeAttr(issue.subcategory || '') + '" placeholder="Reusable failure mechanism" /></label>' +
+              '<label class="rdi-issues-editor__field rdi-issues-editor__field--finding"><span>Finding</span><textarea data-issue-field="finding" placeholder="Item-specific diagnosis">' + escapeHtml(issue.finding || '') + '</textarea></label>' +
+            '</div></article>').join('');
+        };
+        const readRows = () => {
+          issues = Array.from(list.querySelectorAll('[data-issue-row]')).map((issueRow, index) => {
+            const issue = { ...(issues[index] || {}) };
+            issueRow.querySelectorAll('[data-issue-field]').forEach(field => {
+              issue[field.dataset.issueField] = field.value.trim();
+            });
+            return issue;
+          });
+        };
+        list.addEventListener('click', event => {
+          const remove = event.target.closest('[data-remove-issue]');
+          if (!remove) return;
+          readRows();
+          issues.splice(Number(remove.dataset.removeIssue), 1);
+          if (!issues.length) issues.push({});
+          renderRows();
+        });
+        editor.querySelector('[data-add-issue]').addEventListener('click', () => {
+          readRows();
+          issues.push({});
+          renderRows();
+          const category = list.lastElementChild?.querySelector('[data-issue-field="category"]');
+          if (category) category.focus();
+        });
+        const cleanup = () => editor.remove();
+        editor.querySelector('.rdi-category-picker__close').addEventListener('click', cleanup);
+        editor.addEventListener('click', event => { if (event.target === editor) cleanup(); });
+        editor.querySelector('[data-save-issues]').addEventListener('click', async event => {
+          readRows();
+          const nextIssues = issues.filter(issue => issue.category || issue.subcategory || issue.finding);
+          const incompleteIndex = nextIssues.findIndex(issue => !issue.category);
+          if (incompleteIndex >= 0) {
+            status.textContent = 'Every issue needs a category.';
+            status.classList.add('is-error');
+            return;
+          }
+          const saveButton = event.currentTarget;
+          saveButton.disabled = true;
+          status.classList.remove('is-error');
+          status.textContent = 'Saving issues…';
+          try {
+            const saved = await saveRootCauseIssues(itemId, nextIssues, metricName);
+            if (!saved) throw new Error('Issue save failed');
+            cleanup();
+          } catch (error) {
+            status.textContent = 'Could not save these issues.';
+            status.classList.add('is-error');
+          } finally {
+            saveButton.disabled = false;
+          }
+        });
+        renderRows();
+        document.body.appendChild(editor);
+        setTimeout(() => list.querySelector('[data-issue-field="category"]')?.focus(), 0);
       }
 
       function showRootCauseCategoryPicker(itemId, anchorEl, metricName) {
@@ -12734,7 +13079,10 @@
           }
         }
         for (var m of state.allMetrics) {
-          var cols = [{ key: m + '_score', label: 'Score', checked: true }];
+          var cols = [
+            { key: m + '_score', label: 'Score', checked: true },
+            { key: m + ':root_cause_issues', label: 'Root cause issues (JSON)', checked: true },
+          ];
           for (var k of Array.from(metricMetaKeys[m]).sort()) {
             cols.push({ key: m + ':' + k, label: k, checked: true });
           }
@@ -12865,6 +13213,13 @@
           var mi = state.allMetrics.indexOf(m);
           if (mi >= 0) return String((row.metric_values || [])[mi] ?? '');
           return '';
+        }
+
+        if (colKey.endsWith(':root_cause_issues')) {
+          var analysisMetric = colKey.slice(0, -':root_cause_issues'.length);
+          var analysis = ((row.item_metadata || {}).metric_analyses || {})[analysisMetric];
+          var issues = rootCauseIssuePatch(rootCauseIssues(analysis)).root_cause_issues;
+          return issues.length ? JSON.stringify(issues) : '';
         }
 
         // metric:metakey

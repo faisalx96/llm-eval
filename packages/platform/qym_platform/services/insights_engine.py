@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 import unicodedata
 from collections import defaultdict
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Optional, Union
 
@@ -26,6 +26,7 @@ _ItemKey = tuple[str, str]
 class _RootCauseGroup:
     label: str
     item_keys: set[_ItemKey] = field(default_factory=set)
+    occurrence_item_keys: list[_ItemKey] = field(default_factory=list)
 
 
 @dataclass
@@ -98,6 +99,7 @@ def _group_items(
                 _RootCauseGroup(label=_clean_label(root_cause)),
             )
             root_cause_group.item_keys.add(item_key)
+            root_cause_group.occurrence_item_keys.append(item_key)
     return categories, items_by_key
 
 
@@ -227,7 +229,7 @@ def _increment(values: dict[str, int], name: Any, amount: int = 1) -> None:
 
 def _populate_data(
     target: Union[InsightData, RootCauseData],
-    item_keys: set[_ItemKey],
+    item_keys: Iterable[_ItemKey],
     *,
     runs_by_id: Mapping[str, Run],
     items_by_key: Mapping[_ItemKey, RunItem],
@@ -361,17 +363,21 @@ def build_insight_data(
         direct_item_keys: set[_ItemKey] = set()
         root_cause_groups = sorted(
             category.root_causes.values(),
-            key=lambda group: (-len(group.item_keys), group.label.casefold()),
+            key=lambda group: (
+                -len(group.occurrence_item_keys),
+                group.label.casefold(),
+            ),
         )
         for root_cause in root_cause_groups:
             if (
                 root_cause.label
-                and len(root_cause.item_keys) >= minimum_root_cause_occurrences
+                and len(root_cause.occurrence_item_keys)
+                >= minimum_root_cause_occurrences
             ):
                 root_cause_data = RootCauseData()
                 _populate_data(
                     root_cause_data,
-                    root_cause.item_keys,
+                    root_cause.occurrence_item_keys,
                     runs_by_id=runs_by_id,
                     items_by_key=items_by_key,
                     scores_by_item=scores_by_item,

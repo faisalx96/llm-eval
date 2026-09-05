@@ -608,7 +608,14 @@ window.QymPlayground = (function () {
   function _rootCauseCategories(value) {
     var raw = value;
     if (value && typeof value === 'object' && !Array.isArray(value)) {
-      if (Object.prototype.hasOwnProperty.call(value, 'root_causes')) raw = value.root_causes;
+      if (Array.isArray(value.root_cause_issues)) {
+        raw = value.root_cause_issues.map(function (issue) {
+          return issue && typeof issue === 'object' && !Array.isArray(issue)
+            ? issue.category || issue.root_cause
+            : '';
+        });
+      }
+      else if (Object.prototype.hasOwnProperty.call(value, 'root_causes')) raw = value.root_causes;
       else if (Object.prototype.hasOwnProperty.call(value, 'root_cause_categories')) raw = value.root_cause_categories;
       else raw = value.root_cause;
     }
@@ -620,6 +627,57 @@ window.QymPlayground = (function () {
       seen[key] = true;
       return true;
     });
+  }
+
+  function _rootCauseIssues(value) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return [];
+    if (!Array.isArray(value.root_cause_issues)) {
+      var legacyCategories = _rootCauseCategories(value);
+      var legacySubcategory = String(value.root_cause_detail || '').trim();
+      var legacyFinding = String(value.root_cause_note || '').trim();
+      var legacyReason = String(value.root_cause_reason || '').trim();
+      var rawLegacyConfidence = value.confidence != null ? value.confidence : value.root_cause_confidence;
+      var legacyConfidence = rawLegacyConfidence == null || rawLegacyConfidence === '' ? NaN : Number(rawLegacyConfidence);
+      if (!legacyCategories.length && !legacySubcategory && !legacyFinding) return [];
+      return (legacyCategories.length ? legacyCategories : ['']).map(function (category, index) {
+        return {
+          category: category,
+          subcategory: legacySubcategory,
+          finding: legacyFinding,
+          category_reason: index === 0 ? legacyReason : '',
+          confidence: index === 0 && Number.isFinite(legacyConfidence)
+            ? Math.min(1, Math.max(0, legacyConfidence))
+            : null,
+        };
+      });
+    }
+    var issues = value.root_cause_issues.map(function (issue) {
+      if (!issue || typeof issue !== 'object' || Array.isArray(issue)) return null;
+      var category = String(issue.category || issue.root_cause || '').trim();
+      var subcategory = String(issue.subcategory || issue.root_cause_detail || '').trim();
+      var finding = String(issue.finding || issue.root_cause_note || '').trim();
+      var categoryReason = String(issue.category_reason || issue.root_cause_reason || '').trim();
+      var rawConfidence = issue.confidence;
+      var confidence = rawConfidence == null || rawConfidence === '' ? NaN : Number(rawConfidence);
+      if (!category && !subcategory && !finding) return null;
+      return {
+        category: category,
+        subcategory: subcategory,
+        finding: finding,
+        category_reason: categoryReason,
+        confidence: Number.isFinite(confidence) ? Math.min(1, Math.max(0, confidence)) : null,
+      };
+    }).filter(Boolean);
+    if (issues.length) {
+      var topReason = String(value.root_cause_reason || '').trim();
+      if (!issues[0].category_reason && topReason) issues[0].category_reason = topReason;
+      var rawTopConfidence = value.confidence != null ? value.confidence : value.root_cause_confidence;
+      var topConfidence = rawTopConfidence == null || rawTopConfidence === '' ? NaN : Number(rawTopConfidence);
+      if (issues[0].confidence == null && Number.isFinite(topConfidence)) {
+        issues[0].confidence = Math.min(1, Math.max(0, topConfidence));
+      }
+    }
+    return issues;
   }
 
   function _buildCategoryExamples(examples) {
@@ -659,6 +717,13 @@ window.QymPlayground = (function () {
     });
     var entry = match ? map[match] : null;
     return entry && typeof entry === 'object' ? entry : {};
+  }
+
+  function _subcategoryTaxonomyFor(taxonomy, category, subcategory) {
+    var categoryEntry = _categoryMapValue(taxonomy, category);
+    if (!categoryEntry || typeof categoryEntry !== 'object' || Array.isArray(categoryEntry)) return {};
+    var entry = _categoryMapValue(categoryEntry, subcategory);
+    return entry && typeof entry === 'object' && !Array.isArray(entry) ? entry : {};
   }
 
   function _categoryMapValue(map, category) {
@@ -712,14 +777,21 @@ window.QymPlayground = (function () {
     return count + (count === 1 ? ' example' : ' examples');
   }
 
-  function _buildCategoryDetailItems(category, details, examples) {
+  function _buildCategoryDetailItems(category, details, examples, subcategoryTaxonomy, isNew) {
     var catDetails = Array.isArray(details) ? details : [];
     return catDetails.map(function (detail) {
       var count = _detailExampleCount(examples, detail);
-      return '<div class="pg-detail-item" data-detail="' + _escAttr(detail) + '" data-detail-example-count="' + count + '" data-parent-cat="' + _escAttr(category) + '">' +
-        '<span class="pg-detail-copy"><span class="pg-detail-name" dir="auto">' + _esc(detail) + '</span>' +
+      var taxonomy = _subcategoryTaxonomyFor(subcategoryTaxonomy, category, detail);
+      var hasTaxonomy = Object.keys(taxonomy).length > 0;
+      return '<div class="pg-detail-item" data-detail="' + _escAttr(detail) + '" data-detail-example-count="' + count + '" data-parent-cat="' + _escAttr(category) + '"' + (isNew ? ' data-new-subcategory="true"' : '') + (hasTaxonomy ? ' data-subcategory-taxonomy-defined="true"' : '') + '>' +
+        '<div class="pg-detail-header"><span class="pg-detail-copy"><span class="pg-detail-name" dir="auto">' + _esc(detail) + '</span>' +
           '<span class="qym-tag qym-tag--count pg-detail-example-count">' + _detailCountLabel(count) + '</span></span>' +
         '<button class="pg-detail-remove qym-icon-action" type="button" title="Remove detail" aria-label="Remove ' + _escAttr(detail) + ' detail">' + _icon('close') + '</button>' +
+        '</div>' +
+        '<div class="pg-detail-taxonomy-fields">' +
+          '<label class="pg-detail-taxonomy-field"><span>Description</span><textarea data-subcategory-taxonomy-field="description" rows="2" placeholder="What this subcategory means..." spellcheck="true">' + _esc(taxonomy.description || '') + '</textarea></label>' +
+          '<label class="pg-detail-taxonomy-field"><span>Use when</span><textarea data-subcategory-taxonomy-field="when_to_use" rows="2" placeholder="When the analyzer should use this subcategory..." spellcheck="true">' + _esc(taxonomy.when_to_use || '') + '</textarea></label>' +
+        '</div>' +
       '</div>';
     }).join('');
   }
@@ -732,7 +804,7 @@ window.QymPlayground = (function () {
       _esc(label) + (countLabel ? '<span class="qym-tag qym-tag--count pg-category-tab-count">' + _esc(countLabel) + '</span>' : '') + '</button>';
   }
 
-  function _buildCategoryGroup(category, details, examples, taxonomy, categoryKey, approvedExampleCount) {
+  function _buildCategoryGroup(category, details, examples, taxonomy, subcategoryTaxonomy, categoryKey, approvedExampleCount) {
     var cat = String(category || '').trim();
     var catDetails = Array.isArray(details) ? details : [];
     var catExamples = Array.isArray(examples) ? examples : [];
@@ -770,7 +842,7 @@ window.QymPlayground = (function () {
       '<div class="pg-category-details-tools"><label class="pg-detail-search-field"><span class="pg-filter-label">Search details</span><input class="pg-detail-search qym-control qym-input qym-search" type="search" data-detail-search placeholder="Filter by detail name" aria-label="Search ' + _escAttr(cat) + ' details" /></label>' +
         '<div class="pg-detail-filter-field"><span class="pg-filter-label" id="pg-detail-filter-' + _escAttr(domKey) + '-label">Show</span><select class="pg-detail-filter qym-control qym-select" data-detail-filter aria-labelledby="pg-detail-filter-' + _escAttr(domKey) + '-label" aria-label="Filter ' + _escAttr(cat) + ' details"><option value="all">All details</option><option value="with_examples">With examples</option><option value="without_examples">Needs examples</option></select></div>' +
         '<span class="pg-detail-result-count" data-detail-result-count aria-live="polite"></span></div>' +
-      '<div class="pg-details-sublist" data-cat="' + _escAttr(cat) + '">' + _buildCategoryDetailItems(cat, catDetails, catExamples) + '</div>' +
+      '<div class="pg-details-sublist" data-cat="' + _escAttr(cat) + '">' + _buildCategoryDetailItems(cat, catDetails, catExamples, subcategoryTaxonomy) + '</div>' +
       '<div class="qym-pagination pg-category-pagination" data-category-pagination="details" role="navigation" aria-label="' + _escAttr(cat) + ' details pagination" hidden></div>' +
       '<p class="pg-category-details-empty" data-detail-empty hidden>No details match this filter.</p>' +
       '<div class="pg-add-detail-row" data-cat="' + _escAttr(cat) + '"><input type="text" placeholder="Add detail..." aria-label="Add a detail to ' + _escAttr(cat) + '" class="pg-add-input pg-add-detail-input qym-control qym-input" />' +
@@ -1184,7 +1256,7 @@ window.QymPlayground = (function () {
           nextSection;
       }
     );
-    // Keep the configured category limit in the same yellow treatment as the
+    // Keep the configured issue limit in the same yellow treatment as the
     // injected category vocabulary, whether it appears in the default prompt
     // sentence or the fallback section added for custom prompts.
     escaped = escaped.replace(
@@ -2941,6 +3013,7 @@ window.QymPlayground = (function () {
     // ── Root Cause Categories & Details ──
     var detailsMap = (_config && _config.category_details_map) || {};
     var categoryTaxonomy = (_config && (_config.category_taxonomy || _config.category_taxonomies)) || {};
+    var subcategoryTaxonomy = (_config && _config.subcategory_taxonomy) || {};
     var categoryExamples = (_config && _config.category_examples) || {};
     var categoryExampleCounts = (_config && _config.category_example_counts) || {};
     var totalDetails = 0;
@@ -2955,7 +3028,7 @@ window.QymPlayground = (function () {
     maxCategories = Math.min(_MAX_ROOT_CAUSE_CATEGORIES, Math.max(1, Math.trunc(maxCategories)));
     catDetBody += '<div class="pg-category-editor"><div class="pg-category-editor-toolbar"><div class="pg-category-editor-heading"><span class="pg-category-panel-kicker">Category catalog</span><strong id="pg-category-active-name">Select a category</strong><span>Changes apply to future analyses after you save the catalog.</span></div>' +
       '<div class="pg-add-category-form"><label class="pg-visually-hidden" for="pg-new-category">New category</label><input type="text" id="pg-new-category" placeholder="New category..." class="pg-add-input qym-control qym-input" required aria-required="true" hidden /><button id="pg-add-category-btn" class="pg-add-btn qym-inline-action qym-inline-action--neutral" type="button">' + _icon('plus') + '<span>Add category</span></button></div>' +
-      '<div class="pg-category-limit-field" data-category-limit-field role="group" aria-labelledby="pg-max-root-cause-categories-label"><label class="pg-category-limit-label" id="pg-max-root-cause-categories-label" for="pg-max-root-cause-categories">Max categories per item</label><button class="qym-help-marker" type="button" aria-label="How the category limit works">i<span class="qym-help-tooltip" role="tooltip">Limits how many diagnosis categories the analyzer can return for each item. Higher values allow multiple independent causes.</span></button><input class="qym-control qym-input" id="pg-max-root-cause-categories" type="number" min="1" max="10" step="1" inputmode="numeric" value="' + maxCategories + '" /></div></div>' +
+      '<div class="pg-category-limit-field" data-category-limit-field role="group" aria-labelledby="pg-max-root-cause-categories-label"><label class="pg-category-limit-label" id="pg-max-root-cause-categories-label" for="pg-max-root-cause-categories">Max issues per item</label><button class="qym-help-marker" type="button" aria-label="How the issue limit works">i<span class="qym-help-tooltip" role="tooltip">Limits how many root-cause issues the analyzer can return for each item. Higher values allow multiple independent causes.</span></button><input class="qym-control qym-input" id="pg-max-root-cause-categories" type="number" min="1" max="10" step="1" inputmode="numeric" value="' + maxCategories + '" /></div></div>' +
       '<div id="pg-categories-list">';
     for (var i = 0; i < cats.length; i++) {
       var cat = cats[i];
@@ -2963,7 +3036,7 @@ window.QymPlayground = (function () {
       var catExamples = _categoryExamplesFor(categoryExamples, cat);
       var approvedExampleCount = _approvedExampleCountFor(categoryExampleCounts, cat, catExamples.length);
       totalDetails += catDets.length;
-      catDetBody += _buildCategoryGroup(cat, catDets, catExamples, categoryTaxonomy, 'category-' + i + '-' + _categoryDomKey(cat), approvedExampleCount);
+      catDetBody += _buildCategoryGroup(cat, catDets, catExamples, categoryTaxonomy, subcategoryTaxonomy, 'category-' + i + '-' + _categoryDomKey(cat), approvedExampleCount);
     }
     catDetBody += '</div>';
     catDetBody += '</div></div>';
@@ -3293,12 +3366,23 @@ window.QymPlayground = (function () {
       var cats = [];
         var cdMap = {};
         var taxonomyMap = {};
+        var subcategoryTaxonomyMap = {};
         catGroups.forEach(function (group) {
         var cat = group.dataset.cat;
         cats.push(cat);
         var dets = [];
         group.querySelectorAll('.pg-detail-item').forEach(function (el) {
-          dets.push(el.dataset.detail);
+          var detail = el.dataset.detail;
+          dets.push(detail);
+          var subcategoryTaxonomy = {};
+          el.querySelectorAll('[data-subcategory-taxonomy-field]').forEach(function (field) {
+            var value = field.value.trim();
+            if (value) subcategoryTaxonomy[field.dataset.subcategoryTaxonomyField] = value;
+          });
+          if (subcategoryTaxonomy.description || subcategoryTaxonomy.when_to_use) {
+            if (!subcategoryTaxonomyMap[cat]) subcategoryTaxonomyMap[cat] = {};
+            subcategoryTaxonomyMap[cat][detail] = subcategoryTaxonomy;
+          }
         });
           if (dets.length > 0) cdMap[cat] = dets;
           var taxonomy = {};
@@ -3311,6 +3395,7 @@ window.QymPlayground = (function () {
         cfg.root_cause_categories = cats;
         cfg.category_details_map = cdMap;
         cfg.category_taxonomy = taxonomyMap;
+        cfg.subcategory_taxonomy = subcategoryTaxonomyMap;
     }
     var maxCategoriesEl = document.getElementById('pg-max-root-cause-categories');
     if (maxCategoriesEl) {
@@ -5208,14 +5293,9 @@ window.QymPlayground = (function () {
           if (!val) return;
           var parentCat = row.dataset.cat;
           var sublist = row.parentElement.querySelector('.pg-details-sublist[data-cat="' + parentCat + '"]');
-          var div = document.createElement('div');
-          div.className = 'pg-detail-item';
-          div.dataset.detail = val;
-          div.dataset.detailExampleCount = '0';
-          div.dataset.parentCat = parentCat;
-          div.innerHTML = '<span class="pg-detail-copy"><span class="pg-detail-name" dir="auto">' + _esc(val) + '</span>' +
-            '<span class="qym-tag qym-tag--count pg-detail-example-count">0 examples</span></span>' +
-            '<button class="pg-detail-remove qym-icon-action" type="button" title="Remove detail" aria-label="Remove ' + _escAttr(val) + ' detail">' + _icon('close') + '</button>';
+          var itemWrapper = document.createElement('div');
+          itemWrapper.innerHTML = _buildCategoryDetailItems(parentCat, [val], [], {}, true);
+          var div = itemWrapper.firstElementChild;
           sublist.appendChild(div);
           input.value = '';
           _updateCategoryDetailCounts(detailGroup);
@@ -5245,7 +5325,7 @@ window.QymPlayground = (function () {
       }
     });
     if (catList) catList.addEventListener('input', function (e) {
-      if (e.target.closest('[data-taxonomy-field]')) _scheduleAutoPreview();
+      if (e.target.closest('[data-taxonomy-field], [data-subcategory-taxonomy-field]')) _scheduleAutoPreview();
       var search = e.target.closest('[data-detail-search]');
       if (search) {
         var searchGroup = search.closest('.pg-category-group');
@@ -5274,7 +5354,7 @@ window.QymPlayground = (function () {
           return;
         }
         var wrapper = document.createElement('div');
-        wrapper.innerHTML = _buildCategoryGroup(val, [], [], {}, _uniqueCategoryDomKey(val));
+        wrapper.innerHTML = _buildCategoryGroup(val, [], [], {}, {}, _uniqueCategoryDomKey(val));
         var group = wrapper.firstElementChild;
         catList.appendChild(group);
         _setCategoryTab(group, 'guidance', false);
@@ -5750,9 +5830,24 @@ window.QymPlayground = (function () {
 
     container.innerHTML = _testResults.map(function (r) {
       var categories = _rootCauseCategories(r);
+      var issues = _rootCauseIssues(r);
+      var hasCanonicalIssues = Array.isArray(r.root_cause_issues);
+      var useLegacyResultLayout = !hasCanonicalIssues && !issues.length;
       var color = _rootCauseColor(categories[0] || r.root_cause);
       var confPct = Math.round((r.confidence || 0) * 100);
       var errorHtml = r.error ? '<div class="pg-result-error">' + _esc(r.error) + '</div>' : '';
+      var issuesHtml = issues.length ? '<div class="pg-result-issues" role="list" aria-label="Root-cause issues">' + issues.map(function (issue, issueIndex) {
+        var issueColor = _rootCauseColor(issue.category);
+        var issueConfidence = issue.confidence == null ? '' : Math.round(issue.confidence * 100) + '%';
+        return '<article class="pg-result-issue" role="listitem" style="--pg-root-cause-color:' + issueColor + ';">' +
+          '<div class="pg-result-issue-head"><span class="pg-result-issue-number">Issue ' + (issueIndex + 1) + '</span>' +
+            (issue.category ? '<span class="pg-result-category">' + _esc(issue.category) + '</span>' : '') +
+            (issueConfidence ? '<span class="pg-confidence-val">' + _esc(issueConfidence) + '</span>' : '') + '</div>' +
+          (issue.subcategory ? '<div class="pg-result-rc">' + _esc(issue.subcategory) + '</div>' : '') +
+          (issue.finding ? '<div class="pg-result-note">' + _esc(issue.finding) + '</div>' : '') +
+          (issue.category_reason ? '<details class="pg-result-note pg-result-reason"><summary>Why this category</summary><div class="pg-result-reason-copy">' + _esc(issue.category_reason) + '</div></details>' : '') +
+        '</article>';
+      }).join('') + '</div>' : '';
 
       var fieldsBadgesHtml = '';
       var inputSectionHtml = '';
@@ -5799,14 +5894,15 @@ window.QymPlayground = (function () {
         '<div class="pg-result-header">' +
           '<span class="pg-result-item-id">' + _esc(r.item_id.slice(0, 24)) + (r.metric_name ? ' · ' + _esc(r.metric_name) : '') + '</span>' +
         '</div>' +
-        (r.root_cause_detail ? '<div class="pg-result-rc">' + _esc(r.root_cause_detail) + '</div>' : '') +
-        '<div class="pg-result-rc pg-result-category' + (r.root_cause_detail ? ' pg-result-category-secondary' : '') + '" style="--pg-root-cause-color:' + color + ';">' + _esc(categories.join(', ')) + '</div>' +
-        '<div class="pg-confidence-row">' +
+        issuesHtml +
+        (useLegacyResultLayout && r.root_cause_detail ? '<div class="pg-result-rc">' + _esc(r.root_cause_detail) + '</div>' : '') +
+        (useLegacyResultLayout ? '<div class="pg-result-rc pg-result-category' + (r.root_cause_detail ? ' pg-result-category-secondary' : '') + '" style="--pg-root-cause-color:' + color + ';">' + _esc(categories.join(', ')) + '</div>' : '') +
+        (useLegacyResultLayout ? '<div class="pg-confidence-row">' +
           '<div class="pg-confidence-bar"><div class="pg-confidence-fill" style="--pg-root-cause-color:' + color + ';width:' + confPct + '%;"></div></div>' +
           '<span class="pg-confidence-val">' + (r.confidence != null ? r.confidence.toFixed(2) : '?') + '</span>' +
-        '</div>' +
-        (r.root_cause_reason ? '<details class="pg-result-note pg-result-reason"><summary>Why this category</summary><div class="pg-result-reason-copy">' + _esc(r.root_cause_reason) + '</div></details>' : '') +
-        '<div class="pg-result-note">' + _esc(r.root_cause_note || '') + '</div>' +
+        '</div>' : '') +
+        (useLegacyResultLayout && r.root_cause_reason ? '<details class="pg-result-note pg-result-reason"><summary>Why this category</summary><div class="pg-result-reason-copy">' + _esc(r.root_cause_reason) + '</div></details>' : '') +
+        (useLegacyResultLayout ? '<div class="pg-result-note">' + _esc(r.root_cause_note || '') + '</div>' : '') +
         errorHtml +
         fieldsBadgesHtml +
         inputSectionHtml +

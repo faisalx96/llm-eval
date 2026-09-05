@@ -733,7 +733,7 @@ def test_trace_migration_upgrade_and_downgrade_preserve_source(database):
     db.commit()
     path = (
         Path(ingest.__file__).parents[1]
-        / "migrations/versions/0045_incremental_trace_statistics.py"
+        / "migrations/versions/0047_incremental_trace_statistics.py"
     )
     spec = importlib.util.spec_from_file_location("trace_migration", path)
     migration = importlib.util.module_from_spec(spec)

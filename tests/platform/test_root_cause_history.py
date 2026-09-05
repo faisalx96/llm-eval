@@ -1639,14 +1639,14 @@ def test_default_prompt_requests_only_diagnosis_fields() -> (
         message["content"] for message in messages if message["role"] == "system"
     )
 
-    assert '"root_cause": "<broad category>"' in system_content
+    assert '"root_cause_issues": [' in system_content
     assert (
-        '"root_cause_detail": "<reusable failure mechanism, 2-6 words>"'
+        '"subcategory": "<reusable failure mechanism, 2-6 words>"'
         in system_content
     )
     assert '"confidence": <float between 0.0-1.0>' in system_content
     assert (
-        '"root_cause_note": "<2-3 sentences maximum: the item-specific failure narrative>"'
+        '"finding": "<2-3 sentences maximum: the item-specific diagnosis>"'
         in system_content
     )
     assert '"solution"' not in system_content
@@ -1760,7 +1760,7 @@ def test_analysis_prompt_excludes_redundant_telemetry_and_duplicate_context() ->
 
     assert prompt.count("- Dataset Issue") == 1
     assert "- Dataset issue" not in prompt
-    assert prompt.count("2. root_cause_detail") == 1
+    assert prompt.count("2. subcategory") == 1
     assert prompt.count('"sql_prompt": "List active customers"') == 1
     assert '"domain": "analytics"' in prompt
     assert "ITEM RECORD" not in prompt
@@ -3655,12 +3655,15 @@ def test_rule_writer_prompt_includes_every_approved_example(
         "output",
         "previous_ai_root_cause",
         "previous_ai_root_causes",
+        "previous_ai_root_cause_issues",
         "approved_root_cause",
         "approved_root_causes",
+        "approved_root_cause_issues",
         "approved_detail",
         "reviewer_reasoning",
     }
     assert example["approved_root_causes"] == ["Reasoning Error"]
+    assert example["approved_root_cause_issues"][0]["subcategory"] == "Evidence gap 0"
     assert "previous_ai_category_taxonomy" not in example
     assert "approved_category_taxonomy" not in example
 

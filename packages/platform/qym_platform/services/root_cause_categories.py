@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
-from typing import Any, Iterable
-
+from collections.abc import Iterable, Mapping
+from typing import Any
 
 # The analyzer may return several independent explanations for one item/metric.
 # Keep the default deliberately small so the labels stay useful and reviewable.
@@ -66,7 +65,9 @@ CATEGORY_TAXONOMY = ROOT_CAUSE_TAXONOMY
 
 def _taxonomy_text(value: Any) -> str:
     """Normalize one taxonomy field without allowing unbounded prompt data."""
-    return " ".join(str(value or "").split()).strip()[:MAX_CATEGORY_TAXONOMY_FIELD_CHARS]
+    return " ".join(str(value or "").split()).strip()[
+        :MAX_CATEGORY_TAXONOMY_FIELD_CHARS
+    ]
 
 
 def _taxonomy_candidates(value: Any) -> list[tuple[str, Any]]:
@@ -221,7 +222,7 @@ def normalize_root_causes(
     if value is None:
         return []
     raw_values: Iterable[Any]
-    if isinstance(value, (list, tuple, set)):
+    if isinstance(value, Iterable) and not isinstance(value, (str, bytes, Mapping)):
         raw_values = value
     else:
         raw_values = (value,)
@@ -240,6 +241,111 @@ def normalize_root_causes(
     return categories
 
 
+def normalize_root_cause_issues(
+    value: Any,
+    *,
+    legacy_root_causes: Any = None,
+    legacy_detail: Any = "",
+    legacy_finding: Any = "",
+) -> list[dict[str, str]]:
+    """Return canonical issue objects, falling back to legacy diagnosis fields."""
+    if value is None:
+        detail = _taxonomy_text(legacy_detail)
+        finding = str(legacy_finding or "").strip()[:10_000]
+        return [
+            {
+                "category": category,
+                "subcategory": detail,
+                "finding": finding,
+            }
+            for category in normalize_root_causes(legacy_root_causes)
+        ]
+
+    if isinstance(value, Mapping):
+        raw_issues: Iterable[Any] = (value,)
+    elif isinstance(value, (list, tuple, set)):
+        raw_issues = value
+    else:
+        raw_issues = ()
+
+    issues: list[dict[str, str]] = []
+    for raw_issue in raw_issues:
+        if not isinstance(raw_issue, Mapping):
+            continue
+        category = _taxonomy_text(
+            raw_issue.get("category") or raw_issue.get("root_cause")
+        )[:200]
+        if not category:
+            continue
+        subcategory = _taxonomy_text(
+            raw_issue.get("subcategory")
+            or raw_issue.get("root_cause_detail")
+            or raw_issue.get("detail")
+        )
+        finding = str(
+            raw_issue.get("finding")
+            or raw_issue.get("root_cause_note")
+            or raw_issue.get("note")
+            or ""
+        ).strip()[:10_000]
+        issues.append(
+            {
+                "category": category,
+                "subcategory": subcategory,
+                "finding": finding,
+            }
+        )
+    return issues
+
+
+def analysis_root_cause_issues(
+    analysis: Mapping[str, Any] | None,
+) -> list[dict[str, str]]:
+    """Read canonical issues or project legacy analysis fields into issue objects."""
+    if not isinstance(analysis, Mapping):
+        return []
+    raw_root_causes = analysis.get("root_causes")
+    if raw_root_causes is None:
+        raw_root_causes = analysis.get("root_cause_categories")
+    if raw_root_causes is None:
+        raw_root_causes = analysis.get("root_cause")
+    return normalize_root_cause_issues(
+        analysis.get("root_cause_issues"),
+        legacy_root_causes=raw_root_causes,
+        legacy_detail=analysis.get("root_cause_detail"),
+        legacy_finding=analysis.get("root_cause_note"),
+    )
+
+
+def patch_issue_categories(issues: Any, categories: Any) -> list[dict[str, str]]:
+    """Retain matching issues in order; append empty issues for new categories."""
+    requested = {label.casefold(): label for label in normalize_root_causes(categories)}
+    retained = [
+        {**issue, "category": requested[issue["category"].casefold()]}
+        for issue in normalize_root_cause_issues(issues)
+        if issue["category"].casefold() in requested
+    ]
+    existing = {issue["category"].casefold() for issue in retained}
+    return retained + [
+        {"category": label, "subcategory": "", "finding": ""}
+        for key, label in requested.items()
+        if key not in existing
+    ]
+
+
+def project_root_cause_issues(issues: Any) -> dict[str, Any]:
+    """Project canonical issues onto the legacy diagnosis fields."""
+    normalized = normalize_root_cause_issues(issues)
+    categories = normalize_root_causes(issue["category"] for issue in normalized)
+    primary = normalized[0] if normalized else {}
+    return {
+        "root_cause": categories[0] if categories else "",
+        "root_causes": categories,
+        "root_cause_detail": primary.get("subcategory", ""),
+        "root_cause_note": primary.get("finding", ""),
+    }
+
+
 def analysis_root_causes(
     analysis: dict[str, Any] | None,
     *,
@@ -248,6 +354,19 @@ def analysis_root_causes(
     """Read plural or legacy singular categories from an analysis mapping."""
     if not isinstance(analysis, dict):
         return []
+    if (
+        "root_cause_issues" in analysis
+        and analysis.get("root_cause_issues") is not None
+    ):
+        return normalize_root_causes(
+            (
+                issue["category"]
+                for issue in normalize_root_cause_issues(
+                    analysis.get("root_cause_issues")
+                )
+            ),
+            max_categories=max_categories,
+        )
     if "root_causes" in analysis and analysis.get("root_causes") is not None:
         return normalize_root_causes(
             analysis.get("root_causes"), max_categories=max_categories
