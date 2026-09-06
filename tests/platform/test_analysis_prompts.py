@@ -23,4 +23,4 @@ def test_settings_defaults_track_runtime_prompt_constants() -> None:
 
 def test_editable_prompt_limit_matches_analyzer_budget() -> None:
     """Saved analysis prompts must accept the full root-cause prompt budget."""
-    assert PROMPT_MAX_CHARS == MAX_ANALYSIS_PROMPT_CHARS == 320_000
+    assert PROMPT_MAX_CHARS == MAX_ANALYSIS_PROMPT_CHARS == 640_000

@@ -179,8 +179,16 @@ Each upload is limited to 10 MiB. The normal prompt-safe representation is
 retain up to 200,000 characters. A document above the prompt-safe limit first
 returns a confirmation response; the caller must choose `truncate` or `full`.
 The analyzer prompt accepts at most eight selected documents and 80,000
-reference characters in total, and then applies a final 320,000-character
+reference characters in total, and then applies a final 640,000-character
 message budget before calling the provider.
+
+The item analyzer retains up to 400,000 characters of formatted trace, within
+a 500,000-character item-context budget. Input, expected output and actual
+output each retain their existing 20,000-character cutoff. Trace content beyond
+the limit is still shortened with an omission notice; raising the limit does
+not summarize or process unlimited history. A provider context-size rejection
+can retry with the existing 160,000-character fallback ceiling. These limits
+count characters, not model tokens.
 
 Rule inference has separate source budgets: documents and approved examples are
 packed into 256,000-character source patches and each writer request is capped
