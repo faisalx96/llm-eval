@@ -220,6 +220,7 @@ class DashboardFixture:
                 route.fulfill(
                     json={
                         "tasks": nested(scoped[offset : offset + limit]),
+                        "rows": scoped[offset : offset + limit],
                         "total_runs": len(scoped),
                         "offset": offset,
                         "limit": limit,
@@ -290,6 +291,66 @@ def test_initial_page_keeps_global_totals_and_offpage_facets(dashboard):
         == 1
     )
     assert page.evaluate('sessionStorage.getItem("qym:runs-cache:demo")') is None
+
+
+@pytest.mark.parametrize(
+    "sort", ["time-desc", "time-asc", "metric-accuracy-desc", "metric-accuracy-asc"]
+)
+def test_interleaved_runs_preserve_api_order_across_pages(browser, monkeypatch, sort):
+    from test_models_paging_browser import projected_dashboard
+
+    monkeypatch.setenv("QYM_DATABASE_URL", "sqlite://")
+    rows = make_runs(63)
+    timestamps = [row["timestamp"] for row in rows]
+    for index, row in enumerate(rows):
+        row.update(
+            task_name=f"Task {index % 2}",
+            model_name=f"Model {(index // 2) % 2}",
+            dataset_version="v1",
+            timestamp=timestamps[index // 2],
+            metric_averages={"accuracy": ((index * 17) % 31) // 2 / 15},
+        )
+
+    with projected_dashboard(rows) as client:
+        response = client.post(
+            "/api/dashboard/runs",
+            json={"project_slug": "demo", "sort": sort, "limit": 500},
+        )
+        assert response.status_code == 200
+        expected = [row["run_id"] for row in response.json()["rows"]]
+        view = DashboardFixture(browser, runs=rows)
+        view.api_client = client
+        try:
+            view.open()
+            page = view.page
+            page.evaluate(
+                """async sort => {
+                  const t = window.__dashboardTest;
+                  t.state.sortKey = sort;
+                  await t.fetchRuns();
+                }""",
+                sort,
+            )
+            seen = []
+            for offset in (0, 50):
+                if offset:
+                    page.evaluate(
+                        """() => {
+                          const t = window.__dashboardTest;
+                          t.setTablePage(2); t.render();
+                        }"""
+                    )
+                    page.wait_for_function(
+                        "window.__dashboardTest.state.dashboardPage.offset === 50"
+                    )
+                displayed = page.locator("#runs-tbody tr[data-idx]").evaluate_all(
+                    "rows => rows.map(row => decodeURIComponent(row.dataset.file))"
+                )
+                assert displayed == expected[offset : offset + 50]
+                seen.extend(displayed)
+            assert len(seen) == len(set(seen)) == len(rows)
+        finally:
+            view.close()
 
 
 def test_page_selection_sort_and_global_filter(dashboard):

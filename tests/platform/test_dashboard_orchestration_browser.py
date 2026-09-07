@@ -30,6 +30,7 @@ class ReviewFixture(DashboardFixture):
             route.fulfill(
                 json={
                     "tasks": {},
+                    "rows": [],
                     "pinned_rows": [],
                     "total_runs": 0,
                     "overview": overview,

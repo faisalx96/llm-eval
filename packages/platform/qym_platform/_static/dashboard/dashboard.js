@@ -6813,7 +6813,10 @@
       return;
     }
     const pageData = { tasks: page.tasks || {}, project: page.project || state.currentProject, total_count: overview.total_count };
-    const pageRows = flattenRuns(pageData).runs;
+    const normalizedRows = new Map(flattenRuns(pageData).runs.map(run => [run.file_path, run]));
+    // Task/model groups lose cross-group order. Keep the API's sorted rows,
+    // including its tie-breaking order, when applying display normalization.
+    const pageRows = page.rows.map(run => normalizedRows.get(run.file_path));
     retainedIds.clear();
     for (const ref of [...state.selectedRuns, ...(state.cohortAnchorRuns || [])]) retainedIds.add(passRefBase(ref));
 
