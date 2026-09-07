@@ -1,0 +1,1 @@
+{"transport": "real HTTP with PBKDF2 API-key authentication", "runtime": "Docker Python3.11", "storage": "PostgreSQL16", "items": 8, "passes": 2, "pass_scores": 16, "final_attempts": 16, "exact_match": 0.875, "status": "COMPLETED", "projection_settled": true, "compact_and_hydration": "passed"}

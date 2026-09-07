@@ -1,0 +1,1 @@
+{"case": "single_item_platform_shutdown", "seconds": 0.482, "mock_post_latency_seconds": 0.15, "heartbeat_interval_seconds": 0.01, "max_heartbeat_gap_seconds": 0.0563}

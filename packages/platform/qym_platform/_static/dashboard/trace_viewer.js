@@ -1802,7 +1802,7 @@
   let _cmLoading = null;
   const _tvScriptSrc = document.currentScript && document.currentScript.src;
 
-function loadCodeMirror() {
+  function loadCodeMirror() {
     if (_cmModules) return Promise.resolve(_cmModules);
     if (_cmLoading) return _cmLoading;
     const fromCdn = () => Promise.all([
@@ -1826,9 +1826,6 @@ function loadCodeMirror() {
       .then((mods) => { _cmModules = mods; return _cmModules; });
     return _cmLoading;
   }
-
-  // Start loading immediately
-  loadCodeMirror();
 
   function renderCodeMirrorPlaceholder(doc, className, options = {}) {
     const id = `tv-cm-${++_cmId}`;

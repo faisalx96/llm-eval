@@ -10,6 +10,7 @@
   <script src="./static/auth.js"></script>
   <script src="./static/shell.js?v=ui-consistency-20260730-15"></script>
   <script src="./static/metrics.js"></script>
+  <script src="./static/run_details.js"></script>
   <script src="./static/trace_viewer.js?v=merge-20260804-1"></script>
 <script src="./static/playground.js?v=rule-history-bottom-20260816-1"></script>
   <style>
@@ -5678,8 +5679,10 @@
 
           const selectedRuns = [...leftRuns, ...rightRuns];
           const itemIds = new Set();
+          const rowIndexes = new Map();
           selectedRuns.forEach((runData) => {
             const rows = runData?.snapshot?.rows || [];
+            rowIndexes.set(runData, window.QymMetrics.indexRowsById(rows, getItemId));
             rows.forEach((row) => {
               const itemId = getItemId(row);
               if (itemId !== undefined && itemId !== null && itemId !== '') itemIds.add(itemId);
@@ -5690,8 +5693,7 @@
           function collectPasses(groupRuns) {
             const values = [];
             for (const runData of groupRuns) {
-              const rows = runData?.snapshot?.rows || [];
-              const row = rows.find(candidate => getItemId(candidate) === currentItemId);
+              const row = rowIndexes.get(runData).get(currentItemId);
               if (!row) return null;
               const metricIdx = getMetricIndex(runData);
               if (metricIdx < 0) return null;
@@ -7382,12 +7384,138 @@
         return row?.compare_item_id || null;
       }
 
+      const comparisonRowIndexes = new WeakMap();
+
+      function invalidateComparisonRowIndex(rows) {
+        if (rows) comparisonRowIndexes.delete(rows);
+      }
+
       function findRowByCompareId(rows, compareItemId) {
-        return (rows || []).find(r => getRowCompareId(r) === compareItemId) || null;
+        if (!rows) return null;
+        let cached = comparisonRowIndexes.get(rows);
+        if (!cached || cached.length !== rows.length) {
+          cached = { length: rows.length, index: window.QymMetrics.indexRowsById(rows, getRowCompareId) };
+          comparisonRowIndexes.set(rows, cached);
+        }
+        return cached.index.get(compareItemId) || null;
       }
 
       function canRenderItemComparison() {
         return state.compareAlignmentStatus === 'aligned';
+      }
+
+      const comparisonDetails = new Map();
+      let comparisonRenderVersion = 0;
+      let visibleComparisonItems = [];
+      let comparisonFullTextRetained = false;
+
+      function initializeComparisonDetails() {
+        for (const details of comparisonDetails.values()) details.stop();
+        comparisonDetails.clear();
+        if (IS_COMPARE_EXPORT || !window.QymRunDetails) return;
+        for (const run of state.runs) {
+          if (run.snapshot?.detail_mode !== 'lazy') continue;
+          const ref = run.run?.file_path || run.run?.run_id;
+          const base = passRefBase(ref);
+          const pass = ref === base ? null : Number(ref.slice(base.length + PASS_REF_SEP.length));
+          comparisonDetails.set(run, window.QymRunDetails.create({
+            runId: base, apiUrl, passNumber: pass,
+            transformRow: row => pass
+              ? sliceRunToPass({ run: run.run, snapshot: { ...run.snapshot, rows: [row] } }, ref, pass).snapshot.rows[0]
+              : row,
+          }));
+        }
+      }
+
+      document.addEventListener('qym:before-navigate', () => {
+        comparisonRenderVersion++;
+        for (const details of comparisonDetails.values()) details.stop();
+      }, { once: true });
+
+      function hasComparisonDetails() { return comparisonDetails.size > 0; }
+      function comparisonOutputIdentity(row) {
+        // Empty outputs were excluded by the original truthy-value filter.
+        if (row?.output_digest === 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855') return '';
+        return row?.output_digest ?? (row?.output_full || row?.output || '');
+      }
+      function comparisonTextConditions() {
+        const conditions = [];
+        if (state.searchQuery) conditions.push({ field: 'content', value: state.searchQuery });
+        function visit(node) {
+          if (_isFilterGroup(node)) node.children.forEach(visit);
+          else if (node.field === 'output' && compareFilterConditionComplete(node)) conditions.push({ field: 'output', value: node.value });
+        }
+        visit(state.filterRoot);
+        return conditions;
+      }
+      function comparisonNeedsFullText() {
+        // A newline may span fields or runs in the original joined search.
+        // Load complete bodies for that uncommon case to retain exact matches.
+        return comparisonTextConditions().some(condition => /[\r\n]/.test(String(condition.value)) || String(condition.value).length > 10000);
+      }
+      function ensureComparisonRows(items, settings = {}) {
+        const pending = [];
+        state.runs.forEach((run, ri) => {
+          const promise = comparisonDetails.get(run)?.ensureRows(items.map(item => item.rowData[ri]).filter(Boolean), settings);
+          if (promise) pending.push(promise);
+        });
+        return pending.length ? Promise.all(pending) : null;
+      }
+      function ensureAllComparisonRows() {
+        const pending = [];
+        for (const [run, details] of comparisonDetails) {
+          const promise = details.ensureRows(run.snapshot.rows || [], { retainAll: true });
+          if (promise) pending.push(promise);
+        }
+        return pending.length ? Promise.all(pending) : null;
+      }
+      function ensureComparisonSearch() {
+        if (comparisonNeedsFullText()) {
+          comparisonFullTextRetained = true;
+          return ensureAllComparisonRows();
+        }
+        const pending = [];
+        const conditions = comparisonTextConditions();
+        for (const details of comparisonDetails.values()) {
+          const promise = details.ensureSearch(conditions);
+          if (promise) pending.push(promise);
+        }
+        return pending.length ? Promise.all(pending) : null;
+      }
+      function comparisonTextMatches(condition, rows) {
+        return rows.some((row, ri) => {
+          if (!row) return false;
+          const details = comparisonDetails.get(state.runs[ri]);
+          if (details) return details.matches(condition, row);
+          const fields = condition.field === 'output' ? [row.output_full || row.output || '']
+            : [row.input_full || row.input || '', row.expected_full || row.expected || '', row.output_full || row.output || ''];
+          return fields.some(value => stringify(value).toLowerCase().includes(String(condition.value).toLowerCase()));
+        });
+      }
+      function releaseComparisonBodies() {
+        if (comparisonNeedsFullText()) return;
+        state.runs.forEach((run, ri) => comparisonDetails.get(run)?.releaseExcept(visibleComparisonItems.map(item => item.rowData[ri]).filter(Boolean)));
+      }
+      function deferComparisonItems(promise, version, scrollToTop) {
+        if (!promise) return false;
+        const container = el('items-grid');
+        container.setAttribute('aria-busy', 'true');
+        container.textContent = 'Loading items…';
+        promise.then(() => {
+          if (version === comparisonRenderVersion) renderItems(scrollToTop);
+        }).catch(error => {
+          if (version !== comparisonRenderVersion || error.name === 'AbortError') return;
+          container.removeAttribute('aria-busy');
+          container.textContent = 'Items could not be loaded. ';
+          const retry = document.createElement('button');
+          retry.type = 'button';
+          retry.className = 'qym-inline-action qym-inline-action--accent';
+          retry.textContent = 'Retry';
+          retry.onclick = () => renderItems(scrollToTop);
+          container.appendChild(retry);
+          showToast('error', 'Could not load items', error.message);
+        });
+        return true;
       }
 
       function getApprovalState(row, metricName) {
@@ -7650,7 +7778,7 @@
         const baseFiles = [...new Set(files.map(f => passRefBase(f)))];
         const params = baseFiles.map(f => 'files=' + encodeURIComponent(f)).join('&');
         try {
-          const compareResponse = await fetch(apiUrl('api/compare?' + params));
+          const compareResponse = await fetch(apiUrl('api/compare?' + params + '&view=compact'));
           const data = await compareResponse.json();
 
           if (!data.runs || data.runs.length < (baseFiles.length > 1 ? 2 : 1)) {
@@ -7686,6 +7814,7 @@
             state.langfuseProjectId = state.langfuseProjectId || firstRun.langfuse_project_id || '';
           }
           processRuns();
+          initializeComparisonDetails();
           render();
         } catch (err) {
           console.error('Failed to load comparison:', err);
@@ -7705,6 +7834,7 @@
             });
           }
           const rows = run.snapshot?.rows || [];
+          invalidateComparisonRowIndex(rows);
           for (const row of rows) {
             const compareItemId = getRowCompareId(row);
             if (compareItemId) compareItemIds.add(compareItemId);
@@ -8094,7 +8224,7 @@
             }
             // Errors (use centralized check)
             if (window.QymMetrics.isErrorRow(row)) {
-              const output = (row.output_full || row.output || '').toLowerCase();
+              const output = (row.__execution_error || row.output_full || row.output || '').toLowerCase();
               if (output.includes('timeout')) timeoutErrors++;
               else if (output.includes('error')) runtimeErrors++;
               else otherErrors++;
@@ -9781,7 +9911,7 @@
         if (!row) return;
         const itemKey = (runName || 'Run') + '::' + (itemId || getRowCompareId(row) || row.item_id || String(row.index || ''));
         if ((row.status || '') === 'error') {
-          const executionError = row.error || row.output_full || row.output || '';
+          const executionError = row.error || row.__execution_error || row.output_full || row.output || '';
           addErrorBucket(buckets, 'Task error', normalizeErrorLabel(executionError, 'Task failed'), 1, itemKey, runName);
         }
 
@@ -10205,7 +10335,7 @@
           .filter(index => index >= 0);
         const outcomes = [];
         const outputs = rowData.map(row => row?.output_full || row?.output || '').filter(Boolean);
-        if (new Set(outputs).size > 1) outcomes.push('different');
+        if (new Set(rowData.map(comparisonOutputIdentity).filter(Boolean)).size > 1) outcomes.push('different');
         const hasError = rowData.some(row => row && window.QymMetrics.isErrorRow(row));
         const hasEditedMetric = rowData.some(rowHasEditedMetric);
         if (hasError) outcomes.push('errors');
@@ -10236,6 +10366,7 @@
 
         return {
           scores,
+          rowData,
           outcomes,
           winners,
           passCount: correctRuns.length,
@@ -10285,7 +10416,9 @@
           return node.oper === 'notin' ? !matched : matched;
         }
         if (field.kind === 'bool') return node.value === 'false' ? !value : !!value;
-        const matched = String(value).toLowerCase().includes(String(node.value || '').toLowerCase());
+        const matched = field.id === 'output' && hasComparisonDetails() && !comparisonNeedsFullText()
+          ? comparisonTextMatches({ field: 'output', value: node.value }, context.rowData)
+          : String(value).toLowerCase().includes(String(node.value || '').toLowerCase());
         return node.oper === 'notcontains' ? !matched : matched;
       }
 
@@ -10479,6 +10612,10 @@
 
           // #19: Apply search query filter across input/expected and all run outputs
           if (state.searchQuery) {
+            if (hasComparisonDetails() && !comparisonNeedsFullText()) {
+              if (!String(itemId).toLowerCase().includes(state.searchQuery.toLowerCase()) &&
+                  !comparisonTextMatches({ field: 'content', value: state.searchQuery }, rowData)) continue;
+            } else {
             const q = state.searchQuery.toLowerCase();
             const searchableText = rowData
               .filter(r => r)
@@ -10491,6 +10628,7 @@
               .join('\n')
               .toLowerCase();
             if (!searchableText.includes(q)) continue;
+            }
           }
 
           // #2: Apply complexity/domain/root_cause category filters (null = all, array = explicit)
@@ -10569,7 +10707,7 @@
 
           // Apply item filter
           if (state.itemFilter === 'different') {
-            const outputs = rowData.map(r => r?.output_full || r?.output || '').filter(o => o);
+            const outputs = rowData.map(comparisonOutputIdentity).filter(Boolean);
             const uniqueOutputs = new Set(outputs);
             if (uniqueOutputs.size <= 1) continue;
           } else if (state.itemFilter === 'errors') {
@@ -10715,6 +10853,22 @@
         const sep = String(ref).indexOf(PASS_REF_SEP);
         return sep < 0 ? String(ref) : String(ref).slice(0, sep);
       }
+      function scopedComparisonPassMetadata(row, metricNames, passNumber) {
+        const metadata = { ...(row.item_metadata || {}) };
+        [
+          'root_cause', 'root_causes', 'root_cause_issues', 'root_cause_detail', 'root_cause_note', 'root_cause_reason',
+          'root_cause_source', 'root_cause_confidence', 'root_cause_metric_name',
+          'solution', 'solution_note', 'solution_source',
+          'metric_analyses', 'analysis_error', 'analysis_warning',
+        ].forEach(key => delete metadata[key]);
+        const analyses = {};
+        (metricNames || []).forEach(name => {
+          const analysis = row.pass_metric_analyses?.[name]?.[passNumber - 1];
+          if (analysis && typeof analysis === 'object') analyses[name] = analysis;
+        });
+        if (Object.keys(analyses).length) metadata.metric_analyses = analyses;
+        return metadata;
+      }
       function sliceRunToPass(rd, ref, passNo) {
         const baseRun = rd.run || {};
         const run = {
@@ -10752,6 +10906,7 @@
           const hasPassScore = mv.some(value => value !== null && value !== undefined && value !== '');
           const next = {
             ...row,
+            item_metadata: scopedComparisonPassMetadata(row, metricNames, passNo),
             metric_values: mv,
             metric_meta: meta,
             pass_scores: null,
@@ -10761,6 +10916,9 @@
             error: att?.error || '',
             output: att ? (att.output ?? null) : null,
             output_full: att ? (att.output ?? null) : null,
+            output_digest: att?.output_digest ?? null,
+            __has_output: !!(att && (att.__has_output || att.output != null)),
+            __execution_error: att?.__execution_error || '',
             latency_ms: Number(att?.latency_ms || 0),
             task_started_at_ms: att?.task_started_at_ms ?? null,
             retry_count: Number(att?.retry_count || 0),
@@ -11450,7 +11608,7 @@
         if (hasComparisonRowData(rowData)) renderItemComparisonModalBody(overlay, itemId, rowData);
       }
 
-      function openItemComparisonModal(itemId) {
+      async function openItemComparisonModal(itemId) {
         if (!itemId || !canRenderItemComparison()) {
           showToast('error', 'Comparison Unavailable', 'Item comparison is unavailable for this selection.');
           return;
@@ -11465,11 +11623,23 @@
         overlay.dataset.itemId = itemId;
         overlay.classList.add('open');
         document.body.style.overflow = 'hidden';
+        const hydration = ensureComparisonRows([{ itemId, rowData }]);
+        if (hydration) {
+          overlay.querySelector('#item-comparison-modal-body').textContent = 'Loading item…';
+          try { await hydration; }
+          catch (error) {
+            if (overlay.dataset.itemId === itemId) overlay.querySelector('#item-comparison-modal-body').textContent = 'Item could not be loaded. Close and reopen it to retry.';
+            return;
+          }
+          if (overlay.dataset.itemId !== itemId || !overlay.classList.contains('open')) return;
+        }
         renderItemComparisonModalBody(overlay, itemId, rowData);
         overlay.querySelector('#item-comparison-modal-close')?.focus();
       }
 
       function renderItems(scrollToTop = false) {
+        const version = ++comparisonRenderVersion;
+        if (hasComparisonDetails() && deferComparisonItems(ensureComparisonSearch(), version, scrollToTop)) return;
         const preserveAnchor = state.hasRenderedItems && !scrollToTop;
         const anchorTop = preserveAnchor ? getItemsGridTop() : null;
         // Keep Performance by Category and Root Cause Analysis in sync with filters
@@ -11517,6 +11687,13 @@
         if (state.page > totalPages) state.page = totalPages;
         const start = (state.page - 1) * state.pageSize;
         const pageItems = items.slice(start, start + state.pageSize);
+        visibleComparisonItems = pageItems;
+        if (hasComparisonDetails() && deferComparisonItems(ensureComparisonRows(pageItems, { retainAll: comparisonNeedsFullText() }), version, scrollToTop)) return;
+        if (comparisonFullTextRetained && !comparisonNeedsFullText()) {
+          releaseComparisonBodies();
+          comparisonFullTextRetained = false;
+        }
+        container.removeAttribute('aria-busy');
 
         if (items.length === 0) {
           container.innerHTML = '<div style="text-align:center;padding:2rem;color:var(--text-muted);">No items match the current filter</div>';
@@ -11862,6 +12039,7 @@
               : null;
             nextRow = {
               ...updatedRow,
+              item_metadata: scopedComparisonPassMetadata(updatedRow, metricNames, passNumber),
               metric_values: metricNames.map((name, metricIndex) => {
                 const values = updatedRow.pass_scores?.[name];
                 if (Array.isArray(values)) return values[passIndex] == null ? '' : values[passIndex];
@@ -11883,12 +12061,19 @@
             }
           }
           const rows = run.snapshot.rows || [];
+          invalidateComparisonRowIndex(rows);
           const idx = Number(nextRow.index) || 0;
           if (idx >= 0 && idx < rows.length) {
-            rows[idx] = nextRow;
+            const next = { ...rows[idx], ...nextRow };
+            comparisonDetails.get(run)?.adoptRow(next, rows[idx]);
+            rows[idx] = next;
           } else {
             const pos = rows.findIndex(r => Number(r.index) === idx);
-            if (pos >= 0) rows[pos] = nextRow;
+            if (pos >= 0) {
+              const next = { ...rows[pos], ...nextRow };
+              comparisonDetails.get(run)?.adoptRow(next, rows[pos]);
+              rows[pos] = next;
+            }
           }
         } catch {}
       }
@@ -13847,8 +14032,13 @@
           overlay.querySelectorAll('input[type="checkbox"]').forEach(cb => { cb.checked = false; });
         });
 
-        document.getElementById('export-modal-cancel').addEventListener('click', () => { overlay.classList.remove('open'); });
-        overlay.addEventListener('click', e => { if (e.target === overlay) overlay.classList.remove('open'); });
+        function closeExportModal() {
+          overlay.classList.remove('open');
+          releaseComparisonBodies();
+          _exportItems = null;
+        }
+        document.getElementById('export-modal-cancel').addEventListener('click', closeExportModal);
+        overlay.onclick = e => { if (e.target === overlay) closeExportModal(); };
 
         document.getElementById('export-modal-confirm').addEventListener('click', () => {
           const selectedCols = [];
@@ -13858,8 +14048,8 @@
               if (cb && cb.checked) selectedCols.push(groups[gi].columns[ci]);
             }
           }
-          overlay.classList.remove('open');
           if (selectedCols.length > 0) performExport(_exportItems, selectedCols);
+          closeExportModal();
         });
 
         overlay.classList.add('open');
@@ -13901,9 +14091,9 @@
             return obj ? stringify(obj[field.slice(7)]) : '';
           }
           if (field === 'status') return rd.status || '';
-          if (field === 'root_cause') return rootCauseCategories(rd.item_metadata)[0] || '';
+          if (field === 'root_cause') return rootCauseCategories(compareRootCauseScope(rd, ri).analysis)[0] || '';
           if (field === 'root_cause_issues') {
-            const issues = rootCauseIssuePatch(rootCauseIssues(rd.item_metadata)).root_cause_issues;
+            const issues = rootCauseIssuePatch(rootCauseIssues(compareRootCauseScope(rd, ri).analysis)).root_cause_issues;
             return issues.length ? JSON.stringify(issues) : '';
           }
           if (field === 'latency_ms') return String(rd.latency_ms || '');
@@ -13952,11 +14142,20 @@
         URL.revokeObjectURL(url);
       }
 
-      el('export-filtered-btn').addEventListener('click', () => {
+      el('export-filtered-btn').addEventListener('click', async function() {
+        this.disabled = true;
+        try {
+        await ensureComparisonSearch();
         _exportItems = getFilteredItems();
         if (_exportItems.length === 0) return;
+        await ensureComparisonRows(_exportItems, { retainAll: true });
         const groups = discoverExportColumns(_exportItems);
         renderExportModal(groups);
+        } catch (error) {
+          showToast('error', 'Could not prepare CSV', error.message);
+        } finally {
+          this.disabled = false;
+        }
       });
 
       function stringify(val) {
@@ -14088,7 +14287,7 @@
           html = html.replace(match[0], () => '<script>\n' + escapeInlineScriptContent(js) + '\n</' + 'script>');
         }
 
-        html = html.replace(/\s*<script\s+src="(?:\.\/|\/)static\/(?:auth|shell|playground)\.js(?:\?[^"]*)?"><\/script>\s*/g, '\n');
+        html = html.replace(/\s*<script\s+src="(?:\.\/|\/)static\/(?:auth|shell|playground|run_details)\.js(?:\?[^"]*)?"><\/script>\s*/g, '\n');
         html = html.replace(/\s*<link\s+rel="icon"\s+type="image\/png"\s+href="(?:\.\/|\/)static\/qym_icon\.png(?:\?[^"]*)?">\s*/g, '\n');
         return html;
       }
@@ -14100,6 +14299,8 @@
           try {
             shareBtn.disabled = true;
             shareBtn.textContent = 'Exporting...';
+
+            await ensureAllComparisonRows();
 
             // Serialize current state data
             const exportData = {
@@ -14134,6 +14335,7 @@
             console.error('Export failed:', err);
             showToast('error', 'Export Failed', err.message);
           } finally {
+            releaseComparisonBodies();
             shareBtn.disabled = false;
             shareBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg> Share';
           }

@@ -1217,11 +1217,15 @@ def test_models_view_uses_globally_filtered_runs() -> None:
     models_block = source.split("async function renderModelsView()", 1)[1].split("function populateModelsViewDropdowns()", 1)[0]
     dropdown_block = source.split("function populateModelsViewDropdowns()", 1)[1].split("// Cache for fetched Models run data", 1)[0]
 
-    assert "const matchingRuns = state.filteredRuns.filter" in models_block
+    assert "const matchingRuns = (candidates ? candidates.rows : state.filteredRuns).filter" in models_block
+    assert "candidates = await fetchModelCandidates();" in models_block
+    assert "candidates ? candidates.scope.tasks" in models_block
+    assert "candidates ? candidates.scope.datasets" in models_block
     assert "const matchingRuns = state.flatRuns.filter" not in models_block
     assert "state.filterModels.size > 0 && !state.filterModels.has('__none__')" not in models_block
     assert "? state.filteredRuns.filter(r => r.task_name === currentTask && getRunDatasetKey(r) === currentDataset)" in dropdown_block
     assert "? state.flatRuns.filter(r => r.task_name === currentTask && getRunDatasetKey(r) === currentDataset)" not in dropdown_block
+    assert "currentTask && currentDataset && candidates ? candidates.metrics : []" in dropdown_block
 
 
 def test_charts_grouped_view_uses_presets_for_version_model_splits() -> None:
@@ -1318,8 +1322,10 @@ def test_live_runs_sections_are_present_on_overview_and_admin() -> None:
     admin = (DASHBOARD_DIR / "admin.html").read_text(encoding="utf-8")
 
     assert "Live Runs" in overview
-    assert "api/runs/live?limit=8" in overview
-    assert "exclude_live=true" in overview
+    assert "api/dashboard/runs" in overview
+    assert "statuses: ['RUNNING', 'PENDING'] }, 8, 'activity-desc'" in overview
+    assert "statuses: ['DRAFT', 'SUBMITTED', 'APPROVED', 'REJECTED', 'COMPLETED', 'FAILED', 'STOPPED'] }, 5" in overview
+    assert "method: 'POST'" in overview
     assert "<th>Run</th><th>User</th><th>Items</th><th>Date</th>" in overview
     assert "<th>Run</th><th>User</th><th>Score</th><th>Date</th>" not in overview
     assert "<th>Run</th><th>User</th><th>Model</th><th>Score</th><th>Date</th>" not in overview
@@ -2056,7 +2062,7 @@ def test_run_selection_uses_explicit_mode_and_reclaims_checkbox_column() -> None
     assert "separator.style.display = showActions ? '' : 'none';" in panel
     assert "allDeletable" in panel
     assert "isOwner && (status === 'COMPLETED'" in panel
-    assert "const selectionAvailable = !!state.runs && state.flatRuns.length > 0;" in source
+    assert "const selectionAvailable = !!state.runs && (usesDashboardSummary() ? state.dashboardOverview.total_count > 0 : state.flatRuns.length > 0);" in source
     assert "selectMode: false" in source
     assert "function setSelectMode(enabled)" in source
     assert "tableView.classList.toggle('select-mode', state.selectMode);" in source
@@ -2387,7 +2393,7 @@ def test_compare_html_export_is_self_contained_and_export_safe() -> None:
     assert "async function inlineCompareExportAssets(html)" in source
     assert "(?:dashboard|shell|ui_components)\\.css" in source
     assert "(?:metrics|trace_viewer|ui_components)\\.js" in source
-    assert "(?:auth|shell|playground)\\.js" in source
+    assert "(?:auth|shell|playground|run_details)\\.js" in source
     assert "html.replace(match[0], () => '<style>" in source
     assert "html.replace(match[0], () => '<script>" in source
     assert "html = await inlineCompareExportAssets(html);" in source

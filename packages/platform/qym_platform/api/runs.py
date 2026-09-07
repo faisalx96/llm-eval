@@ -60,6 +60,7 @@ from qym_platform.permissions import (
     has_project_access,
 )
 from qym_platform.services.run_lifecycle import reconcile_stale_running_run
+from qym_platform.services.run_payloads import compact_row, detail_item_ids, search_conditions
 from qym_platform.services.repeat_passes import (
     RepeatPassDeletionError,
     delete_repeat_pass,
@@ -390,6 +391,11 @@ def _completed_pass_outputs(
     rows = (
         db.query(RunEvent.payload)
         .filter(RunEvent.run_id == run_id, RunEvent.type == "item_completed")
+        .filter(
+            RunEvent.payload["item_id"]
+            .as_string()
+            .in_({item_id for item_id, _ in wanted})
+        )
         .order_by(RunEvent.sequence.asc())
         .all()
     )
@@ -407,7 +413,9 @@ def _completed_pass_outputs(
     return recovered
 
 
-def _repeat_pass_event_state(db: Session, run_id: str) -> Dict[str, Any]:
+def _repeat_pass_event_state(
+    db: Session, run_id: str, *, item_ids: Optional[List[str]] = None
+) -> Dict[str, Any]:
     """Recover per-pass lifecycle state that is not represented by final attempts.
 
     New evaluations emit attempt-start events before an attempt finishes, while
@@ -428,6 +436,11 @@ def _repeat_pass_event_state(db: Session, run_id: str) -> Dict[str, Any]:
     rows = (
         db.query(RunEvent)
         .filter(RunEvent.run_id == run_id, RunEvent.type.in_(event_types))
+        .filter(
+            RunEvent.payload["item_id"].as_string().in_(item_ids)
+            if item_ids is not None
+            else True
+        )
         .order_by(RunEvent.sequence.asc())
         .all()
     )
@@ -2576,6 +2589,7 @@ def legacy_compare(
     files: List[str] = Query(default=[]),
     db: Session = Depends(get_db),
     principal: Principal = Depends(require_ui_principal),
+    view: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Return multiple run snapshots for comparison.
 
@@ -2588,7 +2602,7 @@ def legacy_compare(
 
     runs_data: list[dict[str, Any]] = []
     for run_id in run_ids:
-        data = legacy_run_data(run_id=run_id, db=db, principal=principal)
+        data = legacy_run_data(run_id=run_id, db=db, principal=principal, view=view)
         if not data.get("error"):
             runs_data.append(data)
 
@@ -2625,19 +2639,28 @@ def _can_approve_run(db: Session, principal: Principal, run: Run) -> bool:
     return permission_can_approve_run(db, principal, run)
 
 
-def _build_run_data(db: Session, run: Run) -> Dict[str, Any]:
+def _build_run_data(
+    db: Session,
+    run: Run,
+    *,
+    item_ids: Optional[List[str]] = None,
+    compact: bool = False,
+) -> Dict[str, Any]:
     """Build the run + snapshot data dict used by the UI."""
-    items: List[RunItem] = (
-        db.query(RunItem)
-        .filter(RunItem.run_id == run.id)
-        .order_by(RunItem.index.asc())
-        .all()
-    )
+    item_query = db.query(RunItem).filter(RunItem.run_id == run.id)
+    if item_ids is not None:
+        item_query = item_query.filter(RunItem.item_id.in_(item_ids))
+    item_query = item_query.order_by(RunItem.index.asc())
+    item_count = item_query.count() if compact else None
+    items = item_query.yield_per(200) if compact else item_query.all()
     metrics = list(run.metrics or [])
     metric_specs = _metric_specs_for_runs(db, [run.id]).get(run.id, {})
     corrections = (
         db.query(ReviewCorrection)
         .filter(ReviewCorrection.run_id == run.id, ReviewCorrection.is_active.is_(True))
+        .filter(
+            ReviewCorrection.item_id.in_(item_ids) if item_ids is not None else True
+        )
         .order_by(ReviewCorrection.created_at.desc())
         .all()
     )
@@ -2661,7 +2684,12 @@ def _build_run_data(db: Session, run: Run) -> Dict[str, Any]:
     run_metadata = run.run_metadata if isinstance(run.run_metadata, dict) else {}
 
     # Build per-item score/meta for UI
-    scores = db.query(RunItemScore).filter(RunItemScore.run_id == run.id).all()
+    scores = (
+        db.query(RunItemScore)
+        .filter(RunItemScore.run_id == run.id)
+        .filter(RunItemScore.item_id.in_(item_ids) if item_ids is not None else True)
+        .all()
+    )
     by_item: Dict[str, Dict[str, RunItemScore]] = {}
     for s in scores:
         by_item.setdefault(s.item_id, {})[s.metric_name] = s
@@ -2674,7 +2702,12 @@ def _build_run_data(db: Session, run: Run) -> Dict[str, Any]:
     pass_attempts_by_item: Dict[str, Dict[int, Dict[str, Any]]] = {}
     if run_samples > 1:
         for ps in (
-            db.query(RunItemPassScore).filter(RunItemPassScore.run_id == run.id).all()
+            db.query(RunItemPassScore)
+            .filter(RunItemPassScore.run_id == run.id)
+            .filter(
+                RunItemPassScore.item_id.in_(item_ids) if item_ids is not None else True
+            )
+            .all()
         ):
             pass_scores_by_item.setdefault(ps.item_id, {}).setdefault(
                 ps.metric_name, {}
@@ -2699,9 +2732,14 @@ def _build_run_data(db: Session, run: Run) -> Dict[str, Any]:
         # show each attempt, not just the item's last one.  Event state fills
         # the two gaps in this table: an attempt that is currently running and
         # legacy item outcomes that arrived without a final-attempt event.
-        pass_event_state = _repeat_pass_event_state(db, run.id)
+        pass_event_state = _repeat_pass_event_state(db, run.id, item_ids=item_ids)
         all_attempts = (
-            db.query(RunItemAttempt).filter(RunItemAttempt.run_id == run.id).all()
+            db.query(RunItemAttempt)
+            .filter(RunItemAttempt.run_id == run.id)
+            .filter(
+                RunItemAttempt.item_id.in_(item_ids) if item_ids is not None else True
+            )
+            .all()
         )
         final_attempts = [
             attempt for attempt in all_attempts if attempt.is_last_attempt
@@ -2809,12 +2847,21 @@ def _build_run_data(db: Session, run: Run) -> Dict[str, Any]:
             isinstance(it.item_metadata, dict)
             and it.item_metadata.get("task_started_at_ms")
         )
-        for it in items
+        for it in (
+            item_query.with_entities(RunItem.item_metadata).yield_per(200)
+            if compact
+            else items
+        )
     )
     if need_ts:
         started_events: List[RunEvent] = (
             db.query(RunEvent)
             .filter(RunEvent.run_id == run.id, RunEvent.type == "item_started")
+            .filter(
+                RunEvent.payload["item_id"].as_string().in_(item_ids)
+                if item_ids is not None
+                else True
+            )
             .all()
         )
         for ev in started_events:
@@ -2825,7 +2872,7 @@ def _build_run_data(db: Session, run: Run) -> Dict[str, Any]:
 
     ui_rows = []
     stats = {
-        "total": len(items),
+        "total": item_count if compact else len(items),
         "completed": 0,
         "in_progress": 0,
         "pending": 0,
@@ -2897,17 +2944,19 @@ def _build_run_data(db: Session, run: Run) -> Dict[str, Any]:
                 "error": it.error or "",
                 "input": _stringify(it.input),
                 "input_full": _stringify(it.input),
-                "output": _stringify(it.output)
-                if not is_error
-                else f"ERROR: {it.error}",
-                "output_full": _stringify(it.output)
-                if not is_error
-                else f"ERROR: {it.error}",
+                "output": (
+                    _stringify(it.output) if not is_error else f"ERROR: {it.error}"
+                ),
+                "output_full": (
+                    _stringify(it.output) if not is_error else f"ERROR: {it.error}"
+                ),
                 "expected": _stringify(it.expected),
                 "expected_full": _stringify(it.expected),
-                "time": ""
-                if it.latency_ms is None
-                else f"{(it.latency_ms or 0)/1000.0:.3f}",
+                "time": (
+                    ""
+                    if it.latency_ms is None
+                    else f"{(it.latency_ms or 0)/1000.0:.3f}"
+                ),
                 "latency_ms": it.latency_ms or 0,
                 "retry_count": retry_count,
                 "trace_id": it.trace_id or "",
@@ -2933,9 +2982,11 @@ def _build_run_data(db: Session, run: Run) -> Dict[str, Any]:
                     }
                     for metric_name, metric_correction in metric_corrections.items()
                 },
-                "trace_stats": item_metadata.get("trace_stats")
-                if isinstance(item_metadata, dict)
-                else None,
+                "trace_stats": (
+                    item_metadata.get("trace_stats")
+                    if isinstance(item_metadata, dict)
+                    else None
+                ),
                 # Repeat runs: metric -> [score per pass, index 0 = pass 1]
                 "pass_scores": (
                     {
@@ -2984,6 +3035,8 @@ def _build_run_data(db: Session, run: Run) -> Dict[str, Any]:
                 ),
             }
         )
+        if compact:
+            ui_rows[-1] = compact_row(ui_rows[-1])
 
     stats["success_rate"] = (
         (stats["completed"] / stats["total"] * 100.0) if stats["total"] else 0.0
@@ -3059,6 +3112,7 @@ def _build_run_data(db: Session, run: Run) -> Dict[str, Any]:
                 "stats": stats,
                 "metric_names": metrics,
                 "metric_specs": metric_specs,
+                **({"detail_mode": "lazy", "detail_page_size": 100} if compact else {}),
             },
         }
     )
@@ -3145,6 +3199,12 @@ def export_run_html(
         r'\s*<script\s+src="/static/playground\.js(?:\?[^"]*)?"></script>\s*',
         "\n",
         run_html,
+    )
+
+    # Export embeds full rows and needs no network hydration helper.
+    run_html = re.sub(
+        r'\s*<script\s+(?:defer\s+)?src="/static/run_details\.js(?:\?[^"]*)?"></script>\s*',
+        "\n", run_html,
     )
 
     # Remove favicon (would be a broken link)
@@ -3678,11 +3738,139 @@ def run_group_metrics(
     }
 
 
+def _detail_run(db: Session, principal: Principal, run_id: str) -> Run:
+    run = Run.active(db).filter(Run.id == run_id).first()
+    if not run:
+        raise HTTPException(404, "Run not found")
+    if not can_view_run(db, principal, run):
+        raise HTTPException(403, "Access denied")
+    return run
+
+
+@router.post("/api/runs/{run_id}/items/details")
+def run_item_details(
+    run_id: str,
+    request: Dict[str, Any],
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_ui_principal),
+) -> Dict[str, Any]:
+    run = _detail_run(db, principal, run_id)
+    ids = detail_item_ids(request)
+    data = _build_run_data(db, run, item_ids=ids)
+    rows = data["snapshot"]["rows"]
+    for row in rows:
+        # Occurrence-based comparison identity comes from the complete compact
+        # index; hydrating a subset must never reset duplicate occurrence IDs.
+        row.pop("compare_item_id", None)
+        row.pop("compare_alignment_source", None)
+        row["__details_loaded"] = True
+    present = {row["item_id"] for row in rows}
+    return {
+        "rows": rows,
+        "missing_item_ids": [iid for iid in ids if iid not in present],
+    }
+
+
+@router.post("/api/runs/{run_id}/items/search")
+def search_run_items(
+    run_id: str,
+    request: Dict[str, Any],
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_ui_principal),
+) -> Dict[str, Any]:
+    run = _detail_run(db, principal, run_id)
+    conditions = search_conditions(request)
+    pass_number = request.get("pass_number")
+    if pass_number is not None:
+        if (
+            isinstance(pass_number, bool)
+            or not isinstance(pass_number, int)
+            or not 1 <= pass_number <= int(run.samples or 1)
+        ):
+            raise HTTPException(422, "pass_number must identify an existing pass")
+
+    matches: Dict[str, List[str]] = {condition["id"]: [] for condition in conditions}
+    # Search is deliberately explicit: the initial index never transfers large
+    # bodies. Streaming selected columns bounds aggregate-mode server memory.
+    if pass_number is None:
+        rows = (
+            db.query(
+                RunItem.item_id,
+                RunItem.index,
+                RunItem.input,
+                RunItem.expected,
+                RunItem.output,
+                RunItem.error,
+            )
+            .filter(RunItem.run_id == run.id)
+            .order_by(RunItem.index.asc())
+            .yield_per(200)
+        )
+        texts = (
+            (
+                row.item_id,
+                [
+                    str(row.item_id or row.index or ""),
+                    _stringify(row.input),
+                    _stringify(row.expected),
+                    f"ERROR: {row.error}" if row.error else _stringify(row.output),
+                ],
+            )
+            for row in rows
+        )
+    else:
+        # Reuse established legacy pass recovery so pre-attempt SDK runs and
+        # missing/final attempts have exactly the same search semantics as UI.
+        # Scope each recovery batch so repeated searches cannot load every
+        # input/output/explanation into memory at once.
+        def pass_texts():
+            from itertools import islice
+
+            item_ids = iter(
+                db.query(RunItem.item_id)
+                .filter(RunItem.run_id == run.id)
+                .order_by(RunItem.index.asc())
+                .yield_per(100)
+            )
+            while True:
+                batch = [item_id for (item_id,) in islice(item_ids, 100)]
+                if not batch:
+                    break
+                data = _build_run_data(db, run, item_ids=batch)
+                for row in data["snapshot"]["rows"]:
+                    attempts = row.get("pass_attempts") or []
+                    output = (
+                        str((attempts[pass_number - 1] or {}).get("output") or "")
+                        if len(attempts) >= pass_number
+                        else ""
+                    )
+                    yield row["item_id"], [
+                        str(row["item_id"] or row["index"] or ""),
+                        row["input"], row["expected"], output,
+                    ]
+                del data
+
+        texts = pass_texts()
+    for item_id, values in texts:
+        lowered = [value.lower() for value in values]
+        for condition in conditions:
+            candidates = (
+                lowered if condition["field"] == "all"
+                else lowered[1:] if condition["field"] == "content"
+                else lowered[-1:]
+            )
+            if any(condition["value"] in candidate for candidate in candidates):
+                matches[condition["id"]].append(item_id)
+    return {"matches": matches}
+
+
+
 @router.get("/api/runs/{run_id}")
 def legacy_run_data(
     run_id: str,
     db: Session = Depends(get_db),
     principal: Principal = Depends(require_ui_principal),
+    view: Optional[str] = None,
 ) -> Dict[str, Any]:
     run = Run.active(db).filter(Run.id == run_id).first()
     if not run:
@@ -3691,7 +3879,9 @@ def legacy_run_data(
         return {"error": "Access denied"}
     _reconcile_run_liveness(db, [run])
 
-    return _build_run_data(db, run)
+    if view not in (None, "full", "compact"):
+        raise HTTPException(422, "view must be full or compact")
+    return _build_run_data(db, run, compact=view == "compact")
 
 
 @router.post("/api/runs/update_metric")

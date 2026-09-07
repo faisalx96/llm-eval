@@ -123,6 +123,7 @@ def test_dropdown_search_actions_escape_and_focus_restoration(component_page: ob
     trigger = component_page.locator("#dropdown .qym-dropdown__trigger")
     trigger.click()
     search = component_page.locator("#dropdown .qym-dropdown__search")
+    component_page.wait_for_function("document.activeElement === document.querySelector('#dropdown .qym-dropdown__search')")
     assert search.evaluate("el => document.activeElement === el")
     assert component_page.locator("#dropdown .qym-dropdown__menu").get_attribute("role") == "group"
 

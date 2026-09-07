@@ -55,6 +55,7 @@ Homepage = "https://github.com/faisalx96/qym"
 
 [tool.setuptools.packages.find]
 where = ["."]
+include = ["qym", "qym.*"]
 
 [tool.setuptools.dynamic]
 version = {attr = "qym._version.__version__"}

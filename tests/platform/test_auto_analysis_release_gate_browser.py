@@ -641,17 +641,19 @@ def test_project_diagnosis_catalog_restores_local_tools(analyzer_page: tuple[obj
     assert "Pending Category" not in approved_nav.all_inner_texts()
     category = page.locator("#analysis-diagnosis-view .pg-category-nav-item", has_text="Reasoning Error")
     assert category.is_visible()
-    assert page.locator("#analysis-diagnosis-view [data-taxonomy-field='description']").count() == 1
-    assert page.locator("#analysis-diagnosis-view [data-taxonomy-field='when_to_use']").count() == 1
+    category_panel = page.locator("#analysis-diagnosis-view .pg-category-group[data-cat='Reasoning Error']")
+    assert category_panel.is_visible()
+    assert category_panel.locator("[data-taxonomy-field='description']").count() == 1
+    assert category_panel.locator("[data-taxonomy-field='when_to_use']").count() == 1
     page.locator("#analysis-save-category-catalog").click()
     assert page.locator("#analysis-category-save-status").inner_text() == "Taxonomy required"
-    page.locator("[data-category-tab='details']").click()
-    detail_selector = page.locator(".pg-detail-review-selector")
+    category_panel.locator("[data-category-tab='details']").click()
+    detail_selector = category_panel.locator(".pg-detail-review-selector")
     assert detail_selector.is_visible()
     assert detail_selector.evaluate("wrapper => wrapper.getBoundingClientRect().width >= 240")
     detail_selector.locator(".multi-select-btn").click()
     detail_selector.locator(".multi-select-option[data-value='without_examples']").click()
-    assert page.locator("[data-detail-filter]").input_value() == "without_examples"
+    assert category_panel.locator("[data-detail-filter]").input_value() == "without_examples"
 
     category_search = page.locator("#analysis-category-search")
     category_search.fill("not present")

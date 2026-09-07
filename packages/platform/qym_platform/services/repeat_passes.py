@@ -92,6 +92,17 @@ def _recover_completed_outputs(
 
 
 def _refresh_trace_metadata(db: Session, run: Run) -> None:
+    # Representative item/trace mappings changed outside ingestion. Invalidate
+    # the private ledger atomically; the next live batch backfills it once.
+    from qym_platform.db.models import (
+        RunTraceContribution,
+        RunTraceNamedContribution,
+        RunTraceSummary,
+    )
+
+    for model in (RunTraceContribution, RunTraceNamedContribution, RunTraceSummary):
+        db.query(model).filter(model.run_id == run.id).delete(synchronize_session=False)
+
     from qym_platform.api.ingest import (
         _build_run_trace_stats,
         _public_trace_bucket,

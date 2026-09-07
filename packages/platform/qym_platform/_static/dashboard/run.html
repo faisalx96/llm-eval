@@ -10,6 +10,7 @@
   <script src="/static/auth.js"></script>
   <script src="/static/shell.js?v=ui-consistency-20260730-15"></script>
   <script src="/static/metrics.js"></script>
+  <script src="/static/run_details.js"></script>
   <script src="/static/trace_viewer.js?v=merge-20260804-1"></script>
   <style>
     /* Typography/color rules: docs/DESIGN_LANGUAGE.md — tokens only (var(--font-*), var(--text-*)). */
@@ -6526,7 +6527,7 @@
         if (!RUN_ID) { showEmpty(); return; }
         try {
           const [res, passRes] = await Promise.all([
-            fetch(apiUrl('api/runs/' + RUN_ID)),
+            fetch(apiUrl('api/runs/' + RUN_ID + '?view=compact')),
             VIEW_PASS
               ? fetch(apiUrl('api/runs/' + RUN_ID + '/passes')).catch(() => null)
               : Promise.resolve(null),
@@ -6550,6 +6551,7 @@
           state.langfuseProjectId = data.run.langfuse_project_id || '';
           syncProjectLinks(data.run.project);
           processRun();
+          initializeRunDetails();
           render();
         } catch (err) {
           console.error('Failed to load run:', err);
@@ -6578,7 +6580,7 @@
       function scopedPassItemMetadata(metadata, row, metricNames, passNumber) {
         const scoped = { ...((metadata && typeof metadata === 'object') ? metadata : {}) };
         [
-          'root_cause', 'root_cause_issues', 'root_cause_detail', 'root_cause_note',
+          'root_cause', 'root_causes', 'root_cause_issues', 'root_cause_detail', 'root_cause_note', 'root_cause_reason',
           'root_cause_source', 'root_cause_confidence', 'root_cause_metric_name',
           'solution', 'solution_note', 'solution_source',
           'metric_analyses', 'analysis_error', 'analysis_warning',
@@ -6647,6 +6649,8 @@
           error: att?.error || '',
           output: att ? (att.output ?? null) : null,
           output_full: att ? (att.output ?? null) : null,
+          __has_output: !!(att && (att.__has_output || att.output != null)),
+          __execution_error: att?.__execution_error || '',
           time: latencyMs > 0 ? (latencyMs / 1000).toFixed(3) : '',
           latency_ms: latencyMs,
           task_started_at_ms: att?.task_started_at_ms ?? null,
@@ -6809,6 +6813,78 @@
 
         document.title = '\u0642\u064A\u0651\u0650\u0645 \u2022 ' + (run.run_name || 'Run Detail')
           + (state.viewPass ? ' \u2022 Pass ' + state.viewPass : '');
+      }
+
+      let runDetails = null;
+      let itemRenderVersion = 0;
+      let visibleDetailRows = [];
+      let runFullTextRetained = false;
+
+      function initializeRunDetails() {
+        if (runDetails) runDetails.stop();
+        runDetails = state.snapshot?.detail_mode === 'lazy' && window.QymRunDetails
+          ? window.QymRunDetails.create({
+            runId: RUN_ID,
+            apiUrl,
+            passNumber: state.viewPass,
+            transformRow: row => state.viewPass
+              ? scopeRowToPass(row, state.allMetrics, state.viewPass)
+              : row,
+          })
+          : null;
+      }
+
+      document.addEventListener('qym:before-navigate', () => {
+        itemRenderVersion++;
+        if (runDetails) runDetails.stop();
+      }, { once: true });
+
+      function requiredTextSearches() {
+        const conditions = [];
+        if (state.searchQuery) conditions.push({ field: 'all', value: state.searchQuery });
+        function visit(node) {
+          if (_isFilterGroup(node)) node.children.forEach(visit);
+          else if (node.field === 'output' && _filterConditionComplete(node)) {
+            conditions.push({ field: 'output', value: node.value });
+          }
+        }
+        visit(state.filterRoot);
+        return conditions;
+      }
+
+      function runNeedsFullText() {
+        return requiredTextSearches().some(condition => String(condition.value).length > 10000);
+      }
+
+      function ensureRunSearch() {
+        if (!runDetails) return null;
+        if (runNeedsFullText()) {
+          runFullTextRetained = true;
+          return runDetails.ensureRows(state.snapshot.rows || [], { retainAll: true });
+        }
+        return runDetails.ensureSearch(requiredTextSearches());
+      }
+
+      function deferItemsUntil(promise, version, scrollToTop) {
+        if (!promise) return false;
+        const container = el('items-grid');
+        container.setAttribute('aria-busy', 'true');
+        container.textContent = 'Loading items…';
+        promise.then(() => {
+          if (version === itemRenderVersion) renderItems(scrollToTop);
+        }).catch(error => {
+          if (version !== itemRenderVersion || error.name === 'AbortError') return;
+          container.removeAttribute('aria-busy');
+          container.textContent = 'Items could not be loaded. ';
+          const retry = document.createElement('button');
+          retry.type = 'button';
+          retry.className = 'qym-inline-action qym-inline-action--accent';
+          retry.textContent = 'Retry';
+          retry.onclick = () => renderItems(scrollToTop);
+          container.appendChild(retry);
+          showToast('error', 'Could not load items', error.message);
+        });
+        return true;
       }
 
       function showEmpty() {
@@ -8296,7 +8372,7 @@
           ? filteredItemsOverride.map(item => item.row).filter(Boolean)
           : (state.snapshot.rows || []);
         const total = rows.length;
-        const completed = rows.filter(r => r.status === 'completed' || r.output != null || r.output_full != null || r.error).length;
+        const completed = rows.filter(r => r.status === 'completed' || r.__has_output || r.output != null || r.output_full != null || r.error).length;
         const failed = rows.filter(r => window.QymMetrics.isErrorRow(r)).length;
         const latencies = rows.filter(r => r.latency_ms && r.latency_ms > 0 && r.status === 'completed').map(r => r.latency_ms);
         const summaryItem = (kind, label, valueHtml, iconHtml) =>
@@ -9012,7 +9088,7 @@
           const payload = await response.json().catch(() => ({}));
           if (!response.ok) throw new Error(payload.detail || 'Aggregation failed');
 
-          const latestResponse = await fetch(apiUrl('api/runs/' + runId));
+          const latestResponse = await fetch(apiUrl('api/runs/' + runId + '?view=compact'));
           if (!latestResponse.ok) throw new Error('Aggregation completed, but the updated run could not be loaded.');
           const latest = await latestResponse.json();
           if (!latest.run || !latest.snapshot) throw new Error('The updated run data is incomplete.');
@@ -9020,6 +9096,7 @@
           state.snapshot = latest.snapshot;
           state.aggregationRequestPending = false;
           processRun();
+          initializeRunDetails();
           buildCategoryDropdowns();
           renderRootCauseSection();
           renderItems();
@@ -9653,7 +9730,7 @@
         if (!row) return;
         const itemId = row.item_id || String(row.index || '');
         if ((row.status || '') === 'error') {
-          const executionError = row.error || row.output_full || row.output || '';
+          const executionError = row.error || row.__execution_error || row.output_full || row.output || '';
           addErrorBucket(buckets, 'Task error', normalizeErrorLabel(executionError, 'Task failed'), 1, itemId);
         }
 
@@ -10045,7 +10122,9 @@
         }
         if (f.kind === 'bool') return node.value === 'false' ? !v : !!v;
         if (f.kind === 'text') {
-          const hit = String(v).toLowerCase().includes(String(node.value || '').toLowerCase());
+          const hit = runDetails && !runNeedsFullText() && node.field === 'output'
+            ? runDetails.matches({ field: 'output', value: node.value }, row)
+            : String(v).toLowerCase().includes(String(node.value || '').toLowerCase());
           return node.oper === 'notcontains' ? !hit : hit;
         }
         return true;
@@ -10232,12 +10311,16 @@
         for (const row of rows) {
           // Search filter
           if (state.searchQuery) {
+            if (runDetails && !runNeedsFullText()) {
+              if (!runDetails.matches({ field: 'all', value: state.searchQuery }, row)) continue;
+            } else {
             const q = state.searchQuery.toLowerCase();
             const itemId = String(row.item_id || row.index || '').toLowerCase();
             const inp = stringify(row.input_full || row.input || '').toLowerCase();
             const exp = stringify(row.expected_full || row.expected || '').toLowerCase();
             const out = stringify(row.output_full || row.output || '').toLowerCase();
             if (!itemId.includes(q) && !inp.includes(q) && !exp.includes(q) && !out.includes(q)) continue;
+            }
           }
 
           // Category filters
@@ -10738,6 +10821,8 @@
       }
 
       function renderItems(scrollToTop) {
+        const version = ++itemRenderVersion;
+        if (runDetails && deferItemsUntil(ensureRunSearch(), version, scrollToTop)) return;
         const preserveAnchor = state.hasRenderedItems && !scrollToTop;
         const anchorTop = preserveAnchor ? getItemsGridTop() : null;
         // Keep Performance by Category in sync with the current filters (debounced)
@@ -10767,6 +10852,16 @@
         if (state.page > totalPages) state.page = totalPages;
         const start = (state.page - 1) * state.pageSize;
         const pageItems = items.slice(start, start + state.pageSize);
+
+        if (state.itemDetailView !== 'heatmap' && runDetails) {
+          visibleDetailRows = pageItems.map(item => item.row);
+          if (deferItemsUntil(runDetails.ensureRows(visibleDetailRows, { retainAll: runNeedsFullText() }), version, scrollToTop)) return;
+          if (runFullTextRetained && !runNeedsFullText()) {
+            runDetails.releaseExcept(visibleDetailRows);
+            runFullTextRetained = false;
+          }
+        }
+        container.removeAttribute('aria-busy');
 
         if (items.length === 0) {
           container.classList.remove('heatmap-mode');
@@ -11217,6 +11312,7 @@
           if (state.viewPass) {
             next = scopeRowToPass(next, state.allMetrics, state.viewPass);
           }
+          if (runDetails) runDetails.adoptRow(next, rows[pos]);
           rows[pos] = next;
         } catch {}
       }
@@ -13054,9 +13150,14 @@
           overlay.querySelectorAll('input[type="checkbox"]').forEach(function(cb) { cb.checked = false; });
         });
 
+        function closeExportModal() {
+          overlay.classList.remove('open');
+          if (runDetails && !runNeedsFullText()) runDetails.releaseExcept(visibleDetailRows);
+          _exportItems = null;
+        }
         // Cancel
-        document.getElementById('export-modal-cancel').addEventListener('click', function() { overlay.classList.remove('open'); });
-        overlay.addEventListener('click', function(e) { if (e.target === overlay) overlay.classList.remove('open'); });
+        document.getElementById('export-modal-cancel').addEventListener('click', closeExportModal);
+        overlay.onclick = function(e) { if (e.target === overlay) closeExportModal(); };
 
         // Confirm export
         document.getElementById('export-modal-confirm').addEventListener('click', function() {
@@ -13067,8 +13168,8 @@
               if (cb && cb.checked) selectedCols.push(groups[gi].columns[ci]);
             }
           }
-          overlay.classList.remove('open');
           if (selectedCols.length > 0) performExport(_exportItems, selectedCols);
+          closeExportModal();
         });
 
         overlay.classList.add('open');
@@ -13152,11 +13253,21 @@
         URL.revokeObjectURL(url);
       }
 
-      el('export-filtered-btn').addEventListener('click', function() {
+      el('export-filtered-btn').addEventListener('click', async function() {
+        const button = this;
+        button.disabled = true;
+        try {
+        if (runDetails) await ensureRunSearch();
         _exportItems = getFilteredItems();
         if (_exportItems.length === 0) return;
+        if (runDetails) await runDetails.ensureRows(_exportItems.map(item => item.row), { retainAll: true });
         var groups = discoverExportColumns(_exportItems);
         renderExportModal(groups);
+        } catch (error) {
+          showToast('error', 'Could not prepare CSV', error.message);
+        } finally {
+          button.disabled = false;
+        }
       });
 
       // ── Export mode: hide mutation UI ──

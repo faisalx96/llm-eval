@@ -1,0 +1,4 @@
+{"event": "item_started", "events": 100, "median_ms": 68.73, "sql": {"SELECT": 10, "INSERT": 4, "UPDATE": 1}, "dashboard_hooks_enabled": true, "backend": "postgresql"}
+{"event": "item_started", "events": 1000, "median_ms": 747.28, "sql": {"SELECT": 20, "INSERT": 7, "UPDATE": 1}, "dashboard_hooks_enabled": true, "backend": "postgresql"}
+{"event": "span_completed", "events": 100, "median_ms": 48.31, "sql": {"SELECT": 10, "INSERT": 8, "SAVEPOINT": 3, "RELEASE": 3, "UPDATE": 3, "DELETE": 2}, "dashboard_hooks_enabled": true, "backend": "postgresql"}
+{"event": "span_completed", "events": 1000, "median_ms": 206.68, "sql": {"SELECT": 14, "INSERT": 10, "SAVEPOINT": 3, "RELEASE": 3, "UPDATE": 3, "DELETE": 2}, "dashboard_hooks_enabled": true, "backend": "postgresql"}

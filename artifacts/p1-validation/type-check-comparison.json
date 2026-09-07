@@ -1,0 +1,10 @@
+{
+  "baseline_commit": "9325874",
+  "baseline_errors": 113,
+  "current_errors": 111,
+  "new_errors": [],
+  "removed_errors": [
+    "packages/sdk/qym/core/evaluator.py: error: Item \"None\" of \"PlatformEventStream | None\" has no attribute \"close\"  [union-attr]",
+    "packages/sdk/qym/core/evaluator.py: error: Item \"None\" of \"PlatformEventStream | None\" has no attribute \"emit\"  [union-attr]"
+  ]
+}

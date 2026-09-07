@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from typing import Any, Iterable, Sequence
+from typing import Any, Iterable, Optional, Sequence
 
 from qym_platform.db.models import CorrectionStatus, ReviewCorrection, RunItem
 from qym_platform.services.root_cause_categories import (
@@ -13,7 +13,7 @@ from qym_platform.services.root_cause_categories import (
 from sqlalchemy.orm import Session
 
 DiagnosisEntry = dict[str, Any]
-DiagnosisScope = tuple[str, str, str | None]
+DiagnosisScope = tuple[str, str, Optional[str]]
 
 
 def _clean(value: Any) -> str:

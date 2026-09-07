@@ -90,7 +90,9 @@ from qym_platform.services.analysis_aggregation import (
 )
 from qym_platform.services import llm_analyzer as llm_analyzer_service
 from qym_platform.services.llm_analyzer import (
+    MAX_ANALYSIS_FALLBACK_PROMPT_CHARS,
     MAX_ANALYSIS_PROMPT_CHARS,
+    MAX_TRACE_CHARS,
     ROOT_CAUSE_CATEGORIES,
     RULE_WRITER_SYSTEM_PROMPT,
     AnalysisRule,
@@ -1233,6 +1235,112 @@ def test_build_analysis_prompt_organizes_native_trace_payload(
     assert "Agent trace:" not in without_trace
     assert "You are a SQL agent." not in without_trace
     assert system_content.count("The customer key may be stale.") == 1
+
+
+@pytest.mark.parametrize("trace_text", ["trace evidence ", "دليل التتبع "])
+def test_large_trace_preserves_late_tools_evaluation_and_other_context(
+    db_session: Session,
+    trace_text: str,
+) -> None:
+    _, _, _, item = _seed_run(db_session)
+    item.trace_id = "large-trace"
+    item.input = {"question": "q" * 18_000 + "INPUT_TAIL"}
+    item.expected = {"answer": "e" * 18_000 + "EXPECTED_TAIL"}
+    item.output = {"answer": "o" * 18_000 + "OUTPUT_TAIL"}
+    item.item_metadata = {"context": "METADATA_AFTER_TRACE"}
+    long_output = trace_text * (360_000 // len(trace_text)) + "AGENT_FINAL_EVIDENCE"
+    for index, (name, kind, output) in enumerate(
+        [
+            ("agent-call", "LLM", long_output),
+            ("query-tool", "TOOL", "LATE_TOOL_ERROR_EVIDENCE"),
+            ("judge-call", "LLM", "EVALUATION_FINAL_EVIDENCE"),
+        ]
+    ):
+        db_session.add(
+            Span(
+                run_id=item.run_id,
+                trace_id=item.trace_id,
+                span_id=f"large-span-{index}",
+                start_time_ns=index + 1,
+                name=name,
+                attributes={"openinference.span.kind": kind, "output.value": output},
+            )
+        )
+    db_session.commit()
+    score = RunItemScore(
+        run_id=item.run_id,
+        item_id=item.item_id,
+        metric_name="accuracy",
+        score_numeric=0.2,
+        explanation="METRIC_EVIDENCE_AFTER_TRACE",
+    )
+    organized_trace = llm_analyzer_service._organize_trace_content(item.trace_content)
+    assert 320_000 < len(organized_trace) < MAX_TRACE_CHARS
+
+    messages = build_analysis_prompt(
+        item,
+        {"accuracy": score},
+        [],
+        metric_name="accuracy",
+        config={
+            "reference_documents": [
+                {"name": "first.md", "content": "a" * 40_000},
+                {"name": "second.md", "content": "b" * 40_000},
+            ]
+        },
+    )
+    content = "\n".join(message["content"] for message in messages)
+    assert organized_trace in content
+    for evidence in (
+        "AGENT_FINAL_EVIDENCE",
+        "LATE_TOOL_ERROR_EVIDENCE",
+        "EVALUATION_FINAL_EVIDENCE",
+        "INPUT_TAIL",
+        "EXPECTED_TAIL",
+        "OUTPUT_TAIL",
+        "METRIC_EVIDENCE_AFTER_TRACE",
+        "METADATA_AFTER_TRACE",
+        "a" * 40_000,
+        "b" * 40_000,
+    ):
+        assert evidence in content
+    assert 320_000 < prompt_character_count(messages) <= MAX_ANALYSIS_PROMPT_CHARS
+    assert "characters omitted]" not in content
+    assert "prompt context shortened before the provider request" not in content
+
+
+def test_trace_beyond_new_limit_is_disclosed_without_changing_stored_spans(
+    db_session: Session,
+) -> None:
+    _, _, _, item = _seed_run(db_session)
+    item.trace_id = "over-limit-trace"
+    source = "TRACE_START" + "x" * MAX_TRACE_CHARS + "BEYOND_TRACE_LIMIT"
+    span = Span(
+        run_id=item.run_id,
+        trace_id=item.trace_id,
+        span_id="over-limit-span",
+        name="agent-call",
+        attributes={"openinference.span.kind": "LLM", "output.value": source},
+    )
+    db_session.add(span)
+    db_session.commit()
+    organized = llm_analyzer_service._organize_trace_content(item.trace_content)
+    messages = build_analysis_prompt(item, {}, [])
+    content = "\n".join(message["content"] for message in messages)
+    assert organized[:MAX_TRACE_CHARS].rstrip() in content
+    assert f"[{len(organized) - MAX_TRACE_CHARS} characters omitted]" in content
+    assert "BEYOND_TRACE_LIMIT" not in content
+    assert prompt_character_count(messages) <= MAX_ANALYSIS_PROMPT_CHARS
+    db_session.refresh(span)
+    assert span.attributes["output.value"] == source
+
+    excluded = build_analysis_prompt(
+        item,
+        {},
+        [],
+        config={"include_fields": {"trace": False}},
+    )
+    assert "TRACE_START" not in "\n".join(message["content"] for message in excluded)
 
 
 def test_organize_trace_content_drops_chains_and_emits_deltas_by_section() -> None:
@@ -5099,7 +5207,8 @@ def test_build_analysis_prompt_never_exceeds_final_character_budget(
         {},
         [],
         config={
-            "system_prompt": "System guidance " * 21_000,
+            "system_prompt": "System guidance "
+            * (MAX_ANALYSIS_PROMPT_CHARS // len("System guidance ") + 1),
             "reference_documents": [
                 {"name": "large.md", "content": "reference " * 20_000}
             ],
@@ -5159,7 +5268,7 @@ def test_analyzer_retries_provider_context_rejection_with_smaller_prompt(
     first_messages = create_completion.await_args_list[0].kwargs["messages"]
     second_messages = create_completion.await_args_list[1].kwargs["messages"]
     assert prompt_character_count(second_messages) < prompt_character_count(first_messages)
-    assert prompt_character_count(second_messages) <= MAX_ANALYSIS_PROMPT_CHARS // 2
+    assert prompt_character_count(second_messages) <= MAX_ANALYSIS_FALLBACK_PROMPT_CHARS
 
 
 def test_project_context_uses_only_enabled_reference_documents(

@@ -28,8 +28,9 @@ logger = logging.getLogger(__name__)
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import func
+from sqlalchemy import func, insert, inspect
 from sqlalchemy.orm import Session
+from starlette.concurrency import run_in_threadpool
 
 from qym_platform.auth import (
     Principal,
@@ -79,7 +80,6 @@ from qym_platform.services.run_lifecycle import (
     touch_run_event,
 )
 from qym_platform.settings import PlatformSettings
-
 
 router = APIRouter(prefix="/v1", tags=["ingestion"])
 
@@ -548,67 +548,20 @@ def _build_run_trace_stats(item_buckets: list[dict[str, Any]]) -> Dict[str, Any]
 
 
 def _refresh_live_trace_stats(
-    db: Session, run: Run, touched_trace_ids: Optional[set[str]] = None
+    db: Session,
+    run: Run,
+    touched_trace_ids: Optional[set[str]] = None,
+    touched_item_ids: Optional[set[str]] = None,
 ) -> None:
-    """Refresh per-item and run-level trace stats while a run is live.
+    """Refresh only affected contributions; backfill existing runs once."""
+    from qym_platform.services.trace_statistics import refresh_trace_statistics
 
-    When ``touched_trace_ids`` is given, only those traces are rebuilt from
-    their spans (and their aggregates re-cached); every other trace is
-    restored from its RunTraceAggregate raw bucket. Passing ``None`` rebuilds
-    every trace referenced by an item — the pre-batching behavior.
-    """
-    db.flush()
-    items = db.query(RunItem).filter(RunItem.run_id == run.id).all()
-    item_trace_ids = {item.trace_id for item in items if item.trace_id}
-    if touched_trace_ids is None:
-        rebuild_ids = sorted(item_trace_ids)
-    else:
-        rebuild_ids = sorted(touched_trace_ids)
-
-    trace_buckets: Dict[str, Dict[str, Any]] = {}
-    if rebuild_ids:
-        spans = (
-            db.query(Span)
-            .filter(Span.run_id == run.id, Span.trace_id.in_(rebuild_ids))
-            .all()
-        )
-        trace_buckets = _build_trace_buckets_from_spans(spans)
-        for trace_id in rebuild_ids:
-            _upsert_trace_aggregate(
-                db,
-                run.id,
-                trace_id,
-                trace_buckets.get(trace_id) or _empty_trace_bucket(),
-            )
-
-    cached_ids = sorted(item_trace_ids - set(trace_buckets.keys()))
-    if cached_ids:
-        aggregates = (
-            db.query(RunTraceAggregate)
-            .filter(
-                RunTraceAggregate.run_id == run.id,
-                RunTraceAggregate.trace_id.in_(cached_ids),
-            )
-            .all()
-        )
-        for agg in aggregates:
-            trace_buckets[agg.trace_id] = _trace_bucket_from_aggregate(agg)
-
-    item_buckets: list[dict[str, Any]] = []
-    for item in items:
-        bucket = trace_buckets.get(item.trace_id or "")
-        md = dict(item.item_metadata) if isinstance(item.item_metadata, dict) else {}
-        if bucket and int(bucket.get("span_count") or 0) > 0:
-            md["trace_stats"] = _sanitize_for_json(_public_trace_bucket(bucket))
-            if not item.error:
-                item_buckets.append(bucket)
-        else:
-            md.pop("trace_stats", None)
-        item.item_metadata = _sanitize_for_json(md)
-
-    current = dict(run.run_metadata) if isinstance(run.run_metadata, dict) else {}
-    current["trace_stats"] = _build_run_trace_stats(item_buckets)
-    run.run_metadata = _sanitize_for_json(current)
+    refresh_trace_statistics(
+        db,
+        run,
+        touched_trace_ids=touched_trace_ids,
+        touched_item_ids=touched_item_ids,
+    )
 
 
 def _upsert_trace_aggregate(
@@ -643,70 +596,8 @@ def _upsert_trace_aggregate(
 
 
 def _store_trace_stats(db: Session, run: Run) -> None:
-    """Compute trace metrics from stored OTEL spans and persist them.
-
-    Stores run-level stats in run.run_metadata["trace_stats"] and
-    per-item stats in each RunItem.item_metadata["trace_stats"].
-    Called once when a run completes.
-    """
-    spans = db.query(Span).filter(Span.run_id == run.id).all()
-    if not spans:
-        logger.warning("_store_trace_stats: no spans found for run %s", run.id)
-        return
-    logger.info("_store_trace_stats: found %d spans for run %s", len(spans), run.id)
-
-    # Map last-attempt trace_id -> item
-    items = (
-        db.query(RunItem)
-        .filter(RunItem.run_id == run.id, RunItem.trace_id.isnot(None))
-        .all()
-    )
-    # Group spans by trace_id and compute per-item stats
-    trace_buckets = _build_trace_buckets_from_spans(spans)
-
-    # Reconcile persistent per-trace aggregates with final span-derived truth.
-    db.query(RunTraceAggregate).filter(RunTraceAggregate.run_id == run.id).delete(
-        synchronize_session=False
-    )
-    for trace_id, bucket in trace_buckets.items():
-        db.add(
-            RunTraceAggregate(
-                run_id=run.id,
-                trace_id=trace_id,
-                span_count=int(bucket["span_count"]),
-                tokens=int(bucket["tokens"]),
-                cost=float(bucket["cost"]),
-                llm_calls=int(bucket["llm_calls"]),
-                tool_calls=int(bucket["tool_calls"]),
-                tool_errors=int(bucket["tool_errors"]),
-                malformed_tool_calls=int(bucket["malformed_tool_calls"]),
-                noisy_reasoning=int(bucket["noisy_reasoning"]),
-                provider_errors=int(bucket["provider_errors"]),
-                has_reasoning=bool(bucket["has_reasoning"]),
-                has_reasoning_tokens=bool(bucket["has_reasoning_tokens"]),
-                reasoning_tokens=int(bucket["reasoning_tokens"]),
-                raw_bucket=_sanitize_for_json(bucket),
-            )
-        )
-
-    # Store per-item stats from the last-attempt trace only.
-    item_buckets: list[dict[str, Any]] = []
-    for item in items:
-        trace_id = item.trace_id or ""
-        bucket = trace_buckets.get(trace_id)
-        md = dict(item.item_metadata) if isinstance(item.item_metadata, dict) else {}
-        if bucket is not None and int(bucket.get("span_count") or 0) > 0:
-            sanitized = _sanitize_for_json(_public_trace_bucket(bucket))
-            md["trace_stats"] = sanitized
-            if not item.error:
-                item_buckets.append(bucket)
-        else:
-            md.pop("trace_stats", None)
-        item.item_metadata = md
-
-    current = dict(run.run_metadata) if isinstance(run.run_metadata, dict) else {}
-    current["trace_stats"] = _build_run_trace_stats(item_buckets)
-    run.run_metadata = _sanitize_for_json(current)
+    """Reconcile trace statistics and their durable contribution ledger."""
+    _refresh_live_trace_stats(db, run)
 
 
 class CreateRunRequest(BaseModel):
@@ -922,8 +813,48 @@ async def ingest_events(
     db: Session = Depends(get_db),
     principal: Principal = Depends(require_api_key_principal),
 ) -> JSONResponse:
+    body = await request.body()
+    # Authentication has already completed. Only immutable identity data crosses
+    # into the worker; its Session is created, used and closed on that thread.
+    identity = inspect(principal.user).identity
+    user_id = identity[0] if identity else principal.user.id
+    worker_principal = Principal(
+        user=type(principal.user)(id=user_id),
+        auth_type=principal.auth_type,
+        scopes=principal.scopes,
+        provider=principal.provider,
+        project_id=principal.project_id,
+    )
+    return await run_in_threadpool(
+        _ingest_events_worker, run_id, body, db.get_bind(), worker_principal, db
+    )
+
+
+def _ingest_events_worker(
+    run_id, body, bind, principal, request_db=None
+) -> JSONResponse:
+    # Authentication is finished. Return its checked-out connection before
+    # requesting another; otherwise concurrent ingests can exhaust the pool.
+    if request_db is not None:
+        request_db.close()
+    with Session(bind=bind, autoflush=False) as db:
+        return _ingest_events_sync(run_id, body, db, principal)
+
+
+def _ingest_events_sync(
+    run_id: str, body: bytes, db: Session, principal: Principal
+) -> JSONResponse:
+    """Apply one ordered batch using an exclusively owned synchronous session."""
     require_api_key_scope(principal, "runs:write")
-    run = db.query(Run).filter(Run.id == run_id).first()
+    # Serialize batches for one run. Different runs can ingest concurrently;
+    # duplicates cannot race the event-identity or mutable projection checks.
+    run = (
+        db.query(Run)
+        .filter(Run.id == run_id)
+        .with_for_update()
+        .populate_existing()
+        .first()
+    )
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
     if run.deleted_at is not None:
@@ -935,10 +866,129 @@ async def ingest_events(
     if principal.project_id and run.project_id != principal.project_id:
         raise HTTPException(status_code=403, detail="Forbidden")
 
-    item_cache: Dict[str, Optional[RunItem]] = {}
+    try:
+        text = body.decode("utf-8")
+    except UnicodeDecodeError:
+        raise HTTPException(status_code=400, detail="Invalid encoding")
+
+    parsed = []
+    for line in text.splitlines():
+        if not line.strip():
+            continue
+        try:
+            raw = json.loads(line)
+            evt = RunEventV1.model_validate(raw)
+        except Exception as exc:
+            logger.warning("Skipping malformed event for run %s: %s", run_id, exc)
+            continue
+        if str(evt.run_id) != run_id:
+            logger.warning("Skipping event with run_id mismatch for run %s", run_id)
+            continue
+        parsed.append((raw, evt))
+
+    # Fetch identities once per bounded chunk, including IDs absent from the DB.
+    # Missing entries remain cached too, avoiding a SELECT for every new row.
+    def _chunks(values, size=400):
+        values = list(values)
+        return (values[pos : pos + size] for pos in range(0, len(values), size))
+
+    known_events = set()
+    for chunk in _chunks({str(evt.event_id) for _, evt in parsed}):
+        known_events.update(
+            row[0]
+            for row in db.query(RunEvent.event_id).filter(
+                RunEvent.run_id == run_id, RunEvent.event_id.in_(chunk)
+            )
+        )
+    accepted = []
+    skipped = 0
+    for raw, evt in parsed:
+        event_id = str(evt.event_id)
+        if event_id in known_events:
+            skipped += 1
+            continue
+        known_events.add(event_id)
+        payload_cls = _PAYLOAD_TYPE.get(evt.type)
+        payload = (
+            payload_cls.model_validate(raw.get("payload") or {})
+            if payload_cls
+            else evt.payload
+        )
+        accepted.append((raw, evt, payload))
+    event_rows = [
+        dict(
+            run_id=run_id,
+            event_id=str(evt.event_id),
+            sequence=evt.sequence,
+            type=evt.type,
+            sent_at=evt.sent_at,
+            payload=_sanitize_for_json(raw.get("payload") or {}),
+        )
+        for raw, evt, _ in accepted
+    ]
+    for chunk in _chunks(event_rows):
+        db.execute(insert(RunEvent), chunk)
+
+    item_ids = {
+        payload.item_id for _, _, payload in accepted if hasattr(payload, "item_id")
+    }
+    item_cache: Dict[str, Optional[RunItem]] = dict.fromkeys(item_ids)
     attempt_cache: Dict[tuple[str, int, int], Optional[RunItemAttempt]] = {}
     score_cache: Dict[tuple[str, str], Optional[RunItemScore]] = {}
     pass_score_cache: Dict[tuple[str, str, int], Optional[RunItemPassScore]] = {}
+    for chunk in _chunks(item_ids):
+        for item in db.query(RunItem).filter(
+            RunItem.run_id == run_id, RunItem.item_id.in_(chunk)
+        ):
+            item_cache[item.item_id] = item
+        for row in db.query(RunItemAttempt).filter(
+            RunItemAttempt.run_id == run_id, RunItemAttempt.item_id.in_(chunk)
+        ):
+            attempt_cache[(row.item_id, row.pass_number, row.attempt_number)] = row
+        for row in db.query(RunItemScore).filter(
+            RunItemScore.run_id == run_id, RunItemScore.item_id.in_(chunk)
+        ):
+            score_cache[(row.item_id, row.metric_name)] = row
+        for row in db.query(RunItemPassScore).filter(
+            RunItemPassScore.run_id == run_id, RunItemPassScore.item_id.in_(chunk)
+        ):
+            pass_score_cache[(row.item_id, row.metric_name, row.pass_number)] = row
+
+    dataset_item_cache = {}
+    version_ids = {run.dataset_version_id} | {
+        payload.dataset_version_id
+        for _, _, payload in accepted
+        if isinstance(payload, RunStartedPayload)
+    }
+    version_ids.discard(None)
+    for chunk in _chunks(item_ids):
+        if version_ids:
+            for row in db.query(DatasetItem).filter(
+                DatasetItem.dataset_version_id.in_(version_ids),
+                DatasetItem.item_id.in_(chunk),
+            ):
+                dataset_item_cache[(row.dataset_version_id, row.item_id)] = row
+
+    span_ids = {
+        payload.span_id
+        for _, _, payload in accepted
+        if isinstance(payload, SpanCompletedPayload)
+    }
+    known_spans = set()
+    if span_ids:
+        try:
+            with db.begin_nested():
+                for chunk in _chunks(span_ids):
+                    known_spans.update(
+                        row[0]
+                        for row in db.query(Span.span_id).filter(
+                            Span.run_id == run_id, Span.span_id.in_(chunk)
+                        )
+                    )
+        except Exception:
+            # Missing span migrations must not reject item/score events.
+            logger.warning("Could not prefetch spans for run %s", run_id, exc_info=True)
+    pending_spans = []
     # Older SDKs emitted item_completed before item_attempt_finished.  Keep
     # outputs seen in this request so the later attempt row can still receive
     # its pass output.  New SDKs also carry output on the attempt event itself.
@@ -995,35 +1045,14 @@ async def ingest_events(
         return meta
 
     def _get_item(item_id: str) -> Optional[RunItem]:
-        if item_id in item_cache:
-            return item_cache[item_id]
-        item = (
-            db.query(RunItem)
-            .filter(RunItem.run_id == run_id, RunItem.item_id == item_id)
-            .first()
-        )
-        item_cache[item_id] = item
-        return item
+        return item_cache.get(item_id)
 
     def _remember_item(item: RunItem) -> RunItem:
         item_cache[item.item_id] = item
         return item
 
     def _get_score(item_id: str, metric_name: str) -> Optional[RunItemScore]:
-        key = (item_id, metric_name)
-        if key in score_cache:
-            return score_cache[key]
-        score = (
-            db.query(RunItemScore)
-            .filter(
-                RunItemScore.run_id == run_id,
-                RunItemScore.item_id == item_id,
-                RunItemScore.metric_name == metric_name,
-            )
-            .first()
-        )
-        score_cache[key] = score
-        return score
+        return score_cache.get((item_id, metric_name))
 
     def _remember_score(score: RunItemScore) -> RunItemScore:
         score_cache[(score.item_id, score.metric_name)] = score
@@ -1032,21 +1061,7 @@ async def ingest_events(
     def _get_attempt(
         item_id: str, pass_number: int, attempt_number: int
     ) -> Optional[RunItemAttempt]:
-        key = (item_id, pass_number, attempt_number)
-        if key in attempt_cache:
-            return attempt_cache[key]
-        attempt = (
-            db.query(RunItemAttempt)
-            .filter(
-                RunItemAttempt.run_id == run_id,
-                RunItemAttempt.item_id == item_id,
-                RunItemAttempt.pass_number == pass_number,
-                RunItemAttempt.attempt_number == attempt_number,
-            )
-            .first()
-        )
-        attempt_cache[key] = attempt
-        return attempt
+        return attempt_cache.get((item_id, pass_number, attempt_number))
 
     def _remember_attempt(attempt: RunItemAttempt) -> RunItemAttempt:
         attempt_cache[
@@ -1057,81 +1072,73 @@ async def ingest_events(
     def _get_pass_score(
         item_id: str, metric_name: str, pass_number: int
     ) -> Optional[RunItemPassScore]:
-        key = (item_id, metric_name, pass_number)
-        if key in pass_score_cache:
-            return pass_score_cache[key]
-        row = (
-            db.query(RunItemPassScore)
-            .filter(
-                RunItemPassScore.run_id == run_id,
-                RunItemPassScore.item_id == item_id,
-                RunItemPassScore.metric_name == metric_name,
-                RunItemPassScore.pass_number == pass_number,
-            )
-            .first()
-        )
-        pass_score_cache[key] = row
-        return row
+        return pass_score_cache.get((item_id, metric_name, pass_number))
 
-    # Read NDJSON stream
-    body = await request.body()
-    try:
-        text = body.decode("utf-8")
-    except Exception:
-        raise HTTPException(status_code=400, detail="Invalid encoding")
+    passes_by_metric = defaultdict(dict)
+    for (item_id, metric_name, pass_number), row in pass_score_cache.items():
+        passes_by_metric[(item_id, metric_name)][pass_number] = row
+
+    def _remember_pass_score(row):
+        pass_score_cache[(row.item_id, row.metric_name, row.pass_number)] = row
+        passes_by_metric[(row.item_id, row.metric_name)][row.pass_number] = row
+
+    def _reduce_pass_scores(item_id, metric_name):
+        values = [
+            row.score_numeric
+            for row in passes_by_metric[(item_id, metric_name)].values()
+            if row.score_numeric is not None
+        ]
+        return (sum(values) / len(values), len(values)) if values else (None, 0)
 
     applied = 0
-    skipped = 0
-    # Live trace stats are refreshed once per batch (after the loop), not per
-    # event — per-event refreshes made ingest quadratic in run size and the
-    # resulting slowdown caused client-side event loss on large runs.
     trace_stats_dirty = False
     touched_trace_ids: set[str] = set()
-    for line in text.splitlines():
-        line = line.strip()
-        if not line:
-            continue
+    touched_item_ids: set[str] = set()
+
+    def _invalidate_trace_summary():
+        from qym_platform.db.models import RunTraceSummary
+
         try:
-            raw = json.loads(line)
-            evt = RunEventV1.model_validate(raw)
-        except Exception as e:
-            # Skip malformed events instead of rejecting the entire batch.
-            # One bad span_completed must never take down an item_completed.
-            logger.warning("Skipping malformed event for run %s: %s", run_id, e)
-            continue
-        if str(evt.run_id) != run_id:
-            # run_id mismatch is a real error — skip this event
-            logger.warning("Skipping event with run_id mismatch for run %s", run_id)
-            continue
-
-        existing = (
-            db.query(RunEvent)
-            .filter(RunEvent.run_id == run_id, RunEvent.event_id == str(evt.event_id))
-            .first()
-        )
-        if existing:
-            skipped += 1
-            continue
-
-        # Store event (optional but useful)
-        db.add(
-            RunEvent(
-                run_id=run_id,
-                event_id=str(evt.event_id),
-                sequence=evt.sequence,
-                type=evt.type,
-                sent_at=evt.sent_at,
-                payload=raw.get("payload") or {},
+            with db.begin_nested():
+                db.query(RunTraceSummary).filter_by(run_id=run_id).delete(
+                    synchronize_session=False
+                )
+        except Exception:
+            # A deployment missing the trace migration must still accept
+            # items and scores. The next migrated request will backfill.
+            logger.warning(
+                "Could not invalidate trace summary for run %s", run_id, exc_info=True
             )
-        )
 
-        # Apply side-effects into normalized tables
-        # Parse payload explicitly based on event type to avoid Union ambiguity
-        raw_payload = raw.get("payload") or {}
-        payload_cls = _PAYLOAD_TYPE.get(evt.type)
-        payload = (
-            payload_cls.model_validate(raw_payload) if payload_cls else evt.payload
-        )
+    def _flush_pending_spans():
+        nonlocal trace_stats_dirty
+        if not pending_spans:
+            return
+        rows = list(pending_spans)
+        pending_spans.clear()
+        try:
+            with db.begin_nested():
+                db.execute(insert(Span), rows)
+            inserted = rows
+        except Exception:
+            # The common path uses one bulk write/savepoint. Isolate individual
+            # failures only when needed so a bad span cannot discard good ones.
+            inserted = []
+            for row in rows:
+                try:
+                    with db.begin_nested():
+                        db.execute(insert(Span), [row])
+                    inserted.append(row)
+                except Exception as exc:
+                    logger.warning("Span storage failed for run %s: %s", run_id, exc)
+        for row in inserted:
+            if row["trace_id"]:
+                touched_trace_ids.add(row["trace_id"])
+                trace_stats_dirty = True
+
+    for raw, evt, payload in accepted:
+        if hasattr(payload, "item_id"):
+            touched_item_ids.add(payload.item_id)
         logger.debug(
             "Ingest run=%s type=%s payload_type=%s",
             run_id,
@@ -1170,13 +1177,8 @@ async def ingest_events(
             item = _get_item(payload.item_id)
             dataset_item_pk = payload.dataset_item_pk
             if dataset_item_pk is None and run.dataset_version_id:
-                dataset_item = (
-                    db.query(DatasetItem)
-                    .filter(
-                        DatasetItem.dataset_version_id == run.dataset_version_id,
-                        DatasetItem.item_id == payload.item_id,
-                    )
-                    .first()
+                dataset_item = dataset_item_cache.get(
+                    (run.dataset_version_id, payload.item_id)
                 )
                 if dataset_item:
                     dataset_item_pk = dataset_item.id
@@ -1271,17 +1273,13 @@ async def ingest_events(
             if payload.is_last_attempt:
                 # is_last_attempt is exclusive WITHIN a pass (repeat runs keep
                 # one final attempt per pass).
-                (
-                    db.query(RunItemAttempt)
-                    .filter(
-                        RunItemAttempt.run_id == run_id,
-                        RunItemAttempt.item_id == payload.item_id,
-                        RunItemAttempt.pass_number == payload.pass_number,
-                        RunItemAttempt.attempt_number != payload.attempt_number,
-                        RunItemAttempt.is_last_attempt.is_(True),
-                    )
-                    .update({"is_last_attempt": False}, synchronize_session=False)
-                )
+                for (iid, pass_no, attempt_no), other in attempt_cache.items():
+                    if (
+                        iid == payload.item_id
+                        and pass_no == payload.pass_number
+                        and attempt_no != payload.attempt_number
+                    ):
+                        other.is_last_attempt = False
 
         elif isinstance(payload, MetricScoredPayload):
             _validate_metric_score(payload)
@@ -1306,28 +1304,15 @@ async def ingest_events(
                         meta=_sanitize_for_json(payload.meta),
                         explanation=payload.explanation,
                     )
-                    pass_score_cache[
-                        (payload.item_id, payload.metric_name, payload.pass_number)
-                    ] = pass_score
+                    _remember_pass_score(pass_score)
                     db.add(pass_score)
                 else:
                     pass_score.score_numeric = payload.score_numeric
                     pass_score.label = payload.label
                     pass_score.meta = _sanitize_for_json(payload.meta)
                     pass_score.explanation = payload.explanation
-                db.flush()
-                reduced_numeric, reduced_observations = (
-                    db.query(
-                        func.avg(RunItemPassScore.score_numeric),
-                        func.count(RunItemPassScore.score_numeric),
-                    )
-                    .filter(
-                        RunItemPassScore.run_id == run_id,
-                        RunItemPassScore.item_id == payload.item_id,
-                        RunItemPassScore.metric_name == payload.metric_name,
-                        RunItemPassScore.score_numeric.isnot(None),
-                    )
-                    .one()
+                reduced_numeric, reduced_observations = _reduce_pass_scores(
+                    payload.item_id, payload.metric_name
                 )
                 if reduced_numeric is None:
                     reduced_numeric = payload.score_numeric
@@ -1370,9 +1355,9 @@ async def ingest_events(
 
         elif isinstance(payload, ItemCompletedPayload):
             mark_run_running(run)
-            completed_output_cache[
-                (payload.item_id, payload.pass_number)
-            ] = _sanitize_for_json(payload.output)
+            completed_output_cache[(payload.item_id, payload.pass_number)] = (
+                _sanitize_for_json(payload.output)
+            )
             # Determine task_started_at_ms: prefer explicit value from SDK,
             # fall back to event sent_at minus latency_ms for older SDKs.
             ts_ms = payload.task_started_at_ms
@@ -1435,20 +1420,13 @@ async def ingest_events(
                 # Repeat runs: keep this pass's output on its final attempt
                 # row so the UI can show every pass's output (RunItem keeps
                 # only the latest pass as the representative row).
-                (
-                    db.query(RunItemAttempt)
-                    .filter(
-                        RunItemAttempt.run_id == run_id,
-                        RunItemAttempt.item_id == payload.item_id,
-                        RunItemAttempt.pass_number == payload.pass_number,
-                        RunItemAttempt.is_last_attempt.is_(True),
-                    )
-                    .update(
-                        {"output": _sanitize_for_json(payload.output)},
-                        synchronize_session=False,
-                    )
-                )
-                attempt_cache.clear()
+                for (iid, pass_no, _), attempt in attempt_cache.items():
+                    if (
+                        iid == payload.item_id
+                        and pass_no == payload.pass_number
+                        and attempt.is_last_attempt
+                    ):
+                        attempt.output = _sanitize_for_json(payload.output)
             trace_stats_dirty = True
 
         elif isinstance(payload, PassCompletedPayload):
@@ -1516,26 +1494,13 @@ async def ingest_events(
                             score_numeric=0.0,
                             label="error",
                         )
-                        pass_score_cache[
-                            (payload.item_id, metric_name, payload.pass_number)
-                        ] = pass_score
+                        _remember_pass_score(pass_score)
                         db.add(pass_score)
                     else:
                         pass_score.score_numeric = 0.0
                         pass_score.label = "error"
-                    db.flush()
-                    reduced, reduced_observations = (
-                        db.query(
-                            func.avg(RunItemPassScore.score_numeric),
-                            func.count(RunItemPassScore.score_numeric),
-                        )
-                        .filter(
-                            RunItemPassScore.run_id == run_id,
-                            RunItemPassScore.item_id == payload.item_id,
-                            RunItemPassScore.metric_name == metric_name,
-                            RunItemPassScore.score_numeric.isnot(None),
-                        )
-                        .one()
+                    reduced, reduced_observations = _reduce_pass_scores(
+                        payload.item_id, metric_name
                     )
                     score = _get_score(payload.item_id, metric_name)
                     if score:
@@ -1595,8 +1560,10 @@ async def ingest_events(
 
             # ⚡ Compute and store trace stats from OTEL spans
             try:
+                _flush_pending_spans()
                 db.flush()  # ensure all spans from this batch are visible
-                _store_trace_stats(db, run)
+                with db.begin_nested():
+                    _store_trace_stats(db, run)
                 # The final span-derived stats are authoritative; drop any
                 # pending live refresh from earlier events in this batch.
                 trace_stats_dirty = False
@@ -1605,6 +1572,7 @@ async def ingest_events(
                 logger.warning(
                     "Failed to compute trace stats for run %s", run_id, exc_info=True
                 )
+                _invalidate_trace_summary()
 
             # Safety net: the summary says how many items the run produced.
             # If fewer item rows made it through the event stream, flag the
@@ -1668,22 +1636,10 @@ async def ingest_events(
 
         elif isinstance(payload, SpanCompletedPayload):
             mark_run_running(run)
-            # Store OTEL span data for native trace viewing.
-            # Wrapped in a savepoint so a span-storage failure (e.g. pending
-            # migration) never rolls back the rest of the batch (items, metrics).
-            span_inserted = False
-            try:
-                nested = db.begin_nested()
-                existing = (
-                    db.query(Span)
-                    .filter(
-                        Span.run_id == run_id,
-                        Span.span_id == payload.span_id,
-                    )
-                    .first()
-                )
-                if not existing:
-                    span_kwargs = dict(
+            if payload.span_id not in known_spans:
+                known_spans.add(payload.span_id)
+                pending_spans.append(
+                    dict(
                         run_id=run_id,
                         trace_id=payload.trace_id,
                         span_id=payload.span_id,
@@ -1698,16 +1654,11 @@ async def ingest_events(
                         events=_sanitize_for_json(payload.events),
                         links=_sanitize_for_json(payload.links),
                     )
-                    db.add(Span(**span_kwargs))
-                    span_inserted = True
-                nested.commit()
-            except Exception as e:
-                logger.warning("Span storage failed for run %s: %s", run_id, e)
-            if span_inserted and payload.trace_id:
-                touched_trace_ids.add(payload.trace_id)
-                trace_stats_dirty = True
+                )
 
         applied += 1
+
+    _flush_pending_spans()
 
     # Late-arriving item events (e.g. a retried batch landing after
     # run_completed was already applied) must keep the incomplete-ingest
@@ -1746,11 +1697,16 @@ async def ingest_events(
         # One refresh per batch. Wrapped in a savepoint so a stats failure
         # (e.g. pending migration) never rolls back the items and scores.
         try:
-            nested = db.begin_nested()
-            _refresh_live_trace_stats(db, run, touched_trace_ids=touched_trace_ids)
-            nested.commit()
+            with db.begin_nested():
+                _refresh_live_trace_stats(
+                    db,
+                    run,
+                    touched_trace_ids=touched_trace_ids,
+                    touched_item_ids=touched_item_ids,
+                )
         except Exception as e:
             logger.warning("Live trace aggregation failed for run %s: %s", run_id, e)
+            _invalidate_trace_summary()
 
     db.commit()
     return JSONResponse({"ok": True, "applied": applied, "skipped": skipped})
