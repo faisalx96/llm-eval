@@ -1277,8 +1277,31 @@ def dashboard_freshness(db, project_ids):
         )
         or 0
     )
-    pending, oldest = db.execute(
-        select(func.count(), func.min(Partition.oldest_pending_event)).where(
+    pending, oldest, backfilling = db.execute(
+        select(
+            func.count(),
+            func.min(Partition.oldest_pending_event),
+            func.sum(
+                case(
+                    (
+                        or_(
+                            Partition.backfill_complete.is_(False),
+                            # Finishing the source scan can leave events to drain
+                            # before the first complete summary is published.
+                            and_(
+                                Partition.backfill_kind == "attempt",
+                                func.coalesce(Summary.projection_revision, 0) == 0,
+                            ),
+                        ),
+                        1,
+                    ),
+                    else_=0,
+                )
+            ),
+        )
+        .select_from(Partition)
+        .outerjoin(Summary, Summary.run_key == Partition.partition_key)
+        .where(
             Partition.project_key.in_(projects),
             or_(
                 Partition.queue_state != "ready",
@@ -1291,6 +1314,7 @@ def dashboard_freshness(db, project_ids):
         "freshness": {
             "updating": bool(pending),
             "pending_partitions": int(pending),
+            "backfilling": bool(backfilling),
             "oldest_pending_at": oldest.isoformat() + "Z" if oldest else None,
         },
     }

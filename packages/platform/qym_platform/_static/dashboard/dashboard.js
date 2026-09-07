@@ -173,6 +173,7 @@
     flatRuns: [],
     dashboardPage: null,
     dashboardOverview: null,
+    dashboardBackfilling: false,
     dashboardOverviewFilterKey: null,
     dashboardRequestKey: null,
     dashboardPinnedRuns: new Map(),
@@ -6258,7 +6259,7 @@
   }
 
   function saveRunsDataCache(data) {
-    if (usesDashboardSummary()) return;
+    if (usesDashboardSummary() || state.dashboardBackfilling) return;
     try {
       // JSON.stringify already snapshots the payload, so the extra
       // _cloneRunsData round trip only doubled the peak for no benefit.
@@ -6642,6 +6643,10 @@
       project_slug: state.currentProject?.slug || getProjectSlugFromPath() || '',
       filters: dashboardFilters(), sort: state.sortKey, collation: dashboardCollation(state.dashboardOverview, state.sortKey),
     });
+    if (overview.freshness?.backfilling) {
+      await fetchDashboardBackfill(key);
+      return;
+    }
     if (!dashboardActive || key !== dashboardPageRequestKey()) { queueRunsFetch({}); return; }
     const revisions = new Map((overview.chart_data?.combos || []).map(combo => [JSON.stringify([combo.task, combo.dataset]), combo.revision]));
     const previousRevisions = new Map((state.dashboardOverview?.chart_data?.combos || []).map(combo => [JSON.stringify([combo.task, combo.dataset]), combo.revision]));
@@ -6652,6 +6657,7 @@
       }
     }
     state.chartHistoryQueue = state.chartHistoryQueue.filter(entry => !entry.controller.signal.aborted);
+    state.dashboardBackfilling = false;
     state.dashboardOverview = overview;
     state.dashboardOverviewFilterKey = getTableFilterKey();
     state.dashboardRequestKey = key;
@@ -6767,6 +6773,68 @@
     );
   }
 
+  async function fetchDashboardBackfill(key, retry = true) {
+    // A migrating project's projection omits unfinished historical runs. Use
+    // the established source-backed view until its complete history is ready.
+    // Publish all pages together so totals, filters and charts stay complete.
+    const project = state.currentProject?.slug || getProjectSlugFromPath() || '';
+    const readPage = async offset => {
+      const response = await fetch(apiUrl(`api/runs?limit=${PAGE_SIZE}&offset=${offset}&include_total=${offset === 0}&project_slug=${encodeURIComponent(project)}`));
+      if (response.status === 401) {
+        if (dashboardActive) { showAuthError(); teardownDashboard(); }
+        throw new Error('Authentication required');
+      }
+      if (response.status === 404) throw new Error('Project not found');
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      return response.json();
+    };
+    const data = await readPage(0);
+    const total = Number(data.total_count || 0);
+    let offset = PAGE_SIZE;
+    let failure = null;
+    const drain = async () => {
+      try {
+        while (!failure && dashboardActive && key === dashboardPageRequestKey() && offset < total) {
+          const next = offset;
+          offset += PAGE_SIZE;
+          _mergeTasksData(data, await readPage(next));
+        }
+      } catch (error) {
+        failure = error;
+      }
+    };
+    await Promise.all(Array.from({ length: PAGE_CONCURRENCY }, drain));
+    if (failure) throw failure;
+    if (!dashboardActive || key !== dashboardPageRequestKey()) {
+      if (dashboardActive) queueRunsFetch({});
+      return;
+    }
+    const rows = Object.values(data.tasks || {}).flatMap(models => Object.values(models).flat());
+    const ids = new Set(rows.map(row => row.run_id));
+    if (rows.length !== total || ids.size !== total) {
+      // Concurrent inserts/deletes can shift offset pages. Retry once rather
+      // than display missing runs or double-count duplicates in aggregates.
+      if (retry) return fetchDashboardBackfill(key, false);
+      throw new Error('Run history changed while loading');
+    }
+    // Clear any earlier partial projection only after a successful full read.
+    state.dashboardBackfilling = true;
+    state.dashboardOverview = null;
+    state.dashboardPage = null;
+    state.dashboardOverviewFilterKey = null;
+    for (const entry of state.chartHistory.values()) entry.controller?.abort();
+    state.chartHistory.clear();
+    state.chartHistoryQueue = [];
+    state.dashboardRequestKey = null;
+    state.runsFetchMeta.totalCount = total;
+    state.runsFetchMeta.hasLoadedAllPages = true;
+    el('table-view')?.setAttribute('aria-busy', 'false');
+    _applyRunsData(data);
+    const updated = el('last-updated');
+    if (updated) { updated.textContent = 'Updating summaries…'; updated.setAttribute('role', 'status'); }
+    try { updateRunsRefreshCadence && updateRunsRefreshCadence(); } catch {}
+  }
+
   async function fetchDashboardPage() {
     const key = dashboardPageRequestKey();
     const filterKey = getTableFilterKey();
@@ -6787,12 +6855,20 @@
     }
     if (collation !== null) payload.collation = collation;
     let page = await dashboardQuery('runs', payload);
+    if (page.freshness?.backfilling) {
+      await fetchDashboardBackfill(key);
+      return;
+    }
     let overview = page.overview;
     const latestCollation = dashboardCollation(overview, state.sortKey);
     if (latestCollation !== null && JSON.stringify(latestCollation) !== JSON.stringify(collation)) {
       payload.collation = latestCollation;
       page = await dashboardQuery('runs', payload);
       overview = page.overview;
+    }
+    if (page.freshness?.backfilling) {
+      await fetchDashboardBackfill(key);
+      return;
     }
     const pinnedRows = [...(page.pinned_rows || [])];
     // Additional requests follow only explicit retained selections, in batches.
@@ -6844,6 +6920,7 @@
       const models = mergedTasks[run.task_name] ||= {};
       (models[run.model_name || ''] ||= []).push(run);
     }
+    state.dashboardBackfilling = false;
     state.dashboardOverview = overview;
     state.dashboardOverviewFilterKey = filterKey;
     state.dashboardPage = { ...page, total_runs: total, offset, rows: pageRows };
@@ -7754,7 +7831,8 @@
   function updateRunsRefreshCadence() {
     if (!dashboardActive) return;
     try {
-      const intervalMs = state.dashboardOverview?.freshness?.updating ? 2000
+      const intervalMs = state.dashboardBackfilling ? LIVE_REFRESH_INTERVAL_MS
+        : state.dashboardOverview?.freshness?.updating ? 2000
         : (state.dashboardOverview?.has_active_runs || hasActiveRuns()) ? LIVE_REFRESH_INTERVAL_MS : IDLE_REFRESH_INTERVAL_MS;
       if (window.__QYM_DASHBOARD_INTERVAL__) clearInterval(window.__QYM_DASHBOARD_INTERVAL__);
       window.__QYM_DASHBOARD_INTERVAL__ = setInterval(fetchRuns, intervalMs);
