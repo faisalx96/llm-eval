@@ -1701,7 +1701,8 @@ def legacy_list_runs(
     db: Session = Depends(get_db),
     principal: Principal = Depends(require_ui_principal),
 ) -> Dict[str, Any]:
-    q = Run.active(db).order_by(Run.created_at.desc())
+    # A unique tie-breaker keeps offset pages disjoint when runs share a timestamp.
+    q = Run.active(db).order_by(Run.created_at.desc(), Run.id.asc())
 
     selected_project = None
     if project_slug:

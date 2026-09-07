@@ -128,10 +128,12 @@ def item(db, item_id="i", run_id="r", **kwargs):
     return obj
 
 
-def drain(engine, *, max_events=500):
+def drain(engine, *, max_events=500, max_partitions=20):
     for _ in range(100):
         with Session(engine, autoflush=False) as db:
-            service.drain_dashboard_changes(db, max_events=max_events)
+            service.drain_dashboard_changes(
+                db, max_events=max_events, max_partitions=max_partitions
+            )
             db.commit()
             pending = db.scalar(
                 select(func.count())

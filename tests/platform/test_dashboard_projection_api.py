@@ -190,6 +190,58 @@ def get(client, endpoint="runs", filters=None, **params):
     )
 
 
+def test_backfill_freshness_is_scoped_and_waits_for_publication(dataset):
+    engine, client, _ = dataset
+    seed(engine, count=1)
+    seed(engine, count=1, project="private", prefix="private")
+    with Session(engine) as db:
+        private = db.get(Partition, "private-0000")
+        private.backfill_complete = False
+        private.queue_state = "backfill"
+        db.commit()
+    # Another project's migration cannot force this project into fallback.
+    assert not get(client).json()["freshness"]["backfilling"]
+    with Session(engine) as db:
+        part = db.get(Partition, "run-0000")
+        part.backfill_complete = False
+        part.queue_state = "backfill"
+        db.commit()
+    for endpoint in ("runs", "overview", "points"):
+        assert get(client, endpoint).json()["freshness"]["backfilling"]
+    with Session(engine) as db:
+        part = db.get(Partition, "run-0000")
+        part.backfill_complete = True
+        part.backfill_kind = "attempt"
+        part.queue_state = "pending"
+        part.last_enqueued_version += 1
+        db.commit()
+    # The scan finished, but its terminal summary has not yet been published.
+    assert get(client).json()["freshness"]["backfilling"]
+    with Session(engine) as db:
+        db.get(Summary, "run-0000").projection_revision = 1
+        db.commit()
+    freshness = get(client).json()["freshness"]
+    assert freshness["updating"] and not freshness["backfilling"]
+
+
+def test_new_run_events_do_not_trigger_history_fallback(dataset):
+    engine, client, _ = dataset
+    with Session(engine) as db:
+        db.add(
+            Partition(
+                partition_key="new-run",
+                project_key="project",
+                queue_state="pending",
+                backfill_complete=True,
+                backfill_kind="item",
+                last_enqueued_version=1,
+            )
+        )
+        db.commit()
+    freshness = get(client).json()["freshness"]
+    assert freshness["updating"] and not freshness["backfilling"]
+
+
 def test_pagination_filters_and_projection_only_reads(dataset):
     engine, client, _ = dataset
     seed(engine, count=105)

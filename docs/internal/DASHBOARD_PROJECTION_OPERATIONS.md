@@ -37,6 +37,22 @@ published descriptor and numerical values remain visible until its pending
 outbox and all backfill source kinds have completed. New terminal historical
 runs are published only when their complete numerical snapshot is ready.
 
+While an authorized project's historical backfill is unfinished, freshness also
+reports `backfilling: true`. This includes the gap between the final source scan
+and first summary publication. Ordinary updates and newly created runs do not
+enable this flag. Other projects' backfills do not affect it.
+
+During that period, Runs, Charts and Models use the existing `/api/runs` path.
+The browser fetches the complete project history in 100-run pages with at most
+three requests in flight, then applies it together. Counts, filters, sorting,
+charts and selections therefore include historical runs whose projections are
+not published yet. Failed pages leave the previous complete display intact;
+offset shifts causing duplicate or missing runs trigger one complete retry.
+Session expiry removes the data and stops polling. This temporary path retains
+the pre-P1 full-history memory and query cost, polls every 15 seconds, and skips
+session-storage serialization. Once backfill finishes, the next refresh returns
+to bounded projection paging with the user's filters, page and selections.
+
 The initial late-event horizon is 30 days (`MAX_LATE_EVENT_AGE`). Older events
 and invalid schemas enter `dashboard_dead_letters`; persistent processing
 failures do so after five attempts. The partition remains `repair_required`, so
