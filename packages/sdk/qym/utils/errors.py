@@ -12,6 +12,14 @@ class QymError(Exception):
 LLMEvalError = QymError
 
 
+class NonRetryableError(QymError):
+    """Base class for user-raised errors that qym must not retry."""
+
+
+class BusinessRuleError(NonRetryableError):
+    """Raised when a task or metric cannot continue because of a business rule."""
+
+
 class LangfuseConnectionError(QymError):
     """Raised when connection to Langfuse fails."""
     pass

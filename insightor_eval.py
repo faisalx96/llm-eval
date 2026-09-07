@@ -1131,6 +1131,10 @@ def insightor_api(question: str) -> Dict[str, Any]:
 
     Returns:
         Dictionary containing SQL query and Langfuse URL
+
+    Raises:
+        RuntimeError: If Insightor reports a failed internal task or the SSE
+            stream finishes without producing SQL.
     """
     base_url = _env("INSIGHTOR_URL")
     access_token = None
@@ -1278,6 +1282,31 @@ def insightor_api(question: str) -> Dict[str, Any]:
                 task.get("metadata"), sse_warnings, "task.metadata"
             )
 
+            insightor_task_status = str(task.get("status", "")).strip().lower()
+            if insightor_task_status in {"failed", "error"}:
+                raw_error = (
+                    task_metadata.get("error")
+                    or task_metadata.get("message")
+                    or task.get("error")
+                    or task.get("message")
+                    or rich_data.get("message")
+                )
+                if isinstance(raw_error, (dict, list)):
+                    error_message = json.dumps(raw_error, ensure_ascii=False)
+                else:
+                    error_message = str(raw_error or "").strip()
+                if not error_message:
+                    task_id = (
+                        task.get("id")
+                        or rich_data.get("task_id")
+                        or "unknown"
+                    )
+                    error_message = (
+                        f"Insightor task '{task_id}' reported status "
+                        f"'{insightor_task_status}'"
+                    )
+                raise RuntimeError(f"Insightor task failed: {error_message[:500]}")
+
             next_langfuse_url = _nonempty_string(
                 task_metadata.get("langfuse_url"),
                 sse_warnings,
@@ -1350,7 +1379,7 @@ def insightor_api(question: str) -> Dict[str, Any]:
         streaming_events.append(event_info)
 
     if not generated_sql:
-        _record_sse_warning(sse_warnings, "SSE stream ended without a SQL result")
+        raise RuntimeError("Insightor SSE stream ended without a SQL result")
 
     response_data = {
         "sql": generated_sql,

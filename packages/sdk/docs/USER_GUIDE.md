@@ -293,6 +293,53 @@ def faithfulness(output, expected):
 
 Malformed dict returns raise an item error. For example, `{"answer": "Paris"}` is invalid because qym cannot tell which field is the visible output.
 
+Plain task outputs—including `None`, empty strings, and whitespace-only
+strings—are passed to metrics unchanged. Qym does not infer that these values
+mean task failure. If one represents failure in your application, the task
+must raise an exception or allow its downstream client exception to propagate.
+
+### Stop Retries for a Business Rule
+
+Normal task exceptions are treated as potentially temporary and follow
+`max_retries`. When retrying cannot help, raise Qym's public
+`BusinessRuleError` instead:
+
+```python
+from qym import BusinessRuleError
+
+def my_task(customer):
+    if customer["account_status"] == "blocked":
+        raise BusinessRuleError("Blocked accounts cannot use this operation")
+    return call_llm(customer["question"])
+```
+
+Qym catches this exception, makes no additional task attempt, records the
+sample as Error, and does not run metrics for that sample. The error message is
+preserved in the result and platform.
+
+The same exception can be raised by a custom metric:
+
+```python
+def policy_metric(output, expected):
+    if contains_forbidden_content(output):
+        raise BusinessRuleError("Output violates the content policy")
+    return 1.0
+```
+
+In that case the task remains completed, the metric runs once, and that metric
+is stored as Error with numeric score `0`, error text, and a traceback. This is
+true even when `metric_max_retries` is greater than zero; that setting retries
+metric timeouts, not intentional business-rule errors.
+
+For a domain-specific name, subclass `NonRetryableError`:
+
+```python
+from qym import NonRetryableError
+
+class CustomerNotEligible(NonRetryableError):
+    pass
+```
+
 ### ⚠️ Common Task Mistakes
 
 ```python
@@ -305,13 +352,12 @@ def bad_task(question):
 def bad_task(question):
     return call_llm(question)  # If this throws, item fails
 
-# ✅ CORRECT: Clear return, handles errors gracefully
+# ✅ CORRECT: Return a usable value or raise an error
 def good_task(question, model_name="gpt-4"):
-    try:
-        result = call_llm(question, model=model_name)
-        return str(result)
-    except Exception as e:
-        return f"Error: {e}"  # Or raise to mark as failed
+    result = call_llm(question, model=model_name)
+    if result is None:
+        raise RuntimeError("LLM returned no result")
+    return str(result)
 ```
 
 ---
@@ -954,7 +1000,7 @@ print(f"Total items: {results.total_items}")
 1. **Dataset loads** (from Langfuse or local CSV)
 2. **Version captured** — git branch and commit are auto-detected
 3. **Dashboard appears** showing live progress (TUI + platform streaming)
-4. **Items run in parallel** (controlled by `max_concurrency`), with automatic retries on failure (up to `max_retries`, default 2)
+4. **Items run in parallel** (controlled by `max_concurrency`), with automatic retries on technical failures (up to `max_retries`, default 2); `BusinessRuleError` stops immediately
 5. **LLM calls traced** — supported LLM calls are captured as spans when tracing is enabled
 6. **Metrics score** each output
 7. **Results save** to CSV automatically and stream to the platform (if `QYM_API_KEY` is set)
@@ -1704,9 +1750,12 @@ ValueError: Unknown metric: 'my_metric'
 
 ### "Task returned None"
 
-Your task function doesn't return anything.
+Your task function may be missing a `return` statement. Qym passes `None` to
+the metrics as an ordinary task result; it does not automatically classify it
+as a task error.
 
-**Solution**: Add `return` statement to your task.
+**Solution**: Add a `return` statement. If `None` represents a failed task,
+raise a descriptive exception from the task instead.
 
 ### "Rate limit exceeded" / Timeouts
 

@@ -9,7 +9,7 @@
   <link rel="stylesheet" href="./static/shell.css">
   <script src="./static/auth.js"></script>
   <script src="./static/shell.js?v=ui-consistency-20260730-15"></script>
-  <script src="./static/metrics.js"></script>
+  <script src="./static/metrics.js?v=metric-errors-20260907-3"></script>
   <script src="./static/run_details.js"></script>
   <script src="./static/trace_viewer.js?v=merge-20260804-1"></script>
 <script src="./static/playground.js?v=rule-history-bottom-20260816-1"></script>
@@ -2757,6 +2757,24 @@
       background: var(--bg-hover);
       border-color: var(--border-default);
     }
+    .item-comparison-row.item-collapsed.item-execution-error,
+    .items-grid > .item-comparison-row.item-collapsed.item-execution-error:hover {
+      border-color: var(--error);
+    }
+    .item-failure-icon {
+      width: 12px;
+      height: 12px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 1.8;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      flex: 0 0 auto;
+    }
+    .item-error-indicator {
+      min-width: var(--badge-height);
+      padding: 0;
+    }
     /* Disclosure is neutral at rest and uses glyph-only accent feedback;
        the open state rotates without adding a hover tile. */
     .item-chevron {
@@ -2960,6 +2978,11 @@
       background: var(--bg-elevated);
       border-radius: 0 4px 4px 0;
       padding: var(--space-sm);
+    }
+    .qym-output-card.item-run-output.item-execution-error {
+      border: 1px solid var(--error);
+      border-left-width: 3px;
+      border-radius: 6px;
     }
     .item-run-output .output-header {
       display: flex;
@@ -5640,6 +5663,7 @@
             leftRunIds,
             rightRunIds,
             threshold,
+            metricName,
             getMetricIndex,
             getItemId,
             getRunId,
@@ -5697,7 +5721,7 @@
               if (!row) return null;
               const metricIdx = getMetricIndex(runData);
               if (metricIdx < 0) return null;
-              const { score } = window.QymMetrics.getRowScore(row, metricIdx);
+              const { score } = window.QymMetrics.getRowScore(row, metricIdx, metricName);
               if (score === null) return null;
               values.push(score >= threshold);
             }
@@ -5800,6 +5824,7 @@
           leftRunIds: groups.leftRunIds || [],
           rightRunIds: groups.rightRunIds || [],
           threshold,
+          metricName,
           getMetricIndex: (runData) => {
             const metricNames = runData?.snapshot?.metric_names || runData?.run?.metric_names || [];
             return metricNames.indexOf(metricName);
@@ -8214,7 +8239,7 @@
             if (!itemIdSet.has(itemId)) continue;
             // Score for the selected metric (use centralized error handling)
             if (metricIdx >= 0) {
-              const { score } = window.QymMetrics.getRowScore(row, metricIdx);
+              const { score } = window.QymMetrics.getRowScore(row, metricIdx, metricName);
               if (score !== null) { scoreSum += score; scoreCount++; }
             }
             // Latency
@@ -8248,7 +8273,7 @@
             const metricIdx = getMetricIndex(run);
             if (metricIdx < 0) return { score: null, failed: false };
             // Use centralized error handling from metrics.js
-            const { score, isError } = window.QymMetrics.getRowScore(row, metricIdx);
+            const { score, isError } = window.QymMetrics.getRowScore(row, metricIdx, metricName);
             return { score, failed: isError };
           });
 
@@ -8361,7 +8386,7 @@
           for (const row of rows) {
             const itemId = getRowCompareId(row);
             if (!itemIdSet.has(itemId)) continue;
-            const { score } = window.QymMetrics.getRowScore(row, mIdx);
+            const { score } = window.QymMetrics.getRowScore(row, mIdx, metricName);
             if (score !== null) {
               if (score < allScoresMin) allScoresMin = score;
               if (score > allScoresMax) allScoresMax = score;
@@ -8678,7 +8703,7 @@
               if (!itemsByGroup[effective][itemId]) itemsByGroup[effective][itemId] = { scores: [], latencies: [] };
 
               if (metricIndex >= 0) {
-                const { score } = window.QymMetrics.getRowScore(row, metricIndex);
+                const { score } = window.QymMetrics.getRowScore(row, metricIndex, selectedMetric);
                 if (score !== null) itemsByGroup[effective][itemId].scores.push(score);
               }
               if (row.latency_ms && row.status === 'completed') {
@@ -8752,7 +8777,7 @@
           for (const row of rows) {
             const itemId = getRowCompareId(row);
             if (!itemId || !filteredItemIds.has(itemId)) continue;
-            const { score } = window.QymMetrics.getRowScore(row, metricIndex);
+            const { score } = window.QymMetrics.getRowScore(row, metricIndex, selectedMetric);
             if (score !== null) overallScores.push(score);
           }
         }
@@ -9335,7 +9360,7 @@
             let sum = 0, count = 0;
             for (const row of rows) {
               // Use centralized error handling - errors count as 0
-              const { score } = window.QymMetrics.getRowScore(row, idx);
+              const { score } = window.QymMetrics.getRowScore(row, idx, metric);
               if (score !== null) {
                 sum += score;
                 count++;
@@ -10605,7 +10630,7 @@
             const metricIdx = getMetricIndex(run);
             if (metricIdx < 0) return null;
             // Use centralized error handling from metrics.js
-            const { score } = window.QymMetrics.getRowScore(row, metricIdx);
+            const { score } = window.QymMetrics.getRowScore(row, metricIdx, selectedMetric);
             return score;
           });
           const validScores = scores.filter(s => s !== null);
@@ -10797,7 +10822,7 @@
                 const mNames = run.snapshot?.metric_names || run.run?.metric_names || [];
                 const mIdx = selectedMetric ? mNames.indexOf(selectedMetric) : 0;
                 if (mIdx < 0) return null;
-                return window.QymMetrics.getRowScore(row, mIdx).score;
+                return window.QymMetrics.getRowScore(row, mIdx, selectedMetric).score;
               }).filter(s => s !== null);
               return vals.length > 0 ? Math.max(...vals) : -1;
             };
@@ -11015,6 +11040,40 @@
         return blocks ? `<div class="metric-det-zone">${blocks}</div>` : '';
       }
 
+      const COMPARE_FAILURE_ICON = '<svg class="item-failure-icon" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.25"/><path d="m5.75 5.75 4.5 4.5m0-4.5-4.5 4.5"/></svg>';
+
+      function compareExecutionErrorInfo(row, runIdx) {
+        if (!row) {
+          return { hasError: false, hasTaskError: false, metricErrorNames: [], title: '' };
+        }
+        const hasTaskError = window.QymMetrics.isTaskErrorRow(row);
+        const runData = state.runs[runIdx] || {};
+        const metricNames = Array.from(new Set([
+          ...(runData.snapshot?.metric_names || runData.run?.metric_names || []),
+          ...Object.keys(row.metric_meta || {}),
+          ...Object.keys(row.pass_metric_meta || {}),
+        ]));
+        const metricErrorNames = metricNames.filter(name =>
+          window.QymMetrics.hasMetricError(row, name)
+        );
+        const hasMetricError = metricErrorNames.length > 0;
+        const title = hasTaskError
+          ? 'Task execution failed'
+          : (hasMetricError
+              ? 'Metric execution failed: ' + metricErrorNames.join(', ')
+              : '');
+        return {
+          hasError: hasTaskError || hasMetricError,
+          hasTaskError,
+          metricErrorNames,
+          title,
+        };
+      }
+
+      function renderCompareErrorIndicator(title) {
+        return `<span class="qym-tag qym-tag--danger item-error-indicator" title="${escapeAttr(title)}" role="img" aria-label="${escapeAttr(title)}">${COMPARE_FAILURE_ICON}</span>`;
+      }
+
       function renderCompareOutputGroup(itemId, rowData) {
         const hidden = (state.itemHiddenOutputs || {})[itemId] || new Set();
         const activeMetric = (state.itemComparedMetric || {})[itemId] || '';
@@ -11040,8 +11099,8 @@
           if (!row) return '';
           const metric = state.selectedItemsMetric;
           let verdict = '';
-          if (row.status === 'error') {
-            verdict = 'fail';
+          if (compareExecutionErrorInfo(row, runIdx).hasError) {
+            verdict = 'error';
           } else if (metric && (state.metricTypes?.[metric] || 'score') !== 'numeric') {
             const score = scoreData(row, runIdx, metric).parsed;
             const threshold = state.metricIsBoolean[metric]
@@ -11054,15 +11113,18 @@
         const verdictFor = (row, runIdx) => {
           const verdict = verdictStateFor(row, runIdx);
           if (!verdict) return '';
+          const errorInfo = compareExecutionErrorInfo(row, runIdx);
+          if (verdict === 'error') return renderCompareErrorIndicator(errorInfo.title);
           const metric = state.selectedItemsMetric;
           const label = verdict === 'pass' ? 'Pass' : 'Fail';
-          const title = row.status === 'error' ? 'Execution error' : `${label} on ${metric}`;
+          const title = `${label} on ${metric}`;
           return `<span class="qym-tag ${verdict === 'pass' ? 'qym-tag--success' : 'qym-tag--danger'}" title="${escapeAttr(title)}">${label}</span>`;
         };
         const rootCauseBlockFor = (row, runIdx) => {
           const scope = compareRootCauseScope(row, runIdx);
           const issues = rootCauseIssues(scope.analysis);
-          if (!issues.length && (IS_COMPARE_EXPORT || verdictStateFor(row, runIdx) !== 'fail')) return '';
+          const verdict = verdictStateFor(row, runIdx);
+          if (!issues.length && (IS_COMPARE_EXPORT || !['fail', 'error'].includes(verdict))) return '';
           const issueHtml = issues.length
             ? '<div class="compare-issue-list" role="list" aria-label="Root-cause issues">' + issues.map((issue, issueIndex) => {
                 const issueColor = rootCauseColor(issue.category);
@@ -11137,7 +11199,10 @@
             ? `<button type="button" class="trace-drawer-btn qym-inline-action qym-inline-action--neutral qym-trace-action" data-trace-endpoint="${escapeAttr(traceEndpoint)}" data-trace-item-label="${escapeAttr(identity + ' · ' + runItemId)}" data-trace-id="${escapeAttr(traceId || '')}" data-trace-url="${escapeAttr(traceUrl || '')}" title="Open trace viewer"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M2.5 4h11M2.5 8h7M2.5 12h9"/><circle cx="12.5" cy="8" r="1.2" fill="currentColor" stroke="none" opacity=".5"/><circle cx="13.5" cy="12" r="1.2" fill="currentColor" stroke="none" opacity=".5"/></svg>Trace</button>`
             : '';
           const copyButton = `<button class="copy-btn qym-icon-action" data-copy-text="${escapeAttr(typeof output === 'object' ? JSON.stringify(output, null, 2) : String(output))}" title="Copy output">${COPY_ICON}</button>`;
-          return `<article class="item-run-output qym-output-card${hidden.has(runIdx) ? ' is-hidden' : ''}" data-output-card="${outputId}" style="border-left-color:${color}"><div class="qym-output-card__header"><span class="qym-output-card__identity"><span class="qym-output-swatch" style="background:${color}"></span>${identityHtml}${verdictFor(row, runIdx)}</span>${row.latency_ms ? `<span class="qym-output-card__duration">${CLOCK_ICON}<span>${formatLatency(row.latency_ms)}</span></span>` : '<span class="qym-output-card__duration">\u2014</span>'}<span class="qym-output-card__actions">${traceButton}${copyButton}</span></div><div class="output-text ${row.status === 'error' ? 'score-1' : ''}">${renderMarkdownSafe(output)}</div>${metricStripFor(row, runIdx)}${rootCauseBlockFor(row, runIdx)}</article>`;
+          const errorInfo = compareExecutionErrorInfo(row, runIdx);
+          const executionErrorClass = errorInfo.hasError ? ' item-execution-error' : '';
+          const borderColor = errorInfo.hasError ? 'var(--error)' : color;
+          return `<article class="item-run-output qym-output-card${executionErrorClass}${hidden.has(runIdx) ? ' is-hidden' : ''}" data-output-card="${outputId}" style="border-left-color:${borderColor}"><div class="qym-output-card__header"><span class="qym-output-card__identity"><span class="qym-output-swatch" style="background:${color}"></span>${identityHtml}${verdictFor(row, runIdx)}</span>${row.latency_ms ? `<span class="qym-output-card__duration">${CLOCK_ICON}<span>${formatLatency(row.latency_ms)}</span></span>` : '<span class="qym-output-card__duration">\u2014</span>'}<span class="qym-output-card__actions">${traceButton}${copyButton}</span></div><div class="output-text ${errorInfo.hasTaskError ? 'score-1' : ''}">${renderMarkdownSafe(output)}</div>${metricStripFor(row, runIdx)}${rootCauseBlockFor(row, runIdx)}</article>`;
         }).join('');
         const panels = state.allMetrics.map(name => {
           const cells = rowData.map((row, runIdx) => {
@@ -11171,6 +11236,17 @@
           const safeBaseId = makeSafeDomId(itemId);
           const safeId = options.idSuffix ? `${safeBaseId}_${options.idSuffix}` : safeBaseId;
           const isExpanded = !!options.forceExpanded || !!(state.itemExpanded || {})[itemId];
+          const itemExecutionErrors = rowData
+            .map((row, runIdx) => compareExecutionErrorInfo(row, runIdx))
+            .filter(info => info.hasError);
+          const hasItemExecutionError = itemExecutionErrors.length > 0;
+          const itemExecutionErrorTitle = itemExecutionErrors.length === 1
+            ? itemExecutionErrors[0].title
+            : `Execution failed in ${itemExecutionErrors.length} compared runs`;
+          const itemExecutionErrorClass = hasItemExecutionError ? ' item-execution-error' : '';
+          const itemExecutionErrorIndicator = hasItemExecutionError
+            ? renderCompareErrorIndicator(itemExecutionErrorTitle)
+            : '';
           // Keep the pre-unification renderer inert while the surrounding item
           // card logic is progressively retired. The visible output is rendered
           // exclusively by renderCompareOutputGroup below.
@@ -11448,6 +11524,11 @@
             if (!row) return emptyPill;
             const run = state.runs[runIdx];
             const runInfo = run?.run || {};
+            const errorInfo = compareExecutionErrorInfo(row, runIdx);
+            const color = COLORS[runIdx % COLORS.length];
+            if (errorInfo.hasError) {
+              return `<span class="item-agg-pill qym-item-metric-cell qym-item-metric-cell--selected" data-qym-metric-column="${runIdx}" title="${escapeAttr((runInfo.run_name || ('Run ' + (runIdx + 1))) + ' · ' + errorInfo.title)}"><span class="compare-run-dot" style="background:${color}"></span>${renderCompareErrorIndicator(errorInfo.title)}</span>`;
+            }
             const mNames = run?.snapshot?.metric_names || runInfo.metric_names || [];
             const mIdx = headerMetric ? mNames.indexOf(headerMetric) : 0;
             if (mIdx < 0) return emptyPill;
@@ -11456,7 +11537,6 @@
             const mType = state.metricTypes?.[mNames[mIdx]] || 'score';
             const cls = window.QymMetrics.getMetricColorClass(v, mType);
             const display = window.QymMetrics.formatMetricObservation(v, mType, state.metricSpecs?.[mNames[mIdx]]);
-            const color = COLORS[runIdx % COLORS.length];
             return `<span class="item-agg-pill qym-item-metric-cell qym-item-metric-cell--selected" data-qym-metric-column="${runIdx}" title="${escapeAttr((runInfo.run_name || ('Run ' + (runIdx + 1))) + ' \u00B7 ' + mNames[mIdx])}"><span class="compare-run-dot" style="background:${color}"></span><span class="metric-score-value qym-score-value ${cls}">${display}</span></span>`;
           }).join('');
           const expandable = !options.forceExpanded;
@@ -11466,6 +11546,7 @@
               <div class="item-header${expandable ? ' item-header-expand' : ''}"${expandable && isExpanded ? expandAttrs : ''}>
                 ${expandable ? `<span class="item-chevron${isExpanded ? ' open' : ''}"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m5.5 3.5 5 4.5-5 4.5"/></svg></span>` : ''}
                 <span class="item-index" title="ID: ${escapeHtml(itemId)}">${escapeHtml(compactItemLabel)}</span>
+                ${itemExecutionErrorIndicator}
                 ${isExpanded
                   ? `<span class="item-header-spacer"></span><span class="item-pass-note">${visibleRunCount} run${visibleRunCount === 1 ? '' : 's'}</span>`
                   : `<span class="item-title">${escapeHtml(titleText)}</span><span class="item-agg-pills qym-item-metric-grid" data-qym-metric-grid>${headerPills}</span>`}
@@ -11473,7 +11554,7 @@
 
           if (!isExpanded) {
             // The whole collapsed card is the expand target
-            return `<div class="item-comparison-row item-collapsed item-header-expand"${expandable ? expandAttrs : ''}>${headerHtml}</div>`;
+            return `<div class="item-comparison-row item-collapsed item-header-expand${itemExecutionErrorClass}"${expandable ? expandAttrs : ''}>${headerHtml}</div>`;
           }
 
           return `

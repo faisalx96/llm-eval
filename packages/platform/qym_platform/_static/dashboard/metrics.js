@@ -14,10 +14,49 @@
  * @param {Object} row - Row data from snapshot
  * @returns {boolean} True if the row is an error
  */
-function isErrorRow(row) {
+function isTaskErrorRow(row) {
   if (!row) return false;
-  const status = row.status;
+  const status = String(row.status || '').toLowerCase();
   return status === 'error' || status === 'failed';
+}
+
+/**
+ * Check whether one metric metadata object represents an execution error.
+ * Metric exceptions keep a numeric score of 0 for aggregation, so metadata is
+ * the signal that distinguishes an exception from an ordinary judged failure.
+ */
+function isMetricErrorMeta(meta) {
+  if (!meta || typeof meta !== 'object' || Array.isArray(meta)) return false;
+  // Labels are judge verdicts, including custom choices such as "failed".
+  const status = String(meta.status || '').toLowerCase();
+  if (status === 'error' || status === 'failed' || status === 'timeout') return true;
+  return meta.error !== undefined && meta.error !== null && String(meta.error).trim() !== '';
+}
+
+/**
+ * Check current and per-pass metric metadata for a metric execution error.
+ */
+function hasMetricError(row, metricName = null) {
+  if (!row) return false;
+  const aggregateMeta = row.metric_meta && typeof row.metric_meta === 'object'
+    ? row.metric_meta
+    : {};
+  const passMeta = row.pass_metric_meta && typeof row.pass_metric_meta === 'object'
+    ? row.pass_metric_meta
+    : {};
+  const metricNames = metricName === null
+    ? Array.from(new Set([...Object.keys(aggregateMeta), ...Object.keys(passMeta)]))
+    : [metricName];
+
+  return metricNames.some(name => {
+    const perPass = passMeta[name];
+    if (Array.isArray(perPass) && perPass.some(isMetricErrorMeta)) return true;
+    return isMetricErrorMeta(aggregateMeta[name]);
+  });
+}
+
+function isErrorRow(row) {
+  return isTaskErrorRow(row) || hasMetricError(row);
 }
 
 /**
@@ -25,6 +64,7 @@ function isErrorRow(row) {
  * This is the SINGLE SOURCE OF TRUTH for error -> score conversion
  * @param {Object} row - Row data from snapshot
  * @param {number} metricIdx - Index of the metric in metric_values array
+ * @param {string|null} metricName - Metric key used to find exception metadata
  * @returns {{score: number|null, isError: boolean}} Score (0 for errors) and error flag
  */
 function parseScoreValue(metricValue) {
@@ -60,22 +100,26 @@ function parseScoreValue(metricValue) {
   return score;
 }
 
-function getRowScore(row, metricIdx) {
+function getRowScore(row, metricIdx, metricName = null) {
   if (!row) return { score: null, isError: false };
 
-  // Errors are always scored as 0
-  if (isErrorRow(row)) {
+  // A task error invalidates every metric. A metric error invalidates only
+  // that metric; sibling metrics on the same item retain their real scores.
+  if (isTaskErrorRow(row)) {
     return { score: 0, isError: true };
   }
+  const metricError = metricName !== null && hasMetricError(row, metricName);
 
   const metricValues = row?.metric_values || [];
   const metricValue = metricValues[metricIdx];
   const score = parseScoreValue(metricValue);
   if (score === null) {
-    return { score: null, isError: false };
+    return metricError
+      ? { score: 0, isError: true }
+      : { score: null, isError: false };
   }
 
-  return { score, isError: false };
+  return { score, isError: metricError };
 }
 
 /** Index rows using the same first-match identity semantics as Array.find. */
@@ -182,7 +226,7 @@ function calculateItemLevelMetrics(options) {
       if (metricIdx < 0) continue;
 
       // Use centralized score extraction (errors = 0)
-      const { score, isError } = getRowScore(row, metricIdx);
+      const { score, isError } = getRowScore(row, metricIdx, metricName);
 
       if (score !== null) {
         scores.push(score);
@@ -299,6 +343,7 @@ function calculateMedian(values) {
  * @param {Array<string>} options.leftRunIds
  * @param {Array<string>} options.rightRunIds
  * @param {number} options.threshold
+ * @param {string} options.metricName
  * @param {Function} options.getMetricIndex
  * @param {Function} options.getItemId
  * @param {Function} options.getRunId
@@ -484,7 +529,7 @@ function calculateGroupedCohortComparison(options) {
         rowList.push(row);
         continue;
       }
-      const { score } = getRowScore(row, metricIdx);
+      const { score } = getRowScore(row, metricIdx, metricName);
       if (score === null) return null;
       scores.push(score);
       passes.push(score >= threshold);
@@ -824,6 +869,9 @@ function getMetricColorClass(value, metricType) {
 if (typeof window !== 'undefined') {
   window.QymMetrics = {
     // Core error handling - USE THESE for consistent error treatment
+    isTaskErrorRow,
+    isMetricErrorMeta,
+    hasMetricError,
     isErrorRow,
     getRowScore,
     parseScoreValue,

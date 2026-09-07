@@ -74,6 +74,148 @@ def test_run_and_compare_exports_keep_independent_scroll_containers() -> None:
         assert "overflow-y: auto;" in rule
 
 
+def test_run_item_badge_and_card_distinguish_runtime_errors_from_judge_failures() -> None:
+    """Task/metric exceptions are Error; an ordinary low score remains Fail."""
+    source = (DASHBOARD_DIR / "run.html").read_text(encoding="utf-8")
+    metrics_source = (DASHBOARD_DIR / "metrics.js").read_text(encoding="utf-8")
+    verdict_block = source.split(
+        "// The verdict belongs to the expanded execution", 1
+    )[1].split("// Detailed AI analysis", 1)[0]
+
+    assert (
+        "const hasTaskError = window.QymMetrics.isTaskErrorRow(row);" in verdict_block
+    )
+    assert "window.QymMetrics.hasMetricError(row, name)" in verdict_block
+    assert "const hasExecutionError = hasTaskError || hasMetricError;" in verdict_block
+    assert "if (hasExecutionError)" in verdict_block
+    assert "pfClass = 'error';" in verdict_block
+    assert "pfClass = pfVal >= threshold ? 'pass' : 'fail';" in verdict_block
+    assert "const statusLabel = pfClass === 'pass' ? 'Pass' : 'Fail';" in verdict_block
+    assert "? 'Task execution failed'" in verdict_block
+    assert "? 'Metric execution failed: ' + metricErrorNames.join(', ')" in verdict_block
+    assert ": 'qym-tag--danger';" in verdict_block
+    assert "qym-tag--warning" not in verdict_block
+    assert "const statusIconOnlyClass = pfClass === 'error'" in verdict_block
+    assert "const failureIcon = pfClass === 'error'" in verdict_block
+    assert 'class="item-failure-icon"' in verdict_block
+    assert "const statusContent = pfClass === 'error' ? failureIcon" in verdict_block
+    assert "const statusAccessibility = pfClass === 'error'" in verdict_block
+    assert 'role="img" aria-label="' in verdict_block
+    assert (
+        "const executionErrorClass = hasExecutionError ? ' item-execution-error' : '';"
+        in verdict_block
+    )
+    assert 'class="qym-tag \' + statusTagClass' in verdict_block
+    assert 'item-header-expand\' + executionErrorClass' in source
+    assert 'item-card\' + executionErrorClass' in source
+
+    assert "border-color: var(--error);" in _rule(
+        source, ".item-card.item-execution-error {"
+    )
+    assert "border-color: var(--error);" in _rule(
+        source, ".item-card.item-collapsed.item-execution-error {"
+    )
+    assert "border-color: var(--error);" in _rule(
+        source,
+        ".items-grid > .item-card.item-collapsed.item-execution-error:hover {",
+    )
+    icon_rule = _rule(source, ".item-failure-icon {")
+    assert "width: 12px;" in icon_rule
+    assert "height: 12px;" in icon_rule
+    assert "stroke: currentColor;" in icon_rule
+    icon_only_rule = _rule(source, ".item-error-indicator {")
+    assert "min-width: var(--badge-height);" in icon_only_rule
+    assert "padding: 0;" in icon_only_rule
+
+    assert "function isTaskErrorRow(row)" in metrics_source
+    assert "function isMetricErrorMeta(meta)" in metrics_source
+    assert "function hasMetricError(row, metricName = null)" in metrics_source
+    assert "return isTaskErrorRow(row) || hasMetricError(row);" in metrics_source
+    assert "function getRowScore(row, metricIdx, metricName = null)" in metrics_source
+    assert "const metricError = metricName !== null" in metrics_source
+    assert "return { score, isError: metricError };" in metrics_source
+    assert "Metric Errors" in source
+    assert "'Metric error'" in source
+
+
+def test_compare_item_and_outputs_match_run_error_presentation() -> None:
+    """Collapsed errors use an outer border; expanded errors use output borders."""
+    source = (DASHBOARD_DIR / "compare.html").read_text(encoding="utf-8")
+    renderer = source.split("function renderItemComparisonCard", 1)[1].split(
+        "function getComparisonRowDataForItem", 1
+    )[0]
+
+    assert "function compareExecutionErrorInfo(row, runIdx)" in source
+    assert "window.QymMetrics.isTaskErrorRow(row)" in source
+    assert "window.QymMetrics.hasMetricError(row, name)" in source
+    assert "if (compareExecutionErrorInfo(row, runIdx).hasError)" in source
+    assert "verdict = 'error';" in source
+    assert (
+        "if (verdict === 'error') return renderCompareErrorIndicator(errorInfo.title);"
+        in source
+    )
+    assert 'class="item-failure-icon"' in source
+    assert 'role="img" aria-label="${escapeAttr(title)}"' in source
+    assert "const executionErrorClass = errorInfo.hasError" in source
+    assert "const itemExecutionErrorClass = hasItemExecutionError" in source
+    assert "${itemExecutionErrorIndicator}" in source
+    assert "qym-output-card${executionErrorClass}" in source
+    assert "item-collapsed item-header-expand${itemExecutionErrorClass}" in source
+    assert '<div class="item-comparison-row">' in renderer
+    assert '<div class="item-comparison-row${itemExecutionErrorClass}">' not in renderer
+    assert "row.status === 'error') {\n            verdict = 'fail';" not in source
+
+    assert "border-color: var(--error);" in _rule(
+        source, ".item-comparison-row.item-collapsed.item-execution-error,"
+    )
+    output_error_rule = _rule(
+        source, ".qym-output-card.item-run-output.item-execution-error {"
+    )
+    assert "border: 1px solid var(--error);" in output_error_rule
+    assert "border-left-width: 3px;" in output_error_rule
+
+
+def test_dashboard_pages_share_one_versioned_metrics_asset() -> None:
+    """Every metrics.js consumer must load the same cache-busted API version."""
+    versions: dict[str, str | None] = {}
+    pattern = re.compile(
+        r'<script src="(?:/|\./)static/metrics\.js(?:\?v=([^"]+))?"></script>'
+    )
+
+    for page in DASHBOARD_DIR.glob("*.html"):
+        source = page.read_text(encoding="utf-8")
+        match = pattern.search(source)
+        if match:
+            versions[page.name] = match.group(1)
+
+    assert versions
+    assert all(version for version in versions.values()), versions
+    assert len(set(versions.values())) == 1, versions
+
+
+def test_metric_score_calls_identify_the_metric() -> None:
+    """Metric exceptions are detectable only when getRowScore gets the name."""
+    for filename in ("run.html", "compare.html"):
+        source = (DASHBOARD_DIR / filename).read_text(encoding="utf-8")
+        calls = re.findall(
+            r"window\.QymMetrics\.getRowScore\(([^\n;]*)\)",
+            source,
+        )
+        assert calls, filename
+        assert all(call.count(",") >= 2 for call in calls), (filename, calls)
+
+
+def test_selected_repeat_pass_does_not_inherit_other_pass_metric_errors() -> None:
+    """A pass-scoped row must expose only that pass's selected metric metadata."""
+    source = (DASHBOARD_DIR / "run.html").read_text(encoding="utf-8")
+    scope_block = source.split("function scopeRowToPass", 1)[1].split(
+        "function processRun", 1
+    )[0]
+
+    assert "metric_meta: passMetricMeta," in scope_block
+    assert "pass_metric_meta: null," in scope_block
+
+
 def test_approval_filters_include_metric_scoped_reviews() -> None:
     """Metric approvals must participate in both dashboard filter views."""
     run_source = (DASHBOARD_DIR / "run.html").read_text(encoding="utf-8")

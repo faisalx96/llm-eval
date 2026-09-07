@@ -91,13 +91,17 @@ def test_compare_displays_and_saves_the_same_scope(scope_kind: str) -> None:
             "rootCauseIssuePatch",
             "passRefBase",
             "compareRootCauseScope",
+            "compareExecutionErrorInfo",
             "renderCompareOutputGroup",
             "wireRootCauseHandlers",
             "saveRootCauseIssues",
         )
     )
     _run_javascript(
-        functions
+        "const window = {};\n"
+        + (DASHBOARD / "metrics.js").read_text()
+        + "\n"
+        + functions
         + f"\nconst scopeKind = '{scope_kind}';\n"
         + """
         const PASS_REF_SEP = '::pass';
@@ -139,10 +143,6 @@ def test_compare_displays_and_saves_the_same_scope(scope_kind: str) -> None:
         const rootCauseColor = () => 'green';
         const buildLangfuseTraceUrl = () => '';
         const buildLangfuseTraceUrlFromRun = () => '';
-        const window = {QymMetrics: {
-          parseScoreValue: value => value == null ? null : Number(value),
-          getMetricColorClass: () => '', formatMetricObservation: String,
-        }};
         const html = renderCompareOutputGroup('compare-item', [row]);
         if (scopeKind !== 'new') assert.ok(html.includes(expectedFinding), html);
         assert.ok(!html.includes('Stale summary'));

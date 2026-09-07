@@ -8,7 +8,12 @@ import pytest
 
 
 @pytest.mark.parametrize(
-    "fixture", ["row_indexes_contract.cjs", "run_details_contract.cjs"]
+    "fixture",
+    [
+        "row_indexes_contract.cjs",
+        "run_details_contract.cjs",
+        "metric_errors_contract.cjs",
+    ],
 )
 def test_frontend_contract(fixture: str) -> None:
     node = shutil.which("node")
