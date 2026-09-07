@@ -9,10 +9,120 @@ from qym.core.evaluator import (
     _graceful_interrupt_signals,
 )
 from qym.core.dataset import CsvDataset
+from qym import BusinessRuleError
 import signal
 
 
 class TestEvaluator:
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("is_async", [False, True], ids=["sync", "async"])
+    async def test_business_rule_task_stops_retries_and_skips_metrics(
+        self, mock_dataset, is_async
+    ):
+        attempts = []
+        metric_calls = []
+
+        def reject(question):
+            attempts.append(question)
+            raise BusinessRuleError()
+
+        async def async_reject(question):
+            return reject(question)
+
+        def metric(output, expected):
+            metric_calls.append(output)
+            return 1.0
+
+        evaluator = Evaluator(
+            task=async_reject if is_async else reject,
+            dataset=mock_dataset,
+            metrics=[metric],
+            config={"run_name": "business-error", "max_retries": 3},
+        )
+        evaluator._create_item_spans = MagicMock(return_value=ItemSpans())
+        evaluator._platform_stream = MagicMock()
+        item = MagicMock(id="item-1", input="question", expected_output="answer")
+        item.metadata = {}
+
+        result = await evaluator._evaluate_item(0, item, MagicMock())
+
+        assert attempts == ["question"]
+        assert metric_calls == []
+        assert "BusinessRuleError" in result["_error"]
+        failures = [
+            payload
+            for event_type, payload in (
+                call.args for call in evaluator._platform_stream.emit.call_args_list
+            )
+            if event_type == "item_failed"
+        ]
+        assert len(failures) == 1
+        assert failures[0]["retry_count"] == 0
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("is_async", [False, True], ids=["sync", "async"])
+    @pytest.mark.parametrize("error_type", [BusinessRuleError, RuntimeError])
+    @pytest.mark.parametrize("message", ["", "  "])
+    async def test_metric_exceptions_with_blank_messages_keep_error_status(
+        self, mock_task, mock_dataset, is_async, error_type, message
+    ):
+        calls = []
+
+        def fail(output, expected):
+            calls.append(1)
+            raise error_type(message)
+
+        async def async_fail(output, expected):
+            return fail(output, expected)
+
+        class Stream:
+            def __init__(self):
+                self.events = []
+
+            async def aemit(self, event_type, payload, *, sync=False):
+                self.events.append((event_type, payload))
+
+            def emit(self, *args, **kwargs):
+                raise AssertionError("Use asynchronous platform emission")
+
+        with patch("qym.core.evaluator.auto_detect_task"):
+            evaluator = Evaluator(
+                task=mock_task,
+                dataset=mock_dataset,
+                metrics=[],
+                config={"run_name": "metric-errors", "metric_max_retries": 3},
+            )
+        evaluator.metrics = {
+            "broken": async_fail if is_async else fail,
+            "healthy": lambda output, expected: 1.0,
+        }
+        evaluator.task_adapter.arun = AsyncMock(return_value="answer")
+        evaluator._create_item_spans = MagicMock(return_value=ItemSpans())
+        evaluator._notify_observer = MagicMock()
+        stream = evaluator._platform_stream = Stream()
+        tracker = MagicMock()
+        item = MagicMock(id="item-1", input="question", expected_output="answer")
+        item.metadata = {}
+
+        result = await evaluator._evaluate_item(0, item, tracker)
+
+        assert result["success"] is True
+        assert len(calls) == 1
+        scores = {
+            payload["metric_name"]: payload
+            for event_type, payload in stream.events
+            if event_type == "metric_scored"
+        }
+        broken = scores["broken"]
+        assert broken["score_numeric"] == 0
+        assert broken["meta"]["status"] == "error"
+        assert broken["meta"]["error"] == error_type.__name__
+        assert error_type.__name__ in broken["meta"]["traceback"]
+        assert scores["healthy"]["score_numeric"] == 1
+        assert "error" not in scores["healthy"]["meta"]
+        tracker.set_metric_error.assert_called_once_with(0, "broken")
+        tracker.update_metric.assert_called_once_with(0, "healthy", 1.0, {})
+
     def test_graceful_interrupt_signals_translate_sigterm_to_keyboard_interrupt(self):
         previous = signal.getsignal(signal.SIGTERM)
         with _graceful_interrupt_signals():

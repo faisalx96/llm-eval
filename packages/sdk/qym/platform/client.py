@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import math
 import os
@@ -10,12 +11,13 @@ import uuid
 from dataclasses import asdict, is_dataclass
 from dataclasses import dataclass
 from datetime import date, datetime, time as dt_time, timezone
-from queue import Queue, Empty
+from queue import Empty, Full
 from pathlib import Path
 from typing import Any, Dict, Optional
 from urllib import request
 
 from .tls import urlopen
+from ._backlog import EventBacklog
 
 # Enable debug logging with QYM_PLATFORM_DEBUG=1 or QYM_PLATFORM_DEBUG=/path/to/file.log
 _DEBUG = os.environ.get("QYM_PLATFORM_DEBUG", "")
@@ -75,7 +77,9 @@ def _sanitize_for_json(obj: Any) -> Any:
     return str(obj)
 
 
-def _post_json(url: str, payload: Dict[str, Any], api_key: str, *, timeout: float = 30) -> Dict[str, Any]:
+def _post_json(
+    url: str, payload: Dict[str, Any], api_key: str, *, timeout: float = 30
+) -> Dict[str, Any]:
     data = json.dumps(payload).encode("utf-8")
     req = request.Request(
         url,
@@ -151,6 +155,8 @@ class PlatformEventStream:
     FLUSH_INTERVAL = 0.25
     RETRY_BACKOFF_BASE = 0.5
     RETRY_BACKOFF_MAX = 10.0
+    MAX_PENDING_MEMORY_BYTES = 16 * 1024 * 1024
+    MAX_PENDING_DISK_BYTES = 256 * 1024 * 1024
 
     def __init__(self, platform_url: str, api_key: str, run_id: str) -> None:
         self.platform_url = platform_url.rstrip("/")
@@ -164,12 +170,19 @@ class PlatformEventStream:
         self._seq = 0
         self._seq_lock = threading.Lock()
         self._state_lock = threading.Lock()
-        self._q: "Queue[dict[str, Any]]" = Queue()
+        self._q = EventBacklog(
+            self.MAX_PENDING_MEMORY_BYTES, self.MAX_PENDING_DISK_BYTES
+        )
+        self._active_emitters = 0
+        self._accepting = True
+        self._delivery_error: Optional[BaseException] = None
         self._stop = threading.Event()
         self._closing = False
         self._closed = False
         # Daemonize so a stuck flush cannot pin the CLI after the run has finished.
-        self._thread = threading.Thread(target=self._loop, name="qym-platform-stream", daemon=True)
+        self._thread = threading.Thread(
+            target=self._loop, name="qym-platform-stream", daemon=True
+        )
         self._thread.start()
 
     def next_sequence(self) -> int:
@@ -200,6 +213,7 @@ class PlatformEventStream:
                     timeout=self.SYNC_SEND_TIMEOUT,
                 )
                 _debug(f"direct emit success: {evt.get('type', '?')}")
+                self.sent_events += 1
                 return
             except Exception as e:
                 _debug(
@@ -207,52 +221,153 @@ class PlatformEventStream:
                 )
                 if attempt + 1 < self.SYNC_SEND_RETRIES:
                     time.sleep(0.5)
+        self.dropped_events += 1
+        self._delivery_error = RuntimeError("Platform direct event delivery failed")
+        print(
+            f"qym: WARNING: platform event {evt.get('type', '?')} failed to upload "
+            f"after {self.SYNC_SEND_RETRIES} attempts.",
+            file=sys.stderr,
+        )
         _debug(
             f"direct emit FAILED after {self.SYNC_SEND_RETRIES} attempt(s): {evt.get('type', '?')}"
         )
 
-    def emit(self, type_: str, payload: Dict[str, Any], *, sync: bool = False) -> None:
-        evt = self._build_event(type_, payload)
+    def _enqueue(self, evt: Dict[str, Any], *, block=True, timeout=None) -> None:
         with self._state_lock:
-            closing = self._closing or self._closed or not self._thread.is_alive()
-        if sync or closing:
-            # Send synchronously for critical events (e.g., run_completed) and
-            # for any event emitted during/after shutdown.
-            reason = "sync" if sync else "closing"
-            self._send_event_sync(evt, reason=reason)
+            if not self._accepting:
+                direct = True
+            else:
+                direct = False
+                self._active_emitters += 1
+        if direct:
+            if not block:
+                raise Full
+            self._send_event_sync(evt, reason="closed")
+            return
+        try:
+            self._q.put(evt, block=block, timeout=timeout)
+        except Full:
+            raise
+        except Exception as exc:
+            self._delivery_error = exc
+            print(
+                f"qym: ERROR: platform event {evt.get('event_id')} could not be buffered "
+                f"({type(exc).__name__}). "
+                f"Pending spool: {self._q.spool_path or 'memory'}. "
+                "Local evaluation checkpoints remain available.",
+                file=sys.stderr,
+            )
+            raise
+        finally:
+            with self._state_lock:
+                self._active_emitters -= 1
+
+    def emit(self, type_: str, payload: Dict[str, Any], *, sync: bool = False) -> None:
+        """Queue an event; synchronous overflow spills to a bounded private file.
+
+        When both budgets are full this applies producer backpressure. Async
+        callers should use aemit(), which offloads spill and capacity waits.
+        """
+        evt = self._build_event(type_, payload)
+        if sync:
+            self._send_event_sync(evt, reason="sync")
         else:
-            self._q.put(evt)
+            self._enqueue(evt)
+
+    async def aemit(
+        self, type_: str, payload: Dict[str, Any], *, sync: bool = False
+    ) -> None:
+        """Queue without disk/network waits on the caller's event loop."""
+        evt = self._build_event(type_, payload)
+        if sync:
+            await asyncio.to_thread(self._send_event_sync, evt, reason="sync")
+            return
+        # Register before the first asynchronous handoff. Closing must account
+        # for an append waiting for an executor thread, not just a running put.
+        with self._state_lock:
+            registered = self._accepting
+            if registered:
+                self._active_emitters += 1
+
+        def release_registration():
+            with self._state_lock:
+                self._active_emitters -= 1
+
+        def finish_cancelled_append(task):
+            try:
+                task.result()
+            except (Exception, asyncio.CancelledError):
+                # Full means cancellation won before acceptance. Other failures
+                # have already been recorded and reported by _enqueue.
+                pass
+            finally:
+                release_registration()
+
+        try:
+            if registered:
+                try:
+                    self._enqueue(evt, block=False)
+                    return
+                except Full:
+                    pass
+            while True:
+                pending = asyncio.create_task(
+                    asyncio.to_thread(self._enqueue, evt, timeout=0.1)
+                )
+                try:
+                    await asyncio.shield(pending)
+                    return
+                except asyncio.CancelledError:
+                    if registered:
+                        # A running thread cannot be cancelled safely. Retain
+                        # admission ownership until its short put finishes;
+                        # aclose can drain it while this caller returns promptly.
+                        pending.add_done_callback(finish_cancelled_append)
+                        registered = False
+                    else:
+                        pending.add_done_callback(
+                            lambda task: (
+                                task.exception() if not task.cancelled() else None
+                            )
+                        )
+                    raise
+                except Full:
+                    await asyncio.sleep(0)
+        finally:
+            if registered:
+                release_registration()
 
     def flush(self, timeout: Optional[float] = None) -> bool:
-        """Block until the background queue is empty (all events sent or dropped).
-
-        Returns True if the queue was successfully drained within the timeout,
-        False if the timeout elapsed first. Callers can use this between items
-        to guarantee that metric emits are durable before the next item runs —
-        this is what prevents the "phantom 100% score" class of bugs where a
-        fast metric's emit is lost when an item is cancelled mid-flight.
-
-        Uses ``Queue.join()`` semantics; the flush loop calls ``task_done()``
-        for every event it dequeues and subsequently sends OR drops.
-        """
-        if timeout is None:
-            timeout = self.FLUSH_TIMEOUT
+        """Wait for accepted events; report success only when none were lost."""
+        drained = self._q.wait_drained(
+            self.FLUSH_TIMEOUT if timeout is None else timeout
+        )
         with self._state_lock:
-            if self._closed or not self._thread.is_alive():
-                return True  # nothing in flight
-        # Queue.join() doesn't support a timeout natively, so wait in a helper
-        # thread and gate on an Event we can poll with a wall-clock budget.
-        done = threading.Event()
+            admissions_finished = not self._active_emitters
+            closing_finished = not (self._closing and self._thread.is_alive())
+        return (
+            drained
+            and admissions_finished
+            and closing_finished
+            and self._delivery_error is None
+            and self.dropped_events == 0
+        )
 
-        def _waiter():
+    async def aflush(self, timeout: Optional[float] = None) -> bool:
+        return await asyncio.to_thread(self.flush, timeout)
+
+    async def aclose(self) -> None:
+        """Drain off the event loop, including when the caller is cancelled."""
+        task = asyncio.create_task(asyncio.to_thread(self.close))
+        cancelled = False
+        while not task.done():
             try:
-                self._q.join()
-            finally:
-                done.set()
-
-        waiter = threading.Thread(target=_waiter, name="qym-platform-flush-waiter", daemon=True)
-        waiter.start()
-        return done.wait(timeout=timeout)
+                await asyncio.shield(task)
+            except asyncio.CancelledError:
+                cancelled = True
+        task.result()
+        if cancelled:
+            raise asyncio.CancelledError
 
     def _close_timeout(self) -> float:
         raw = os.environ.get("QYM_PLATFORM_CLOSE_TIMEOUT", "")
@@ -273,7 +388,7 @@ class PlatformEventStream:
         after the (generous, env-tunable) budget with a loud warning.
         """
         with self._state_lock:
-            if self._closed or self._closing:
+            if self._closed:
                 return
             self._closing = True
         timeout = self._close_timeout()
@@ -281,11 +396,11 @@ class PlatformEventStream:
         # Enter drain mode immediately: the flush loop ignores the send
         # cadence and ships batches back-to-back until the queue is empty.
         self._stop.set()
-        deadline = time.time() + timeout
+        deadline = time.monotonic() + timeout
         printed_progress = False
         try:
             while self._thread.is_alive():
-                slice_s = min(self.CLOSE_PROGRESS_INTERVAL, deadline - time.time())
+                slice_s = min(self.CLOSE_PROGRESS_INTERVAL, deadline - time.monotonic())
                 if slice_s <= 0:
                     break
                 self._thread.join(timeout=slice_s)
@@ -304,7 +419,8 @@ class PlatformEventStream:
                 )
                 print(
                     f"qym: WARNING: gave up waiting for the platform upload after {timeout:.0f}s; "
-                    f"~{remaining} events were not delivered — the run page may be missing items. "
+                    f"~{self._q.unfinished_tasks} events are still pending — the run page may be missing items. "
+                    f"Spool: {self._q.spool_path or 'memory'}. "
                     "Raise QYM_PLATFORM_CLOSE_TIMEOUT to wait longer.",
                     file=sys.stderr,
                 )
@@ -399,8 +515,14 @@ class PlatformEventStream:
                 except Empty:
                     pass
             now = time.time()
-            if not self._stop.is_set() and (now - last_heartbeat) >= self.HEARTBEAT_INTERVAL:
-                _append(self._build_event("run_heartbeat", {"heartbeat_at": _utc_now()}), False)
+            if (
+                not self._stop.is_set()
+                and (now - last_heartbeat) >= self.HEARTBEAT_INTERVAL
+            ):
+                _append(
+                    self._build_event("run_heartbeat", {"heartbeat_at": _utc_now()}),
+                    False,
+                )
                 last_heartbeat = now
             # Flush on a full batch or on cadence for near-real-time updates.
             should_flush = bool(batch) and (
@@ -428,7 +550,9 @@ class PlatformEventStream:
                         timeout=10 if self._stop.is_set() else 30,
                     )
                     self.sent_events += len(batch)
-                    _debug(f"flushed {len(batch)} events (total sent: {self.sent_events})")
+                    _debug(
+                        f"flushed {len(batch)} events (total sent: {self.sent_events})"
+                    )
                     _clear_batch()
                     last_flush = time.time()
                     last_heartbeat = last_flush
@@ -475,10 +599,15 @@ class PlatformEventStream:
                 try:
                     _append(self._q.get_nowait(), True)
                 except Empty:
+                    with self._state_lock:
+                        if self._active_emitters or self._q.qsize():
+                            continue
+                        self._accepting = False
                     _debug(
                         f"flush loop exiting: sent={self.sent_events}, "
                         f"dropped={self.dropped_events}"
                     )
+                    self._q.dispose()
                     break
 
 
@@ -593,23 +722,27 @@ class PlatformClient:
             fields["set_alias"] = set_alias
         lines: list[bytes] = []
         for key, value in fields.items():
-            lines.extend([
-                f"--{boundary}".encode(),
-                f'Content-Disposition: form-data; name="{key}"'.encode(),
-                b"",
-                str(value).encode("utf-8"),
-            ])
+            lines.extend(
+                [
+                    f"--{boundary}".encode(),
+                    f'Content-Disposition: form-data; name="{key}"'.encode(),
+                    b"",
+                    str(value).encode("utf-8"),
+                ]
+            )
         raw = file_path.read_bytes()
         ctype = mimetypes.guess_type(str(file_path))[0] or "application/octet-stream"
-        lines.extend([
-            f"--{boundary}".encode(),
-            f'Content-Disposition: form-data; name="file"; filename="{file_path.name}"'.encode(),
-            f"Content-Type: {ctype}".encode(),
-            b"",
-            raw,
-            f"--{boundary}--".encode(),
-            b"",
-        ])
+        lines.extend(
+            [
+                f"--{boundary}".encode(),
+                f'Content-Disposition: form-data; name="file"; filename="{file_path.name}"'.encode(),
+                f"Content-Type: {ctype}".encode(),
+                b"",
+                raw,
+                f"--{boundary}--".encode(),
+                b"",
+            ]
+        )
         body = b"\r\n".join(lines)
         req = urllib.request.Request(
             f"{self.platform_url}/v1/datasets:upload",

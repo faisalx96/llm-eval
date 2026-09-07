@@ -1,0 +1,16 @@
+[
+  {
+    "items": 100,
+    "write_s": 0.011433791019953787,
+    "source_statements": 104,
+    "project_s": 0.18931270897155628,
+    "projection_statements": 87
+  },
+  {
+    "items": 1000,
+    "write_s": 0.07903241697931662,
+    "source_statements": 1004,
+    "project_s": 0.1713768329937011,
+    "projection_statements": 159
+  }
+]

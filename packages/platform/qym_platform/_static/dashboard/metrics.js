@@ -27,7 +27,8 @@ function isTaskErrorRow(row) {
  */
 function isMetricErrorMeta(meta) {
   if (!meta || typeof meta !== 'object' || Array.isArray(meta)) return false;
-  const status = String(meta.status || meta.label || '').toLowerCase();
+  // Labels are judge verdicts, including custom choices such as "failed".
+  const status = String(meta.status || '').toLowerCase();
   if (status === 'error' || status === 'failed' || status === 'timeout') return true;
   return meta.error !== undefined && meta.error !== null && String(meta.error).trim() !== '';
 }
@@ -121,6 +122,18 @@ function getRowScore(row, metricIdx, metricName = null) {
   return { score, isError: metricError };
 }
 
+/** Index rows using the same first-match identity semantics as Array.find. */
+function indexRowsById(rows, getItemId) {
+  const index = new Map();
+  for (const row of rows || []) {
+    const id = getItemId(row);
+    // Array.find uses strict equality: NaN never matches, and duplicates use
+    // the first row. Keep both rules when indexing arbitrary item identities.
+    if (id === id && !index.has(id)) index.set(id, row);
+  }
+  return index;
+}
+
 /**
  * Calculate aggregate metrics from item-level data across K runs
  *
@@ -188,8 +201,11 @@ function calculateItemLevelMetrics(options) {
 
   // Build item map for matching by ID if available
   const itemIds = new Set();
+  const rowIndexes = new Map();
+  const rowId = getItemId || (row => String(row.index));
   for (const runData of runsData) {
     const rows = runData?.snapshot?.rows || [];
+    rowIndexes.set(runData, indexRowsById(rows, rowId));
     for (const row of rows) {
       const itemId = getItemId ? getItemId(row) : String(row.index);
       itemIds.add(itemId);
@@ -202,11 +218,7 @@ function calculateItemLevelMetrics(options) {
 
     // Get score for this item from each run
     for (const runData of runsData) {
-      const rows = runData?.snapshot?.rows || [];
-      const row = rows.find(r => {
-        const id = getItemId ? getItemId(r) : String(r.index);
-        return id === itemId;
-      });
+      const row = rowIndexes.get(runData).get(itemId);
 
       if (!row) continue;
 
@@ -454,8 +466,10 @@ function calculateGroupedCohortComparison(options) {
 
   const selectedRuns = [...leftRuns, ...rightRuns];
   const itemIds = new Set();
+  const rowIndexes = new Map();
   selectedRuns.forEach((runData) => {
     const rows = runData?.snapshot?.rows || [];
+    rowIndexes.set(runData, indexRowsById(rows, getItemId));
     rows.forEach((row) => {
       const itemId = getItemId(row);
       if (itemId !== undefined && itemId !== null && itemId !== '') itemIds.add(itemId);
@@ -494,8 +508,7 @@ function calculateGroupedCohortComparison(options) {
     const attempts = [];
     const rowList = [];
     for (const runData of groupRuns) {
-      const runRows = runData?.snapshot?.rows || [];
-      const row = runRows.find(candidate => getItemId(candidate) === itemId);
+      const row = rowIndexes.get(runData).get(itemId);
       if (!row) return null;
       const metricIdx = getMetricIndex(runData);
       if (metricIdx < 0) return null;
@@ -862,6 +875,7 @@ if (typeof window !== 'undefined') {
     isErrorRow,
     getRowScore,
     parseScoreValue,
+    indexRowsById,
     // Metrics calculation
     calculateItemLevelMetrics,
     calculateGroupedOutcomeBuckets,

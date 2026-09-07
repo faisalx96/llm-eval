@@ -1,0 +1,245 @@
+{
+  "baseline-browser.xml": {
+    "tests": 21,
+    "failures": 2,
+    "errors": 0,
+    "skipped": 2,
+    "time": 7.075,
+    "passed": 17
+  },
+  "baseline-env-timing-recheck.xml": {
+    "tests": 6,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "time": 17.405,
+    "passed": 6
+  },
+  "baseline-unit.xml": {
+    "tests": 825,
+    "failures": 4,
+    "errors": 0,
+    "skipped": 3,
+    "time": 105.837,
+    "passed": 818
+  },
+  "compact-retention-review.xml": {
+    "tests": 21,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "time": 3.184,
+    "passed": 21
+  },
+  "dashboard-api.xml": {
+    "tests": 80,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 1,
+    "time": 50.325,
+    "passed": 79
+  },
+  "dashboard-durability-final.xml": {
+    "tests": 63,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 3,
+    "time": 23.485,
+    "passed": 60
+  },
+  "dashboard-review.xml": {
+    "tests": 4,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "time": 3.532,
+    "passed": 4
+  },
+  "dashboard-structured-issues.xml": {
+    "tests": 8,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "time": 6.845,
+    "passed": 8
+  },
+  "frontend-final-file.xml": {
+    "tests": 17,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "time": 17.32,
+    "passed": 17
+  },
+  "frontend-issue-integration.xml": {
+    "tests": 2,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "time": 5.909,
+    "passed": 2
+  },
+  "frontend-review.xml": {
+    "tests": 113,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "time": 5.809,
+    "passed": 113
+  },
+  "frontend.xml": {
+    "tests": 178,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "time": 34.551,
+    "passed": 178
+  },
+  "ingest-api-e2e.xml": {
+    "tests": 133,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 3,
+    "time": 61.541,
+    "passed": 130
+  },
+  "integrated-full.xml": {
+    "tests": 1209,
+    "failures": 1,
+    "errors": 0,
+    "skipped": 8,
+    "time": 243.346,
+    "passed": 1200,
+    "failed_tests": [
+      "tests.sdk.test_hardening_tier1::test_t21_shared_client_reused_across_task_invocations"
+    ],
+    "skip_reasons": {
+      "SQLite single-connection fixture is intentionally serial": 1,
+      "requires independent row-level locks": 2,
+      "PostgreSQL snapshot isolation test": 1,
+      "requires PostgreSQL row locks": 1,
+      "requires a real connection pool": 1,
+      "traceloop-sdk not available": 2
+    }
+  },
+  "integrated-migrations-lifecycle.xml": {
+    "tests": 12,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "time": 8.127,
+    "passed": 12
+  },
+  "migrations-lifecycle.xml": {
+    "tests": 6,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "time": 6.632,
+    "passed": 6
+  },
+  "packaging-structure.xml": {
+    "tests": 90,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "time": 2.037,
+    "passed": 90
+  },
+  "pass-search-final.xml": {
+    "tests": 34,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "time": 16.184,
+    "passed": 34
+  },
+  "pre-integration-full.xml": {
+    "tests": 1143,
+    "failures": 1,
+    "errors": 0,
+    "skipped": 8,
+    "time": 256.534,
+    "passed": 1134
+  },
+  "python312-job-compat.xml": {
+    "tests": 3,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "time": 0.028,
+    "passed": 3
+  },
+  "python312-route-compat.xml": {
+    "tests": 6,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "time": 2.018,
+    "passed": 6
+  },
+  "python39-integrated.xml": {
+    "tests": 35,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "time": 16.467,
+    "passed": 35
+  },
+  "python39-integration.xml": {
+    "tests": 229,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 6,
+    "time": 113.904,
+    "passed": 223
+  },
+  "python39-job-compat.xml": {
+    "tests": 3,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "time": 0.028,
+    "passed": 3
+  },
+  "python39-migration-ci-fix.xml": {
+    "tests": 5,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "time": 0.218,
+    "passed": 5
+  },
+  "python39-route-compat.xml": {
+    "tests": 6,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "time": 1.978,
+    "passed": 6
+  },
+  "python39-sdk.xml": {
+    "tests": 290,
+    "failures": 1,
+    "errors": 0,
+    "skipped": 6,
+    "time": 72.249,
+    "passed": 283
+  },
+  "root-dashboard.xml": {
+    "tests": 7,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "time": 4.579,
+    "passed": 7
+  },
+  "sdk-delivery-failures.xml": {
+    "tests": 5,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "time": 0.839,
+    "passed": 5
+  }
+}

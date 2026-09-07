@@ -1,0 +1,38 @@
+{
+  "node": "v22.16.0",
+  "baseline": "b1d1d00587df4fcf0e70875c29b0bb0cbc20172c",
+  "generated_at": "2026-09-05T07:53:13.571Z",
+  "scope": "Synthetic CPU, actual shipped source at baseline versus working tree. Median of three; Compare includes map construction each sample. Excludes browser DOM/layout, database and network. Exact outputs checked.",
+  "models": [
+    {
+      "items": 1000,
+      "runs": 5,
+      "before_ms": 41.109,
+      "after_ms": 2.789,
+      "speedup": 14.7
+    },
+    {
+      "items": 10000,
+      "runs": 5,
+      "before_ms": 3055.172,
+      "after_ms": 18.996,
+      "speedup": 160.8
+    }
+  ],
+  "comparison": [
+    {
+      "items": 1000,
+      "runs": 2,
+      "before_ms": 10.283,
+      "after_ms": 0.764,
+      "speedup": 13.5
+    },
+    {
+      "items": 10000,
+      "runs": 2,
+      "before_ms": 859.454,
+      "after_ms": 4.294,
+      "speedup": 200.2
+    }
+  ]
+}

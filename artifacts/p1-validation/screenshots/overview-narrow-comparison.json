@@ -1,0 +1,20 @@
+{
+  "baseline_ref": "b1d1d00587df4fcf0e70875c29b0bb0cbc20172c",
+  "geometry": {
+    "baseline": {
+      "viewport": 390,
+      "mainWidth": 198,
+      "recentTableWidth": 470.140625,
+      "recentCardWidth": 69,
+      "sidebarWidth": 192
+    },
+    "current": {
+      "viewport": 390,
+      "mainWidth": 198,
+      "recentTableWidth": 470.140625,
+      "recentCardWidth": 69,
+      "sidebarWidth": 192
+    }
+  },
+  "limitation": "At 390px the persistent sidebar and two-column cards clip table content in both versions."
+}

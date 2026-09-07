@@ -415,6 +415,24 @@ def _detect_git_info(
     return {"git_branch": branch, "git_commit": commit}
 
 
+async def _emit_platform_event(stream, type_: str, payload, *, sync=False):
+    if callable(getattr(type(stream), "aemit", None)):
+        await stream.aemit(type_, payload, sync=sync)
+    else:
+        # Stream substitutes historically expose only emit().
+        if sync:
+            await asyncio.to_thread(stream.emit, type_, payload, sync=True)
+        else:
+            stream.emit(type_, payload)
+
+
+async def _close_platform_stream(stream):
+    if callable(getattr(type(stream), "aclose", None)):
+        await stream.aclose()
+    else:
+        await asyncio.to_thread(stream.close)
+
+
 class Evaluator:
     """Simple evaluator for LLM tasks."""
 
@@ -965,6 +983,24 @@ class Evaluator:
     async def arun(
         self, show_tui: bool = True, auto_save: bool = False, save_format: str = "csv"
     ) -> EvaluationResult:
+        """Run an evaluation and release its judge clients on every exit path."""
+        from ..metrics.judges._client import judge_client_scope
+
+        async with judge_client_scope():
+            completed = False
+            try:
+                result = await self._arun(show_tui, auto_save, save_format)
+                completed = True
+                return result
+            finally:
+                if not completed:
+                    stream = getattr(self, "_platform_stream", None)
+                    if stream is not None:
+                        await _close_platform_stream(stream)
+
+    async def _arun(
+        self, show_tui: bool = True, auto_save: bool = False, save_format: str = "csv"
+    ) -> EvaluationResult:
         """
         Run the evaluation asynchronously.
 
@@ -1158,7 +1194,8 @@ class Evaluator:
                         )
                     # Seed run_started event (platform also has run record already; this is for richer metadata)
                     try:
-                        self._platform_stream.emit(
+                        await _emit_platform_event(
+                            self._platform_stream,
                             "run_started",
                             {
                                 "external_run_id": self.run_name,
@@ -1431,7 +1468,8 @@ class Evaluator:
                         try:
                             ps = getattr(self, "_platform_stream", None)
                             if ps is not None:
-                                ps.emit(
+                                await _emit_platform_event(
+                                    ps,
                                     "item_failed",
                                     {
                                         "item_id": str(item_id),
@@ -1573,7 +1611,7 @@ class Evaluator:
             # the interrupt handler below drains the right tasks.
             worker_tasks: List[asyncio.Task] = []
 
-            def _emit_pass_completed(pass_number: int) -> None:
+            async def _emit_pass_completed(pass_number: int) -> None:
                 if self.samples <= 1:
                     return
                 try:
@@ -1600,7 +1638,7 @@ class Evaluator:
                     }
                     ps = getattr(self, "_platform_stream", None)
                     if ps is not None:
-                        ps.emit("pass_completed", payload)
+                        await _emit_platform_event(ps, "pass_completed", payload)
                     self._notify_observer("on_pass_completed", **payload)
 
                     # Sampling sanity check: if pass 2 reproduced pass 1's
@@ -1657,7 +1695,7 @@ class Evaluator:
                     if interrupted or self._should_stop_requested():
                         interrupted = True
                         break
-                    _emit_pass_completed(_pass_number)
+                    await _emit_pass_completed(_pass_number)
             except (KeyboardInterrupt, asyncio.CancelledError) as exc:
                 interrupted = True
                 cancel_exc = exc
@@ -1729,23 +1767,29 @@ class Evaluator:
 
         # Flush and shut down OTEL
         try:
-            self._otel.shutdown()
+            await asyncio.to_thread(self._otel.shutdown)
         finally:
             self._otel.reset_stream(otel_stream_token)
 
         # Finalize remote streaming after all spans have had a chance to emit.
         self._run_completed = False
         _final_status = "STOPPED" if interrupted else "COMPLETED"
-        if getattr(self, "_platform_stream", None) is not None:
+        platform_stream = getattr(self, "_platform_stream", None)
+        if platform_stream is not None:
             try:
                 # Close the async queue after all late span/item emits have happened.
-                self._platform_stream.close()
+                await _close_platform_stream(platform_stream)
             except Exception:
                 pass
             try:
-                # Send run_completed synchronously to guarantee delivery.
+                # A timed-out drain must not publish completion ahead of queued
+                # item/span events. close() has already reported the backlog.
+                if callable(getattr(type(platform_stream), "aflush", None)) and not await platform_stream.aflush(0):
+                    raise RuntimeError("Platform upload still pending after close")
+                # Send run_completed after the ordered queue has drained.
                 final_run_metadata = dict(result.run_metadata or {})
-                self._platform_stream.emit(
+                await _emit_platform_event(
+                    platform_stream,
                     "run_completed",
                     {
                         "ended_at": _utc_now_str(),
@@ -1759,6 +1803,8 @@ class Evaluator:
                     },
                     sync=True,
                 )
+                if callable(getattr(type(platform_stream), "aflush", None)) and not await platform_stream.aflush(0):
+                    raise RuntimeError("Platform completion was not acknowledged")
                 self._run_completed = True
             except Exception:
                 pass
@@ -2194,13 +2240,14 @@ class Evaluator:
 
         return spans
 
-    def _emit_item_started(self, index: int, item: Any):
+    async def _emit_item_started(self, index: int, item: Any):
         """Emit item_started to platform stream and notify observer."""
         try:
             ps = getattr(self, "_platform_stream", None)
             if ps is not None:
                 item_id = getattr(item, "id", None) or f"item_{index}"
-                ps.emit(
+                await _emit_platform_event(
+                    ps,
                     "item_started",
                     {
                         "item_id": str(item_id),
@@ -2223,7 +2270,7 @@ class Evaluator:
             },
         )
 
-    def _emit_item_attempt_started(
+    async def _emit_item_attempt_started(
         self,
         index: int,
         item: Any,
@@ -2237,7 +2284,8 @@ class Evaluator:
             if ps is None:
                 return
             item_id = getattr(item, "id", None) or f"item_{index}"
-            ps.emit(
+            await _emit_platform_event(
+                ps,
                 "item_attempt_started",
                 {
                     "item_id": str(item_id),
@@ -2271,7 +2319,7 @@ class Evaluator:
         adapter_trace.trace_id = spans.trace_id
 
         task_started_at_ms = int(time.time() * 1000)
-        self._emit_item_attempt_started(
+        await self._emit_item_attempt_started(
             index, item, attempt_number, spans, task_started_at_ms
         )
         attempt_start_time = time.monotonic()
@@ -2359,7 +2407,7 @@ class Evaluator:
 
             is_terminal_attempt = attempt_number == 1 + self.max_retries
             if not is_terminal_attempt:
-                self._emit_item_attempt_finished(
+                await self._emit_item_attempt_finished(
                     index, item, attempt, is_last_attempt=False
                 )
                 base_delay = min(2 ** (attempt_number - 1), 30)
@@ -2441,7 +2489,7 @@ class Evaluator:
                 "status": metric_status,
             }
 
-        def _emit_platform_metric_result(
+        async def _emit_platform_metric_result(
             raw_score_value: Any, result: MetricResult
         ) -> None:
             """Send both the score and its execution status to the platform."""
@@ -2450,7 +2498,8 @@ class Evaluator:
                 if ps is None:
                     return
                 item_id = getattr(item, "id", None) or f"item_{index}"
-                ps.emit(
+                await _emit_platform_event(
+                    ps,
                     "metric_scored",
                     {
                         "item_id": str(item_id),
@@ -2614,7 +2663,7 @@ class Evaluator:
             # Add score as OTEL event on eval span (provider-agnostic)
             spans.add_score_event(m_name, main_val, result.label, result.explanation)
 
-            _emit_platform_metric_result(raw_score_value, result)
+            await _emit_platform_metric_result(raw_score_value, result)
 
             self._notify_observer(
                 "on_metric_result",
@@ -2642,7 +2691,7 @@ class Evaluator:
                 f"metric timeout after {self.metric_timeout}s "
                 f"({self.metric_max_retries + 1} attempts)"
                 if isinstance(e, asyncio.TimeoutError)
-                else str(e) or type(e).__name__
+                else str(e).strip() or type(e).__name__
             )
             error_traceback = traceback.format_exc()
             score = {
@@ -2657,7 +2706,7 @@ class Evaluator:
                 "error": error_message,
                 "traceback": error_traceback,
             }
-            _emit_platform_metric_result(0, error_result)
+            await _emit_platform_metric_result(0, error_result)
             self._notify_observer(
                 "on_metric_result",
                 item_index=index,
@@ -2722,7 +2771,7 @@ class Evaluator:
         scores = {k: v for k, v in scores.items() if v is not None}
         tracker.complete_item(index, elapsed_time=task_time)
 
-    def _emit_item_attempt_finished(
+    async def _emit_item_attempt_finished(
         self,
         index: int,
         item: Any,
@@ -2736,7 +2785,8 @@ class Evaluator:
             if ps is None:
                 return
             item_id = getattr(item, "id", None) or f"item_{index}"
-            ps.emit(
+            await _emit_platform_event(
+                ps,
                 "item_attempt_finished",
                 {
                     "item_id": str(item_id),
@@ -2760,7 +2810,7 @@ class Evaluator:
         except Exception:
             pass
 
-    def _emit_item_completed(
+    async def _emit_item_completed(
         self,
         index: int,
         item: Any,
@@ -2785,7 +2835,8 @@ class Evaluator:
             ps = getattr(self, "_platform_stream", None)
             if ps is not None:
                 item_id = getattr(item, "id", None) or f"item_{index}"
-                ps.emit(
+                await _emit_platform_event(
+                    ps,
                     "item_completed",
                     {
                         "item_id": str(item_id),
@@ -2860,7 +2911,8 @@ class Evaluator:
         try:
             ps = getattr(self, "_platform_stream", None)
             if ps is not None:
-                ps.emit(
+                await _emit_platform_event(
+                    ps,
                     "item_failed",
                     {
                         "item_id": str(item_id),
@@ -2877,7 +2929,7 @@ class Evaluator:
         except Exception:
             pass
         if attempt is not None:
-            self._emit_item_attempt_finished(index, item, attempt, is_last_attempt=True)
+            await self._emit_item_attempt_finished(index, item, attempt, is_last_attempt=True)
         # 2. Update local tracker
         try:
             tracker.update_trace_info(index, trace_id, trace_url)
@@ -2940,11 +2992,11 @@ class Evaluator:
         # Persist the final attempt before item_completed.  Older platforms
         # attach a repeat pass's output to the already-existing final-attempt
         # row when they process item_completed.
-        self._emit_item_attempt_finished(
+        await self._emit_item_attempt_finished(
             index, item, success_attempt, is_last_attempt=True
         )
         # Emit item_completed to the platform stream (fire-and-forget queue put)
-        self._emit_item_completed(
+        await self._emit_item_completed(
             index,
             item,
             success_attempt.output,
@@ -2969,7 +3021,7 @@ class Evaluator:
 
         try:
             tracker.start_item(index)
-            self._emit_item_started(index, item)
+            await self._emit_item_started(index, item)
 
             success_attempt, attempts, retry_count = await self._execute_task(
                 index, item
@@ -3100,7 +3152,8 @@ class Evaluator:
                     ps = getattr(self, "_platform_stream", None)
                     if ps is not None:
                         item_id = getattr(item, "id", None) or f"item_{index}"
-                        ps.emit(
+                        await _emit_platform_event(
+                            ps,
                             "item_failed",
                             {
                                 "item_id": str(item_id),
@@ -3150,7 +3203,11 @@ class Evaluator:
             logger.error(
                 f"Metric {getattr(metric_func, '__name__', 'unknown')} failed: {error_tb}"
             )
-            return {"score": 0, "error": str(e), "traceback": error_tb}
+            return {
+                "score": 0,
+                "error": str(e).strip() or type(e).__name__,
+                "traceback": error_tb,
+            }
 
 
 def _announce_saved_results(

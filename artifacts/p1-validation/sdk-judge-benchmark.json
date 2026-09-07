@@ -1,0 +1,17 @@
+{
+  "scope": "Mock judge responses; 100 real AsyncOpenAI client lifecycle operations, no provider network or model latency.",
+  "before": {
+    "seconds": 0.22726,
+    "created_clients": 100,
+    "unclosed_clients": 100,
+    "results": 100,
+    "errors": 0
+  },
+  "after": {
+    "seconds": 0.07973,
+    "created_clients": 1,
+    "unclosed_clients": 0,
+    "results": 100,
+    "errors": 0
+  }
+}

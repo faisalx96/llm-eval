@@ -12,6 +12,7 @@ from typing import Any, Callable, Dict, List, Optional
 
 from ..judge_config import JudgeConfig, get_default_judge_config
 from ..result import MetricResult
+from ._client import borrow_judge_client
 
 logger = logging.getLogger(__name__)
 
@@ -203,84 +204,79 @@ async def llm_judge(
     cfg = config or get_default_judge_config()
     cfg.validate()
 
-    client = AsyncOpenAI(
-        api_key=cfg.api_key,
-        base_url=cfg.base_url,
-        timeout=cfg.timeout,
-    )
-
-    try:
-        response = await _call_with_retry(
-            client,
-            model=cfg.model,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-            temperature=cfg.temperature,
-            max_tokens=cfg.max_tokens,
-            timeout=cfg.timeout,
-        )
-        raw_text = response.choices[0].message.content or ""
-    except Exception as exc:
-        logger.warning("LLM judge call failed after retries: %s", exc)
-        return MetricResult(
-            score=0.0,
-            kind="llm",
-            metadata={"error": str(exc)},
-        )
-
-    # --- Parse response ---
-    verdict, explanation = _parse_verdict(raw_text, choices)
-
-    if verdict is None:
-        # JSON parse failed — retry once with a stricter nudge
-        labels = ", ".join(f'"{k}"' for k in choices)
+    async with borrow_judge_client(cfg) as client:
         try:
-            retry_response = await _call_with_retry(
+            response = await _call_with_retry(
                 client,
                 model=cfg.model,
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt},
-                    {"role": "assistant", "content": raw_text},
-                    {
-                        "role": "user",
-                        "content": f'Your response was not valid JSON. Respond with ONLY a JSON object: {{"verdict": one of [{labels}], "explanation": "your reasoning"}}',
-                    },
                 ],
                 temperature=cfg.temperature,
                 max_tokens=cfg.max_tokens,
-                max_attempts=1,
                 timeout=cfg.timeout,
             )
-            retry_text = retry_response.choices[0].message.content or ""
-            verdict, explanation = _parse_verdict(retry_text, choices)
-        except Exception:
-            pass  # Fall through to snap_to_rail
-
-    if verdict is None:
-        # Last resort: snap_to_rail on original raw text
-        snapped = snap_to_rail(raw_text, list(choices.keys()))
-        if snapped:
+            raw_text = response.choices[0].message.content or ""
+        except Exception as exc:
+            logger.warning("LLM judge call failed after retries: %s", exc)
             return MetricResult(
-                score=choices[snapped],
-                label=snapped,
-                explanation=explanation,
+                score=0.0,
                 kind="llm",
+                metadata={"error": str(exc)},
             )
-        return MetricResult(
-            score=0.0,
-            kind="llm",
-            metadata={"error": "Could not parse LLM verdict", "raw_response": raw_text},
-        )
 
-    return MetricResult(
-        score=choices[verdict],
-        label=verdict,
-        explanation=explanation,
-        kind="llm",
-    )
+        # --- Parse response ---
+        verdict, explanation = _parse_verdict(raw_text, choices)
+
+        if verdict is None:
+            # JSON parse failed — retry once with a stricter nudge
+            labels = ", ".join(f'"{k}"' for k in choices)
+            try:
+                retry_response = await _call_with_retry(
+                    client,
+                    model=cfg.model,
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt},
+                        {"role": "assistant", "content": raw_text},
+                        {
+                            "role": "user",
+                            "content": f'Your response was not valid JSON. Respond with ONLY a JSON object: {{"verdict": one of [{labels}], "explanation": "your reasoning"}}',
+                        },
+                    ],
+                    temperature=cfg.temperature,
+                    max_tokens=cfg.max_tokens,
+                    max_attempts=1,
+                    timeout=cfg.timeout,
+                )
+                retry_text = retry_response.choices[0].message.content or ""
+                verdict, explanation = _parse_verdict(retry_text, choices)
+            except Exception:
+                pass  # Fall through to snap_to_rail
+
+        if verdict is None:
+            # Last resort: snap_to_rail on original raw text
+            snapped = snap_to_rail(raw_text, list(choices.keys()))
+            if snapped:
+                return MetricResult(
+                    score=choices[snapped],
+                    label=snapped,
+                    explanation=explanation,
+                    kind="llm",
+                )
+            return MetricResult(
+                score=0.0,
+                kind="llm",
+                metadata={"error": "Could not parse LLM verdict", "raw_response": raw_text},
+            )
+
+        return MetricResult(
+            score=choices[verdict],
+            label=verdict,
+            explanation=explanation,
+            kind="llm",
+        )
 
 
 def _safe_substitute(template: str, subs: Dict[str, str]) -> str:

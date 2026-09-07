@@ -546,6 +546,7 @@ class RunItem(Base):
     __table_args__ = (
         UniqueConstraint("run_id", "item_id", name="uq_run_item"),
         Index("ix_run_item_run_index", "run_id", "index"),
+        Index("ix_run_item_run_trace", "run_id", "trace_id"),
     )
 
 
@@ -995,3 +996,46 @@ class ReviewCorrection(Base):
             "is_active",
         ),
     )
+
+
+class RunTraceSummary(Base):
+    """Private numeric accumulator for incremental live trace statistics."""
+
+    __tablename__ = "run_trace_summaries"
+    run_id: Mapped[str] = mapped_column(ForeignKey("runs.id", ondelete="CASCADE"), primary_key=True)
+    totals: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+
+
+class RunTraceContribution(Base):
+    """Last applied item contribution, independent of mutable item metadata."""
+
+    __tablename__ = "run_trace_contributions"
+    run_id: Mapped[str] = mapped_column(ForeignKey("runs.id", ondelete="CASCADE"), primary_key=True)
+    item_id: Mapped[str] = mapped_column(String(200), primary_key=True)
+    item_order: Mapped[int] = mapped_column(BigInteger)
+    trace_id: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    included: Mapped[bool] = mapped_column(Boolean, default=False)
+    bucket: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    __table_args__ = (Index("ix_trace_contribution_run_trace", "run_id", "trace_id"),)
+
+
+class RunTraceNamedContribution(Base):
+    """Indexed first-contributor order for named outer-scope trace latencies."""
+
+    __tablename__ = "run_trace_named_contributions"
+    run_id: Mapped[str] = mapped_column(ForeignKey("runs.id", ondelete="CASCADE"), primary_key=True)
+    item_id: Mapped[str] = mapped_column(String(200), primary_key=True)
+    name: Mapped[str] = mapped_column(String(500), primary_key=True)
+    item_order: Mapped[int] = mapped_column(BigInteger)
+    name_position: Mapped[int] = mapped_column(Integer)
+    __table_args__ = (Index("ix_trace_named_first", "run_id", "name", "item_order", "name_position"),)
+
+# Import projection mappings so Base.metadata includes their durable tables.
+from qym_platform.db.dashboard_models import (  # noqa: E402,F401
+    DashboardChangeEvent, DashboardEventCause, DashboardRecordState,
+    DashboardRecordCause, DashboardRunDimension, DashboardRunSummary,
+    DashboardBucketRollup, DashboardHistogram, DashboardPartitionState,
+    DashboardDeadLetter,
+)
+from qym_platform.services.dashboard_outbox import install_dashboard_outbox_hooks
+install_dashboard_outbox_hooks()

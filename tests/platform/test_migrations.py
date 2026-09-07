@@ -1,7 +1,7 @@
 import importlib.util
 from pathlib import Path
 from types import ModuleType
-from typing import Any
+from typing import Any, Optional
 
 import pytest
 import sqlalchemy as sa
@@ -42,7 +42,7 @@ def test_alembic_has_one_upgrade_head() -> None:
     config.set_main_option("script_location", str(MIGRATIONS_DIR))
     heads = ScriptDirectory.from_config(config).get_heads()
 
-    assert heads == ["0046"]
+    assert heads == ["0048"]
 
 
 def test_subcategory_taxonomy_migration_preserves_rows_and_defaults_json(
@@ -156,7 +156,7 @@ def test_catalog_backfill_scopes_streaming_to_select_statements() -> None:
 
     class FakeConnection:
         def __init__(self) -> None:
-            self.execute_options: list[dict[str, Any] | None] = []
+            self.execute_options: list[Optional[dict[str, Any]]] = []
 
         def execution_options(self, **_options: Any) -> Any:
             raise AssertionError("streaming must not mutate the Alembic connection")
@@ -166,7 +166,7 @@ def test_catalog_backfill_scopes_streaming_to_select_statements() -> None:
             _statement: Any,
             _parameters: Any = None,
             *,
-            execution_options: dict[str, Any] | None = None,
+            execution_options: Optional[dict[str, Any]] = None,
         ) -> EmptyResult:
             self.execute_options.append(execution_options)
             return EmptyResult()

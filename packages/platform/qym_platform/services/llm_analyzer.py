@@ -54,10 +54,13 @@ MAX_RULE_WRITER_PROMPT_CHARS = 320_000
 MAX_RULE_WRITER_PATCHES = 128
 # The item analyzer has a separate, authoritative prompt budget.  It is
 # enforced after every section is assembled, including custom prompts.
-MAX_ANALYSIS_PROMPT_CHARS = 320_000
+MAX_ANALYSIS_PROMPT_CHARS = 640_000
+# Keep provider-rejection recovery independent of the larger normal budget.
+MAX_ANALYSIS_FALLBACK_PROMPT_CHARS = 160_000
 MAX_ITEM_FIELD_CHARS = 20_000
-MAX_ITEM_CONTEXT_CHARS = 100_000
-MAX_TRACE_CHARS = 40_000
+# Leave room around a large trace for item fields, scores and metadata.
+MAX_ITEM_CONTEXT_CHARS = 500_000
+MAX_TRACE_CHARS = 400_000
 LLM_REQUEST_TIMEOUT_SECONDS = 120.0
 RULE_INFERENCE_TIMEOUT_SECONDS = 120.0
 
@@ -2937,7 +2940,7 @@ async def analyze_single_item(
                 raise
             fallback_messages = _fit_prompt_messages(
                 messages,
-                max_chars=max(16_000, MAX_ANALYSIS_PROMPT_CHARS // 2),
+                max_chars=MAX_ANALYSIS_FALLBACK_PROMPT_CHARS,
             )
             if prompt_character_count(fallback_messages) >= prompt_character_count(
                 messages

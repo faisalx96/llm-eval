@@ -10,7 +10,6 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from qym_platform.app import create_app
 from qym_platform.auth import Principal, require_ui_principal
-from qym_platform.api.root_cause_dashboard import router as root_cause_dashboard_router
 from qym_platform.db.base import Base
 from qym_platform.db.models import (
     CorrectionStatus,
@@ -362,12 +361,11 @@ def test_root_cause_dashboard_routes_are_temporarily_disabled() -> None:
                 params=[("run_id", "run-1"), ("run_id", "run-2")],
             )
             assert compare.status_code == 404
-            # Newer FastAPI versions keep included routers as deferred route
-            # entries, so inspect the original router instead of flattened paths.
-            assert any(
-                getattr(route, "original_router", None) is root_cause_dashboard_router
-                for route in app.routes
-            )
+            # The public schema works with both flattened and deferred routers.
+            registered_paths = app.openapi()["paths"]
+            for suffix in ("", "/occurrences", "/compare"):
+                path = "/api/projects/{project_slug}/root-cause-dashboard" + suffix
+                assert "get" in registered_paths[path]
         assert session.query(RunItem).count() == 2
     finally:
         session.close()

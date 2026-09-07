@@ -234,17 +234,44 @@
         }).join('');
       }
 
+      let overviewActive = true;
+      let summaryRefreshTimer = null;
+      let liveRefreshTimer = null;
+      let liveRequestGeneration = 0;
+      function stopOverview() {
+        overviewActive = false;
+        clearTimeout(summaryRefreshTimer);
+        clearInterval(liveRefreshTimer);
+      }
+      function handleAuthResponse(response) {
+        if (!overviewActive || response.status !== 401) return;
+        stopOverview();
+        if (window.QymAuth) {
+          window.QymAuth.renderAuthGate(document.querySelector('main'), { message: 'Your session has expired. Sign in to continue.' });
+        }
+      }
+      async function summaryRuns(slug, filters, limit, sort = 'created-desc') {
+        if (!overviewActive) throw new Error('Overview stopped');
+        const response = await fetch(apiUrl('api/dashboard/runs'), {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ project_slug: slug, filters, limit, offset: 0, sort }),
+        });
+        handleAuthResponse(response);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return response.json();
+      }
+
       async function loadLiveRuns(slug) {
         const tbody = document.getElementById('live-runs-body');
-        if (!tbody) return;
+        if (!overviewActive || !tbody) return;
+        const generation = ++liveRequestGeneration;
         try {
-          const liveUrl = slug ? `api/runs/live?limit=8&project_slug=${encodeURIComponent(slug)}` : 'api/runs/live?limit=8';
-          const res = await fetch(apiUrl(liveUrl));
-          if (!res.ok) throw new Error('Failed');
-          const data = await res.json();
-          const liveRuns = data.runs || [];
+          const data = await summaryRuns(slug, { statuses: ['RUNNING', 'PENDING'] }, 8, 'activity-desc');
+          if (!overviewActive || generation !== liveRequestGeneration) return;
+          const liveRuns = data.rows || [];
+          tbody.setAttribute('aria-busy', data.freshness?.updating ? 'true' : 'false');
           if (!liveRuns.length) {
-            tbody.innerHTML = '<tr><td colspan="5" class="empty-state">No live runs</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="5" class="empty-state">' + (data.freshness?.updating ? 'Updating live runs…' : 'No live runs') + '</td></tr>';
             return;
           }
           tbody.innerHTML = liveRuns.map(run => {
@@ -260,16 +287,19 @@
               + '</tr>';
           }).join('');
         } catch (e) {
+          if (!overviewActive || generation !== liveRequestGeneration) return;
           console.error('[Overview] Failed to load live runs:', e);
           tbody.innerHTML = '<tr><td colspan="5" class="empty-state">Failed to load live runs</td></tr>';
         }
       }
 
       async function load() {
+        if (!overviewActive) return;
         // Wait for shell
         if (window.QymShell && !window.__QYM_USER__) {
           await new Promise(r => document.addEventListener('qym:shell-ready', r, { once: true }));
         }
+        if (!overviewActive) return;
 
         const ctx = window.QymShell ? window.QymShell.getPageContext() : {};
         const project = window.QymShell ? window.QymShell.getProject() : null;
@@ -287,20 +317,18 @@
         }
 
         await loadLiveRuns(slug);
+        if (!overviewActive) return;
 
         // Fetch recent runs
         try {
-          const runsUrl = slug
-            ? `api/runs?limit=5&offset=0&exclude_live=true&project_slug=${encodeURIComponent(slug)}`
-            : 'api/runs?limit=5&offset=0&exclude_live=true';
-          const res = await fetch(apiUrl(runsUrl));
-          if (!res.ok) throw new Error('Failed');
-          const data = await res.json();
+          const data = await summaryRuns(slug, { statuses: ['DRAFT', 'SUBMITTED', 'APPROVED', 'REJECTED', 'COMPLETED', 'FAILED', 'STOPPED'] }, 5);
+          if (!overviewActive) return;
           const runs = flattenRunsPayload(data);
-          const totalRuns = data.total_count != null ? data.total_count : runs.length;
+          const totalRuns = data.total_runs != null ? data.total_runs : runs.length;
+          const unknownStats = !!data.freshness?.updating && totalRuns === 0;
 
           // Stats
-          document.getElementById('ov-runs').textContent = totalRuns;
+          document.getElementById('ov-runs').textContent = unknownStats ? '—' : totalRuns;
           const models = new Set(runs.map(r => r.model_name).filter(Boolean));
           document.getElementById('ov-models').textContent = models.size || '—';
 
@@ -309,37 +337,42 @@
           if (scores.length) {
             const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
             document.getElementById('ov-success').textContent = (avg * 100).toFixed(1) + '%';
+          } else {
+            document.getElementById('ov-success').textContent = '—';
           }
 
           // Total items
           const totalItems = runs.reduce((acc, r) => acc + (r.total_items || 0), 0);
-          document.getElementById('ov-items').textContent = totalItems.toLocaleString();
+          document.getElementById('ov-items').textContent = unknownStats ? '—' : totalItems.toLocaleString();
 
           // Recent runs table
           const tbody = document.getElementById('recent-runs-body');
-          tbody.innerHTML = renderRunRows(runs.slice(0, 5), slug, { includeStatus: true, emptyText: 'No runs yet' });
+          tbody.setAttribute('aria-busy', data.freshness?.updating ? 'true' : 'false');
+          tbody.innerHTML = renderRunRows(runs.slice(0, 5), slug, { includeStatus: true, emptyText: data.freshness?.updating ? 'Updating runs…' : 'No runs yet' });
 
           // Approved runs table
-          const approvedUrl = slug
-            ? `api/runs?limit=5&offset=0&project_slug=${encodeURIComponent(slug)}&status=APPROVED`
-            : 'api/runs?limit=5&offset=0&status=APPROVED';
-          const approvedRes = await fetch(apiUrl(approvedUrl));
-          if (!approvedRes.ok) throw new Error('Failed');
-          const approvedData = await approvedRes.json();
+          const approvedData = await summaryRuns(slug, { statuses: ['APPROVED'] }, 5);
+          if (!overviewActive) return;
           const approvedRuns = flattenRunsPayload(approvedData);
-          const approvedTotal = approvedData.total_count != null ? approvedData.total_count : approvedRuns.length;
+          const approvedTotal = approvedData.total_runs != null ? approvedData.total_runs : approvedRuns.length;
           const approvedBody = document.getElementById('approved-runs-body');
-          approvedBody.innerHTML = renderRunRows(approvedRuns.slice(0, 5), slug, { emptyText: 'No approved runs yet' });
-          document.getElementById('ov-runs-sub').textContent = approvedTotal ? approvedTotal + ' approved' : '';
+          approvedBody.setAttribute('aria-busy', approvedData.freshness?.updating ? 'true' : 'false');
+          approvedBody.innerHTML = renderRunRows(approvedRuns.slice(0, 5), slug, { emptyText: approvedData.freshness?.updating ? 'Updating approved runs…' : 'No approved runs yet' });
+          document.getElementById('ov-runs-sub').textContent = (approvedTotal ? approvedTotal + ' approved' : '') + ((data.freshness?.updating || approvedData.freshness?.updating) ? ' · Updating…' : '');
+          if (data.freshness?.updating || approvedData.freshness?.updating) {
+            clearTimeout(summaryRefreshTimer);
+            summaryRefreshTimer = setTimeout(() => { if (overviewActive) load(); }, 2000);
+          }
 
           // Update topbar stats
           if (window.QymShell) {
             window.QymShell.setTopbarStats([
-              { label: 'runs', value: totalRuns, color: 'var(--accent-primary)' },
-              { label: 'models', value: models.size, color: 'var(--accent-secondary)' },
+              { label: 'runs', value: unknownStats ? '—' : totalRuns, color: 'var(--accent-primary)' },
+              { label: 'models', value: unknownStats ? '—' : models.size, color: 'var(--accent-secondary)' },
             ]);
           }
         } catch (e) {
+          if (!overviewActive) return;
           console.error('[Overview] Failed to load runs:', e);
           document.getElementById('recent-runs-body').innerHTML = '<tr><td colspan="5" class="empty-state">Failed to load</td></tr>';
           document.getElementById('approved-runs-body').innerHTML = '<tr><td colspan="4" class="empty-state">Failed to load</td></tr>';
@@ -350,8 +383,11 @@
           const reviewLimit = 12;
           const corrUrl = slug ? `api/corrections?limit=${reviewLimit}&status=pending&project_slug=${encodeURIComponent(slug)}` : `api/corrections?limit=${reviewLimit}&status=pending`;
           const res = await fetch(apiUrl(corrUrl));
+          handleAuthResponse(res);
+          if (!overviewActive) return;
           if (res.ok) {
             const data = await res.json();
+            if (!overviewActive) return;
             const items = data.corrections || data.items || [];
             const total = data.total || items.length;
             const body = document.getElementById('pending-reviews-body');
@@ -373,13 +409,16 @@
       }
 
       load().catch(err => {
+        if (!overviewActive) return;
         document.querySelector('main').innerHTML = `<div class="empty-state">${esc(err.message || 'Failed to load')}</div>`;
       });
-      setInterval(() => {
+      liveRefreshTimer = setInterval(() => {
+        if (!overviewActive) return;
         const ctx = window.QymShell ? window.QymShell.getPageContext() : {};
         const project = window.QymShell ? window.QymShell.getProject() : null;
         loadLiveRuns(ctx.projectSlug || (project && project.slug) || '');
       }, 10000);
+      document.addEventListener('qym:before-navigate', stopOverview, { once: true });
     })();
   </script>
 </body>

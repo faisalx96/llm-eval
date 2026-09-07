@@ -101,12 +101,12 @@ def install_timing_wrappers(stack: ExitStack, harness: TimingHarness) -> None:
 
     wrap_async(Evaluator, "_execute_task", "evaluator.execute_task")
     wrap_async(Evaluator, "_compute_metrics", "evaluator.compute_metrics")
-    wrap_sync(Evaluator, "_emit_item_started", "evaluator.emit_item_started")
+    wrap_async(Evaluator, "_emit_item_started", "evaluator.emit_item_started")
     wrap_sync(Evaluator, "_update_tracker", "evaluator.update_tracker")
-    wrap_sync(Evaluator, "_emit_item_completed", "evaluator.emit_item_completed")
+    wrap_async(Evaluator, "_emit_item_completed", "evaluator.emit_item_completed")
     wrap_sync(client_module.PlatformClient, "create_run", "platform.create_run")
     wrap_sync(client_module.PlatformEventStream, "__init__", "platform.stream_init")
-    wrap_sync(client_module.PlatformEventStream, "emit", "platform.emit")
+    wrap_async(client_module.PlatformEventStream, "aemit", "platform.emit")
     wrap_sync(client_module.PlatformEventStream, "close", "platform.close")
 
 
@@ -400,7 +400,7 @@ async def run_benchmark(items_count: int, duration_ms_values: List[float], concu
             }
             platform_breakdown["run_residual_s"] = platform_overhead_s - sum(platform_breakdown.values())
 
-            expected_emit_calls = repeat_count * ((2 * len(items)) + 2)
+            expected_emit_calls = repeat_count * ((4 * len(items)) + 2)
             actual_emit_calls = harness.total_count(platform_phase, "platform.emit")
             if actual_emit_calls != expected_emit_calls:
                 raise RuntimeError(

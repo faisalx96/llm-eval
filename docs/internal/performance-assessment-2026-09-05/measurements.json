@@ -1,0 +1,586 @@
+{
+  "assessed_commit": "b1d1d00",
+  "assessment_date": "2026-09-05",
+  "environment": {
+    "python": "3.11.5",
+    "os": "macOS15.3",
+    "arch": "arm64",
+    "sqlalchemy": "2.0.47",
+    "fastapi": "0.141.1",
+    "starlette": "1.6.0",
+    "httpx": "0.28.1",
+    "openai": "2.15.0",
+    "pytest": "9.0.2",
+    "node": "22.16.0"
+  },
+  "scope": "Local synthetic measurements. Platform uses isolated SQLite; network and model calls mocked. No production capacity or browser end-to-end measurements.",
+  "sdk": [
+    {
+      "case": "progress_callback_only",
+      "items": 1000,
+      "seconds": 0.0135
+    },
+    {
+      "case": "progress_callback_only",
+      "items": 10000,
+      "seconds": 0.6626
+    },
+    {
+      "case": "progress_callback_only",
+      "items": 30000,
+      "seconds": 5.15
+    },
+    {
+      "case": "full_eval",
+      "items": 1000,
+      "callback": false,
+      "checkpoint": false,
+      "metric_count": 1,
+      "metric_concurrency": 1,
+      "seconds": 0.1306,
+      "completed": 1000,
+      "errors": 0
+    },
+    {
+      "case": "full_eval",
+      "items": 1000,
+      "callback": true,
+      "checkpoint": false,
+      "metric_count": 1,
+      "metric_concurrency": 1,
+      "seconds": 0.1504,
+      "completed": 1000,
+      "errors": 0
+    },
+    {
+      "case": "full_eval",
+      "items": 10000,
+      "callback": false,
+      "checkpoint": false,
+      "metric_count": 1,
+      "metric_concurrency": 1,
+      "seconds": 0.9753,
+      "completed": 10000,
+      "errors": 0
+    },
+    {
+      "case": "full_eval",
+      "items": 10000,
+      "callback": true,
+      "checkpoint": false,
+      "metric_count": 1,
+      "metric_concurrency": 1,
+      "seconds": 1.6976,
+      "completed": 10000,
+      "errors": 0
+    },
+    {
+      "case": "full_eval",
+      "items": 5000,
+      "callback": false,
+      "checkpoint": false,
+      "metric_count": 1,
+      "metric_concurrency": 1,
+      "seconds": 0.5003,
+      "completed": 5000,
+      "errors": 0
+    },
+    {
+      "case": "full_eval",
+      "items": 5000,
+      "callback": false,
+      "checkpoint": true,
+      "metric_count": 1,
+      "metric_concurrency": 1,
+      "seconds": 0.5593,
+      "completed": 5000,
+      "errors": 0
+    },
+    {
+      "case": "full_eval",
+      "items": 30,
+      "callback": false,
+      "checkpoint": false,
+      "metric_count": 3,
+      "metric_concurrency": 1,
+      "seconds": 0.4945,
+      "completed": 30,
+      "errors": 0
+    },
+    {
+      "case": "full_eval",
+      "items": 30,
+      "callback": false,
+      "checkpoint": false,
+      "metric_count": 3,
+      "metric_concurrency": 3,
+      "seconds": 0.1842,
+      "completed": 30,
+      "errors": 0
+    },
+    {
+      "case": "judge_100_mocked_network",
+      "seconds": 1.5821,
+      "created_clients": 100,
+      "unclosed_clients": 100
+    },
+    {
+      "case": "sync_metric_timeout_before_thread_drain",
+      "seconds": 0.0924,
+      "active": 2,
+      "peak": 2,
+      "calls": 2
+    }
+  ],
+  "sdk_shutdown": [
+    {
+      "case": "single_item_platform_shutdown",
+      "seconds": 0.4894,
+      "mock_post_latency_seconds": 0.15,
+      "heartbeat_interval_seconds": 0.01,
+      "max_heartbeat_gap_seconds": 0.4164
+    }
+  ],
+  "platform": [
+    {
+      "test": "run_detail",
+      "items": 1000,
+      "rows": 1000,
+      "build_ms": 80.3,
+      "json_ms": 20.1,
+      "response_mib": 7.14,
+      "peak_python_mib": 23.55,
+      "sql": {
+        "SELECT": 6
+      }
+    },
+    {
+      "test": "run_detail",
+      "items": 10000,
+      "rows": 10000,
+      "build_ms": 958.0,
+      "json_ms": 221.1,
+      "response_mib": 71.44,
+      "peak_python_mib": 228.01,
+      "sql": {
+        "SELECT": 6
+      }
+    },
+    {
+      "test": "trace_refresh_single_touched_trace",
+      "items": 100,
+      "median_ms": 4.8,
+      "sql": {
+        "SELECT": 4
+      }
+    },
+    {
+      "test": "trace_refresh_single_touched_trace",
+      "items": 1000,
+      "median_ms": 45.8,
+      "sql": {
+        "SELECT": 4
+      }
+    },
+    {
+      "test": "trace_refresh_single_touched_trace",
+      "items": 10000,
+      "median_ms": 706.7,
+      "sql": {
+        "SELECT": 4
+      }
+    },
+    {
+      "test": "ingest",
+      "event": "item_started",
+      "events": 100,
+      "elapsed_ms": 31.5,
+      "max_event_loop_gap_ms": 31.6,
+      "sql": {
+        "SELECT": 202,
+        "INSERT": 200,
+        "UPDATE": 1
+      },
+      "response": {
+        "ok": true,
+        "applied": 100,
+        "skipped": 0
+      }
+    },
+    {
+      "test": "ingest",
+      "event": "item_started",
+      "events": 500,
+      "elapsed_ms": 142.7,
+      "max_event_loop_gap_ms": 143.2,
+      "sql": {
+        "SELECT": 1002,
+        "INSERT": 1000,
+        "UPDATE": 1
+      },
+      "response": {
+        "ok": true,
+        "applied": 500,
+        "skipped": 0
+      }
+    },
+    {
+      "test": "ingest",
+      "event": "item_started",
+      "events": 1000,
+      "elapsed_ms": 263.5,
+      "max_event_loop_gap_ms": 263.8,
+      "sql": {
+        "SELECT": 2002,
+        "INSERT": 2000,
+        "UPDATE": 1
+      },
+      "response": {
+        "ok": true,
+        "applied": 1000,
+        "skipped": 0
+      }
+    },
+    {
+      "test": "ingest",
+      "event": "span_completed",
+      "events": 100,
+      "elapsed_ms": 74.4,
+      "max_event_loop_gap_ms": 74.8,
+      "sql": {
+        "SELECT": 205,
+        "INSERT": 201,
+        "UPDATE": 3,
+        "SAVEPOINT": 101,
+        "RELEASE": 101
+      },
+      "response": {
+        "ok": true,
+        "applied": 100,
+        "skipped": 0
+      }
+    },
+    {
+      "test": "ingest",
+      "event": "span_completed",
+      "events": 500,
+      "elapsed_ms": 323.9,
+      "max_event_loop_gap_ms": 324.3,
+      "sql": {
+        "SELECT": 1005,
+        "INSERT": 1001,
+        "UPDATE": 3,
+        "SAVEPOINT": 501,
+        "RELEASE": 501
+      },
+      "response": {
+        "ok": true,
+        "applied": 500,
+        "skipped": 0
+      }
+    },
+    {
+      "test": "ingest",
+      "event": "span_completed",
+      "events": 1000,
+      "elapsed_ms": 631.7,
+      "max_event_loop_gap_ms": 632.1,
+      "sql": {
+        "SELECT": 2005,
+        "INSERT": 2001,
+        "UPDATE": 3,
+        "SAVEPOINT": 1001,
+        "RELEASE": 1001
+      },
+      "response": {
+        "ok": true,
+        "applied": 1000,
+        "skipped": 0
+      }
+    }
+  ],
+  "platform_list": [
+    {
+      "test": "run_list",
+      "runs_returned": 10,
+      "source_items": 10000,
+      "median_ms": 62.3,
+      "response_kib": 10.0,
+      "sql": {
+        "SELECT": 10
+      }
+    },
+    {
+      "test": "run_list",
+      "runs_returned": 100,
+      "source_items": 100000,
+      "median_ms": 690.2,
+      "response_kib": 98.1,
+      "sql": {
+        "SELECT": 10
+      }
+    }
+  ],
+  "platform_auth": [
+    {
+      "test": "API_key_PBKDF2_600k",
+      "median_ms": 123.0,
+      "min_ms": 121.1,
+      "max_ms": 152.1,
+      "iterations": 10
+    }
+  ],
+  "frontend": {
+    "node": "v22.16.0",
+    "generated_at": "2026-09-05T06:27:15.019Z",
+    "scope": "Synthetic exact-source CPU benchmarks; excludes browser DOM/layout, real DB/network latency, storage writes and production load. Lookup uses actual helper plus matching caller loop. Dashboard executes exact merge, flatten, aggregation, both chart-data passes, sort and cache JSON serialization; excludes filter/dropdown processing. Medians: lookup/models 3 samples; dashboard 5 samples. Map alternative includes building indexes. Asset gzip is hypothetical byte comparison, not a deployment response measurement.",
+    "lookup": [
+      {
+        "items": 1000,
+        "runs": 2,
+        "exact_lookup_median_ms": 4.86,
+        "map_build_and_lookup_median_ms": 0.17,
+        "row_checks_per_scan": 1001000,
+        "checksum": 3000
+      },
+      {
+        "items": 5000,
+        "runs": 2,
+        "exact_lookup_median_ms": 104.35,
+        "map_build_and_lookup_median_ms": 1.49,
+        "row_checks_per_scan": 25005000,
+        "checksum": 15000
+      },
+      {
+        "items": 10000,
+        "runs": 2,
+        "exact_lookup_median_ms": 450.54,
+        "map_build_and_lookup_median_ms": 2.91,
+        "row_checks_per_scan": 100010000,
+        "checksum": 30000
+      }
+    ],
+    "models": [
+      {
+        "items": 1000,
+        "runs": 5,
+        "exact_calculateItemLevelMetrics_median_ms": 27.29,
+        "totalItems": 1000
+      },
+      {
+        "items": 5000,
+        "runs": 5,
+        "exact_calculateItemLevelMetrics_median_ms": 367.63,
+        "totalItems": 5000
+      },
+      {
+        "items": 10000,
+        "runs": 5,
+        "exact_calculateItemLevelMetrics_median_ms": 1331.06,
+        "totalItems": 10000
+      }
+    ],
+    "dashboard": [
+      {
+        "runs": 1000,
+        "summary_json_bytes": 877685,
+        "processing_median_ms": 10.32
+      },
+      {
+        "runs": 10000,
+        "summary_json_bytes": 8815686,
+        "processing_median_ms": 88.92
+      },
+      {
+        "runs": 50000,
+        "summary_json_bytes": 44255686,
+        "processing_median_ms": 499.77
+      }
+    ],
+    "assets": [
+      {
+        "page": "dashboard",
+        "files": [
+          "index.html",
+          "dashboard.css",
+          "shell.css",
+          "auth.js",
+          "shell.js",
+          "ui_components.css",
+          "metrics.js",
+          "qym_table.js",
+          "dashboard.js"
+        ],
+        "raw_bytes": 839562,
+        "gzip_bytes": 166981,
+        "reduction_percent": 80.1
+      },
+      {
+        "page": "run",
+        "files": [
+          "run.html",
+          "dashboard.css",
+          "shell.css",
+          "auth.js",
+          "shell.js",
+          "metrics.js",
+          "trace_viewer.js",
+          "ui_components.css",
+          "ui_components.js"
+        ],
+        "raw_bytes": 1239019,
+        "gzip_bytes": 239243,
+        "reduction_percent": 80.7
+      }
+    ]
+  },
+  "overhead": {
+    "cases": [
+      {
+        "task_duration_s": 0.001,
+        "repeat_count": 3,
+        "item_count": 100,
+        "raw_task_wall_s": 0.012605999654624611,
+        "raw_task_summed_item_s": 0.12051634833915159,
+        "raw_task_avg_item_s": 0.0012051634833915158,
+        "qym_sdk_wall_s": 0.016537222332165886,
+        "qym_sdk_task_avg_item_s": 0.0013765610719565302,
+        "qym_platform_wall_s": 0.13373002799926326,
+        "sdk_overhead_s": 0.003931222677541275,
+        "platform_overhead_s": 0.11719280566709737,
+        "sdk_overhead_pct_of_raw": 31.18533067783382,
+        "platform_overhead_pct_of_raw": 929.6589630169017,
+        "sdk_breakdown": {
+          "task_wrapper_overhead_per_item_s": 0.0001713975885650143,
+          "tracker_overhead_per_item_s": 9.224775324886044e-07,
+          "item_start_overhead_per_item_s": 1.1500570690259338e-06,
+          "item_complete_overhead_per_item_s": 1.8573922958845892e-06,
+          "metrics_overhead_per_item_s": 1.1822521143282454e-06
+        },
+        "platform_breakdown": {
+          "event_emit_s": 0.00536580845558395,
+          "create_run_s": 5.208343888322513e-06,
+          "stream_close_s": 0.10344330601704617,
+          "stream_init_s": 9.074999252334237e-05,
+          "run_residual_s": 0.008287732858055591
+        },
+        "platform_emit_calls": 1206
+      },
+      {
+        "task_duration_s": 0.01,
+        "repeat_count": 3,
+        "item_count": 100,
+        "raw_task_wall_s": 0.11444476402054231,
+        "raw_task_summed_item_s": 1.1185709140069473,
+        "raw_task_avg_item_s": 0.011185709140069474,
+        "qym_sdk_wall_s": 0.13600129164600125,
+        "qym_sdk_task_avg_item_s": 0.012447949172346852,
+        "qym_platform_wall_s": 0.2478810553632987,
+        "sdk_overhead_s": 0.02155652762545894,
+        "platform_overhead_s": 0.11187976371729746,
+        "sdk_overhead_pct_of_raw": 18.835748240600715,
+        "platform_overhead_pct_of_raw": 97.75874385761813,
+        "sdk_breakdown": {
+          "task_wrapper_overhead_per_item_s": 0.0012622400322773797,
+          "tracker_overhead_per_item_s": 6.014449948755403e-06,
+          "item_start_overhead_per_item_s": 5.9175256562108794e-06,
+          "item_complete_overhead_per_item_s": 9.870850287067395e-06,
+          "metrics_overhead_per_item_s": 7.188601884990931e-06
+        },
+        "platform_breakdown": {
+          "event_emit_s": 0.011192017409484833,
+          "create_run_s": 1.3097014743834734e-05,
+          "stream_close_s": 0.10404037532862276,
+          "stream_init_s": 0.00017680563420678178,
+          "run_residual_s": -0.0035425316697607484
+        },
+        "platform_emit_calls": 1206
+      },
+      {
+        "task_duration_s": 0.05,
+        "repeat_count": 2,
+        "item_count": 100,
+        "raw_task_wall_s": 0.5143227714870591,
+        "raw_task_summed_item_s": 5.1107649749319535,
+        "raw_task_avg_item_s": 0.051107649749319535,
+        "qym_sdk_wall_s": 0.5376894999935757,
+        "qym_sdk_task_avg_item_s": 0.0522214083003928,
+        "qym_platform_wall_s": 0.6532294164935593,
+        "sdk_overhead_s": 0.023366728506516665,
+        "platform_overhead_s": 0.11553991649998352,
+        "sdk_overhead_pct_of_raw": 4.543203179388023,
+        "platform_overhead_pct_of_raw": 22.464476182130433,
+        "sdk_breakdown": {
+          "task_wrapper_overhead_per_item_s": 0.0011137585510732607,
+          "tracker_overhead_per_item_s": 8.052309858612716e-06,
+          "item_start_overhead_per_item_s": 6.09731359872967e-06,
+          "item_complete_overhead_per_item_s": 1.324253564234823e-05,
+          "metrics_overhead_per_item_s": 1.1232074757572264e-05
+        },
+        "platform_breakdown": {
+          "event_emit_s": 0.0126741275889799,
+          "create_run_s": 8.47899354994297e-06,
+          "stream_close_s": 0.10526287500397302,
+          "stream_init_s": 0.0001788125082384795,
+          "run_residual_s": -0.002584377594757825
+        },
+        "platform_emit_calls": 804
+      },
+      {
+        "task_duration_s": 0.2,
+        "repeat_count": 1,
+        "item_count": 100,
+        "raw_task_wall_s": 2.015629416971933,
+        "raw_task_summed_item_s": 20.12715558457421,
+        "raw_task_avg_item_s": 0.2012715558457421,
+        "qym_sdk_wall_s": 2.034449417027645,
+        "qym_sdk_task_avg_item_s": 0.20224002295231913,
+        "qym_platform_wall_s": 2.1683680409914814,
+        "sdk_overhead_s": 0.018820000055711716,
+        "platform_overhead_s": 0.13391862396383658,
+        "sdk_overhead_pct_of_raw": 0.933703383034808,
+        "platform_overhead_pct_of_raw": 6.644010195337477,
+        "sdk_breakdown": {
+          "task_wrapper_overhead_per_item_s": 0.0009684671065770089,
+          "tracker_overhead_per_item_s": 5.634161061607301e-06,
+          "item_start_overhead_per_item_s": 4.999547963961959e-06,
+          "item_complete_overhead_per_item_s": 8.603754104115069e-06,
+          "metrics_overhead_per_item_s": 9.85580962151289e-06
+        },
+        "platform_breakdown": {
+          "event_emit_s": 0.01862086809705943,
+          "create_run_s": 1.4416989870369434e-05,
+          "stream_close_s": 0.10510495799826458,
+          "stream_init_s": 0.00044949998846277595,
+          "run_residual_s": 0.009728880890179425
+        },
+        "platform_emit_calls": 402
+      }
+    ],
+    "concurrency": 10,
+    "items_count": 100
+  },
+  "analysis_queue": {
+    "submitted": 250,
+    "retention_limit": 10,
+    "max_workers": 2,
+    "retained": 250,
+    "running": 2,
+    "queued": 248,
+    "request_loop_heartbeat_tasks": 250
+  },
+  "validation": {
+    "passed": 56,
+    "warnings": 16,
+    "elapsed_seconds": 38.28,
+    "files": [
+      "tests/sdk/test_overhead_breakdown.py",
+      "tests/sdk/test_parallel_metrics.py",
+      "tests/sdk/test_observers.py",
+      "tests/sdk/test_platform_client.py",
+      "tests/platform/test_analysis_jobs.py",
+      "tests/platform/test_run_detail_payload.py",
+      "tests/platform/test_trace_stats_ingest.py"
+    ]
+  }
+}
