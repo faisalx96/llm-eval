@@ -14,6 +14,8 @@ pytestmark = pytest.mark.browser
 class BackfillFixture(DashboardFixture):
     def __init__(self, browser, view="table"):
         self.backfilling = True
+        self.global_role = "ADMIN"
+        self.project_role = "MANAGER"
         self.published = 12
         self.source_status = 200
         self.fail_offset = None
@@ -24,6 +26,23 @@ class BackfillFixture(DashboardFixture):
 
     def route(self, route):
         url = urlparse(route.request.url)
+        if url.path == "/v1/me":
+            route.fulfill(
+                json={
+                    "id": "owner",
+                    "role": self.global_role,
+                    "display_name": "Owner",
+                    "projects": [
+                        {
+                            "id": "project",
+                            "slug": "demo",
+                            "name": "Demo",
+                            "role": self.project_role,
+                        }
+                    ],
+                }
+            )
+            return
         if url.path == "/api/runs":
             query = parse_qs(url.query)
             self.requests.append((url.path, query))
@@ -106,6 +125,31 @@ def test_backfill_uses_complete_history_and_global_facets(browser, view):
         fixture.published = 15
         page.evaluate("__dashboardTest.fetchRuns()")
         assert page.evaluate("__dashboardTest.state.flatRuns.length") == 123
+    finally:
+        fixture.close()
+
+
+@pytest.mark.parametrize("role,can_manage", [("MANAGER", True), ("MEMBER", False)])
+def test_backfill_preserves_project_management_actions(browser, role, can_manage):
+    fixture = BackfillFixture(browser)
+    fixture.global_role = "MEMBER"
+    fixture.project_role = role
+    fixture.runs[0]["owner"] = {"id": "someone-else", "display_name": "Another owner"}
+    fixture.runs[0]["status"] = "SUBMITTED"
+    try:
+        fixture.open()
+        page = fixture.page
+        for backfilling in (True, False):
+            fixture.backfilling = backfilling
+            page.evaluate("__dashboardTest.fetchRuns()")
+            assert page.evaluate("__dashboardTest.state.currentProject.role") == role
+            assert page.locator(".approve-run").count() == int(can_manage)
+            page.evaluate("""() => {
+              const t = __dashboardTest;
+              t.state.selectMode = true;
+              if (!t.state.selectedRuns.has('run-000')) t.toggleSelect('run-000');
+            }""")
+            assert page.locator("#delete-selected").is_enabled() == can_manage
     finally:
         fixture.close()
 
@@ -363,8 +407,13 @@ def test_real_unprojected_history_matches_after_backfill(browser, database):
             )
             expected = {row["run_id"]: row for row in before}
             drain(database)
+            assert not client.get(
+                "/api/dashboard/runs", params={"project_slug": "demo"}
+            ).json()["freshness"]["backfilling"]
             page.evaluate("__dashboardTest.fetchRuns()")
-            assert not page.evaluate("__dashboardTest.state.dashboardBackfilling")
+            # The 15-second poll can already be in flight while PostgreSQL is
+            # draining. fetchRuns queues another refresh in that case.
+            page.wait_for_function("!__dashboardTest.state.dashboardBackfilling")
             assert page.evaluate("__dashboardTest.state.flatRuns.length") == 50
             assert page.locator("#status-filter").inner_text() == "123 runs"
             for actual in page.evaluate("__dashboardTest.state.flatRuns"):

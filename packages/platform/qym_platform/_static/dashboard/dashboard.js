@@ -6829,6 +6829,8 @@
     state.runsFetchMeta.totalCount = total;
     state.runsFetchMeta.hasLoadedAllPages = true;
     el('table-view')?.setAttribute('aria-busy', 'false');
+    // The legacy response has identity only; keep the authorized project role.
+    data.project = { ...state.currentProject, ...(data.project || {}) };
     _applyRunsData(data);
     const updated = el('last-updated');
     if (updated) { updated.textContent = 'Updating summaries…'; updated.setAttribute('role', 'status'); }
