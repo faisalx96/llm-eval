@@ -87,6 +87,34 @@ class TestEvaluator:
             assert complete_kwargs["elapsed_time"] >= 0
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize("task_output", [None, ""])
+    async def test_none_and_empty_task_outputs_are_normal_results(
+        self, task_output, mock_task, mock_langfuse, mock_dataset
+    ):
+        with patch("qym.core.evaluator.auto_detect_task"):
+            evaluator = Evaluator(
+                task=mock_task,
+                dataset=mock_dataset,
+                metrics=[],
+                config={"run_name": "empty-task-output"},
+                langfuse_client=mock_langfuse,
+            )
+
+        evaluator.task_adapter = MagicMock()
+        evaluator.task_adapter.arun = AsyncMock(return_value=task_output)
+        evaluator.model_name_full = "test-model"
+        evaluator._create_item_spans = MagicMock(return_value=ItemSpans())
+
+        item = MagicMock()
+        item.input = "question"
+        item.id = "item-1"
+
+        attempt = await evaluator._run_single_task_attempt(0, item, 1)
+
+        assert attempt.success is True
+        assert attempt.output == task_output
+
+    @pytest.mark.asyncio
     async def test_task_output_envelope_passes_metadata_to_metric_and_platform(
         self, mock_task, mock_langfuse, mock_dataset
     ):
@@ -219,6 +247,55 @@ class TestEvaluator:
         res = await evaluator._evaluate_item(0, item, tracker)
         assert res["success"] is True
         assert res["output"] == "ok"
+
+    @pytest.mark.asyncio
+    async def test_run_sends_none_and_empty_output_to_metrics(
+        self, tmp_path, monkeypatch
+    ):
+        dataset_path = tmp_path / "empty-output.csv"
+        dataset_path.write_text(
+            "question,expected\nreturn-none,answer\nreturn-empty,answer\n",
+            encoding="utf-8",
+        )
+        dataset = CsvDataset(
+            dataset_path,
+            input_col="question",
+            expected_col="expected",
+        )
+        task_attempts = {"return-none": 0, "return-empty": 0}
+        metric_outputs = []
+
+        def empty_task(question):
+            task_attempts[question] += 1
+            return None if question == "return-none" else ""
+
+        def zero_metric(output, expected):
+            del expected
+            metric_outputs.append(output)
+            return 0.0
+
+        monkeypatch.delenv("LANGFUSE_PUBLIC_KEY", raising=False)
+        monkeypatch.delenv("LANGFUSE_SECRET_KEY", raising=False)
+        monkeypatch.delenv("QYM_API_KEY", raising=False)
+        evaluator = Evaluator(
+            task=empty_task,
+            dataset=dataset,
+            metrics=[zero_metric],
+            config={
+                "run_name": "empty-output-normal-result",
+                "max_retries": 1,
+                "max_concurrency": 1,
+                "checkpoint_enabled": False,
+                "otel_enabled": False,
+            },
+        )
+
+        result = await evaluator.arun(show_tui=False, auto_save=False)
+
+        assert task_attempts == {"return-none": 1, "return-empty": 1}
+        assert metric_outputs == [None, ""]
+        assert len(result.results) == 2
+        assert result.errors == {}
 
     @pytest.mark.asyncio
     async def test_run_single_task_attempt_emits_item_attempt_started(

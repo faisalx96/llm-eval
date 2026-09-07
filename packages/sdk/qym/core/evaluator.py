@@ -47,6 +47,7 @@ from .dashboard import RunDashboard, console_supports_live
 from ..adapters.base import TaskAdapter, auto_detect_task
 from ..metrics.registry import get_metric, get_metric_spec
 from ..metrics.judges.base import JudgeInputError
+from ..metrics.result import MetricResult
 from ..metrics.spec import Metric, MetricSpec
 from ..utils.env import load_cwd_dotenv
 
@@ -73,7 +74,7 @@ def _compute_run_config_id(config: Dict[str, Any]) -> str:
     return hashlib.sha256(raw.encode()).hexdigest()[:16]
 
 
-from ..utils.errors import DatasetNotFoundError
+from ..utils.errors import DatasetNotFoundError, NonRetryableError
 
 # UIServer has been removed - platform streaming is now required
 # from ..server.app import UIServer  # DEPRECATED
@@ -2317,6 +2318,10 @@ class Evaluator:
             error = f"{type(e).__name__}: {e}"
             logger.warning(f"Item {index}: {error}")
             retryable = False
+        except NonRetryableError as e:
+            error = f"{type(e).__name__}: {e}"
+            logger.warning(f"Item {index}: {error} (non-retryable)")
+            retryable = False
         except Exception as e:
             error = f"{type(e).__name__}: {e} (attempt {attempt_number}/{1 + self.max_retries})"
             logger.warning(f"Item {index}: {error}")
@@ -2436,6 +2441,33 @@ class Evaluator:
                 "status": metric_status,
             }
 
+        def _emit_platform_metric_result(
+            raw_score_value: Any, result: MetricResult
+        ) -> None:
+            """Send both the score and its execution status to the platform."""
+            try:
+                ps = getattr(self, "_platform_stream", None)
+                if ps is None:
+                    return
+                item_id = getattr(item, "id", None) or f"item_{index}"
+                ps.emit(
+                    "metric_scored",
+                    {
+                        "item_id": str(item_id),
+                        "pass_number": self._current_pass,
+                        "metric_name": str(m_name),
+                        "score_numeric": result.score,
+                        "score_value": raw_score_value,
+                        "score_raw": result.to_legacy_dict(),
+                        "meta": result.metadata or {},
+                        "label": result.label,
+                        "explanation": result.explanation,
+                    },
+                )
+            except Exception:
+                # Platform reporting must never break the local evaluation.
+                pass
+
         # Inline helper that runs the actual metric compute (preserves the
         # existing probe logic for async metrics that accidentally block the loop).
         async def _run_metric_inner():
@@ -2544,12 +2576,27 @@ class Evaluator:
                 finally:
                     self._otel.reset_usage_scope(usage_scope_token)
 
-            # Wrap in MetricResult
-            from qym.metrics.result import MetricResult
-
             raw_score_value = score.score if isinstance(score, MetricResult) else score
             if isinstance(score, dict):
                 raw_score_value = score.get("score")
+            raw_metric_error = score.get("error") if isinstance(score, dict) else None
+            raw_metric_traceback = (
+                score.get("traceback") if isinstance(score, dict) else None
+            )
+            if raw_metric_error is not None and str(raw_metric_error).strip():
+                metric_status = "error"
+
+            # Wrap in MetricResult. A caught exception still has score 0 for
+            # aggregation, but its metadata explicitly marks it as Error so
+            # clients do not confuse it with an ordinary judged failure.
+            result = MetricResult.from_raw(score)
+            if metric_status in {"error", "timeout"}:
+                result.metadata = dict(result.metadata or {})
+                result.metadata["status"] = metric_status
+                if raw_metric_error is not None:
+                    result.metadata["error"] = str(raw_metric_error)
+                if raw_metric_traceback:
+                    result.metadata["traceback"] = str(raw_metric_traceback)
             # Internal harnesses and older integrations may replace ``metrics``
             # directly without rebuilding ``metric_specs``. Preserve the
             # legacy score path instead of turning an otherwise valid metric
@@ -2560,35 +2607,14 @@ class Evaluator:
             if metric_status not in {"timeout", "error"}:
                 validated_score = spec.validate_score(raw_score_value)
             else:
-                validated_score = MetricResult.from_raw(score).score
-            result = MetricResult.from_raw(score)
+                validated_score = result.score
             result.score = validated_score
             main_val = result.score
 
             # Add score as OTEL event on eval span (provider-agnostic)
             spans.add_score_event(m_name, main_val, result.label, result.explanation)
 
-            # Platform: metric scored
-            try:
-                ps = getattr(self, "_platform_stream", None)
-                if ps is not None:
-                    item_id = getattr(item, "id", None) or f"item_{index}"
-                    ps.emit(
-                        "metric_scored",
-                        {
-                            "item_id": str(item_id),
-                            "pass_number": self._current_pass,
-                            "metric_name": str(m_name),
-                            "score_numeric": result.score,
-                            "score_value": raw_score_value,
-                            "score_raw": result.to_legacy_dict(),
-                            "meta": result.metadata or {},
-                            "label": result.label,
-                            "explanation": result.explanation,
-                        },
-                    )
-            except Exception:
-                pass
+            _emit_platform_metric_result(raw_score_value, result)
 
             self._notify_observer(
                 "on_metric_result",
@@ -2612,13 +2638,26 @@ class Evaluator:
                 )
             else:
                 logger.error(f"Metric {m_name} failed: {e}")
-            error_text = (
+            error_message = (
                 f"metric timeout after {self.metric_timeout}s "
                 f"({self.metric_max_retries + 1} attempts)"
                 if isinstance(e, asyncio.TimeoutError)
-                else traceback.format_exc()
+                else str(e) or type(e).__name__
             )
-            score = {"score": 0, "error": error_text}
+            error_traceback = traceback.format_exc()
+            score = {
+                "score": 0,
+                "error": error_message,
+                "traceback": error_traceback,
+            }
+            error_result = MetricResult.from_raw(score)
+            error_result.metadata = {
+                **(error_result.metadata or {}),
+                "status": metric_status,
+                "error": error_message,
+                "traceback": error_traceback,
+            }
+            _emit_platform_metric_result(0, error_result)
             self._notify_observer(
                 "on_metric_result",
                 item_index=index,
@@ -2647,11 +2686,28 @@ class Evaluator:
 
         for m_name, score in scores.items():
             if score is not None:
+                score_metadata = (
+                    score.get("metadata", {}) if isinstance(score, dict) else {}
+                )
+                has_metric_error = isinstance(score, dict) and (
+                    (
+                        score.get("error") is not None
+                        and str(score.get("error")).strip() != ""
+                    )
+                    or (
+                        isinstance(score_metadata, dict)
+                        and str(score_metadata.get("status", "")).lower()
+                        in {"error", "failed", "timeout"}
+                    )
+                )
+                if has_metric_error:
+                    tracker.set_metric_error(index, m_name)
+                    continue
                 main_val = score
                 meta_map = {}
                 if isinstance(score, dict):
                     main_val = score.get("score", None)
-                    md = score.get("metadata", {})
+                    md = score_metadata
                     if isinstance(md, dict):
                         for k, v in md.items():
                             if isinstance(v, dict):

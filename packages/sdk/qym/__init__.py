@@ -30,6 +30,7 @@ from .core.results import EvaluationResult
 from .core.config import RunSpec
 from .core.dataset import CsvDataset, InMemoryDataset, JsonlDataset, QymDataset
 from .metrics import Metric, MetricSpec, builtin_metrics, list_available_metrics
+from .utils.errors import BusinessRuleError, NonRetryableError
 
 __all__ = [
     "Evaluator",
@@ -42,6 +43,8 @@ __all__ = [
     "ProgressCallbackObserver",
     "ProgressSnapshot",
     "RunSpec",
+    "BusinessRuleError",
+    "NonRetryableError",
     "CsvDataset",
     "InMemoryDataset",
     "JsonlDataset",

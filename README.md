@@ -114,7 +114,20 @@ def faithfulness(output, expected):
     return judge(output["output"], output["metadata"]["retrieved_context"])
 ```
 
-When a task returns a dict, qym requires exactly `output` and `metadata`; malformed dict outputs are reported as item errors.
+When a task returns a dict, qym requires exactly `output` and `metadata`; malformed dict outputs are reported as item errors. Plain values, including `None` and empty strings, are passed to metrics unchanged. If either value means the task failed, raise from the task or allow the downstream client exception to propagate.
+
+For an intentional business-rule failure that must not be retried, raise
+`BusinessRuleError` from a task or metric:
+
+```python
+from qym import BusinessRuleError
+
+raise BusinessRuleError()
+```
+
+A task business error immediately marks the item as Error and skips its
+metrics. A metric business error immediately marks that metric as Error with
+score `0`. Ordinary task exceptions still follow `max_retries`.
 
 ### Use the platform
 

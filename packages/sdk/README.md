@@ -362,7 +362,35 @@ def faithfulness(output, expected):
     return judge_faithfulness(output["output"], output["metadata"]["retrieved_context"])
 ```
 
-Dict task returns that do not match `{"output": ..., "metadata": {...}}` raise an item error.
+Dict task returns that do not match `{"output": ..., "metadata": {...}}` raise an item error. Plain values, including `None` and empty strings, are passed to metrics unchanged. If either value represents failure for your task, raise an exception or allow the downstream client exception to propagate.
+
+### Non-Retryable Business Rules
+
+Raise `BusinessRuleError` when retrying cannot change the outcome, such as an
+ineligible customer or content that violates a fixed policy:
+
+```python
+from qym import BusinessRuleError
+
+def my_task(customer):
+    if not customer["eligible"]:
+        raise BusinessRuleError()
+    return generate_answer(customer)
+
+def policy_metric(output, expected):
+    if violates_policy(output):
+        raise BusinessRuleError("Answer violates the policy")
+    return 1.0
+```
+
+- From a task: Qym makes one attempt, records an item Error, and skips metrics.
+- From a metric: Qym makes one metric call and records metric Error with score
+  `0`, error text, and a traceback.
+- Other task exceptions remain retryable according to `max_retries`. Metric
+  timeouts remain retryable according to `metric_max_retries`.
+
+Advanced users can subclass `NonRetryableError` to define their own named
+non-retryable domain exceptions.
 
 ## Documentation
 

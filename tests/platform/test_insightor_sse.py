@@ -297,15 +297,37 @@ def test_transport_errors_are_not_hidden(insightor_eval, monkeypatch):
         insightor_eval.insightor_api("question")
 
 
-def test_missing_sql_is_reported_without_raising(insightor_eval, monkeypatch):
-    result = _run_stream(
-        insightor_eval,
-        monkeypatch,
-        [_data({"rich": {"type": "heartbeat", "data": {}}})],
-    )
+def test_missing_sql_raises_task_error(insightor_eval, monkeypatch):
+    with pytest.raises(
+        RuntimeError, match="Insightor SSE stream ended without a SQL result"
+    ):
+        _run_stream(
+            insightor_eval,
+            monkeypatch,
+            [_data({"rich": {"type": "heartbeat", "data": {}}})],
+        )
 
-    assert result["sql"] == ""
-    assert result["sse_warnings"] == ["SSE stream ended without a SQL result"]
+
+def test_failed_task_tracker_event_raises_server_error(insightor_eval, monkeypatch):
+    failed_task_event = {
+        "rich": {
+            "type": "task_tracker_update",
+            "data": {
+                "task_id": "generate_sql",
+                "task": {
+                    "id": "generate_sql",
+                    "status": "FAILED",
+                    "metadata": {"error": "LLM provider returned HTTP 400"},
+                },
+            },
+        }
+    }
+
+    with pytest.raises(
+        RuntimeError,
+        match="Insightor task failed: LLM provider returned HTTP 400",
+    ):
+        _run_stream(insightor_eval, monkeypatch, [_data(failed_task_event)])
 
 
 def test_auth_failure_includes_server_status_and_detail(insightor_eval, monkeypatch):
