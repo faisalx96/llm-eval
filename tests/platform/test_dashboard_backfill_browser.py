@@ -316,7 +316,14 @@ def test_expired_backfill_session_clears_data_and_stops_reads(browser, offset):
         fixture.close()
 
 
-def test_real_unprojected_history_matches_after_backfill(browser, database):
+@pytest.mark.parametrize(
+    "run_count,tied_timestamps",
+    [(123, False), (501, True)],
+    ids=["distinct-timestamps", "tied-timestamps"],
+)
+def test_real_unprojected_history_matches_after_backfill(
+    browser, database, run_count, tied_timestamps
+):
     from datetime import datetime, timedelta
 
     from fastapi import FastAPI
@@ -333,13 +340,14 @@ def test_real_unprojected_history_matches_after_backfill(browser, database):
     with Session(database) as db:
         db.info["dashboard_projection_worker"] = True
         db.get(Project, "p").slug = "demo"
-        for index in range(123):
+        for index in range(run_count):
             run_id = f"real-{index:03}"
             run(
                 db,
                 run_id=run_id,
                 status=RunWorkflowStatus.COMPLETED,
-                created_at=datetime(2026, 9, 1) + timedelta(minutes=index),
+                created_at=datetime(2026, 9, 1)
+                + timedelta(minutes=0 if tied_timestamps else index),
                 run_metadata={"total_items": 2},
             )
             item(db, run_id=run_id, latency_ms=index + 1)
@@ -360,7 +368,7 @@ def test_real_unprojected_history_matches_after_backfill(browser, database):
                 )
             )
         db.commit()
-        service.bootstrap_partitions(db, limit=500)
+        service.bootstrap_partitions(db, limit=run_count)
         db.commit()
 
     app = FastAPI()
@@ -393,20 +401,46 @@ def test_real_unprojected_history_matches_after_backfill(browser, database):
             super().route(route)
 
     with TestClient(app) as client:
+        if tied_timestamps:
+            # LIMIT/OFFSET can return overlapping timestamp ties in PostgreSQL
+            # even without concurrent writes. Check every source page first.
+            ids = []
+            for offset in range(0, run_count, 100):
+                response = client.get(
+                    "/api/runs",
+                    params={
+                        "project_slug": "demo",
+                        "limit": 100,
+                        "offset": offset,
+                        "include_total": offset == 0,
+                    },
+                )
+                assert response.status_code == 200
+                ids.extend(
+                    row["run_id"]
+                    for models in response.json()["tasks"].values()
+                    for rows in models.values()
+                    for row in rows
+                )
+            assert ids == [f"real-{index:03}" for index in range(run_count)]
         fixture = SourceFixture(browser)
         fixture.api_client = client
         try:
             page = fixture.page
             page.goto("https://qym.test/projects/demo")
-            page.wait_for_function("__dashboardTest.state.flatRuns.length === 123")
+            page.wait_for_function(
+                "count => __dashboardTest.state.flatRuns.length === count",
+                arg=run_count,
+            )
             assert page.evaluate("__dashboardTest.state.dashboardBackfilling")
             before = page.evaluate("__dashboardTest.state.flatRuns")
-            assert page.locator("#status-filter").inner_text() == "123 runs"
+            assert page.locator("#status-filter").inner_text() == f"{run_count} runs"
             assert all(
                 row["total_items"] == 2 and row["error_count"] == 1 for row in before
             )
             expected = {row["run_id"]: row for row in before}
-            drain(database)
+            assert len(expected) == run_count
+            drain(database, max_partitions=50)
             assert not client.get(
                 "/api/dashboard/runs", params={"project_slug": "demo"}
             ).json()["freshness"]["backfilling"]
@@ -415,7 +449,7 @@ def test_real_unprojected_history_matches_after_backfill(browser, database):
             # draining. fetchRuns queues another refresh in that case.
             page.wait_for_function("!__dashboardTest.state.dashboardBackfilling")
             assert page.evaluate("__dashboardTest.state.flatRuns.length") == 50
-            assert page.locator("#status-filter").inner_text() == "123 runs"
+            assert page.locator("#status-filter").inner_text() == f"{run_count} runs"
             for actual in page.evaluate("__dashboardTest.state.flatRuns"):
                 for key in (
                     "total_items",
